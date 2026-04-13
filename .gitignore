@@ -1,0 +1,49 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]uild/
+bld/
+
+## NuGet
+*.nupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+
+## IDE
+.vs/
+.vscode/
+*.swp
+*~.nib
+*.code-workspace
+
+## OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+## Secrets
+appsettings.Development.json
+appsettings.Local.json
+*.pfx
+*.key
+
+## Logs
+logs/
+*.log
+
+## Test Results
+TestResults/
+
+## Migration backups
+*.bak

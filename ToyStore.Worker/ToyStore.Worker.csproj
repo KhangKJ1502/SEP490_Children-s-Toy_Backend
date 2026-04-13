@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-ToyStore.Worker-da5d9fea-d946-4c7e-85a2-123ac99daef4</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ToyStore.Application\ToyStore.Application.csproj" />
+    <ProjectReference Include="..\ToyStore.Infrastructure\ToyStore.Infrastructure.csproj" />
+    <ProjectReference Include="..\ToyStore.Recommendation\ToyStore.Recommendation.csproj" />
+  </ItemGroup>
+</Project>

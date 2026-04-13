@@ -1,0 +1,42 @@
+# Build artifacts
+**/bin/
+**/obj/
+**/out/
+
+# IDE files
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# NuGet packages
+**/packages/
+*.nupkg
+
+# Test results
+**/TestResults/
+**/coverage/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Misc
+*.log
+*.tmp
+*.bak
+appsettings.Development.json
+appsettings.Local.json
