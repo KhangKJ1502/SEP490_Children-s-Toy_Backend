@@ -1,42 +1,28 @@
 namespace ToyStore.Application.Interfaces.Repositories;
 
 /// <summary>
-/// Unit of Work pattern for managing transactions across repositories.
+/// Unit of Work pattern — quản lý transaction, được inject vào Service layer.
+/// Repositories sẽ được thêm vào đây khi từng feature được implement.
 /// </summary>
 public interface IUnitOfWork : IDisposable
 {
     /// <summary>
-    /// Product repository instance.
-    /// </summary>
-    IProductRepository Products { get; }
-    
-    /// <summary>
-    /// Order repository instance.
-    /// </summary>
-    IOrderRepository Orders { get; }
-    
-    /// <summary>
-    /// User behavior repository instance.
-    /// </summary>
-    IUserBehaviorRepository UserBehaviors { get; }
-    
-    /// <summary>
-    /// Saves all pending changes to the database.
+    /// Lưu tất cả pending changes vào DB.
     /// </summary>
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
-    
+
     /// <summary>
-    /// Begins a new database transaction.
+    /// Bắt đầu transaction.
     /// </summary>
     Task BeginTransactionAsync(CancellationToken cancellationToken = default);
-    
+
     /// <summary>
-    /// Commits the current transaction.
+    /// Commit transaction.
     /// </summary>
     Task CommitTransactionAsync(CancellationToken cancellationToken = default);
-    
+
     /// <summary>
-    /// Rolls back the current transaction.
+    /// Rollback transaction.
     /// </summary>
     Task RollbackTransactionAsync(CancellationToken cancellationToken = default);
 }

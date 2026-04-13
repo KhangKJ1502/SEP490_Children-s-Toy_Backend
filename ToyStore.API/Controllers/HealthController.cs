@@ -29,7 +29,7 @@ public class HealthController : ControllerBase
     /// </summary>
     [HttpGet("/ready")]
     public async Task<IActionResult> Ready(
-        [FromServices] Infrastructure.Data.ToyStoreDbContext dbContext)
+        [FromServices] Infrastructure.Data.SEP490ToyStoreContext dbContext)
     {
         try
         {

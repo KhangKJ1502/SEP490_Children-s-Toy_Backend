@@ -70,6 +70,12 @@ ToyStore.API/
 ├── Extensions/
 ├── Middleware/
 └── Program.cs
+
+docs/
+├── tests/                   → [feature]_test.md
+└── database/
+    ├── erd.md               → Sơ đồ ERD (Mermaid) — luôn phản ánh schema hiện tại
+    └── CHANGELOG.md         → Lịch sử migration theo thứ tự thời gian
 ```
 
 ---
@@ -577,32 +583,73 @@ Do sử dụng Clean Architecture, cấu trúc project chia làm nhiều layer. 
 - ❌ Gộp nhiều entity khác feature vào 1 file
 - ❌ Đặt DTO ngoài folder feature (mỗi feature phải có folder số nhiều riêng trong DTOs/)
 - ❌ Chạy code Migration sai project (cần chỉ định đúng --project và --startup-project)
+- ❌ Tạo migration hoặc thêm Entity mà không cập nhật `docs/database/`
 
 ---
 
-## 6. Checklist thêm feature mới
+## 6. Checklist thêm feature mới (DB First)
 
-Khi thêm feature/entity mới, làm theo THỨ TỰ:
+> ⚠️ **Dự án dùng DB First.** Mọi thay đổi schema → sửa trên DB (SSMS) → re-scaffold → commit.
+> **KHÔNG** tạo Entity bằng tay. **KHÔNG** dùng `dotnet ef migrations add`.
 
-1. `ToyStore.Domain/Entities/` → Tạo Entity
-2. `ToyStore.Domain/Enums/` → Tạo Enum (nếu cần)
-3. `ToyStore.Application/DTOs/[Features]/` → Tạo folder (số nhiều) + các file CRUD DTO riêng
-4. `ToyStore.Application/Interfaces/Repositories/` → Tạo `IXxxRepository`
-5. `ToyStore.Application/Interfaces/Services/` → Tạo `IXxxService`
-6. `ToyStore.Application/Mappings/` → Tạo `[Feature]Profile.cs` để cấu hình AutoMapper 
-7. `ToyStore.Application/Validators/[Features]/` → Tạo folder (số nhiều) + Validator
-8. `ToyStore.Application/Interfaces/Repositories/IUnitOfWork.cs` → Thêm property repository mới
-9. `ToyStore.Infrastructure/Data/ToyStoreDbContext.cs` → Thêm `DbSet<T>`
-10. `ToyStore.Infrastructure/Data/Configurations/` → Tạo Entity Configuration
-11. `ToyStore.Infrastructure/Repositories/` → Implement Repository
-12. `ToyStore.Infrastructure/Repositories/UnitOfWork.cs` → Thêm property repository mới
-13. `ToyStore.Infrastructure/Services/` → Implement Service
-14. `ToyStore.Infrastructure/DependencyInjection.cs` → Đăng ký DI (Repository + Service)
-15. `ToyStore.API/Controllers/` → Tạo Controller
-16. `docs/tests/` → Tạo file `[feature]_test.md` hướng dẫn kiểm tra API
+### 6a. Khi DB thay đổi — bước đầu tiên BẮT BUỘC
 
-**Sau khi xong, liệt kê danh sách file đã tạo/sửa.**
+```powershell
+# Chạy lại sau mỗi lần DB thay đổi (thêm bảng, cột, index)
+dotnet ef dbcontext scaffold "Server=DESKTOP-T27O90D\SQLEXPRESS;Database=SEP409_ToyStore;User ID=sa;Password=khangmc1502@;TrustServerCertificate=True;" Microsoft.EntityFrameworkCore.SqlServer --project ToyStore.Infrastructure --startup-project ToyStore.API --output-dir Models --context-dir Data --context SEP490ToyStoreContext --no-onconfiguring --force
+```
 
+> ⚠️ Lệnh `--force` sẽ **overwrite** toàn bộ `Models/` và `Data/SEP490ToyStoreContext.cs`.
+> **KHÔNG** sửa trực tiếp vào file scaffold — sẽ mất khi chạy lại.
+> Mọi custom logic → dùng **partial class** (xem Section 6b).
+
+### 6b. Sau khi scaffold — làm theo THỨ TỰ
+
+1. *(Scaffold đã chạy)* → `ToyStore.Infrastructure/Models/` + `Data/SEP490ToyStoreContext.cs` được cập nhật tự động
+2. `ToyStore.Application/DTOs/[Features]/` → Tạo folder (số nhiều) + các file CRUD DTO riêng
+3. `ToyStore.Application/Interfaces/Repositories/` → Tạo `IXxxRepository`
+4. `ToyStore.Application/Interfaces/Services/` → Tạo `IXxxService`
+5. `ToyStore.Application/Validators/[Features]/` → Tạo folder (số nhiều) + Validator
+6. `ToyStore.Application/Interfaces/Repositories/IUnitOfWork.cs` → Thêm property repository mới
+7. `ToyStore.Infrastructure/Repositories/` → Implement Repository (dùng entity từ `Models/`)
+8. `ToyStore.Infrastructure/Repositories/UnitOfWork.cs` → Thêm property repository mới
+9. `ToyStore.Infrastructure/Services/` → Implement Service
+10. `ToyStore.Infrastructure/DependencyInjection.cs` → Đăng ký DI (Repository + Service)
+11. `ToyStore.API/Controllers/` → Tạo Controller
+12. `docs/database/erd.md` → **Cập nhật ERD: thêm entity mới + relationship** ← BẮT BUỘC
+13. `docs/database/CHANGELOG.md` → **Thêm entry mô tả thay đổi schema** ← BẮT BUỘC
+14. `docs/tests/` → Tạo file `[feature]_test.md` hướng dẫn kiểm tra API
+
+**Sau khi xong, liệt kê danh sách file đã tạo/sửa — bao gồm cả file docs.**
+
+### 6c. Quy trình đồng bộ DB cho cả nhóm
+
+> 📖 **Hướng dẫn đầy đủ:** [`docs/database/changes/README.md`](docs/database/changes/README.md)
+
+**Người sửa DB (bắt buộc làm đủ 6 bước):**
+
+| Bước | Hành động |
+|------|-----------|
+| 1 | Sửa DB trên SSMS local |
+| 2 | ✏️ Viết file SQL: `docs/database/changes/YYYYMMDD_HHMM_MoTa.sql` |
+| 3 | Chạy re-scaffold |
+| 4 | Cập nhật `CHANGELOG.md` + `erd.md` |
+| 5 | `git commit` TẤT CẢ (SQL + C# models + docs) + `git push` |
+| 6 | 📢 Thông báo nhóm chat kèm tên file SQL |
+
+**Người nhận thay đổi (khi pull về):**
+
+```bash
+git pull
+# → Mở SSMS → chạy file SQL mới trong docs/database/changes/ theo thứ tự ngày
+# → KHÔNG cần re-scaffold (người push đã làm và commit rồi)
+dotnet build ToyStore.sln  # verify không lỗi
+```
+
+**⚠️ KHÔNG ĐƯỢC:**
+- ❌ Sửa DB mà không viết SQL change script
+- ❌ Commit C# models mà không có file SQL đi kèm
+- ❌ Sửa trực tiếp file `Models/*.cs` hoặc `SEP490ToyStoreContext.cs` (sẽ bị overwrite khi scaffold)
 ---
 
 ## 7. Quy tắc Test (BẮT BUỘC)
@@ -670,7 +717,7 @@ AI sẽ thực hiện theo quy trình trong `docs/tests/feature_test.md`:
 - Nếu yêu cầu có thể phá kiến trúc → CẢNH BÁO + đề xuất cách đúng
 - Giữ consistency với code hiện tại
 - Khi không chắc → HỎI trước, đừng tự thay đổi
-- Cung cấp link file test doc vừa tạo sau khi code xong.
+- Cung cấp link file test doc vừa tạo sau khi code xong
 
 ---
 
@@ -717,6 +764,8 @@ _logger.LogInformation($"Order {order.Id} created by User {userId}");
 
 - Controller chỉ log ở mức `LogWarning` / `LogError` khi cần trace input đặc biệt.
 - Không log result của Service — Service tự lo việc đó.
+
+---
 
 ## 11. Soft Delete với Related Entities
 
@@ -1049,7 +1098,6 @@ public async Task<ActionResult> Create(CreateProductDto dto)
 - ✅ Connection string phải hỗ trợ override qua biến môi trường: `ConnectionStrings__DefaultConnection`
 - ✅ Không phụ thuộc vào file local (ảnh, file Excel, ...) mà không có fallback
 - ✅ Code phải build được trên cả Windows và Linux (Docker dùng Linux container)
-- ✅ Không dùng package/tool yêu cầu license thương mại
 
 **KHÔNG ĐƯỢC:**
 - ❌ Commit code mà `dotnet build` fail
@@ -1057,4 +1105,306 @@ public async Task<ActionResult> Create(CreateProductDto dto)
 - ❌ Dùng đường dẫn Windows-only (`C:\`, `D:\`) trong code runtime
 - ❌ Để warning quan trọng không xử lý (nullable, unused variable nên clean)
 
+### 16.1 Khi nào AI được tự sửa DB
 
+AI **được phép tự sửa** Entity + Configuration khi gặp các trường hợp rõ ràng sai:
+
+| Vấn đề | Ví dụ | AI được tự sửa? |
+|--------|-------|----------------|
+| Thiếu kiểu dữ liệu rõ ràng | `string` thay vì `decimal` cho giá tiền | ✅ Tự sửa + thông báo |
+| Thiếu `HasPrecision` cho decimal | `Price` không có precision | ✅ Tự sửa + thông báo |
+| Thiếu index cho FK | FK không có index | ✅ Tự sửa + thông báo |
+| `OnDelete` mặc định Cascade | FK chưa có `DeleteBehavior.Restrict` | ✅ Tự sửa + thông báo |
+| Thiếu `IsRequired` cho field bắt buộc | Field quan trọng có thể null | ✅ Tự sửa + thông báo |
+
+AI **PHẢI HỎI TRƯỚC** khi gặp thay đổi ảnh hưởng lớn:
+
+| Vấn đề | Ví dụ | Xử lý |
+|--------|-------|-------|
+| Đổi quan hệ giữa các bảng | 1-1 thành 1-N | ❓ Hỏi trước |
+| Thêm / xoá column | Thêm column vào bảng đang có data | ❓ Hỏi trước |
+| Đổi tên bảng / column | Rename entity hoặc property | ❓ Hỏi trước |
+| Tách / gộp bảng | Tách `Users` thành `Users` + `UserProfiles` | ❓ Hỏi trước |
+| Thay đổi Primary Key | Đổi từ `int` sang `Guid` | ❓ Hỏi trước |
+
+### 16.2 Quy tắc Re-Scaffold (DB First)
+
+> Dự án dùng **DB First** — KHÔNG dùng `dotnet ef migrations add`.
+> Khi DB thay đổi, quy trình là: **Sửa DB trên SSMS → Re-scaffold → Commit**.
+
+- AI **KHÔNG được tự chạy scaffold** mà không hỏi trước
+- Khi cần re-scaffold, AI phải:
+  1. Thông báo rõ bảng/cột nào vừa thay đổi trên DB
+  2. Hỏi: *"Bạn có muốn tôi chạy lại scaffold không?"*
+  3. Chờ xác nhận → mới chạy lệnh:
+  ```powershell
+  dotnet ef dbcontext scaffold "Server=DESKTOP-T27O90D\SQLEXPRESS;Database=SEP409_ToyStore;User ID=sa;Password=khangmc1502@;TrustServerCertificate=True;" Microsoft.EntityFrameworkCore.SqlServer --project ToyStore.Infrastructure --startup-project ToyStore.API --output-dir Models --context-dir Data --context SEP490ToyStoreContext --no-onconfiguring --force
+  ```
+  4. Sau khi chạy xong → **BẮT BUỘC cập nhật `docs/database/`** (xem Section 17)
+- **KHÔNG** dùng `dotnet ef migrations add` — project này không dùng Code First migration
+
+### 16.3 Khi phát hiện DB chưa hợp lý
+
+Nếu phát hiện schema có vấn đề nhưng không thuộc diện tự sửa, AI phải:
+1. **Tiếp tục code theo schema hiện tại** — không dừng lại
+2. **Thông báo ở cuối response** theo format:
+
+```
+⚠️ GHI NHẬN VẤN ĐỀ DB:
+- Bảng/Entity: [tên]
+- Vấn đề: [mô tả ngắn]
+- Đề xuất: [cách fix]
+- Mức độ: 🔴 Cần fix sớm / 🟡 Nên fix / 🟢 Nice to have
+```
+
+### 16.4 KHÔNG ĐƯỢC
+
+- ❌ Tự chạy `dotnet ef database update` mà không hỏi
+- ❌ Xoá migration đã được chạy trên môi trường khác
+- ❌ Sửa file migration đã tạo (tạo migration mới thay thế)
+- ❌ Hard-delete data khi sửa schema
+- ❌ Bỏ qua vấn đề DB mà không thông báo
+- ❌ Chạy migration xong mà không cập nhật `docs/database/`
+
+### 16.5 Bắt buộc phân tích Impact trước khi sửa DB
+
+Trước khi sửa bất kỳ Entity / Configuration / Migration nào, AI **BẮT BUỘC** hiển thị:
+
+```
+📊 PHÂN TÍCH IMPACT — [Tên thay đổi]
+
+Thay đổi: [mô tả ngắn]
+
+Các bảng bị ảnh hưởng trực tiếp:
+- [Bảng 1] → lý do
+- [Bảng 2] → lý do
+
+Các feature bị ảnh hưởng:
+- [Feature 1] → ảnh hưởng thế nào
+- [Feature 2] → ảnh hưởng thế nào
+
+Rủi ro:
+- 🔴 [Rủi ro nghiêm trọng nếu có]
+- 🟡 [Rủi ro trung bình nếu có]
+
+Data hiện tại:
+- Có thể mất data không? [Có / Không / Cần kiểm tra]
+- Cần script migration data không? [Có / Không]
+
+Đề xuất thứ tự thực hiện:
+1. Bước 1
+2. Bước 2
+```
+
+Chỉ tiến hành sau khi đã hiển thị bảng impact và được xác nhận (với thay đổi lớn).
+
+**KHÔNG ĐƯỢC:**
+- ❌ Sửa Entity mà không kiểm tra bảng nào đang có FK trỏ tới
+- ❌ Đổi quan hệ mà không kiểm tra Service/Repository đang dùng nó
+- ❌ Tạo migration mà không kiểm tra data hiện có bị ảnh hưởng không
+- ❌ Sửa xong rồi mới báo — phải báo trước
+
+---
+
+## 17. Database Documentation (BẮT BUỘC)
+
+### 17.1 Khi nào tạo / cập nhật tài liệu
+
+> ⚠️ **Hai sự kiện sau ĐỀU phải cập nhật tài liệu. KHÔNG CÓ NGOẠI LỆ.**
+
+| Sự kiện | Hành động bắt buộc |
+|---------|--------------------|
+| Tạo migration mới | Cập nhật `docs/database/CHANGELOG.md` + `docs/database/erd.md` |
+| Thêm feature mới (bước 16 trong Section 6) | Cập nhật `docs/database/erd.md` |
+
+---
+
+### 17.2 Format `erd.md` — Sơ đồ ERD (Mermaid)
+
+File này phải **phản ánh đúng schema HIỆN TẠI** sau mỗi lần thêm Entity hoặc Migration.
+
+````markdown
+# Entity Relationship Diagram — ToyStore
+
+> Cập nhật lần cuối: [YYYY-MM-DD]
+> Migration gần nhất: [TênMigration]
+
+```mermaid
+erDiagram
+
+    %% ═══ CORE ENTITIES ═══
+
+    Products {
+        uniqueidentifier Id PK
+        nvarchar(200)    Name
+        nvarchar(50)     SKU  UK
+        decimal(18_2)    Price
+        decimal(18_2)    SalePrice  "nullable"
+        int              StockQuantity
+        uniqueidentifier CategoryId  FK
+        bit              IsActive
+        bit              IsDeleted
+        datetime2        CreatedAt
+        datetime2        UpdatedAt  "nullable"
+    }
+
+    Categories {
+        uniqueidentifier Id PK
+        nvarchar(100)    Name
+        nvarchar(120)    Slug  UK
+        uniqueidentifier ParentId  FK "nullable"
+        bit              IsDeleted
+        datetime2        CreatedAt
+    }
+
+    Orders {
+        uniqueidentifier Id PK
+        uniqueidentifier UserId  FK
+        int              Status  "enum OrderStatus"
+        decimal(18_2)    TotalAmount
+        nvarchar(500)    ShippingAddress
+        bit              IsDeleted
+        datetime2        CreatedAt
+    }
+
+    OrderItems {
+        uniqueidentifier Id PK
+        uniqueidentifier OrderId   FK
+        uniqueidentifier ProductId FK
+        int              Quantity
+        decimal(18_2)    UnitPrice
+        bit              IsDeleted
+    }
+
+    Users {
+        uniqueidentifier Id PK
+        nvarchar(256)    Email  UK
+        nvarchar(20)     PhoneNumber
+        nvarchar(100)    FullName
+        nvarchar(50)     Role
+        bit              IsActive
+        bit              IsDeleted
+        datetime2        CreatedAt
+    }
+
+    %% ═══ RELATIONSHIPS ═══
+
+    Products     }o--||  Categories  : "thuộc danh mục"
+    Categories   }o--o|  Categories  : "danh mục cha"
+    Orders       }o--||  Users       : "đặt bởi"
+    OrderItems   }o--||  Orders      : "thuộc đơn hàng"
+    OrderItems   }o--||  Products    : "chứa sản phẩm"
+```
+
+## Ghi chú quan hệ
+
+| Quan hệ | Delete Behavior | Ghi chú |
+|---------|-----------------|---------|
+| Products → Categories | RESTRICT | Không xoá Category đang có Product |
+| Orders → Users | RESTRICT | Không xoá User đang có Order |
+| OrderItems → Orders | CASCADE | Xoá Order thì xoá Item |
+| OrderItems → Products | RESTRICT | Không xoá Product đang có OrderItem |
+| Categories → Categories | SET NULL | Xoá cha thì con.ParentId = NULL |
+````
+
+**Quy tắc cập nhật `erd.md`:**
+- Thêm Entity → thêm block entity + dòng relationship tương ứng
+- Sửa column → cập nhật trong block entity
+- Thêm FK → thêm dòng vào bảng "Ghi chú quan hệ"
+- Cập nhật dòng `> Cập nhật lần cuối` và `> Migration gần nhất` mỗi lần thay đổi
+
+---
+
+### 17.3 Format `CHANGELOG.md` — Lịch sử Migration
+
+Mỗi migration = 1 entry. Entry mới nhất **nằm trên cùng**.
+
+````markdown
+# Database Changelog — ToyStore
+
+> Mỗi entry tương ứng 1 migration. Thứ tự: **MỚI NHẤT Ở TRÊN**.
+
+---
+
+## [YYYY-MM-DD] `TênMigration`
+
+### Thay đổi
+
+| Loại | Bảng | Chi tiết |
+|------|------|----------|
+| ➕ Thêm bảng | `OrderItems` | Lưu chi tiết từng dòng trong đơn hàng |
+| ➕ Thêm cột | `Products.SalePrice` | `decimal(18,2)`, nullable — giá khuyến mãi |
+| 🔧 Sửa cột | `Products.Name` | Tăng MaxLength từ 100 → 200 |
+| ➕ Thêm index | `IX_Products_CategoryId` | Tăng performance query theo danh mục |
+| ➕ Thêm FK | `Products.CategoryId → Categories.Id` | RESTRICT on delete |
+| 🗑️ Xoá cột | `Products.OldField` | Không còn sử dụng |
+
+### Lý do
+
+> Mô tả ngắn tại sao cần thay đổi — feature gì yêu cầu, vấn đề gì cần fix.
+
+### Bảng bị ảnh hưởng
+
+`Products`, `Categories`
+
+### Cách áp dụng (DB First)
+
+```powershell
+# Sửa DB trên SSMS trước, sau đó re-scaffold:
+dotnet ef dbcontext scaffold "Server=DESKTOP-T27O90D\SQLEXPRESS;Database=SEP409_ToyStore;User ID=sa;Password=khangmc1502@;TrustServerCertificate=True;" Microsoft.EntityFrameworkCore.SqlServer --project ToyStore.Infrastructure --startup-project ToyStore.API --output-dir Models --context-dir Data --context SEP490ToyStoreContext --no-onconfiguring --force
+```
+
+---
+
+## [2026-04-13] `v1.0 InitialCreate`
+
+### Thay đổi
+
+> Xem chi tiết đầy đủ trong `docs/database/CHANGELOG.md`
+
+| Loại | Chi tiết |
+|------|----------|
+| ➕ Khởi tạo | Toàn bộ 47 bảng + triggers + indexes — xem `CHANGELOG.md` |
+
+### Cách áp dụng
+
+```sql
+-- Chạy file SQL trên SSMS:
+-- docs/database/schema.sql
+```
+````
+
+**Quy tắc viết CHANGELOG:**
+- Dùng icon: ➕ thêm mới / 🔧 sửa / 🗑️ xoá
+- Tên migration phải mô tả rõ nội dung: `AddSalePriceToProducts`, `CreateOrderItemsTable`
+- **KHÔNG** đặt tên chung chung: `Update`, `Fix`, `Migration1`, `Change`
+- Mỗi thay đổi = 1 dòng trong bảng — không gộp nhiều thay đổi vào 1 dòng
+
+---
+
+### 17.4 Checklist AI sau mỗi lần cập nhật DB
+
+Sau khi hoàn thành migration hoặc thêm feature, AI **BẮT BUỘC** báo cáo:
+
+```
+📄 CẬP NHẬT TÀI LIỆU DB
+
+✅ docs/database/erd.md
+   → [mô tả thay đổi: thêm entity / sửa column / thêm relationship]
+
+✅ docs/database/CHANGELOG.md  (chỉ khi có migration mới)
+   → Entry mới: [TênMigration] — [mô tả ngắn thay đổi]
+
+⚠️ Lệnh migration cần chạy (nếu chưa chạy):
+   dotnet ef migrations add [TênMigration] \
+     --project ToyStore.Infrastructure \
+     --startup-project ToyStore.API
+```
+
+**KHÔNG ĐƯỢC:**
+- ❌ Tạo migration mà không thêm entry vào `CHANGELOG.md`
+- ❌ Thêm Entity mới mà không cập nhật `erd.md`
+- ❌ Viết entry CHANGELOG thiếu bảng "Thay đổi" hoặc "Lý do"
+- ❌ Đặt entry mới ở cuối CHANGELOG (phải ở trên cùng)
+- ❌ Dùng tên migration mơ hồ (`Update`, `Fix`, `Change`)
+- ❌ Cập nhật tài liệu mà ERD không khớp với schema thực tế trong code

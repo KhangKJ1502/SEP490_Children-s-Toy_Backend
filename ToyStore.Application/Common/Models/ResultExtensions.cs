@@ -1,4 +1,4 @@
-using ToyStore.Application.Validators;
+using FluentValidation.Results;
 
 namespace ToyStore.Application.Common.Models;
 
@@ -8,23 +8,37 @@ namespace ToyStore.Application.Common.Models;
 public static class ResultExtensions
 {
     /// <summary>
-    /// Converts ValidationResult to Result.
+    /// Converts FluentValidation ValidationResult to Result.
     /// </summary>
     public static Result ToResult(this ValidationResult validationResult)
     {
-        return validationResult.IsValid 
-            ? Result.Success() 
-            : Result.ValidationFailure(validationResult.ToErrorDictionary());
+        if (validationResult.IsValid)
+            return Result.Success();
+
+        var errors = validationResult.Errors
+            .GroupBy(e => e.PropertyName)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(e => e.ErrorMessage).ToArray());
+
+        return Result.ValidationFailure(errors);
     }
-    
+
     /// <summary>
-    /// Converts ValidationResult to Result<T>.
+    /// Converts FluentValidation ValidationResult to Result&lt;T&gt;.
     /// </summary>
     public static Result<T> ToResult<T>(this ValidationResult validationResult)
     {
-        return validationResult.IsValid 
-            ? throw new InvalidOperationException("Cannot convert valid result without data.")
-            : Result<T>.ValidationFailure(validationResult.ToErrorDictionary());
+        if (validationResult.IsValid)
+            throw new InvalidOperationException("Cannot convert valid result without data.");
+
+        var errors = validationResult.Errors
+            .GroupBy(e => e.PropertyName)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(e => e.ErrorMessage).ToArray());
+
+        return Result<T>.ValidationFailure(errors);
     }
     
     /// <summary>

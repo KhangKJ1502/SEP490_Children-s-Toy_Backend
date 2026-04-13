@@ -1,0 +1,33 @@
+﻿using System;
+using System.Collections.Generic;
+
+namespace ToyStore.Infrastructure.Models;
+
+public partial class Promotion
+{
+    public int PromotionId { get; set; }
+
+    public string PromotionName { get; set; } = null!;
+
+    public string PromotionCode { get; set; } = null!;
+
+    public string? Description { get; set; }
+
+    public decimal DiscountPercent { get; set; }
+
+    public DateTime StartDate { get; set; }
+
+    public DateTime EndDate { get; set; }
+
+    public string Status { get; set; } = null!;
+
+    public bool IsDeleted { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public int CreatedBy { get; set; }
+
+    public virtual Account CreatedByNavigation { get; set; } = null!;
+
+    public virtual ICollection<Product> Products { get; set; } = new List<Product>();
+}
