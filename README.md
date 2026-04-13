@@ -89,5 +89,3 @@ dotnet ef database update --project ToyStore.Infrastructure --startup-project To
 ## 👥 Team
 
 - SEP490 - Capstone Project
-- SEP490 - Capstone Project
-  > > > > > > > a798b56 (chore: init project with Clean Architecture rules, AI config files, and test templates)

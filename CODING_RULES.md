@@ -1035,3 +1035,26 @@ public async Task<ActionResult> Create(CreateProductDto dto)
 - ❌ Sửa `ExceptionHandlingMiddleware` (trừ khi được yêu cầu)
 - ❌ Tạo middleware exception mới
 
+---
+
+## 16. CI/CD Readiness (Chưa triển khai — nhưng PHẢI SẴN SÀNG)
+
+> ⚠️ Project hiện **chưa có CI/CD pipeline**. Tuy nhiên, mọi code viết ra **PHẢI đảm bảo sẵn sàng** để tích hợp CI/CD bất kỳ lúc nào mà không cần sửa lại.
+
+**Quy tắc khi code:**
+
+- ✅ `dotnet build` phải **luôn pass** — không được commit code lỗi build
+- ✅ Không hardcode đường dẫn tuyệt đối (ví dụ: `D:\SEP490_BackEnd\...`)
+- ✅ Tất cả config nhạy cảm phải đọc từ `appsettings.json` hoặc environment variables — không hardcode trong code
+- ✅ Connection string phải hỗ trợ override qua biến môi trường: `ConnectionStrings__DefaultConnection`
+- ✅ Không phụ thuộc vào file local (ảnh, file Excel, ...) mà không có fallback
+- ✅ Code phải build được trên cả Windows và Linux (Docker dùng Linux container)
+- ✅ Không dùng package/tool yêu cầu license thương mại
+
+**KHÔNG ĐƯỢC:**
+- ❌ Commit code mà `dotnet build` fail
+- ❌ Hardcode password, API key, secret trong file `.cs`
+- ❌ Dùng đường dẫn Windows-only (`C:\`, `D:\`) trong code runtime
+- ❌ Để warning quan trọng không xử lý (nullable, unused variable nên clean)
+
+
