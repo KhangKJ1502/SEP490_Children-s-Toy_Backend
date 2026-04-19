@@ -7,7 +7,7 @@ public partial class ChatConversation
 {
     public int ConversationId { get; set; }
 
-    public int? AccountId { get; set; }
+    public int AccountId { get; set; }
 
     public string? SessionId { get; set; }
 
@@ -15,7 +15,7 @@ public partial class ChatConversation
 
     public DateTime CreatedAt { get; set; }
 
-    public virtual Account? Account { get; set; }
+    public virtual Account Account { get; set; } = null!;
 
     public virtual ICollection<ChatMessage> ChatMessages { get; set; } = new List<ChatMessage>();
 }

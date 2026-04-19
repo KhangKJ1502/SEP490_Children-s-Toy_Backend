@@ -11,7 +11,9 @@ public partial class UserBlockHistory
 
     public int? BlockedBy { get; set; }
 
-    public short ReasonId { get; set; }
+    public byte BlockReasonId { get; set; }
+
+    public string? Note { get; set; }
 
     public int? UnblockedBy { get; set; }
 
@@ -25,9 +27,9 @@ public partial class UserBlockHistory
 
     public virtual Account Account { get; set; } = null!;
 
-    public virtual Account? BlockedByNavigation { get; set; }
+    public virtual BlockReason BlockReason { get; set; } = null!;
 
-    public virtual BlockReason Reason { get; set; } = null!;
+    public virtual Account? BlockedByNavigation { get; set; }
 
     public virtual BackgroundJob? UnblockedByJob { get; set; }
 

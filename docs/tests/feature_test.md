@@ -32,54 +32,54 @@ Với MỖI endpoint của chức năng, test ĐẦY ĐỦ các case sau:
 
 #### ✅ Case thành công (Happy Path)
 
-| Test | Mô tả | Expected |
-|------|--------|----------|
-| GET all | Lấy danh sách | 200 OK + data array |
-| GET by ID | Lấy theo ID hợp lệ | 200 OK + data object |
-| POST create | Tạo mới với data hợp lệ | 201 Created / 200 OK |
-| PUT update | Cập nhật với data hợp lệ | 200 OK |
-| DELETE | Xoá (soft delete) | 200 OK / 204 NoContent |
+| Test        | Mô tả                    | Expected               |
+| ----------- | ------------------------ | ---------------------- |
+| GET all     | Lấy danh sách            | 200 OK + data array    |
+| GET by ID   | Lấy theo ID hợp lệ       | 200 OK + data object   |
+| POST create | Tạo mới với data hợp lệ  | 201 Created / 200 OK   |
+| PUT update  | Cập nhật với data hợp lệ | 200 OK                 |
+| DELETE      | Xoá (soft delete)        | 200 OK / 204 NoContent |
 
 #### ❌ Case lỗi Validation (400 Bad Request)
 
-| Test | Mô tả | Expected |
-|------|--------|----------|
-| POST thiếu field bắt buộc | Gửi body thiếu Name, Price, ... | 400 + validation errors |
-| POST giá trị sai | Giá âm, SalePrice > Price, ... | 400 + validation errors |
-| POST format sai | Email sai, SĐT sai, SKU sai, ... | 400 + validation errors |
-| POST cross-field sai | MinAge > MaxAge, Start > End, ... | 400 + validation errors |
+| Test                      | Mô tả                             | Expected                |
+| ------------------------- | --------------------------------- | ----------------------- |
+| POST thiếu field bắt buộc | Gửi body thiếu Name, Price, ...   | 400 + validation errors |
+| POST giá trị sai          | Giá âm, SalePrice > Price, ...    | 400 + validation errors |
+| POST format sai           | Email sai, SĐT sai, SKU sai, ...  | 400 + validation errors |
+| POST cross-field sai      | MinAge > MaxAge, Start > End, ... | 400 + validation errors |
 
 #### 🔍 Case lỗi Not Found (404)
 
-| Test | Mô tả | Expected |
-|------|--------|----------|
-| GET ID không tồn tại | Dùng random GUID | 404 Not Found |
-| PUT ID không tồn tại | Update với ID không có | 404 Not Found |
-| DELETE ID không tồn tại | Xoá ID không có | 404 Not Found |
+| Test                    | Mô tả                  | Expected      |
+| ----------------------- | ---------------------- | ------------- |
+| GET ID không tồn tại    | Dùng random GUID       | 404 Not Found |
+| PUT ID không tồn tại    | Update với ID không có | 404 Not Found |
+| DELETE ID không tồn tại | Xoá ID không có        | 404 Not Found |
 
 #### ⚠️ Case lỗi Business Logic
 
-| Test | Mô tả | Expected |
-|------|--------|----------|
-| POST duplicate | Tạo trùng SKU / Email / ... | 409 Conflict |
-| DELETE đã xoá | Xoá lại record đã soft delete | 400 Business Error |
-| Thao tác cần quyền | Không có token (nếu có auth) | 401 Unauthorized |
+| Test               | Mô tả                         | Expected           |
+| ------------------ | ----------------------------- | ------------------ |
+| POST duplicate     | Tạo trùng SKU / Email / ...   | 409 Conflict       |
+| DELETE đã xoá      | Xoá lại record đã soft delete | 400 Business Error |
+| Thao tác cần quyền | Không có token (nếu có auth)  | 401 Unauthorized   |
 
 #### 🔐 Case lỗi Authorization
 
-| Test | Mô tả | Expected |
-|------|--------|----------|
-| Không có token | Gọi endpoint cần auth mà không gửi Bearer token | 401 Unauthorized |
-| Token hết hạn | Gửi token cũ đã expire | 401 Unauthorized |
-| Sai role | Dùng token role thấp gọi endpoint cần role cao hơn (ví dụ: Customer gọi endpoint của Admin) | 403 Forbidden |
+| Test           | Mô tả                                                                                       | Expected         |
+| -------------- | ------------------------------------------------------------------------------------------- | ---------------- |
+| Không có token | Gọi endpoint cần auth mà không gửi Bearer token                                             | 401 Unauthorized |
+| Token hết hạn  | Gửi token cũ đã expire                                                                      | 401 Unauthorized |
+| Sai role       | Dùng token role thấp gọi endpoint cần role cao hơn (ví dụ: Customer gọi endpoint của Admin) | 403 Forbidden    |
 
 #### 🔄 Case Transaction Rollback (chỉ áp dụng cho chức năng có Transaction)
 
-| Test | Mô tả | Expected |
-|------|--------|----------|
-| Một item trong danh sách không hợp lệ | Tạo Order có 3 item, item thứ 2 hết hàng | 400 + không có record nào được tạo trong DB |
-| Lỗi giữa chừng | Dữ liệu đúng nhưng giả lập lỗi (sai FK, duplicate...) | 500 + toàn bộ transaction rollback |
-| Verify DB sau rollback | Sau khi fail, kiểm tra DB xem có record nào bị tạo dở không | DB sạch, không có record nào |
+| Test                                  | Mô tả                                                       | Expected                                    |
+| ------------------------------------- | ----------------------------------------------------------- | ------------------------------------------- |
+| Một item trong danh sách không hợp lệ | Tạo Order có 3 item, item thứ 2 hết hàng                    | 400 + không có record nào được tạo trong DB |
+| Lỗi giữa chừng                        | Dữ liệu đúng nhưng giả lập lỗi (sai FK, duplicate...)       | 500 + toàn bộ transaction rollback          |
+| Verify DB sau rollback                | Sau khi fail, kiểm tra DB xem có record nào bị tạo dở không | DB sạch, không có record nào                |
 
 ### Bước 4: Test Regression — Các chức năng LIÊN QUAN (BẮT BUỘC)
 
@@ -89,27 +89,30 @@ Với MỖI endpoint của chức năng, test ĐẦY ĐỦ các case sau:
 > Đó là nhiệm vụ của người code feature đó — khi họ code xong, họ BẮT BUỘC phải test lại các feature đã tồn tại.
 
 AI phải:
+
 1. Kiểm tra xem feature liên quan **đã có Controller/Service trong codebase chưa**
 2. Nếu **đã có** → test lại Happy Path của feature đó
 3. Nếu **chưa có** → ghi nhận "Chưa code — sẽ test khi feature này được implement"
 
 **Cách xác định feature liên quan:**
+
 - Feature có **Foreign Key** liên kết (ví dụ: OrderItem → Product, Order → User)
 - Feature **dùng chung Service/Repository** (ví dụ: đổi Product → ảnh hưởng Cart, Order)
 - Feature có **logic phụ thuộc** (ví dụ: xoá Category → ảnh hưởng Product thuộc Category đó)
 
 **Ví dụ:**
 
-| Đang test | Test thêm (NẾU ĐÃ CODE) |
-|-----------|--------------------------|
-| Product | Cart, OrderItem, Review, Category |
-| Order | Product (tồn kho), Payment, User |
-| Category | Product (liên kết CategoryId) |
-| User | Order, Review |
-| Coupon | Order (áp mã giảm giá) |
-| Payment | Order (đổi trạng thái) |
+| Đang test | Test thêm (NẾU ĐÃ CODE)           |
+| --------- | --------------------------------- |
+| Product   | Cart, OrderItem, Review, Category |
+| Order     | Product (tồn kho), Payment, User  |
+| Category  | Product (liên kết CategoryId)     |
+| User      | Order, Review                     |
+| Coupon    | Order (áp mã giảm giá)            |
+| Payment   | Order (đổi trạng thái)            |
 
 **Quy trình test regression:**
+
 1. Xác định danh sách feature liên quan
 2. Kiểm tra feature đó **đã tồn tại** trong code chưa (có Controller + Service không)
 3. Nếu đã có → test lại các case Happy Path (GET all, GET by ID)
@@ -171,11 +174,11 @@ Sau khi hoàn thành báo cáo ở Bước 5, AI **BẮT BUỘC** tạo file bá
 
 ## Tổng kết
 
-| Hạng mục | Passed | Failed | Skipped | Tổng |
-|----------|--------|--------|---------|------|
-| Feature chính | X | X | X | X |
-| Regression | X | X | X | X |
-| **Tổng cộng** | **X** | **X** | **X** | **X** |
+| Hạng mục      | Passed | Failed | Skipped | Tổng  |
+| ------------- | ------ | ------ | ------- | ----- |
+| Feature chính | X      | X      | X       | X     |
+| Regression    | X      | X      | X       | X     |
+| **Tổng cộng** | **X**  | **X**  | **X**   | **X** |
 
 > Kết luận: ✅ PASS toàn bộ / ❌ CÓ LỖI — cần fix trước khi merge
 
@@ -183,27 +186,28 @@ Sau khi hoàn thành báo cáo ở Bước 5, AI **BẮT BUỘC** tạo file bá
 
 ## Chi tiết — Feature chính
 
-| # | Case | Endpoint | Expected | Actual | Kết quả | Ghi chú |
-|---|------|----------|----------|--------|---------|---------|
-| 1 | GET all | GET /api/xxx | 200 | 200 | ✅ PASS | |
-| 2 | POST thiếu Name | POST /api/xxx | 400 | 400 | ✅ PASS | Trả đúng validation error |
-| 3 | ... | ... | ... | ... | ❌ FAIL | Mô tả lỗi cụ thể |
+| #   | Case            | Endpoint      | Expected | Actual | Kết quả | Ghi chú                   |
+| --- | --------------- | ------------- | -------- | ------ | ------- | ------------------------- |
+| 1   | GET all         | GET /api/xxx  | 200      | 200    | ✅ PASS |                           |
+| 2   | POST thiếu Name | POST /api/xxx | 400      | 400    | ✅ PASS | Trả đúng validation error |
+| 3   | ...             | ...           | ...      | ...    | ❌ FAIL | Mô tả lỗi cụ thể          |
 
 ---
 
 ## Chi tiết — Regression
 
-| # | Feature | Endpoint | Expected | Actual | Kết quả | Ghi chú |
-|---|---------|----------|----------|--------|---------|---------|
-| 1 | Cart | GET /api/carts | 200 | 200 | ✅ PASS | |
-| 2 | Order | GET /api/orders | 200 | 200 | ✅ PASS | |
-| 3 | Payment | — | — | — | ⏭ SKIP | Chưa được code |
+| #   | Feature | Endpoint        | Expected | Actual | Kết quả | Ghi chú        |
+| --- | ------- | --------------- | -------- | ------ | ------- | -------------- |
+| 1   | Cart    | GET /api/carts  | 200      | 200    | ✅ PASS |                |
+| 2   | Order   | GET /api/orders | 200      | 200    | ✅ PASS |                |
+| 3   | Payment | —               | —        | —      | ⏭ SKIP | Chưa được code |
 
 ---
 
 ## Lỗi cần fix
 
 ### Lỗi 1: [Tên lỗi ngắn gọn]
+
 - **Endpoint:** POST /api/xxx
 - **Case:** Mô tả case bị fail
 - **Expected:** Kết quả mong đợi
@@ -216,17 +220,20 @@ Sau khi hoàn thành báo cáo ở Bước 5, AI **BẮT BUỘC** tạo file bá
 ## Response mẫu (lưu để tham khảo)
 
 ### POST /api/xxx — 201 Created
+
 \`\`\`json
 { "// AI paste response body thực tế ở đây" }
 \`\`\`
 
 ### POST /api/xxx — 400 Validation Error
+
 \`\`\`json
 { "// AI paste response body thực tế ở đây" }
 \`\`\`
 ```
 
 **Sau khi tạo file xong**, AI thông báo trong chat:
+
 ```
 ✅ Đã lưu báo cáo: docs/test-reports/[tên-file].md
 ```
@@ -244,6 +251,7 @@ Sau khi hoàn thành báo cáo ở Bước 5, AI **BẮT BUỘC** tạo file bá
 ## MẪU REQUEST JSON (AI tự điền theo chức năng)
 
 ### POST — Tạo mới (data hợp lệ)
+
 ```json
 {
     "// AI điền mẫu JSON hợp lệ cho chức năng đang test"
@@ -251,6 +259,7 @@ Sau khi hoàn thành báo cáo ở Bước 5, AI **BẮT BUỘC** tạo file bá
 ```
 
 ### POST — Tạo mới (data thiếu field)
+
 ```json
 {
     "// AI điền mẫu JSON thiếu field bắt buộc"
@@ -258,6 +267,7 @@ Sau khi hoàn thành báo cáo ở Bước 5, AI **BẮT BUỘC** tạo file bá
 ```
 
 ### POST — Tạo mới (data sai logic)
+
 ```json
 {
     "// AI điền mẫu JSON vi phạm business logic"
@@ -265,6 +275,7 @@ Sau khi hoàn thành báo cáo ở Bước 5, AI **BẮT BUỘC** tạo file bá
 ```
 
 ### PUT — Cập nhật (data hợp lệ)
+
 ```json
 {
     "// AI điền mẫu JSON update hợp lệ"

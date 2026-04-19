@@ -82,25 +82,34 @@ docs/
 
 ## 3. Patterns bắt buộc
 
-### 3.1 Entity (Domain Layer)
+### 3.1 Entity (DB First — Infrastructure Layer)
 
-- Kế thừa `AuditableEntity` (đã có sẵn: `Id`, `CreatedAt`, `UpdatedAt`, `IsDeleted`, `DeletedAt`, `CreatedBy`, `UpdatedBy`)
-- `AuditableEntity` kế thừa `Entity` (có sẵn `Guid Id` auto-generate)
-- Có XML summary comment cho mỗi property
-- Namespace: `ToyStore.Domain.Entities`
+> ⚠️ **Dự án dùng DB First** — Entity được scaffold tự động vào `ToyStore.Infrastructure/Models/`.
+> KHÔNG tạo Entity bằng tay. KHÔNG kế thừa `AuditableEntity`.
+
+- Primary Key: **`int IDENTITY(1,1)`** — KHÔNG phải Guid
+- Các field audit (`CreatedAt`, `UpdatedAt`, `IsDeleted`) nằm trực tiếp trong schema DB
+- Mọi custom logic → dùng **partial class** (không sửa file scaffold)
+- Namespace scaffold: `ToyStore.Infrastructure.Models`
 
 ```csharp
-namespace ToyStore.Domain.Entities;
+// ═══ Ví dụ Entity scaffold (Infrastructure/Models/) — KHÔNG SỬA TRỰC TIẾP ═══
+// File tự sinh bởi `dotnet ef dbcontext scaffold`
 
-public class Feature : AuditableEntity
+public partial class Product
 {
-    /// <summary>
-    /// Mô tả property.
-    /// </summary>
-    public string Name { get; set; } = string.Empty;
+    public int ProductId { get; set; }          // int IDENTITY PK
+    public string ProductName { get; set; } = null!;
+    public decimal Price { get; set; }          // DECIMAL(12,0) VND
+    public int Quantity { get; set; }
+    public short CategoryId { get; set; }       // FK → Categories
+    public bool IsDeleted { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
 
-    // Navigation properties
-    public virtual ICollection<Child> Children { get; set; } = new List<Child>();
+    // Navigation properties (scaffold tự sinh)
+    public virtual Category Category { get; set; } = null!;
+    public virtual ICollection<OrderDetail> OrderDetails { get; set; } = new List<OrderDetail>();
 }
 ```
 
@@ -148,7 +157,7 @@ Validate không chỉ kiểm tra null/empty — mà phải đảm bảo DỮ LI�
 |---------------|---------------|
 | `string` | Null/empty, min length, max length, format (regex nếu cần) |
 | `decimal` / `int` | Giá trị > 0, min, max, giới hạn hợp lý |
-| `Guid` | Không được `Guid.Empty` |
+| `int` (FK/PK) | Phải `> 0` (IDENTITY bắt đầu từ 1) |
 | `DateTime` | Không được quá khứ / tương lai (tuỳ logic) |
 | `enum` | Giá trị hợp lệ (nằm trong range) |
 | `List<T>` | Null check, max items, validate từng item |
@@ -166,7 +175,7 @@ Validate không chỉ kiểm tra null/empty — mà phải đảm bảo DỮ LI�
 - ✅ Mọi field string có format đặc biệt → regex (email, SĐT, SKU, URL, ...)
 - ✅ Mọi field số → kiểm tra giá trị hợp lý (> 0, min, max, giới hạn thực tế)
 - ✅ Mọi field số tiền (VND) → giới hạn hợp lý, không âm
-- ✅ Mọi field Guid → không được `Guid.Empty`
+- ✅ Mọi field int FK/PK → phải `> 0` (IDENTITY bắt đầu từ 1)
 - ✅ Mọi field DateTime → hợp lệ (không tương lai/quá khứ tuỳ ngữ cảnh)
 - ✅ Mọi field enum → giá trị nằm trong range hợp lệ
 - ✅ Mọi field List → max items, validate từng item bên trong
@@ -323,8 +332,8 @@ public class FeaturesController : ControllerBase
 
     public FeaturesController(IFeatureService featureService, ILogger<FeaturesController> logger) { ... }
 
-    [HttpGet("{id:guid}")]
-    public async Task<ActionResult<ApiResponse<FeatureDto>>> GetById(Guid id, CancellationToken cancellationToken)
+    [HttpGet("{id:int}")]
+    public async Task<ActionResult<ApiResponse<FeatureDto>>> GetById(int id, CancellationToken cancellationToken)
     {
         var result = await _featureService.GetByIdAsync(id, cancellationToken);
         if (result == null)
@@ -596,10 +605,10 @@ Do sử dụng Clean Architecture, cấu trúc project chia làm nhiều layer. 
 
 ```powershell
 # Chạy lại sau mỗi lần DB thay đổi (thêm bảng, cột, index)
-dotnet ef dbcontext scaffold "Server=DESKTOP-T27O90D\SQLEXPRESS;Database=SEP409_ToyStore;User ID=sa;Password=khangmc1502@;TrustServerCertificate=True;" Microsoft.EntityFrameworkCore.SqlServer --project ToyStore.Infrastructure --startup-project ToyStore.API --output-dir Models --context-dir Data --context SEP490ToyStoreContext --no-onconfiguring --force
+.\scripts\scaffold.ps1
 ```
 
-> ⚠️ Lệnh `--force` sẽ **overwrite** toàn bộ `Models/` và `Data/SEP490ToyStoreContext.cs`.
+> ⚠️ Lệnh `--force` (được cấu hình trong script) sẽ **overwrite** toàn bộ `Models/` và `Data/SEP490ToyStoreContext.cs`.
 > **KHÔNG** sửa trực tiếp vào file scaffold — sẽ mất khi chạy lại.
 > Mọi custom logic → dùng **partial class** (xem Section 6b).
 
@@ -921,7 +930,7 @@ public class OrderService : IOrderService
 // Interface (Application Layer)
 public interface ICurrentUserService
 {
-    Guid UserId { get; }
+    int UserId { get; }
     string Email { get; }
     string Role { get; }
     bool IsAuthenticated { get; }
@@ -974,9 +983,9 @@ public class FeatureConfiguration : IEntityTypeConfiguration<Feature>
         // Unique Index
         builder.HasIndex(f => f.Slug).IsUnique();
 
-        // Decimal precision
+        // Decimal precision — VND không có số lẻ
         builder.Property(f => f.Price)
-            .HasPrecision(18, 2);
+            .HasPrecision(12, 0);
 
         // Foreign Key + Relationship
         builder.HasOne(f => f.Category)
@@ -999,7 +1008,7 @@ public class FeatureConfiguration : IEntityTypeConfiguration<Feature>
 | Primary key | ✅ | `builder.HasKey(p => p.Id)` |
 | Required fields | ✅ | `.IsRequired()` |
 | MaxLength (string) | ✅ | `.HasMaxLength(256)` |
-| Precision (decimal) | ✅ | `.HasPrecision(18, 2)` |
+| Precision (decimal) | ✅ | `.HasPrecision(12, 0)` (VND) hoặc `.HasPrecision(5, 2)` (%) |
 | Unique index | ✅ (nếu có) | `.HasIndex(p => p.SKU).IsUnique()` |
 | Foreign key | ✅ | `.HasForeignKey(p => p.CategoryId)` |
 | Delete behavior | ✅ | `.OnDelete(DeleteBehavior.Restrict)` |
@@ -1408,3 +1417,75 @@ Sau khi hoàn thành migration hoặc thêm feature, AI **BẮT BUỘC** báo c�
 - ❌ Đặt entry mới ở cuối CHANGELOG (phải ở trên cùng)
 - ❌ Dùng tên migration mơ hồ (`Update`, `Fix`, `Change`)
 - ❌ Cập nhật tài liệu mà ERD không khớp với schema thực tế trong code
+
+---
+
+## 18. Tiêu chuẩn Production (Product Code) & Scalability
+
+Vì dự án sẽ publish sản phẩm cho người dùng thực tế, AI và Developers **BẮT BUỘC** phải tuân thủ nghiêm ngặt các quy tắc về khả năng mở rộng (Scalability) và bảo vệ dữ liệu dưới tải cao (High Concurrency).
+
+### 18.1 Concurrency Control (Kiểm soát đồng thời) — LUÔN PHẢI CHỐNG ÂM KHO
+Mọi thao tác thay đổi số lượng tồn kho (`StockQuantity`), số dư tài khoản, điểm thưởng hoặc mã giảm giá (giới hạn số lượng) **KHÔNG ĐƯỢC PHÉP** chỉ kiểm tra thông thường, vì nếu có 2 luồng (thread) chạy cùng một mili-giây sẽ dẫn đến thất thoát hoặc âm kho (Race Condition).
+- **Optimistic Concurrency:** Entity cần có 1 field dạng `.IsRowVersion()` (hoặc `[Timestamp]`). Dùng cơ chế bắt và xử lý `DbUpdateConcurrencyException`.
+- **Pessimistic Concurrency:** Sử dụng khoá raw SQL kiểu `SELECT ... WITH (UPDLOCK)` trước khi thay đổi lượng tồn (nếu không dùng RowVersion).
+
+```csharp
+// ❌ SAI: Rất nguy hiểm trên môi trường thực tế (Race Condition)
+if (product.StockQuantity < item.Quantity) return Error;
+product.StockQuantity -= item.Quantity;
+
+// ✅ ĐÚNG: Xử lý theo Optimistic Concurrency (khi SaveChanges sẽ văng lỗi do RowVersion khác)
+try 
+{
+    product.StockQuantity -= item.Quantity;
+    await _unitOfWork.SaveChangesAsync(ct);
+}
+catch (DbUpdateConcurrencyException ex) 
+{
+    // Báo lỗi conflict để chặn giao dịch thứ 2 nẫng tay trên
+    return Result.Conflict("Sản phẩm đã bị thay đổi (hoặc hết hàng) trước khi bạn kịp thanh toán. Vui lòng kiểm tra lại giỏ hàng.");
+}
+```
+
+### 18.2 Caching Strategy (Chiến lược bộ nhớ đệm)
+Do traffic trên trang thương mại điện tử có tới hơn 90% là đọc dữ liệu.
+- Mọi API truy xuất **thông tin dùng chung** như: List Category, Product trang chủ, Chi tiết Product, Cấu hình web, v.v.. **BẮT BUỘC** phải có Caching (dùng `IMemoryCache` cho ứng dụng đơn hoặc `Redis` cho môi trường Cluster/Microservice).
+- Cache Invalidation: Khi có lệnh tạo mới/cập nhật/xoá (Create/Update/Delete) tác động vào dữ liệu đã cache, phải tiến hành XÓA các key cache liên quan trước khi return result.
+
+### 18.3 Xử lý tác vụ nền (Background Jobs / Asynchronous Messaging)
+Trong luồng (pipeline) thanh toán/tạo đơn hàng, **KHÔNG ĐƯỢC** gọi trực tiếp (synchronous) vào các dịch vụ bên thứ ba (Third-party) chậm chạp.
+- Ví dụ: Gửi Email xác nhận đơn giản, đẩy đơn sang đơn vị giao hàng ảo (GHN), tính toán phân tích user.
+- **BẮT BUỘC** dùng Queue/Message Broker (RabbitMQ / Azure Service Bus) hoặc Hangfire để đẩy Message cho `ToyStore.Worker` chạy ngầm. Việc này đảm bảo API phản hồi siêu nhanh cho người mua mà không lo sập toàn bộ giao dịch nếu máy chủ Email bị hỏng.
+
+### 18.4 API Security, CORS & Rate Limiting (Bảo mật dịch vụ)
+- **Rate Limit:** Các API công cộng đặc thù (VD: `POST /api/users/login`, `POST /api/reviews`) phải được bọc [EnableRateLimiting] để giới hạn số request chặn Spam và Bruteforce.
+- **CORS Configuration:** Tuyệt đối không xài `.AllowAnyOrigin()` trên môi trường Production. Cấu hình Allowed Origins phải đọc từ `appsettings.Production.json` trỏ đúng vào các web domain (FrontEnd) đã mua.
+- Error handling: Đảm bảo code Middleware báo exception không bao giờ leak chi tiết SQL Query hay internal error lines ở chế độ Prod.
+
+### 18.5 Idempotency Key (Tính luỹ đẳng cho hóa đơn)
+Trong API Checkout/Payment, người dùng có xu hướng ấn double click / spam chuột khi load chậm.
+- **BẮT BUỘC** API Payment / Create Order phải nhận vào một mã `Idempotency-Key` gửi từ phía giao diện UI (VD: UUID tự gen trong form).
+- Server phải lưu và check mã này (thường bằng Redis). Nếu request tiếp theo gửi đến có mang mã y hệt mà đơn trước đó đang chạy hoặc đã tạo xong, server nhả ra kết quả của đơn đầu tiên và bỏ qua không insert Db lần hai (Tránh việc trừ thẻ 2 lần hoặc đắp đúp giỏ hàng).
+
+### 18.6 Health Checks & Giám sát hệ thống (Monitoring)
+Khi đưa lên Production (Deploy lên Docker/Kubernetes hay VPS), hệ thống cân bằng tải (Load Balancer / Nginx) cần biết API có đang bị "treo" hay không để khởi động lại.
+- **BẮT BUỘC** khai báo Endpoint `/health` (dùng `AddHealthChecks()`).
+- Health Check không chỉ quét server API, mà phải quét cả tình trạng kết nối tới SQL Server SQL, Redis và RabbitMQ. Nếu 1 trong 3 tèo, trả về 503 Unhealthy.
+
+### 18.7 Khả năng chịu lỗi với bên thứ 3 (Resilience & Polly)
+Trong E-Commerce sẽ gọi rất nhiều API ngoài (VNPAY, Momo, Giao Hàng Nhanh, SendGrid). Các dịch vụ này thỉnh thoảng sẽ bị đứt cáp hoặc bảo trì.
+- **Quy tắc:** MỌI HTTP Call ra bên ngoài đều LỖI TIỀM ẨN.
+- **BẮT BUỘC** sử dụng thư viện **Polly** (hoặc `Microsoft.Extensions.Http.Resilience` ở .NET 8) gắn vào `HttpClient` để cài đặt cơ chế:
+  1. **Retry:** Tự động thử lại 2-3 lần nếu rớt mạng (trừ thao tác thanh toán trực tiếp).
+  2. **Timeout:** Ép timeout quá 5s-10s phải ngắt luôn luồng, không được để luồng chờ vô thời hạn gây treo RAM, hết Thread Pool của Server.
+  3. **Circuit Breaker:** Nếu GHN sập liên tục 5 lần, ngắt luôn việc gọi và trực tiếp báo lỗi cho khách: "Hệ thống vận chuyển đang bảo trì", 15 phút sau mới mở lại.
+
+### 18.8 Quản lý thiết lập nhạy cảm (Secrets Management)
+Vì là mã nguồn Product, rò rỉ mã bí mật = Phá sản hoặc đền bù tiền tỷ.
+- **TUYỆT ĐỐI KHÔNG** lưu các giá trị sau vào `appsettings.json` hay code rồi Commit lên Github (kể cả Repo Private): ConnectionString chứa Pass SQL Prod, JWT Secret Key, VNPAY HashSecret, SendGrid API Key.
+- **BẮT BUỘC** phải đọc các biến này từ **Environment Variables (Biến môi trường OS)** hoặc dịch vụ mã hoá (AWS Secrets Manager / Azure Key Vault / Azure App Configuration). File `appsettings.json` chỉ chứa cấu trúc rỗng `""` hoặc cấu hình DEV.
+
+### 18.9 Chống sập RAM (Out Of Memory) bằng Unbounded Queries
+Lỗi phổ biến nhất khi Dev E-commerce là lúc code thì DB có vài dòng chạy rất nhanh, lên Prod vài trăm ngàn dòng thì Server "Bùm".
+- **BẮT BUỘC PHẢI PAGINATION:** Ngoại trừ truy vấn lấy chi tiết 1 Entity bằng `Id` (`FirstOrDefaultAsync`), **TẤT CẢ** các câu lệnh lấy danh sách bằng `.ToListAsync()` đều phải có `.Take(n)` hoặc `.Where()` giới hạn tập dữ liệu rất gắt gao.
+- **HỌC THUỘC:** Đừng bao giờ làm điều này 👉 `var orders = await _context.Orders.ToListAsync();` (Kéo sạch dữ liệu bảng Orders lên bộ nhớ RAM Server C#). Hệ thống sẽ văng OutOfMemoryException (OOM) kịch kim CPU và sập máy chủ. Mọi danh sách phải giới hạn tối đa 50-100 bản ghi 1 lần lấy.

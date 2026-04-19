@@ -15,7 +15,7 @@ public partial class ProductDetail
 
     public byte? SexId { get; set; }
 
-    public short? OriginId { get; set; }
+    public byte? OriginId { get; set; }
 
     public virtual Age? Age { get; set; }
 

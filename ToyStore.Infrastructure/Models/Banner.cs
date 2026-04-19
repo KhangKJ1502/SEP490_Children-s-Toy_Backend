@@ -7,11 +7,11 @@ public partial class Banner
 {
     public int BannerId { get; set; }
 
+    public int CreatedBy { get; set; }
+
     public string BannerName { get; set; } = null!;
 
     public string ImageUrl { get; set; } = null!;
-
-    public string? LinkUrl { get; set; }
 
     public string Position { get; set; } = null!;
 
@@ -24,8 +24,6 @@ public partial class Banner
     public bool IsActive { get; set; }
 
     public bool IsDefault { get; set; }
-
-    public int CreatedBy { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

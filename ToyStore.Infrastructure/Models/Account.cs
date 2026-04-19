@@ -17,7 +17,7 @@ public partial class Account
 
     public string Email { get; set; } = null!;
 
-    public string? Image { get; set; }
+    public string? ImageUrl { get; set; }
 
     public string PasswordHash { get; set; } = null!;
 
@@ -33,17 +33,23 @@ public partial class Account
 
     public virtual Address? Address { get; set; }
 
+    public virtual ICollection<AuditLog> AuditLogs { get; set; } = new List<AuditLog>();
+
     public virtual ICollection<Banner> Banners { get; set; } = new List<Banner>();
 
     public virtual ICollection<BlogPost> BlogPostAccounts { get; set; } = new List<BlogPost>();
 
     public virtual ICollection<BlogPost> BlogPostApprovedByNavigations { get; set; } = new List<BlogPost>();
 
+    public virtual ICollection<Campaign> Campaigns { get; set; } = new List<Campaign>();
+
     public virtual Cart? Cart { get; set; }
 
     public virtual ICollection<ChatConversation> ChatConversations { get; set; } = new List<ChatConversation>();
 
     public virtual ICollection<Delivery> Deliveries { get; set; } = new List<Delivery>();
+
+    public virtual ICollection<DeliveryAction> DeliveryActions { get; set; } = new List<DeliveryAction>();
 
     public virtual ICollection<Event> Events { get; set; } = new List<Event>();
 
@@ -52,6 +58,8 @@ public partial class Account
     public virtual ICollection<Order> OrderAssignedToStaffs { get; set; } = new List<Order>();
 
     public virtual ICollection<Order> OrderCancelledByNavigations { get; set; } = new List<Order>();
+
+    public virtual ICollection<OrderNote> OrderNotes { get; set; } = new List<OrderNote>();
 
     public virtual ICollection<OrderRefund> OrderRefundApprovedByNavigations { get; set; } = new List<OrderRefund>();
 
@@ -65,19 +73,29 @@ public partial class Account
 
     public virtual ICollection<Promotion> Promotions { get; set; } = new List<Promotion>();
 
-    public virtual ICollection<ReviewProductReaction> ReviewProductReactions { get; set; } = new List<ReviewProductReaction>();
+    public virtual ICollection<ReviewBlogReaction> ReviewBlogReactions { get; set; } = new List<ReviewBlogReaction>();
 
-    public virtual ICollection<ReviewProductReply> ReviewProductReplies { get; set; } = new List<ReviewProductReply>();
+    public virtual ICollection<ReviewBlogReply> ReviewBlogReplyAccounts { get; set; } = new List<ReviewBlogReply>();
+
+    public virtual ICollection<ReviewBlogReply> ReviewBlogReplyReplyToAccounts { get; set; } = new List<ReviewBlogReply>();
+
+    public virtual ICollection<ReviewBlog> ReviewBlogs { get; set; } = new List<ReviewBlog>();
+
+    public virtual ICollection<ReviewProductReaction> ReviewProductReactions { get; set; } = new List<ReviewProductReaction>();
 
     public virtual ICollection<ReviewProduct> ReviewProducts { get; set; } = new List<ReviewProduct>();
 
     public virtual Role Role { get; set; } = null!;
+
+    public virtual ICollection<StaffReviewProductReply> StaffReviewProductReplies { get; set; } = new List<StaffReviewProductReply>();
 
     public virtual ICollection<UserBlockHistory> UserBlockHistoryAccounts { get; set; } = new List<UserBlockHistory>();
 
     public virtual ICollection<UserBlockHistory> UserBlockHistoryBlockedByNavigations { get; set; } = new List<UserBlockHistory>();
 
     public virtual ICollection<UserBlockHistory> UserBlockHistoryUnblockedByNavigations { get; set; } = new List<UserBlockHistory>();
+
+    public virtual ICollection<UserProductScore> UserProductScores { get; set; } = new List<UserProductScore>();
 
     public virtual ICollection<VoucherUsageLog> VoucherUsageLogs { get; set; } = new List<VoucherUsageLog>();
 

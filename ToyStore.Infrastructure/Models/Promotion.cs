@@ -7,9 +7,11 @@ public partial class Promotion
 {
     public int PromotionId { get; set; }
 
+    public int CreatedBy { get; set; }
+
     public string PromotionName { get; set; } = null!;
 
-    public string PromotionCode { get; set; } = null!;
+    public string PromotionType { get; set; } = null!;
 
     public string? Description { get; set; }
 
@@ -25,9 +27,9 @@ public partial class Promotion
 
     public DateTime CreatedAt { get; set; }
 
-    public int CreatedBy { get; set; }
-
     public virtual Account CreatedByNavigation { get; set; } = null!;
+
+    public virtual ICollection<ProductPromotion> ProductPromotions { get; set; } = new List<ProductPromotion>();
 
     public virtual ICollection<Product> Products { get; set; } = new List<Product>();
 }

@@ -3,13 +3,13 @@ using System.Collections.Generic;
 
 namespace ToyStore.Infrastructure.Models;
 
-public partial class ReviewProductReply
+public partial class StaffReviewProductReply
 {
     public int ReplyProductId { get; set; }
 
     public int ReviewProductId { get; set; }
 
-    public int AccountId { get; set; }
+    public int StaffId { get; set; }
 
     public string Content { get; set; } = null!;
 
@@ -17,7 +17,9 @@ public partial class ReviewProductReply
 
     public DateTime CreatedAt { get; set; }
 
-    public virtual Account Account { get; set; } = null!;
+    public DateTime? UpdatedAt { get; set; }
 
     public virtual ReviewProduct ReviewProduct { get; set; } = null!;
+
+    public virtual Account Staff { get; set; } = null!;
 }

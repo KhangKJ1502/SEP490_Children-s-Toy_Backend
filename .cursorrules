@@ -19,3 +19,5 @@ CRITICAL RULES:
 - NO try/catch in Controllers, middleware handles exceptions
 - Roles: Guest, Customer, Staff, Merchandise, Admin
 - Use ICurrentUserService, NOT HttpContext directly in Services
+
+For the full detailed rules, read CODING_RULES.md at the project root.

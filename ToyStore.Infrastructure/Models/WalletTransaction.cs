@@ -13,8 +13,6 @@ public partial class WalletTransaction
 
     public int? RelatedOrderId { get; set; }
 
-    public int? RelatedPaymentHistoryId { get; set; }
-
     public string TxnType { get; set; } = null!;
 
     public string Direction { get; set; } = null!;
@@ -34,6 +32,8 @@ public partial class WalletTransaction
     public string Status { get; set; } = null!;
 
     public string? Reason { get; set; }
+
+    public string? Metadata { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

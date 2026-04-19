@@ -15,11 +15,7 @@ public partial class OrderStatusHistory
 
     public string? Note { get; set; }
 
-    public DateTime ChangedAt { get; set; }
-
-    public DateTime CreateAt { get; set; }
-
-    public DateTime? UpdatedAt { get; set; }
+    public DateTime CreatedAt { get; set; }
 
     public virtual Account? ChangedByNavigation { get; set; }
 

@@ -9,8 +9,6 @@ public partial class BlogCategory
 
     public string BlogCategoriesName { get; set; } = null!;
 
-    public string? Description { get; set; }
-
     public DateTime CreatedAt { get; set; }
 
     public virtual ICollection<BlogPost> BlogPosts { get; set; } = new List<BlogPost>();

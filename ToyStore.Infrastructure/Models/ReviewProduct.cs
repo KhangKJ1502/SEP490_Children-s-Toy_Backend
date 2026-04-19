@@ -33,5 +33,5 @@ public partial class ReviewProduct
 
     public virtual ICollection<ReviewProductReaction> ReviewProductReactions { get; set; } = new List<ReviewProductReaction>();
 
-    public virtual ICollection<ReviewProductReply> ReviewProductReplies { get; set; } = new List<ReviewProductReply>();
+    public virtual ICollection<StaffReviewProductReply> StaffReviewProductReplies { get; set; } = new List<StaffReviewProductReply>();
 }

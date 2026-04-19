@@ -35,5 +35,7 @@ public partial class BlogPost
 
     public virtual Account? ApprovedByNavigation { get; set; }
 
+    public virtual ICollection<ReviewBlog> ReviewBlogs { get; set; } = new List<ReviewBlog>();
+
     public virtual ICollection<BlogCategory> BlogCategories { get; set; } = new List<BlogCategory>();
 }

@@ -21,11 +21,17 @@ public partial class Order
 
     public string ShippingAddress { get; set; } = null!;
 
-    public string? ShippingWard { get; set; }
+    public string ShippingWardCode { get; set; } = null!;
 
-    public string ShippingDistrict { get; set; } = null!;
+    public string ShippingWardName { get; set; } = null!;
 
-    public string ShippingCity { get; set; } = null!;
+    public int ShippingDistrictId { get; set; }
+
+    public string ShippingDistrictName { get; set; } = null!;
+
+    public int ShippingProvinceId { get; set; }
+
+    public string ShippingProvinceName { get; set; } = null!;
 
     public DateTime OrderDate { get; set; }
 
@@ -43,7 +49,7 @@ public partial class Order
 
     public string PaymentStatus { get; set; } = null!;
 
-    public string PaymentCode { get; set; } = null!;
+    public string? PaymentCode { get; set; }
 
     public DateTime? PaidAt { get; set; }
 
@@ -63,7 +69,7 @@ public partial class Order
 
     public bool IsDeleted { get; set; }
 
-    public DateTime CreateAt { get; set; }
+    public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }
 
@@ -75,15 +81,23 @@ public partial class Order
 
     public virtual ICollection<OrderDetail> OrderDetails { get; set; } = new List<OrderDetail>();
 
+    public virtual ICollection<OrderNote> OrderNotes { get; set; } = new List<OrderNote>();
+
     public virtual ICollection<OrderRefund> OrderRefunds { get; set; } = new List<OrderRefund>();
 
     public virtual ICollection<OrderStatusHistory> OrderStatusHistories { get; set; } = new List<OrderStatusHistory>();
 
     public virtual ICollection<OrderVoucher> OrderVouchers { get; set; } = new List<OrderVoucher>();
 
+    public virtual ICollection<PaymentGatewayTransaction> PaymentGatewayTransactions { get; set; } = new List<PaymentGatewayTransaction>();
+
     public virtual ICollection<PaymentHistory> PaymentHistories { get; set; } = new List<PaymentHistory>();
 
     public virtual ICollection<ReviewProduct> ReviewProducts { get; set; } = new List<ReviewProduct>();
+
+    public virtual ICollection<ShippingProviderTransaction> ShippingProviderTransactions { get; set; } = new List<ShippingProviderTransaction>();
+
+    public virtual ICollection<ShippingStatusHistory> ShippingStatusHistories { get; set; } = new List<ShippingStatusHistory>();
 
     public virtual StatusOrder Status { get; set; } = null!;
 

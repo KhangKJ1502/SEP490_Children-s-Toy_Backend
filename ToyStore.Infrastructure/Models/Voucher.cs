@@ -7,21 +7,27 @@ public partial class Voucher
 {
     public int VoucherId { get; set; }
 
-    public byte VoucherTypeId { get; set; }
-
     public int? CreatedBy { get; set; }
 
     public string VoucherCode { get; set; } = null!;
 
     public string VoucherName { get; set; } = null!;
 
-    public decimal DiscountAmount { get; set; }
+    public string VoucherDescription { get; set; } = null!;
 
-    public string VoucherScope { get; set; } = null!;
+    public string DiscountType { get; set; } = null!;
+
+    public decimal DiscountValue { get; set; }
+
+    public decimal? MaxDiscountCap { get; set; }
+
+    public string DiscountTarget { get; set; } = null!;
 
     public decimal? MinOrderAmount { get; set; }
 
-    public int Quantity { get; set; }
+    public int? TotalQuantity { get; set; }
+
+    public int UsedQuantity { get; set; }
 
     public short? MaxUsagePerUser { get; set; }
 
@@ -40,8 +46,6 @@ public partial class Voucher
     public virtual Account? CreatedByNavigation { get; set; }
 
     public virtual ICollection<OrderVoucher> OrderVouchers { get; set; } = new List<OrderVoucher>();
-
-    public virtual VoucherType VoucherType { get; set; } = null!;
 
     public virtual ICollection<VoucherUsageLog> VoucherUsageLogs { get; set; } = new List<VoucherUsageLog>();
 }

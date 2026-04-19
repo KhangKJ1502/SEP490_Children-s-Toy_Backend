@@ -53,9 +53,15 @@ public partial class Product
 
     public virtual ProductImage? ProductImage { get; set; }
 
+    public virtual ICollection<ProductPromotion> ProductPromotions { get; set; } = new List<ProductPromotion>();
+
     public virtual Promotion? Promotion { get; set; }
 
     public virtual ICollection<ReviewProduct> ReviewProducts { get; set; } = new List<ReviewProduct>();
+
+    public virtual ICollection<TrendingProduct> TrendingProducts { get; set; } = new List<TrendingProduct>();
+
+    public virtual ICollection<UserProductScore> UserProductScores { get; set; } = new List<UserProductScore>();
 
     public virtual ICollection<Wishlist> Wishlists { get; set; } = new List<Wishlist>();
 }

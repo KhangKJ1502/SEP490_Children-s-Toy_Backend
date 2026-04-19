@@ -54,7 +54,7 @@ public class OrderStatusWorker : BackgroundService
         var staleOrders = await context.Orders
             .Where(o => o.PaymentStatus == "PENDING"
                      && !o.IsDeleted
-                     && o.CreateAt < cutoff)
+                     && o.CreatedAt < cutoff)
             .ToListAsync(cancellationToken);
 
         if (!staleOrders.Any())

@@ -3,9 +3,9 @@ using System.Collections.Generic;
 
 namespace ToyStore.Infrastructure.Models;
 
-public partial class BlockReason
+public partial class OrderRefundReason
 {
-    public byte BlockReasonId { get; set; }
+    public byte RefundReasonId { get; set; }
 
     public string Content { get; set; } = null!;
 
@@ -15,5 +15,5 @@ public partial class BlockReason
 
     public DateTime CreatedAt { get; set; }
 
-    public virtual ICollection<UserBlockHistory> UserBlockHistories { get; set; } = new List<UserBlockHistory>();
+    public virtual ICollection<OrderRefund> OrderRefunds { get; set; } = new List<OrderRefund>();
 }

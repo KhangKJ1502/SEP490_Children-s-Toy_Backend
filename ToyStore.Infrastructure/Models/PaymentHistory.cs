@@ -27,5 +27,7 @@ public partial class PaymentHistory
 
     public virtual Order Order { get; set; } = null!;
 
+    public virtual ICollection<PaymentGatewayTransaction> PaymentGatewayTransactions { get; set; } = new List<PaymentGatewayTransaction>();
+
     public virtual WalletTransaction? WalletTransaction { get; set; }
 }
