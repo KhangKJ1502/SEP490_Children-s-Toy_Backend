@@ -29,8 +29,6 @@ public partial class Product
 
     public byte? PriceRangeId { get; set; }
 
-    public int? PromotionId { get; set; }
-
     public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }
@@ -54,8 +52,6 @@ public partial class Product
     public virtual ProductImage? ProductImage { get; set; }
 
     public virtual ICollection<ProductPromotion> ProductPromotions { get; set; } = new List<ProductPromotion>();
-
-    public virtual Promotion? Promotion { get; set; }
 
     public virtual ICollection<ReviewProduct> ReviewProducts { get; set; } = new List<ReviewProduct>();
 

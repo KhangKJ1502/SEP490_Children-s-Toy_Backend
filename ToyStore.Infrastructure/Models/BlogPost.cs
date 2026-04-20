@@ -11,6 +11,8 @@ public partial class BlogPost
 
     public int? ApprovedBy { get; set; }
 
+    public short BlogCategoryId { get; set; }
+
     public string BlogTitle { get; set; } = null!;
 
     public string BlogContent { get; set; } = null!;
@@ -35,7 +37,7 @@ public partial class BlogPost
 
     public virtual Account? ApprovedByNavigation { get; set; }
 
-    public virtual ICollection<ReviewBlog> ReviewBlogs { get; set; } = new List<ReviewBlog>();
+    public virtual BlogCategory BlogCategory { get; set; } = null!;
 
-    public virtual ICollection<BlogCategory> BlogCategories { get; set; } = new List<BlogCategory>();
+    public virtual ICollection<ReviewBlog> ReviewBlogs { get; set; } = new List<ReviewBlog>();
 }

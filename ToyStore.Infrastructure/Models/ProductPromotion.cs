@@ -11,9 +11,15 @@ public partial class ProductPromotion
 
     public decimal SalePrice { get; set; }
 
+    public decimal? DiscountPercent { get; set; }
+
     public int? SaleQuantity { get; set; }
 
     public int SoldQuantity { get; set; }
+
+    public int ReservedQuantity { get; set; }
+
+    public bool IsActive { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

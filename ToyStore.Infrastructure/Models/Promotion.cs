@@ -15,13 +15,13 @@ public partial class Promotion
 
     public string? Description { get; set; }
 
-    public decimal DiscountPercent { get; set; }
-
     public DateTime StartDate { get; set; }
 
     public DateTime EndDate { get; set; }
 
     public string Status { get; set; } = null!;
+
+    public int Priority { get; set; }
 
     public bool IsDeleted { get; set; }
 
@@ -31,5 +31,5 @@ public partial class Promotion
 
     public virtual ICollection<ProductPromotion> ProductPromotions { get; set; } = new List<ProductPromotion>();
 
-    public virtual ICollection<Product> Products { get; set; } = new List<Product>();
+    public virtual ICollection<PromotionTimeSlot> PromotionTimeSlots { get; set; } = new List<PromotionTimeSlot>();
 }
