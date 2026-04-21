@@ -889,6 +889,9 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.ShippingWardCode)
                 .HasMaxLength(20)
                 .IsUnicode(false);
+            entity.Property(e => e.ShippingOrderCode)
+           .HasMaxLength(50)
+           .IsUnicode(false);
             entity.Property(e => e.ShippingWardName).HasMaxLength(100);
             entity.Property(e => e.StatusId).HasColumnName("StatusID");
             entity.Property(e => e.SubTotal).HasColumnType("decimal(12, 0)");
