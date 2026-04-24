@@ -19,5 +19,7 @@ public partial class PromotionTimeSlot
 
     public DateTime CreatedAt { get; set; }
 
+    public DateTime? UpdatedAt { get; set; }
+
     public virtual Promotion Promotion { get; set; } = null!;
 }

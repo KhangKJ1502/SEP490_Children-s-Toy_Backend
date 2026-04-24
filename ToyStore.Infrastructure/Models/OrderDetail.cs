@@ -25,6 +25,8 @@ public partial class OrderDetail
 
     public DateTime CreatedAt { get; set; }
 
+    public DateTime? UpdatedAt { get; set; }
+
     public virtual Order Order { get; set; } = null!;
 
     public virtual Product Product { get; set; } = null!;

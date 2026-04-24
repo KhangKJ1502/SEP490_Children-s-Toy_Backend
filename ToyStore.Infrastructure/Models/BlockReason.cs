@@ -15,5 +15,7 @@ public partial class BlockReason
 
     public DateTime CreatedAt { get; set; }
 
+    public DateTime? UpdatedAt { get; set; }
+
     public virtual ICollection<UserBlockHistory> UserBlockHistories { get; set; } = new List<UserBlockHistory>();
 }

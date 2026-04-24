@@ -29,6 +29,8 @@ public partial class OrderRefund
 
     public DateTime CreatedAt { get; set; }
 
+    public DateTime? UpdatedAt { get; set; }
+
     public virtual Account? ApprovedByNavigation { get; set; }
 
     public virtual Account Customer { get; set; } = null!;

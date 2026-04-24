@@ -18,11 +18,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
     public virtual DbSet<Age> Ages { get; set; }
 
-    public virtual DbSet<AuditLog> AuditLogs { get; set; }
-
     public virtual DbSet<BackgroundJob> BackgroundJobs { get; set; }
-
-    public virtual DbSet<Banner> Banners { get; set; }
 
     public virtual DbSet<BlockReason> BlockReasons { get; set; }
 
@@ -150,9 +146,7 @@ public partial class SEP490ToyStoreContext : DbContext
     {
         modelBuilder.Entity<Account>(entity =>
         {
-            entity.HasKey(e => e.AccountId).HasName("PK__Accounts__349DA586798F5592");
-
-            entity.ToTable(tb => tb.HasTrigger("TR_Accounts_CreateCart"));
+            entity.HasKey(e => e.AccountId).HasName("PK__Accounts__349DA586D12A3373");
 
             entity.HasIndex(e => e.EmployeeCode, "IX_Accounts_EmployeeCode")
                 .IsUnique()
@@ -160,7 +154,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.HasIndex(e => new { e.Email, e.IsActive, e.IsDeleted }, "IX_Accounts_Login");
 
-            entity.HasIndex(e => e.Email, "UQ__Accounts__A9D10534D007E36A").IsUnique();
+            entity.HasIndex(e => e.Email, "UQ__Accounts__A9D10534C9F27BF3").IsUnique();
 
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
             entity.Property(e => e.AccountName).HasMaxLength(100);
@@ -198,7 +192,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Address>(entity =>
         {
-            entity.HasKey(e => e.AddressId).HasName("PK__Addresse__091C2A1BE688BCF7");
+            entity.HasKey(e => e.AddressId).HasName("PK__Addresse__091C2A1B14F63680");
 
             entity.HasIndex(e => e.AccountId, "IX_Addresses_OneDefaultPerUser")
                 .IsUnique()
@@ -237,9 +231,9 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Age>(entity =>
         {
-            entity.HasKey(e => e.AgeId).HasName("PK__Ages__875454C2E554DDE6");
+            entity.HasKey(e => e.AgeId).HasName("PK__Ages__875454C22FAFC8B9");
 
-            entity.HasIndex(e => e.AgeRange, "UQ__Ages__E0EBEE38A70D4B76").IsUnique();
+            entity.HasIndex(e => e.AgeRange, "UQ__Ages__E0EBEE381E92F6A1").IsUnique();
 
             entity.Property(e => e.AgeId)
                 .ValueGeneratedOnAdd()
@@ -252,48 +246,13 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasDefaultValueSql("(getdate())");
         });
 
-        modelBuilder.Entity<AuditLog>(entity =>
-        {
-            entity.HasKey(e => e.AuditId).HasName("PK__AuditLog__A17F23B8850B7AD7");
-
-            entity.HasIndex(e => new { e.PerformedBy, e.CreatedAt }, "IX_AuditLogs_Actor").IsDescending(false, true);
-
-            entity.HasIndex(e => e.CreatedAt, "IX_AuditLogs_Date").IsDescending();
-
-            entity.HasIndex(e => new { e.EntityType, e.EntityId, e.CreatedAt }, "IX_AuditLogs_Entity").IsDescending(false, false, true);
-
-            entity.Property(e => e.AuditId).HasColumnName("AuditID");
-            entity.Property(e => e.Action)
-                .HasMaxLength(30)
-                .IsUnicode(false);
-            entity.Property(e => e.CreatedAt)
-                .HasPrecision(0)
-                .HasDefaultValueSql("(getdate())");
-            entity.Property(e => e.EntityId)
-                .HasMaxLength(30)
-                .IsUnicode(false)
-                .HasColumnName("EntityID");
-            entity.Property(e => e.EntityType)
-                .HasMaxLength(20)
-                .IsUnicode(false);
-            entity.Property(e => e.Ipaddress)
-                .HasMaxLength(45)
-                .IsUnicode(false)
-                .HasColumnName("IPAddress");
-
-            entity.HasOne(d => d.PerformedByNavigation).WithMany(p => p.AuditLogs)
-                .HasForeignKey(d => d.PerformedBy)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_AuditLogs_Accounts");
-        });
-
         modelBuilder.Entity<BackgroundJob>(entity =>
         {
-            entity.HasKey(e => e.JobId).HasName("PK__Backgrou__056690E27EEB179C");
+            entity.HasKey(e => e.JobId).HasName("PK__Backgrou__056690E239DA9AE5");
 
             entity.ToTable("BackgroundJobs", "System");
 
-            entity.HasIndex(e => e.JobName, "UQ__Backgrou__F1AC1A959854DE75").IsUnique();
+            entity.HasIndex(e => e.JobName, "UQ__Backgrou__F1AC1A9512F39820").IsUnique();
 
             entity.Property(e => e.JobId).HasColumnName("JobID");
             entity.Property(e => e.CronExpression)
@@ -310,36 +269,9 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.NextRunTime).HasPrecision(0);
         });
 
-        modelBuilder.Entity<Banner>(entity =>
-        {
-            entity.HasKey(e => e.BannerId).HasName("PK__Banners__32E86A3149AB2D4F");
-
-            entity.Property(e => e.BannerId).HasColumnName("BannerID");
-            entity.Property(e => e.BannerName).HasMaxLength(255);
-            entity.Property(e => e.CreatedAt)
-                .HasPrecision(0)
-                .HasDefaultValueSql("(getdate())");
-            entity.Property(e => e.EndDate).HasPrecision(0);
-            entity.Property(e => e.ImageUrl)
-                .HasMaxLength(500)
-                .IsUnicode(false);
-            entity.Property(e => e.IsActive).HasDefaultValue(true);
-            entity.Property(e => e.Position)
-                .HasMaxLength(20)
-                .IsUnicode(false)
-                .HasDefaultValue("HomePage");
-            entity.Property(e => e.StartDate).HasPrecision(0);
-            entity.Property(e => e.UpdatedAt).HasPrecision(0);
-
-            entity.HasOne(d => d.CreatedByNavigation).WithMany(p => p.Banners)
-                .HasForeignKey(d => d.CreatedBy)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_Banners_Accounts");
-        });
-
         modelBuilder.Entity<BlockReason>(entity =>
         {
-            entity.HasKey(e => e.BlockReasonId).HasName("PK__BlockRea__8F5DFA967E1381A0");
+            entity.HasKey(e => e.BlockReasonId).HasName("PK__BlockRea__8F5DFA96AAFA5338");
 
             entity.Property(e => e.BlockReasonId)
                 .ValueGeneratedOnAdd()
@@ -349,13 +281,14 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
             entity.Property(e => e.Description).HasMaxLength(255);
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
         });
 
         modelBuilder.Entity<BlogCategory>(entity =>
         {
-            entity.HasKey(e => e.BlogCategoryId).HasName("PK__BlogCate__6BD2DA61295DC340");
+            entity.HasKey(e => e.BlogCategoryId).HasName("PK__BlogCate__6BD2DA6133BBFB3B");
 
-            entity.HasIndex(e => e.BlogCategoriesName, "UQ__BlogCate__CD921A00891F6D54").IsUnique();
+            entity.HasIndex(e => e.BlogCategoriesName, "UQ__BlogCate__CD921A00D6371CCC").IsUnique();
 
             entity.Property(e => e.BlogCategoryId).HasColumnName("BlogCategoryID");
             entity.Property(e => e.BlogCategoriesName).HasMaxLength(100);
@@ -366,7 +299,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<BlogPost>(entity =>
         {
-            entity.HasKey(e => e.BlogPostId).HasName("PK__BlogPost__32174149D0198F50");
+            entity.HasKey(e => e.BlogPostId).HasName("PK__BlogPost__3217414902F70B0E");
 
             entity.HasIndex(e => e.BlogCategoryId, "IX_BlogPosts_Category");
 
@@ -407,9 +340,9 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Brand>(entity =>
         {
-            entity.HasKey(e => e.BrandId).HasName("PK__Brands__DAD4F3BE43D18BBA");
+            entity.HasKey(e => e.BrandId).HasName("PK__Brands__DAD4F3BEC54E8C48");
 
-            entity.HasIndex(e => e.BrandName, "UQ__Brands__2206CE9B34FB4EF9").IsUnique();
+            entity.HasIndex(e => e.BrandName, "UQ__Brands__2206CE9BB3A44C40").IsUnique();
 
             entity.Property(e => e.BrandId).HasColumnName("BrandID");
             entity.Property(e => e.BrandName).HasMaxLength(100);
@@ -421,7 +354,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Campaign>(entity =>
         {
-            entity.HasKey(e => e.CampaignId).HasName("PK__Campaign__3F5E8D796745F142");
+            entity.HasKey(e => e.CampaignId).HasName("PK__Campaign__3F5E8D79CBC47055");
 
             entity.ToTable("Campaigns", "Notification");
 
@@ -470,7 +403,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<CampaignTarget>(entity =>
         {
-            entity.HasKey(e => e.CampaignTargetId).HasName("PK__Campaign__C1C43FA74F7517BD");
+            entity.HasKey(e => e.CampaignTargetId).HasName("PK__Campaign__C1C43FA7C531048C");
 
             entity.ToTable("CampaignTargets", "Notification");
 
@@ -492,11 +425,11 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Cart>(entity =>
         {
-            entity.HasKey(e => e.CartId).HasName("PK__Cart__51BCD797EBDED2B6");
+            entity.HasKey(e => e.CartId).HasName("PK__Cart__51BCD797FCEEC3A0");
 
             entity.ToTable("Cart");
 
-            entity.HasIndex(e => e.AccountId, "UQ__Cart__349DA587E842E066").IsUnique();
+            entity.HasIndex(e => e.AccountId, "UQ__Cart__349DA5872CFF2FE3").IsUnique();
 
             entity.Property(e => e.CartId).HasColumnName("CartID");
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
@@ -513,7 +446,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<CartItem>(entity =>
         {
-            entity.HasKey(e => e.CartItemId).HasName("PK__CartItem__488B0B2A265F39CE");
+            entity.HasKey(e => e.CartItemId).HasName("PK__CartItem__488B0B2A9230BDDD");
 
             entity.HasIndex(e => new { e.CartId, e.RemovedAt }, "IX_CartItems_ActiveCart").HasFilter("([RemovedAt] IS NULL)");
 
@@ -529,6 +462,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.PriceAtThatTime).HasColumnType("decimal(12, 0)");
             entity.Property(e => e.ProductId).HasColumnName("ProductID");
             entity.Property(e => e.RemovedAt).HasPrecision(0);
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
             entity.HasOne(d => d.Cart).WithMany(p => p.CartItems)
                 .HasForeignKey(d => d.CartId)
@@ -543,9 +477,9 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Category>(entity =>
         {
-            entity.HasKey(e => e.CategoryId).HasName("PK__Categori__19093A2BF33617F2");
+            entity.HasKey(e => e.CategoryId).HasName("PK__Categori__19093A2B2BBAAD89");
 
-            entity.HasIndex(e => e.CategoryName, "UQ__Categori__8517B2E005A1F520").IsUnique();
+            entity.HasIndex(e => e.CategoryName, "UQ__Categori__8517B2E017B32DB8").IsUnique();
 
             entity.Property(e => e.CategoryId).HasColumnName("CategoryID");
             entity.Property(e => e.CategoryName).HasMaxLength(25);
@@ -563,7 +497,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<ChatConversation>(entity =>
         {
-            entity.HasKey(e => e.ConversationId).HasName("PK__ChatConv__C050D89769FFDB25");
+            entity.HasKey(e => e.ConversationId).HasName("PK__ChatConv__C050D897C0190F5E");
 
             entity.Property(e => e.ConversationId).HasColumnName("ConversationID");
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
@@ -587,7 +521,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<ChatMessage>(entity =>
         {
-            entity.HasKey(e => e.MessageId).HasName("PK__ChatMess__C87C037C704AB5D1");
+            entity.HasKey(e => e.MessageId).HasName("PK__ChatMess__C87C037CBDFCC2EB");
 
             entity.HasIndex(e => new { e.ConversationId, e.CreatedAt }, "IX_ChatMessages_Conversation").IsDescending(false, true);
 
@@ -610,7 +544,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Delivery>(entity =>
         {
-            entity.HasKey(e => e.DeliveryId).HasName("PK__Deliveri__626D8FEE3E2BBE88");
+            entity.HasKey(e => e.DeliveryId).HasName("PK__Deliveri__626D8FEE65803D00");
 
             entity.ToTable("Deliveries", "Notification");
 
@@ -645,6 +579,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasMaxLength(50)
                 .IsUnicode(false);
             entity.Property(e => e.Title).HasMaxLength(255);
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
             entity.HasOne(d => d.Account).WithMany(p => p.Deliveries)
                 .HasForeignKey(d => d.AccountId)
@@ -668,7 +603,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<DeliveryAction>(entity =>
         {
-            entity.HasKey(e => e.ActionId).HasName("PK__Delivery__FFE3F4B9DE7A794F");
+            entity.HasKey(e => e.ActionId).HasName("PK__Delivery__FFE3F4B91F31E7F8");
 
             entity.ToTable("DeliveryActions", "Notification");
 
@@ -696,14 +631,17 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<District>(entity =>
         {
-            entity.HasKey(e => e.DistrictId).HasName("PK__District__85FDA4C6F6BEF6A6");
+            entity.HasKey(e => e.DistrictId).HasName("PK__District__85FDA4C6C71B022E");
 
             entity.HasIndex(e => e.ProvinceId, "IX_Districts_ProvinceId");
 
             entity.Property(e => e.DistrictId).ValueGeneratedNever();
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
             entity.Property(e => e.DistrictName).HasMaxLength(100);
             entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
             entity.HasOne(d => d.Province).WithMany(p => p.Districts)
                 .HasForeignKey(d => d.ProvinceId)
@@ -713,7 +651,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<DomainEventOutbox>(entity =>
         {
-            entity.HasKey(e => e.EventId).HasName("PK__DomainEv__7944C87058F2AC68");
+            entity.HasKey(e => e.EventId).HasName("PK__DomainEv__7944C870F2DFBB0C");
 
             entity.ToTable("DomainEventOutbox", "System");
 
@@ -741,7 +679,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Event>(entity =>
         {
-            entity.HasKey(e => e.EventId).HasName("PK__Events__7944C870E7BC1C2C");
+            entity.HasKey(e => e.EventId).HasName("PK__Events__7944C8705918CD50");
 
             entity.ToTable("Events", "Interaction");
 
@@ -787,7 +725,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<ItemSimilarity>(entity =>
         {
-            entity.HasKey(e => e.SimilarityId).HasName("PK__ItemSimi__64D0C10E49583FF9");
+            entity.HasKey(e => e.SimilarityId).HasName("PK__ItemSimi__64D0C10EA911871E");
 
             entity.ToTable("ItemSimilarities", "Recommendation");
 
@@ -821,9 +759,9 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Material>(entity =>
         {
-            entity.HasKey(e => e.MaterialId).HasName("PK__Material__C5061317F36A1F56");
+            entity.HasKey(e => e.MaterialId).HasName("PK__Material__C5061317A6727E70");
 
-            entity.HasIndex(e => e.MaterialName, "UQ__Material__9C87053C2FEC5FE9").IsUnique();
+            entity.HasIndex(e => e.MaterialName, "UQ__Material__9C87053C3C549A30").IsUnique();
 
             entity.Property(e => e.MaterialId).HasColumnName("MaterialID");
             entity.Property(e => e.CreatedAt)
@@ -835,7 +773,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Order>(entity =>
         {
-            entity.HasKey(e => e.OrderId).HasName("PK__Orders__C3905BAFCB422423");
+            entity.HasKey(e => e.OrderId).HasName("PK__Orders__C3905BAF0396003D");
 
             entity.HasIndex(e => new { e.OrderDate, e.PaymentStatus }, "IX_Orders_ReportByDate");
 
@@ -843,9 +781,9 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.HasIndex(e => new { e.AccountId, e.OrderDate }, "IX_Orders_UserHistory").IsDescending(false, true);
 
-            entity.HasIndex(e => e.PaymentCode, "UQ__Orders__106D3BA89921485C").IsUnique();
+            entity.HasIndex(e => e.PaymentCode, "UQ__Orders__106D3BA88D143F7B").IsUnique();
 
-            entity.HasIndex(e => e.OrderCode, "UQ__Orders__999B52296B7834BD").IsUnique();
+            entity.HasIndex(e => e.OrderCode, "UQ__Orders__999B52293CA3EC2C").IsUnique();
 
             entity.Property(e => e.OrderId).HasColumnName("OrderID");
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
@@ -882,6 +820,9 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.ShippingAddress).HasMaxLength(500);
             entity.Property(e => e.ShippingDistrictName).HasMaxLength(100);
             entity.Property(e => e.ShippingName).HasMaxLength(100);
+            entity.Property(e => e.ShippingOrderCode)
+                .HasMaxLength(50)
+                .IsUnicode(false);
             entity.Property(e => e.ShippingPhone)
                 .HasMaxLength(15)
                 .IsUnicode(false);
@@ -889,9 +830,6 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.ShippingWardCode)
                 .HasMaxLength(20)
                 .IsUnicode(false);
-            entity.Property(e => e.ShippingOrderCode)
-           .HasMaxLength(50)
-           .IsUnicode(false);
             entity.Property(e => e.ShippingWardName).HasMaxLength(100);
             entity.Property(e => e.StatusId).HasColumnName("StatusID");
             entity.Property(e => e.SubTotal).HasColumnType("decimal(12, 0)");
@@ -920,7 +858,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<OrderDetail>(entity =>
         {
-            entity.HasKey(e => e.OrderDetailId).HasName("PK__OrderDet__D3B9D30C0006A16A");
+            entity.HasKey(e => e.OrderDetailId).HasName("PK__OrderDet__D3B9D30C46086A8E");
 
             entity.HasIndex(e => e.ProductId, "IX_OrderDetails_ProductSales");
 
@@ -941,6 +879,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .IsUnicode(false);
             entity.Property(e => e.ProductName).HasMaxLength(255);
             entity.Property(e => e.UnitPrice).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
             entity.HasOne(d => d.Order).WithMany(p => p.OrderDetails)
                 .HasForeignKey(d => d.OrderId)
@@ -955,7 +894,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<OrderNote>(entity =>
         {
-            entity.HasKey(e => e.NoteId).HasName("PK__OrderNot__EACE357F0A897DEC");
+            entity.HasKey(e => e.NoteId).HasName("PK__OrderNot__EACE357F577C5044");
 
             entity.Property(e => e.NoteId).HasColumnName("NoteID");
             entity.Property(e => e.CreatedAt)
@@ -978,7 +917,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<OrderRefund>(entity =>
         {
-            entity.HasKey(e => e.RefundId).HasName("PK__OrderRef__725AB900FFBB03CD");
+            entity.HasKey(e => e.RefundId).HasName("PK__OrderRef__725AB900F25D00E7");
 
             entity.HasIndex(e => e.OrderId, "IX_OrderRefunds_Order");
 
@@ -999,6 +938,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasMaxLength(20)
                 .IsUnicode(false)
                 .HasDefaultValue("Requested");
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
             entity.Property(e => e.WalletTransactionId).HasColumnName("WalletTransactionID");
 
             entity.HasOne(d => d.ApprovedByNavigation).WithMany(p => p.OrderRefundApprovedByNavigations)
@@ -1030,7 +970,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<OrderRefundReason>(entity =>
         {
-            entity.HasKey(e => e.RefundReasonId).HasName("PK__OrderRef__9A2295252E43A0B0");
+            entity.HasKey(e => e.RefundReasonId).HasName("PK__OrderRef__9A2295256D4D93C5");
 
             entity.Property(e => e.RefundReasonId)
                 .ValueGeneratedOnAdd()
@@ -1044,7 +984,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<OrderStatusHistory>(entity =>
         {
-            entity.HasKey(e => e.HistoryId).HasName("PK__OrderSta__4D7B4ADDD301BE28");
+            entity.HasKey(e => e.HistoryId).HasName("PK__OrderSta__4D7B4ADD5D5EB3FE");
 
             entity.ToTable("OrderStatusHistory");
 
@@ -1092,9 +1032,9 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Origin>(entity =>
         {
-            entity.HasKey(e => e.OriginId).HasName("PK__Origins__171FA2C608B85902");
+            entity.HasKey(e => e.OriginId).HasName("PK__Origins__171FA2C6E73939AC");
 
-            entity.HasIndex(e => e.OriginName, "UQ__Origins__636F5CFD8CA9AABF").IsUnique();
+            entity.HasIndex(e => e.OriginName, "UQ__Origins__636F5CFD0350080B").IsUnique();
 
             entity.Property(e => e.OriginId)
                 .ValueGeneratedOnAdd()
@@ -1115,7 +1055,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.HasIndex(e => new { e.Provider, e.Status }, "IX_PayGwTxn_Provider_Status");
 
-            entity.HasIndex(e => e.RequestId, "UQ__PaymentG__33A8519B32918041").IsUnique();
+            entity.HasIndex(e => e.RequestId, "UQ__PaymentG__33A8519B9B2ABF57").IsUnique();
 
             entity.Property(e => e.PaymentGatewayTxnId).HasColumnName("PaymentGatewayTxnID");
             entity.Property(e => e.Amount).HasColumnType("decimal(12, 0)");
@@ -1156,7 +1096,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<PaymentHistory>(entity =>
         {
-            entity.HasKey(e => e.PaymentHistoryId).HasName("PK__PaymentH__F3B93391BA8B6C44");
+            entity.HasKey(e => e.PaymentHistoryId).HasName("PK__PaymentH__F3B9339127CF8880");
 
             entity.ToTable("PaymentHistory");
 
@@ -1197,7 +1137,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<PriceRange>(entity =>
         {
-            entity.HasKey(e => e.PriceRangeId).HasName("PK__PriceRan__B8A301FF680F9152");
+            entity.HasKey(e => e.PriceRangeId).HasName("PK__PriceRan__B8A301FF962FD6A2");
 
             entity.Property(e => e.PriceRangeId)
                 .ValueGeneratedOnAdd()
@@ -1211,7 +1151,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Product>(entity =>
         {
-            entity.HasKey(e => e.ProductId).HasName("PK__Products__B40CC6ED0425D2D9");
+            entity.HasKey(e => e.ProductId).HasName("PK__Products__B40CC6ED08868230");
 
             entity.HasIndex(e => new { e.BrandId, e.ProductStatus }, "IX_Products_Brand_Status").HasFilter("([IsDeleted]=(0) AND [BrandID] IS NOT NULL)");
 
@@ -1258,7 +1198,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<ProductDetail>(entity =>
         {
-            entity.HasKey(e => e.ProductId).HasName("PK__ProductD__B40CC6ED507F2E66");
+            entity.HasKey(e => e.ProductId).HasName("PK__ProductD__B40CC6ED4C31B320");
 
             entity.Property(e => e.ProductId)
                 .ValueGeneratedNever()
@@ -1293,7 +1233,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<ProductImage>(entity =>
         {
-            entity.HasKey(e => e.ImageId).HasName("PK__ProductI__7516F4EC55A416A3");
+            entity.HasKey(e => e.ImageId).HasName("PK__ProductI__7516F4EC76CD3C63");
 
             entity.HasIndex(e => e.ProductId, "IX_ProductImages_OneMainPerProduct")
                 .IsUnique()
@@ -1335,6 +1275,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.DiscountPercent).HasColumnType("decimal(5, 2)");
             entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.Property(e => e.SalePrice).HasColumnType("decimal(12, 2)");
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
             entity.HasOne(d => d.Product).WithMany(p => p.ProductPromotions)
                 .HasForeignKey(d => d.ProductId)
@@ -1349,7 +1290,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Promotion>(entity =>
         {
-            entity.HasKey(e => e.PromotionId).HasName("PK__Promotio__52C42F2F82D4F7F7");
+            entity.HasKey(e => e.PromotionId).HasName("PK__Promotio__52C42F2F2B96E3BE");
 
             entity.HasIndex(e => e.Priority, "IX_Promotions_Priority").IsDescending();
 
@@ -1371,6 +1312,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasMaxLength(20)
                 .IsUnicode(false)
                 .HasDefaultValue("Scheduled");
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
             entity.HasOne(d => d.CreatedByNavigation).WithMany(p => p.Promotions)
                 .HasForeignKey(d => d.CreatedBy)
@@ -1380,7 +1322,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<PromotionTimeSlot>(entity =>
         {
-            entity.HasKey(e => e.TimeSlotId).HasName("PK__Promotio__41CC1F525E5FDDD7");
+            entity.HasKey(e => e.TimeSlotId).HasName("PK__Promotio__41CC1F5277484410");
 
             entity.HasIndex(e => new { e.SlotDate, e.Status, e.StartTime, e.EndTime }, "IX_PromotionTimeSlots_Active");
 
@@ -1399,6 +1341,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasMaxLength(20)
                 .IsUnicode(false)
                 .HasDefaultValue("Scheduled");
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
             entity.HasOne(d => d.Promotion).WithMany(p => p.PromotionTimeSlots)
                 .HasForeignKey(d => d.PromotionId)
@@ -1408,22 +1351,25 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Province>(entity =>
         {
-            entity.HasKey(e => e.ProvinceId).HasName("PK__Province__FD0A6F834D4628F0");
+            entity.HasKey(e => e.ProvinceId).HasName("PK__Province__FD0A6F83AE6F7E9D");
 
             entity.Property(e => e.ProvinceId).ValueGeneratedNever();
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
             entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.Property(e => e.ProvinceCode)
                 .HasMaxLength(10)
                 .IsUnicode(false);
             entity.Property(e => e.ProvinceName).HasMaxLength(100);
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
         });
 
         modelBuilder.Entity<ReactionType>(entity =>
         {
-            entity.HasKey(e => e.ReactionTypeId).HasName("PK__Reaction__01E625C09B24A44F");
+            entity.HasKey(e => e.ReactionTypeId).HasName("PK__Reaction__01E625C0250CF65F");
 
-            entity.HasIndex(e => e.Code, "UQ__Reaction__A25C5AA7BF3BAE21").IsUnique();
+            entity.HasIndex(e => e.Code, "UQ__Reaction__A25C5AA7E7FBB087").IsUnique();
 
             entity.Property(e => e.ReactionTypeId).HasColumnName("ReactionTypeID");
             entity.Property(e => e.Code).HasMaxLength(20);
@@ -1435,7 +1381,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<ReviewBlog>(entity =>
         {
-            entity.HasKey(e => e.ReviewBlogId).HasName("PK__ReviewBl__A19536C04B40A1C1");
+            entity.HasKey(e => e.ReviewBlogId).HasName("PK__ReviewBl__A19536C0FCEDA483");
 
             entity.HasIndex(e => new { e.BlogPostId, e.IsDeleted }, "IX_ReviewBlogs_BlogPost");
 
@@ -1461,7 +1407,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<ReviewBlogReaction>(entity =>
         {
-            entity.HasKey(e => e.ReactionBlogId).HasName("PK__ReviewBl__6A8A0D27019118C3");
+            entity.HasKey(e => e.ReactionBlogId).HasName("PK__ReviewBl__6A8A0D27741B86BA");
 
             entity.HasIndex(e => new { e.ReviewBlogId, e.ReactionTypeId }, "IX_ReviewBlogReactions_Stats");
 
@@ -1493,7 +1439,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<ReviewBlogReply>(entity =>
         {
-            entity.HasKey(e => e.ReplyBlogId).HasName("PK__ReviewBl__5996364152BD17E1");
+            entity.HasKey(e => e.ReplyBlogId).HasName("PK__ReviewBl__59963641BDF087A5");
 
             entity.HasIndex(e => new { e.ReviewBlogId, e.IsDeleted }, "IX_ReviewBlogReplies_Review");
 
@@ -1529,7 +1475,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<ReviewProduct>(entity =>
         {
-            entity.HasKey(e => e.ReviewId).HasName("PK__ReviewPr__74BC79AE04BA8F12");
+            entity.HasKey(e => e.ReviewId).HasName("PK__ReviewPr__74BC79AE2D2A384F");
 
             entity.HasIndex(e => new { e.ProductId, e.IsDeleted }, "IX_ReviewProducts_Product");
 
@@ -1563,7 +1509,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<ReviewProductImage>(entity =>
         {
-            entity.HasKey(e => e.ReviewProductImageId).HasName("PK__ReviewPr__013E0F1E8782E99B");
+            entity.HasKey(e => e.ReviewProductImageId).HasName("PK__ReviewPr__013E0F1E1F666564");
 
             entity.Property(e => e.ReviewProductImageId).HasColumnName("ReviewProductImageID");
             entity.Property(e => e.CreatedAt)
@@ -1574,6 +1520,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .IsUnicode(false)
                 .HasColumnName("ImageURL");
             entity.Property(e => e.ReviewProductId).HasColumnName("ReviewProductID");
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
             entity.HasOne(d => d.ReviewProduct).WithMany(p => p.ReviewProductImages)
                 .HasForeignKey(d => d.ReviewProductId)
@@ -1583,7 +1530,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<ReviewProductReaction>(entity =>
         {
-            entity.HasKey(e => e.ReactionProductId).HasName("PK__ReviewPr__B56FCAF13387A2ED");
+            entity.HasKey(e => e.ReactionProductId).HasName("PK__ReviewPr__B56FCAF1A1B1C3DD");
 
             entity.HasIndex(e => new { e.AccountId, e.ReviewProductId }, "UQ_ReviewProductReactions_AccountReview").IsUnique();
 
@@ -1596,6 +1543,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasMaxLength(10)
                 .IsUnicode(false);
             entity.Property(e => e.ReviewProductId).HasColumnName("ReviewProductID");
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
             entity.HasOne(d => d.Account).WithMany(p => p.ReviewProductReactions)
                 .HasForeignKey(d => d.AccountId)
@@ -1610,9 +1558,9 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Role>(entity =>
         {
-            entity.HasKey(e => e.RoleId).HasName("PK__Roles__8AFACE3A7CA45CD3");
+            entity.HasKey(e => e.RoleId).HasName("PK__Roles__8AFACE3A33773940");
 
-            entity.HasIndex(e => e.RoleName, "UQ__Roles__8A2B61609AA134E6").IsUnique();
+            entity.HasIndex(e => e.RoleName, "UQ__Roles__8A2B61601A0E12DD").IsUnique();
 
             entity.Property(e => e.RoleId)
                 .ValueGeneratedOnAdd()
@@ -1628,9 +1576,9 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Sex>(entity =>
         {
-            entity.HasKey(e => e.SexId).HasName("PK__Sexes__75622DB6D63234CE");
+            entity.HasKey(e => e.SexId).HasName("PK__Sexes__75622DB6112EF4A2");
 
-            entity.HasIndex(e => e.SexName, "UQ__Sexes__BA354290477E6106").IsUnique();
+            entity.HasIndex(e => e.SexName, "UQ__Sexes__BA354290CD9F4B24").IsUnique();
 
             entity.Property(e => e.SexId)
                 .ValueGeneratedOnAdd()
@@ -1652,9 +1600,14 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.HasIndex(e => new { e.Provider, e.Status }, "IX_ShippingTxn_Provider_Status");
 
             entity.Property(e => e.ShippingTransactionId).HasColumnName("ShippingTransactionID");
+            entity.Property(e => e.ActualDelivery).HasPrecision(0);
             entity.Property(e => e.CodAmount).HasColumnType("decimal(12, 0)");
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.EstimatedDelivery).HasPrecision(0);
             entity.Property(e => e.LastErrorMessage).HasMaxLength(500);
+            entity.Property(e => e.LastPolledAt).HasPrecision(0);
             entity.Property(e => e.OrderId).HasColumnName("OrderID");
             entity.Property(e => e.Provider)
                 .HasMaxLength(50)
@@ -1673,6 +1626,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.TrackingNumber)
                 .HasMaxLength(100)
                 .IsUnicode(false);
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
             entity.HasOne(d => d.Order).WithMany(p => p.ShippingProviderTransactions)
                 .HasForeignKey(d => d.OrderId)
@@ -1682,29 +1636,31 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<ShippingStatusHistory>(entity =>
         {
-            entity.HasKey(e => e.HistoryId).HasName("PK__Shipping__4D7B4ABD341BED5E");
+            entity.HasKey(e => e.HistoryId).HasName("PK__Shipping__4D7B4ABDCDD4DAC8");
 
             entity.HasIndex(e => e.ShippingTxId, "IX_ShippingStatusHistories_ShippingTxId");
 
             entity.Property(e => e.NewStatus).HasMaxLength(50);
             entity.Property(e => e.PreviousStatus).HasMaxLength(50);
-            entity.Property(e => e.ProcessedAt).HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.ProcessedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
             entity.Property(e => e.Source).HasMaxLength(20);
 
             entity.HasOne(d => d.Order).WithMany(p => p.ShippingStatusHistories)
                 .HasForeignKey(d => d.OrderId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__ShippingS__Order__2C88998B");
+                .HasConstraintName("FK__ShippingS__Order__1B5E0D89");
 
             entity.HasOne(d => d.ShippingTx).WithMany(p => p.ShippingStatusHistories)
                 .HasForeignKey(d => d.ShippingTxId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__ShippingS__Shipp__2B947552");
+                .HasConstraintName("FK__ShippingS__Shipp__1A69E950");
         });
 
         modelBuilder.Entity<StaffReviewProductReply>(entity =>
         {
-            entity.HasKey(e => e.ReplyProductId).HasName("PK__StaffRev__2DCE233C3925EE86");
+            entity.HasKey(e => e.ReplyProductId).HasName("PK__StaffRev__2DCE233CB5793F8C");
 
             entity.Property(e => e.ReplyProductId).HasColumnName("ReplyProductID");
             entity.Property(e => e.Content).HasMaxLength(500);
@@ -1728,9 +1684,9 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<StatusOrder>(entity =>
         {
-            entity.HasKey(e => e.StatusId).HasName("PK__StatusOr__C8EE2043F1708FC9");
+            entity.HasKey(e => e.StatusId).HasName("PK__StatusOr__C8EE20436EA68079");
 
-            entity.HasIndex(e => e.StatusName, "UQ__StatusOr__05E7698A62634317").IsUnique();
+            entity.HasIndex(e => e.StatusName, "UQ__StatusOr__05E7698AB91CED3F").IsUnique();
 
             entity.Property(e => e.StatusId)
                 .ValueGeneratedOnAdd()
@@ -1747,9 +1703,9 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<SuperCategory>(entity =>
         {
-            entity.HasKey(e => e.SuperCategoryId).HasName("PK__SuperCat__CEB990D3CB7403DE");
+            entity.HasKey(e => e.SuperCategoryId).HasName("PK__SuperCat__CEB990D357E77A48");
 
-            entity.HasIndex(e => e.SuperCategoryName, "UQ__SuperCat__3FA779DF4054AA1C").IsUnique();
+            entity.HasIndex(e => e.SuperCategoryName, "UQ__SuperCat__3FA779DFFF4C3EDE").IsUnique();
 
             entity.Property(e => e.SuperCategoryId).HasColumnName("SuperCategoryID");
             entity.Property(e => e.CreatedAt)
@@ -1761,11 +1717,11 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Template>(entity =>
         {
-            entity.HasKey(e => e.TemplateId).HasName("PK__Template__F87ADD07A4B19649");
+            entity.HasKey(e => e.TemplateId).HasName("PK__Template__F87ADD0756646C85");
 
             entity.ToTable("Templates", "Notification");
 
-            entity.HasIndex(e => e.TemplateCode, "UQ__Template__0FDB50814FB6FC7C").IsUnique();
+            entity.HasIndex(e => e.TemplateCode, "UQ__Template__0FDB50819A5C23CE").IsUnique();
 
             entity.Property(e => e.TemplateId).HasColumnName("TemplateID");
             entity.Property(e => e.CreatedAt)
@@ -1782,7 +1738,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<TrendingProduct>(entity =>
         {
-            entity.HasKey(e => e.TrendingId).HasName("PK__Trending__8938F528915C4DA1");
+            entity.HasKey(e => e.TrendingId).HasName("PK__Trending__8938F52804DAB914");
 
             entity.ToTable("TrendingProducts", "Recommendation");
 
@@ -1810,7 +1766,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<UserBlockHistory>(entity =>
         {
-            entity.HasKey(e => e.BlockId).HasName("PK__UserBloc__14421511CF7D8F9D");
+            entity.HasKey(e => e.BlockId).HasName("PK__UserBloc__144215110EA8451A");
 
             entity.ToTable("UserBlockHistory");
 
@@ -1826,6 +1782,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.Note).HasMaxLength(500);
             entity.Property(e => e.UnblockedAt).HasPrecision(0);
             entity.Property(e => e.UnblockedByJobId).HasColumnName("UnblockedByJobID");
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
             entity.HasOne(d => d.Account).WithMany(p => p.UserBlockHistoryAccounts)
                 .HasForeignKey(d => d.AccountId)
@@ -1852,7 +1809,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<UserProductScore>(entity =>
         {
-            entity.HasKey(e => e.ScoreId).HasName("PK__UserProd__7DD229F1AC0FC445");
+            entity.HasKey(e => e.ScoreId).HasName("PK__UserProd__7DD229F19E734971");
 
             entity.ToTable("UserProductScores", "Recommendation");
 
@@ -1882,11 +1839,11 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Voucher>(entity =>
         {
-            entity.HasKey(e => e.VoucherId).HasName("PK__Vouchers__3AEE79C19878B0BC");
+            entity.HasKey(e => e.VoucherId).HasName("PK__Vouchers__3AEE79C10394A075");
 
             entity.HasIndex(e => new { e.Status, e.StartDate, e.EndDate }, "IX_Vouchers_Worker");
 
-            entity.HasIndex(e => e.VoucherCode, "UQ__Vouchers__7F0ABCA9329DDC62").IsUnique();
+            entity.HasIndex(e => e.VoucherCode, "UQ__Vouchers__7F0ABCA9D10C20E1").IsUnique();
 
             entity.Property(e => e.VoucherId).HasColumnName("VoucherID");
             entity.Property(e => e.CreatedAt)
@@ -1921,7 +1878,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<VoucherUsageLog>(entity =>
         {
-            entity.HasKey(e => e.UsageId).HasName("PK__VoucherU__29B197C099E8CFC3");
+            entity.HasKey(e => e.UsageId).HasName("PK__VoucherU__29B197C0B3300004");
 
             entity.HasIndex(e => new { e.VoucherId, e.UsedAt }, "IX_VoucherUsageLogs_Analytics");
 
@@ -1951,9 +1908,9 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Wallet>(entity =>
         {
-            entity.HasKey(e => e.WalletId).HasName("PK__Wallets__84D4F92E60270F17");
+            entity.HasKey(e => e.WalletId).HasName("PK__Wallets__84D4F92E4E5A7663");
 
-            entity.HasIndex(e => e.AccountId, "UQ__Wallets__349DA5879B29C7A1").IsUnique();
+            entity.HasIndex(e => e.AccountId, "UQ__Wallets__349DA587D34562AE").IsUnique();
 
             entity.Property(e => e.WalletId).HasColumnName("WalletID");
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
@@ -1981,7 +1938,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<WalletTransaction>(entity =>
         {
-            entity.HasKey(e => e.WalletTransactionId).HasName("PK__WalletTr__7184AECF00A423EE");
+            entity.HasKey(e => e.WalletTransactionId).HasName("PK__WalletTr__7184AECF9AC9602F");
 
             entity.HasIndex(e => new { e.AccountId, e.CreatedAt }, "IX_WalletTransactions_Account").IsDescending(false, true);
 
@@ -2042,14 +1999,16 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Ward>(entity =>
         {
-            entity.HasKey(e => e.WardCode).HasName("PK__Wards__1A7FBFF11F7CE5A0");
+            entity.HasKey(e => e.WardCode).HasName("PK__Wards__1A7FBFF1D43C7F16");
 
             entity.HasIndex(e => e.DistrictId, "IX_Wards_DistrictId");
 
             entity.Property(e => e.WardCode)
                 .HasMaxLength(20)
                 .IsUnicode(false);
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
             entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.Property(e => e.WardName).HasMaxLength(100);
 
@@ -2061,11 +2020,11 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Widget>(entity =>
         {
-            entity.HasKey(e => e.WidgetId).HasName("PK__Widgets__ADFD3072202F8F3F");
+            entity.HasKey(e => e.WidgetId).HasName("PK__Widgets__ADFD30729FC86A73");
 
             entity.ToTable("Widgets", "Recommendation");
 
-            entity.HasIndex(e => e.WidgetCode, "UQ__Widgets__C77DBD58EC98BF40").IsUnique();
+            entity.HasIndex(e => e.WidgetCode, "UQ__Widgets__C77DBD58863E043E").IsUnique();
 
             entity.Property(e => e.WidgetId)
                 .ValueGeneratedOnAdd()
@@ -2090,7 +2049,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Wishlist>(entity =>
         {
-            entity.HasKey(e => e.WishlistId).HasName("PK__Wishlist__233189CB79FF6676");
+            entity.HasKey(e => e.WishlistId).HasName("PK__Wishlist__233189CBDA89BC80");
 
             entity.HasIndex(e => e.AccountId, "IX_Wishlists_User");
 

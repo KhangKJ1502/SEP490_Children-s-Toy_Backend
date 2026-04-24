@@ -15,6 +15,8 @@ public partial class District
 
     public DateTime? CreatedAt { get; set; }
 
+    public DateTime? UpdatedAt { get; set; }
+
     public virtual ICollection<Address> Addresses { get; set; } = new List<Address>();
 
     public virtual Province Province { get; set; } = null!;

@@ -33,10 +33,6 @@ public partial class Account
 
     public virtual Address? Address { get; set; }
 
-    public virtual ICollection<AuditLog> AuditLogs { get; set; } = new List<AuditLog>();
-
-    public virtual ICollection<Banner> Banners { get; set; } = new List<Banner>();
-
     public virtual ICollection<BlogPost> BlogPostAccounts { get; set; } = new List<BlogPost>();
 
     public virtual ICollection<BlogPost> BlogPostApprovedByNavigations { get; set; } = new List<BlogPost>();

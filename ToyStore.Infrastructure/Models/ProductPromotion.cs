@@ -23,6 +23,8 @@ public partial class ProductPromotion
 
     public DateTime CreatedAt { get; set; }
 
+    public DateTime? UpdatedAt { get; set; }
+
     public virtual Product Product { get; set; } = null!;
 
     public virtual Promotion Promotion { get; set; } = null!;

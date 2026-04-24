@@ -11,9 +11,17 @@ public partial class Delivery
 
     public int? CreatedByJobId { get; set; }
 
+    public int? CampaignId { get; set; }
+
     public string TemplateCode { get; set; } = null!;
 
     public string RecipientType { get; set; } = null!;
+
+    public string? ImageUrl { get; set; }
+
+    public string? ActionType { get; set; }
+
+    public string? ActionTarget { get; set; }
 
     public string Title { get; set; } = null!;
 
@@ -27,13 +35,7 @@ public partial class Delivery
 
     public DateTime CreatedAt { get; set; }
 
-    public string? ImageUrl { get; set; }
-
-    public string? ActionType { get; set; }
-
-    public string? ActionTarget { get; set; }
-
-    public int? CampaignId { get; set; }
+    public DateTime? UpdatedAt { get; set; }
 
     public virtual Account Account { get; set; } = null!;
 

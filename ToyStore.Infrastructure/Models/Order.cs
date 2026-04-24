@@ -15,6 +15,8 @@ public partial class Order
 
     public string OrderCode { get; set; } = null!;
 
+    public string? ShippingOrderCode { get; set; }
+
     public string ShippingName { get; set; } = null!;
 
     public string ShippingPhone { get; set; } = null!;
@@ -22,7 +24,6 @@ public partial class Order
     public string ShippingAddress { get; set; } = null!;
 
     public string ShippingWardCode { get; set; } = null!;
-    public string? ShippingOrderCode { get; set; }
 
     public string ShippingWardName { get; set; } = null!;
 

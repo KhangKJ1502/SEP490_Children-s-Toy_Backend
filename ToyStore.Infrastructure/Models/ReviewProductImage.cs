@@ -15,5 +15,7 @@ public partial class ReviewProductImage
 
     public DateTime CreatedAt { get; set; }
 
+    public DateTime? UpdatedAt { get; set; }
+
     public virtual ReviewProduct ReviewProduct { get; set; } = null!;
 }

@@ -27,6 +27,8 @@ public partial class Promotion
 
     public DateTime CreatedAt { get; set; }
 
+    public DateTime? UpdatedAt { get; set; }
+
     public virtual Account CreatedByNavigation { get; set; } = null!;
 
     public virtual ICollection<ProductPromotion> ProductPromotions { get; set; } = new List<ProductPromotion>();

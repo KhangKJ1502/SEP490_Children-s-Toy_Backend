@@ -25,6 +25,8 @@ public partial class UserBlockHistory
 
     public DateTime? UnblockedAt { get; set; }
 
+    public DateTime? UpdatedAt { get; set; }
+
     public virtual Account Account { get; set; } = null!;
 
     public virtual BlockReason BlockReason { get; set; } = null!;
