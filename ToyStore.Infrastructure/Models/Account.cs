@@ -55,8 +55,6 @@ public partial class Account
 
     public virtual ICollection<Order> OrderCancelledByNavigations { get; set; } = new List<Order>();
 
-    public virtual ICollection<OrderNote> OrderNotes { get; set; } = new List<OrderNote>();
-
     public virtual ICollection<OrderRefund> OrderRefundApprovedByNavigations { get; set; } = new List<OrderRefund>();
 
     public virtual ICollection<OrderRefund> OrderRefundCustomers { get; set; } = new List<OrderRefund>();
@@ -66,6 +64,8 @@ public partial class Account
     public virtual ICollection<OrderStatusHistory> OrderStatusHistories { get; set; } = new List<OrderStatusHistory>();
 
     public virtual ICollection<PaymentHistory> PaymentHistories { get; set; } = new List<PaymentHistory>();
+
+    public virtual ICollection<ProductFollower> ProductFollowers { get; set; } = new List<ProductFollower>();
 
     public virtual ICollection<Promotion> Promotions { get; set; } = new List<Promotion>();
 

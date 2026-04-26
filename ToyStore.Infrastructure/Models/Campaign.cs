@@ -31,11 +31,15 @@ public partial class Campaign
 
     public string? ActionTarget { get; set; }
 
+    public bool IsDeleted { get; set; }
+
     public int CreatedByAccountId { get; set; }
 
     public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }
+
+    public virtual CampaignStat? CampaignStat { get; set; }
 
     public virtual ICollection<CampaignTarget> CampaignTargets { get; set; } = new List<CampaignTarget>();
 

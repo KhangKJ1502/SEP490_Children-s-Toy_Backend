@@ -7,6 +7,12 @@ public partial class Product
 {
     public int ProductId { get; set; }
 
+    public short CategoryId { get; set; }
+
+    public short? BrandId { get; set; }
+
+    public byte? PriceRangeId { get; set; }
+
     public string ProductName { get; set; } = null!;
 
     public decimal Price { get; set; }
@@ -15,6 +21,8 @@ public partial class Product
 
     public string ProductStatus { get; set; } = null!;
 
+    public DateTime? LaunchDate { get; set; }
+
     public bool IsDeleted { get; set; }
 
     public short StockThreshold { get; set; }
@@ -22,12 +30,6 @@ public partial class Product
     public bool LowStockNotificationEnabled { get; set; }
 
     public DateTime? LastLowStockNotifiedAt { get; set; }
-
-    public short CategoryId { get; set; }
-
-    public short? BrandId { get; set; }
-
-    public byte? PriceRangeId { get; set; }
 
     public DateTime CreatedAt { get; set; }
 
@@ -48,6 +50,8 @@ public partial class Product
     public virtual PriceRange? PriceRange { get; set; }
 
     public virtual ProductDetail? ProductDetail { get; set; }
+
+    public virtual ICollection<ProductFollower> ProductFollowers { get; set; } = new List<ProductFollower>();
 
     public virtual ProductImage? ProductImage { get; set; }
 

@@ -13,11 +13,13 @@ public partial class Delivery
 
     public int? CampaignId { get; set; }
 
-    public string TemplateCode { get; set; } = null!;
+    public string? TemplateCode { get; set; }
 
     public string RecipientType { get; set; } = null!;
 
     public string? ImageUrl { get; set; }
+
+    public string NotificationType { get; set; } = null!;
 
     public string? ActionType { get; set; }
 
@@ -45,5 +47,5 @@ public partial class Delivery
 
     public virtual ICollection<DeliveryAction> DeliveryActions { get; set; } = new List<DeliveryAction>();
 
-    public virtual Template TemplateCodeNavigation { get; set; } = null!;
+    public virtual Template? TemplateCodeNavigation { get; set; }
 }

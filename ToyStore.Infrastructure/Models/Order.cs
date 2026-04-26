@@ -69,6 +69,8 @@ public partial class Order
 
     public int? CancelledBy { get; set; }
 
+    public string? Note { get; set; }
+
     public bool IsDeleted { get; set; }
 
     public DateTime CreatedAt { get; set; }
@@ -82,8 +84,6 @@ public partial class Order
     public virtual Account? CancelledByNavigation { get; set; }
 
     public virtual ICollection<OrderDetail> OrderDetails { get; set; } = new List<OrderDetail>();
-
-    public virtual ICollection<OrderNote> OrderNotes { get; set; } = new List<OrderNote>();
 
     public virtual ICollection<OrderRefund> OrderRefunds { get; set; } = new List<OrderRefund>();
 
