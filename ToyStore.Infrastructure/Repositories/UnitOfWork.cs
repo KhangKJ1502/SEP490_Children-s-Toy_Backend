@@ -4,6 +4,9 @@ using ToyStore.Infrastructure.Data;
 
 namespace ToyStore.Infrastructure.Repositories;
 
+/// <summary>
+/// Unit of Work quản lý transaction và save changes.
+/// </summary>
 public class UnitOfWork : IUnitOfWork
 {
     private readonly SEP490ToyStoreContext _context;
@@ -11,37 +14,33 @@ public class UnitOfWork : IUnitOfWork
 
     public UnitOfWork(
         SEP490ToyStoreContext context,
+        IVoucherRepository vouchers,
         ISuperCategoryRepository superCategories,
         ICategoryRepository categories,
-<<<<<<< HEAD
-        IAccountRepository accounts)
-=======
+        IAccountRepository accounts,
         IBrandRepository brands,
         ITemplateRepository templates)
->>>>>>> c3313c693d9206d48e345252f51210905121c246
     {
         _context = context;
+        Vouchers = vouchers;
         SuperCategories = superCategories;
         Categories = categories;
-<<<<<<< HEAD
         Accounts = accounts;
-=======
         Brands = brands;
         Templates = templates;
->>>>>>> c3313c693d9206d48e345252f51210905121c246
     }
+
+    public IVoucherRepository Vouchers { get; }
 
     public ISuperCategoryRepository SuperCategories { get; }
 
     public ICategoryRepository Categories { get; }
 
-<<<<<<< HEAD
     public IAccountRepository Accounts { get; }
-=======
+
     public IBrandRepository Brands { get; }
 
     public ITemplateRepository Templates { get; }
->>>>>>> c3313c693d9206d48e345252f51210905121c246
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -50,7 +49,7 @@ public class UnitOfWork : IUnitOfWork
 
     public async Task BeginTransactionAsync(CancellationToken cancellationToken = default)
     {
-        if (_currentTransaction != null)
+        if (_currentTransaction is not null)
         {
             return;
         }
@@ -60,7 +59,7 @@ public class UnitOfWork : IUnitOfWork
 
     public async Task CommitTransactionAsync(CancellationToken cancellationToken = default)
     {
-        if (_currentTransaction == null)
+        if (_currentTransaction is null)
         {
             return;
         }
@@ -72,7 +71,7 @@ public class UnitOfWork : IUnitOfWork
 
     public async Task RollbackTransactionAsync(CancellationToken cancellationToken = default)
     {
-        if (_currentTransaction == null)
+        if (_currentTransaction is null)
         {
             return;
         }

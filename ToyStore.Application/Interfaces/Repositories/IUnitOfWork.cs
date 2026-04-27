@@ -13,6 +13,11 @@ public interface IUnitOfWork : IDisposable
     IAccountRepository Accounts { get; }
 
     /// <summary>
+    /// Repository voucher.
+    /// </summary>
+    IVoucherRepository Vouchers { get; }
+
+    /// <summary>
     /// Lưu tất cả pending changes vào DB.
     /// </summary>
 =======
