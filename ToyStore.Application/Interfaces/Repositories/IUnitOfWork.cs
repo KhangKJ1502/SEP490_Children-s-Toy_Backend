@@ -7,6 +7,16 @@ namespace ToyStore.Application.Interfaces.Repositories;
 public interface IUnitOfWork : IDisposable
 {
     /// <summary>
+    /// Repository thao tác với SuperCategory.
+    /// </summary>
+    ISuperCategoryRepository SuperCategories { get; }
+
+    /// <summary>
+    /// Repository thao tác với Category.
+    /// </summary>
+    ICategoryRepository Categories { get; }
+
+    /// <summary>
     /// Lưu tất cả pending changes vào DB.
     /// </summary>
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
