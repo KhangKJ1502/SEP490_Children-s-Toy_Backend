@@ -1,0 +1,85 @@
+using Microsoft.AspNetCore.Mvc;
+using ToyStore.API.Extensions;
+using ToyStore.Application.DTOs;
+using ToyStore.Application.DTOs.Templates;
+using ToyStore.Application.Interfaces.Services;
+
+namespace ToyStore.API.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public class TemplatesController : ControllerBase
+{
+    private readonly ITemplateService _templateService;
+    private readonly ILogger<TemplatesController> _logger;
+
+    public TemplatesController(ITemplateService templateService, ILogger<TemplatesController> logger)
+    {
+        _templateService = templateService;
+        _logger = logger;
+    }
+
+    [HttpGet]
+    public async Task<ActionResult<PaginatedResponse<TemplateListDto>>> GetTemplates(
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] bool sortDesc = false,
+        [FromQuery] string? searchTerm = null,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _templateService.GetTemplatesAsync(
+            pageNumber,
+            pageSize,
+            sortBy,
+            sortDesc,
+            searchTerm,
+            cancellationToken);
+
+        return result.ToActionResult();
+    }
+
+    [HttpPost]
+    public async Task<ActionResult<TemplateListDto>> CreateTemplate(
+        [FromBody] CreateTemplateDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _templateService.CreateTemplateAsync(dto, cancellationToken);
+        if (result.IsSuccess)
+        {
+            _logger.LogInformation("Created template {TemplateId}", result.Data!.TemplateId);
+        }
+
+        return result.ToCreatedResult($"api/templates/{result.Data?.TemplateId}");
+    }
+
+    [HttpPut("{templateId:int}")]
+    public async Task<ActionResult<TemplateListDto>> UpdateTemplate(
+        [FromRoute] short templateId,
+        [FromBody] UpdateTemplateDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _templateService.UpdateTemplateAsync(templateId, dto, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpGet("search")]
+    public async Task<ActionResult<PaginatedResponse<TemplateListDto>>> SearchTemplates(
+        [FromQuery] string searchTerm,
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] bool sortDesc = false,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _templateService.SearchTemplatesAsync(
+            searchTerm,
+            pageNumber,
+            pageSize,
+            sortBy,
+            sortDesc,
+            cancellationToken);
+
+        return result.ToActionResult();
+    }
+}
