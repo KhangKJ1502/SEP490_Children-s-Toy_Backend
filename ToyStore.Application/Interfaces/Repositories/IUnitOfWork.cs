@@ -6,26 +6,14 @@ public interface IUnitOfWork : IDisposable
 
     ICategoryRepository Categories { get; }
 
-<<<<<<< HEAD
-    /// <summary>
-    /// Repository thao tác với Account.
-    /// </summary>
     IAccountRepository Accounts { get; }
 
-    /// <summary>
-    /// Repository voucher.
-    /// </summary>
     IVoucherRepository Vouchers { get; }
 
-    /// <summary>
-    /// Lưu tất cả pending changes vào DB.
-    /// </summary>
-=======
     IBrandRepository Brands { get; }
 
     ITemplateRepository Templates { get; }
 
->>>>>>> c3313c693d9206d48e345252f51210905121c246
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 
     Task BeginTransactionAsync(CancellationToken cancellationToken = default);
