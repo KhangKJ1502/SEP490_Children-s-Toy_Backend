@@ -8,6 +8,8 @@ public interface IUnitOfWork : IDisposable
 
     IBrandRepository Brands { get; }
 
+    ITemplateRepository Templates { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 
     Task BeginTransactionAsync(CancellationToken cancellationToken = default);
