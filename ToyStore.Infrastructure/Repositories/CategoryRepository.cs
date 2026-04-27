@@ -1,0 +1,188 @@
+using Microsoft.EntityFrameworkCore;
+using ToyStore.Application.Common.Models;
+using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Infrastructure.Data;
+using ToyStore.Infrastructure.Models;
+
+namespace ToyStore.Infrastructure.Repositories;
+
+public class CategoryRepository : ICategoryRepository
+{
+    private readonly SEP490ToyStoreContext _context;
+
+    public CategoryRepository(SEP490ToyStoreContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<List<CategoryModel>> GetPagedAsync(
+        int pageNumber,
+        int pageSize,
+        string? sortBy = null,
+        bool sortDesc = false,
+        string? searchTerm = null,
+        CancellationToken cancellationToken = default)
+    {
+        IQueryable<Category> query = _context.Categories
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted && !x.SuperCategory.IsDeleted)
+            .Include(x => x.SuperCategory);
+
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            query = query.Where(x =>
+                x.CategoryName.Contains(searchTerm) ||
+                x.SuperCategory.SuperCategoryName.Contains(searchTerm));
+        }
+
+        query = (sortBy?.Trim().ToLowerInvariant(), sortDesc) switch
+        {
+            ("name", true) => query.OrderByDescending(x => x.CategoryName),
+            ("name", false) => query.OrderBy(x => x.CategoryName),
+            ("supercategoryname", true) => query.OrderByDescending(x => x.SuperCategory.SuperCategoryName),
+            ("supercategoryname", false) => query.OrderBy(x => x.SuperCategory.SuperCategoryName),
+            ("createdat", true) => query.OrderByDescending(x => x.CreatedAt),
+            ("createdat", false) => query.OrderBy(x => x.CreatedAt),
+            (_, true) => query.OrderByDescending(x => x.CategoryId),
+            _ => query.OrderBy(x => x.CategoryId)
+        };
+
+        return await query
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .Select(x => new CategoryModel
+            {
+                CategoryId = x.CategoryId,
+                CategoryName = x.CategoryName,
+                SuperCategoryId = x.SuperCategoryId,
+                SuperCategoryName = x.SuperCategory.SuperCategoryName,
+                IsDeleted = x.IsDeleted,
+                CreatedAt = x.CreatedAt,
+                UpdatedAt = x.UpdatedAt
+            })
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<int> CountAsync(string? searchTerm = null, CancellationToken cancellationToken = default)
+    {
+        IQueryable<Category> query = _context.Categories
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted && !x.SuperCategory.IsDeleted)
+            .Include(x => x.SuperCategory);
+
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            query = query.Where(x =>
+                x.CategoryName.Contains(searchTerm) ||
+                x.SuperCategory.SuperCategoryName.Contains(searchTerm));
+        }
+
+        return query.CountAsync(cancellationToken);
+    }
+
+    public Task<bool> ExistsByNameAsync(string categoryName, CancellationToken cancellationToken = default)
+    {
+        var normalized = categoryName.Trim().ToLower();
+        return _context.Categories
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted)
+            .AnyAsync(x => x.CategoryName.ToLower() == normalized, cancellationToken);
+    }
+
+    public Task<bool> ExistsByNameExceptIdAsync(
+        string categoryName,
+        short categoryId,
+        CancellationToken cancellationToken = default)
+    {
+        var normalized = categoryName.Trim().ToLower();
+        return _context.Categories
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted && x.CategoryId != categoryId)
+            .AnyAsync(x => x.CategoryName.ToLower() == normalized, cancellationToken);
+    }
+
+    public Task<CategoryModel?> GetByIdAsync(short categoryId, CancellationToken cancellationToken = default)
+    {
+        return _context.Categories
+            .AsNoTracking()
+            .Where(x => x.CategoryId == categoryId && !x.IsDeleted && !x.SuperCategory.IsDeleted)
+            .Select(x => new CategoryModel
+            {
+                CategoryId = x.CategoryId,
+                CategoryName = x.CategoryName,
+                SuperCategoryId = x.SuperCategoryId,
+                SuperCategoryName = x.SuperCategory.SuperCategoryName,
+                IsDeleted = x.IsDeleted,
+                CreatedAt = x.CreatedAt,
+                UpdatedAt = x.UpdatedAt
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<CategoryModel> CreateAsync(
+        short superCategoryId,
+        string categoryName,
+        CancellationToken cancellationToken = default)
+    {
+        var entity = new Category
+        {
+            CategoryName = categoryName,
+            SuperCategoryId = superCategoryId,
+            IsDeleted = false,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _context.Categories.AddAsync(entity, cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        var superCategoryName = await _context.SuperCategories
+            .AsNoTracking()
+            .Where(x => x.SuperCategoryId == superCategoryId && !x.IsDeleted)
+            .Select(x => x.SuperCategoryName)
+            .FirstAsync(cancellationToken);
+
+        return new CategoryModel
+        {
+            CategoryId = entity.CategoryId,
+            CategoryName = entity.CategoryName,
+            SuperCategoryId = entity.SuperCategoryId,
+            SuperCategoryName = superCategoryName,
+            IsDeleted = entity.IsDeleted,
+            CreatedAt = entity.CreatedAt,
+            UpdatedAt = entity.UpdatedAt
+        };
+    }
+
+    public async Task<CategoryModel> UpdateAsync(
+        short categoryId,
+        short superCategoryId,
+        string categoryName,
+        CancellationToken cancellationToken = default)
+    {
+        var entity = await _context.Categories
+            .FirstAsync(x => x.CategoryId == categoryId && !x.IsDeleted, cancellationToken);
+
+        entity.SuperCategoryId = superCategoryId;
+        entity.CategoryName = categoryName;
+        entity.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        var superCategoryName = await _context.SuperCategories
+            .AsNoTracking()
+            .Where(x => x.SuperCategoryId == superCategoryId && !x.IsDeleted)
+            .Select(x => x.SuperCategoryName)
+            .FirstAsync(cancellationToken);
+
+        return new CategoryModel
+        {
+            CategoryId = entity.CategoryId,
+            CategoryName = entity.CategoryName,
+            SuperCategoryId = entity.SuperCategoryId,
+            SuperCategoryName = superCategoryName,
+            IsDeleted = entity.IsDeleted,
+            CreatedAt = entity.CreatedAt,
+            UpdatedAt = entity.UpdatedAt
+        };
+    }
+}

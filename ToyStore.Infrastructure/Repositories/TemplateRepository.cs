@@ -1,0 +1,190 @@
+using Microsoft.EntityFrameworkCore;
+using ToyStore.Application.Common.Models;
+using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Infrastructure.Data;
+using ToyStore.Infrastructure.Models;
+
+namespace ToyStore.Infrastructure.Repositories;
+
+public class TemplateRepository : ITemplateRepository
+{
+    private readonly SEP490ToyStoreContext _context;
+
+    public TemplateRepository(SEP490ToyStoreContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<List<TemplateModel>> GetPagedAsync(
+        int pageNumber,
+        int pageSize,
+        string? sortBy = null,
+        bool sortDesc = false,
+        string? searchTerm = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _context.Templates
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted);
+
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            query = query.Where(x =>
+                x.TemplateCode.Contains(searchTerm) ||
+                x.TitleTemplate.Contains(searchTerm) ||
+                x.MessageTemplate.Contains(searchTerm));
+        }
+
+        query = (sortBy?.Trim().ToLowerInvariant(), sortDesc) switch
+        {
+            ("templatecode", true) => query.OrderByDescending(x => x.TemplateCode),
+            ("templatecode", false) => query.OrderBy(x => x.TemplateCode),
+            ("titletemplate", true) => query.OrderByDescending(x => x.TitleTemplate),
+            ("titletemplate", false) => query.OrderBy(x => x.TitleTemplate),
+            ("isactive", true) => query.OrderByDescending(x => x.IsActive),
+            ("isactive", false) => query.OrderBy(x => x.IsActive),
+            ("createdat", true) => query.OrderByDescending(x => x.CreatedAt),
+            ("createdat", false) => query.OrderBy(x => x.CreatedAt),
+            (_, true) => query.OrderByDescending(x => x.TemplateId),
+            _ => query.OrderBy(x => x.TemplateId)
+        };
+
+        return await query
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .Select(x => new TemplateModel
+            {
+                TemplateId = x.TemplateId,
+                TemplateCode = x.TemplateCode,
+                TitleTemplate = x.TitleTemplate,
+                MessageTemplate = x.MessageTemplate,
+                IsActive = x.IsActive,
+                IsDeleted = x.IsDeleted,
+                CreatedAt = x.CreatedAt,
+                UpdatedAt = x.UpdatedAt
+            })
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<int> CountAsync(string? searchTerm = null, CancellationToken cancellationToken = default)
+    {
+        var query = _context.Templates
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted);
+
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            query = query.Where(x =>
+                x.TemplateCode.Contains(searchTerm) ||
+                x.TitleTemplate.Contains(searchTerm) ||
+                x.MessageTemplate.Contains(searchTerm));
+        }
+
+        return query.CountAsync(cancellationToken);
+    }
+
+    public Task<bool> ExistsByCodeAsync(string templateCode, CancellationToken cancellationToken = default)
+    {
+        var normalized = templateCode.Trim().ToLower();
+        return _context.Templates
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted)
+            .AnyAsync(x => x.TemplateCode.ToLower() == normalized, cancellationToken);
+    }
+
+    public Task<bool> ExistsByCodeExceptIdAsync(
+        string templateCode,
+        short templateId,
+        CancellationToken cancellationToken = default)
+    {
+        var normalized = templateCode.Trim().ToLower();
+        return _context.Templates
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted && x.TemplateId != templateId)
+            .AnyAsync(x => x.TemplateCode.ToLower() == normalized, cancellationToken);
+    }
+
+    public Task<TemplateModel?> GetByIdAsync(short templateId, CancellationToken cancellationToken = default)
+    {
+        return _context.Templates
+            .AsNoTracking()
+            .Where(x => x.TemplateId == templateId && !x.IsDeleted)
+            .Select(x => new TemplateModel
+            {
+                TemplateId = x.TemplateId,
+                TemplateCode = x.TemplateCode,
+                TitleTemplate = x.TitleTemplate,
+                MessageTemplate = x.MessageTemplate,
+                IsActive = x.IsActive,
+                IsDeleted = x.IsDeleted,
+                CreatedAt = x.CreatedAt,
+                UpdatedAt = x.UpdatedAt
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<TemplateModel> CreateAsync(
+        string templateCode,
+        string titleTemplate,
+        string messageTemplate,
+        bool isActive,
+        CancellationToken cancellationToken = default)
+    {
+        var entity = new Template
+        {
+            TemplateCode = templateCode,
+            TitleTemplate = titleTemplate,
+            MessageTemplate = messageTemplate,
+            IsActive = isActive,
+            IsDeleted = false,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _context.Templates.AddAsync(entity, cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return new TemplateModel
+        {
+            TemplateId = entity.TemplateId,
+            TemplateCode = entity.TemplateCode,
+            TitleTemplate = entity.TitleTemplate,
+            MessageTemplate = entity.MessageTemplate,
+            IsActive = entity.IsActive,
+            IsDeleted = entity.IsDeleted,
+            CreatedAt = entity.CreatedAt,
+            UpdatedAt = entity.UpdatedAt
+        };
+    }
+
+    public async Task<TemplateModel> UpdateAsync(
+        short templateId,
+        string templateCode,
+        string titleTemplate,
+        string messageTemplate,
+        bool isActive,
+        CancellationToken cancellationToken = default)
+    {
+        var entity = await _context.Templates
+            .FirstAsync(x => x.TemplateId == templateId && !x.IsDeleted, cancellationToken);
+
+        entity.TemplateCode = templateCode;
+        entity.TitleTemplate = titleTemplate;
+        entity.MessageTemplate = messageTemplate;
+        entity.IsActive = isActive;
+        entity.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return new TemplateModel
+        {
+            TemplateId = entity.TemplateId,
+            TemplateCode = entity.TemplateCode,
+            TitleTemplate = entity.TitleTemplate,
+            MessageTemplate = entity.MessageTemplate,
+            IsActive = entity.IsActive,
+            IsDeleted = entity.IsDeleted,
+            CreatedAt = entity.CreatedAt,
+            UpdatedAt = entity.UpdatedAt
+        };
+    }
+}

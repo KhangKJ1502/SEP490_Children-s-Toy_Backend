@@ -12,17 +12,39 @@ public class UnitOfWork : IUnitOfWork
     private readonly SEP490ToyStoreContext _context;
     private IDbContextTransaction? _currentTransaction;
 
-    public UnitOfWork(SEP490ToyStoreContext context, IVoucherRepository vouchers)
+    public UnitOfWork(
+        SEP490ToyStoreContext context,
+        IVoucherRepository vouchers,
+        ISuperCategoryRepository superCategories,
+        ICategoryRepository categories,
+        IAccountRepository accounts,
+        IBrandRepository brands,
+        ITemplateRepository templates)
     {
         _context = context;
         Vouchers = vouchers;
+        SuperCategories = superCategories;
+        Categories = categories;
+        Accounts = accounts;
+        Brands = brands;
+        Templates = templates;
     }
 
     public IVoucherRepository Vouchers { get; }
 
-    public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    public ISuperCategoryRepository SuperCategories { get; }
+
+    public ICategoryRepository Categories { get; }
+
+    public IAccountRepository Accounts { get; }
+
+    public IBrandRepository Brands { get; }
+
+    public ITemplateRepository Templates { get; }
+
+    public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        return await _context.SaveChangesAsync(cancellationToken);
+        return _context.SaveChangesAsync(cancellationToken);
     }
 
     public async Task BeginTransactionAsync(CancellationToken cancellationToken = default)
