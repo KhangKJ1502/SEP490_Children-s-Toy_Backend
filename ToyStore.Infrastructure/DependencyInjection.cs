@@ -40,6 +40,7 @@ public static class DependencyInjection
                 services.AddScoped<ITemplateRepository, TemplateRepository>();
                 services.AddScoped<IUnitOfWork, UnitOfWork>();
                 services.AddScoped<ICategoryService, CategoryService>();
+                services.AddScoped<ISuperCategoryService, SuperCategoryService>();
                 services.AddScoped<IBrandService, BrandService>();
                 services.AddScoped<ITemplateService, TemplateService>();
 

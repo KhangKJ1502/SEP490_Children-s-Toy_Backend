@@ -13,12 +13,12 @@ namespace ToyStore.API.Controllers;
 [Route("api/categories/super-categories")]
 public class SuperCategoriesController : ControllerBase
 {
-    private readonly ICategoryService _categoryService;
+    private readonly ISuperCategoryService _superCategoryService;
     private readonly ILogger<SuperCategoriesController> _logger;
 
-    public SuperCategoriesController(ICategoryService categoryService, ILogger<SuperCategoriesController> logger)
+    public SuperCategoriesController(ISuperCategoryService superCategoryService, ILogger<SuperCategoriesController> logger)
     {
-        _categoryService = categoryService;
+        _superCategoryService = superCategoryService;
         _logger = logger;
     }
 
@@ -34,7 +34,7 @@ public class SuperCategoriesController : ControllerBase
         [FromQuery] string? searchTerm = null,
         CancellationToken cancellationToken = default)
     {
-        var result = await _categoryService.GetSuperCategoriesAsync(
+        var result = await _superCategoryService.GetSuperCategoriesAsync(
             pageNumber,
             pageSize,
             sortBy,
@@ -53,7 +53,7 @@ public class SuperCategoriesController : ControllerBase
         [FromBody] CreateSuperCategoryDto dto,
         CancellationToken cancellationToken = default)
     {
-        var result = await _categoryService.CreateSuperCategoryAsync(dto, cancellationToken);
+        var result = await _superCategoryService.CreateSuperCategoryAsync(dto, cancellationToken);
         if (result.IsSuccess)
         {
             _logger.LogInformation("Created super category {SuperCategoryId}", result.Data!.SuperCategoryId);
@@ -71,7 +71,7 @@ public class SuperCategoriesController : ControllerBase
         [FromBody] UpdateSuperCategoryDto dto,
         CancellationToken cancellationToken = default)
     {
-        var result = await _categoryService.UpdateSuperCategoryAsync(superCategoryId, dto, cancellationToken);
+        var result = await _superCategoryService.UpdateSuperCategoryAsync(superCategoryId, dto, cancellationToken);
         return result.ToActionResult();
     }
 
@@ -87,7 +87,7 @@ public class SuperCategoriesController : ControllerBase
         [FromQuery] bool sortDesc = false,
         CancellationToken cancellationToken = default)
     {
-        var result = await _categoryService.SearchSuperCategoriesAsync(
+        var result = await _superCategoryService.SearchSuperCategoriesAsync(
             searchTerm,
             pageNumber,
             pageSize,
