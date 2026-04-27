@@ -12,16 +12,20 @@ public class UnitOfWork : IUnitOfWork
     public UnitOfWork(
         SEP490ToyStoreContext context,
         ISuperCategoryRepository superCategories,
-        ICategoryRepository categories)
+        ICategoryRepository categories,
+        IBrandRepository brands)
     {
         _context = context;
         SuperCategories = superCategories;
         Categories = categories;
+        Brands = brands;
     }
 
     public ISuperCategoryRepository SuperCategories { get; }
 
     public ICategoryRepository Categories { get; }
+
+    public IBrandRepository Brands { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
