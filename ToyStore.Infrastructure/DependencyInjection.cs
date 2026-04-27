@@ -21,8 +21,10 @@ public static class DependencyInjection
 
         services.AddScoped<ISuperCategoryRepository, SuperCategoryRepository>();
         services.AddScoped<ICategoryRepository, CategoryRepository>();
+        services.AddScoped<IBrandRepository, BrandRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ICategoryService, CategoryService>();
+        services.AddScoped<IBrandService, BrandService>();
 
         return services;
     }

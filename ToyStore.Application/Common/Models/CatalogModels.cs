@@ -29,3 +29,16 @@ public class CategoryModel
 
     public DateTime? UpdatedAt { get; set; }
 }
+
+public class BrandModel
+{
+    public short BrandId { get; set; }
+
+    public string BrandName { get; set; } = string.Empty;
+
+    public bool IsDeleted { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime? UpdatedAt { get; set; }
+}
