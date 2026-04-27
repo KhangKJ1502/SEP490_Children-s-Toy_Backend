@@ -7,6 +7,11 @@ namespace ToyStore.Application.Interfaces.Repositories;
 public interface IUnitOfWork : IDisposable
 {
     /// <summary>
+    /// Repository voucher.
+    /// </summary>
+    IVoucherRepository Vouchers { get; }
+
+    /// <summary>
     /// Lưu tất cả pending changes vào DB.
     /// </summary>
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

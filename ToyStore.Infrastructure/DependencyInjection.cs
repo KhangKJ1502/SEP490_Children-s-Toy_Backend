@@ -1,7 +1,14 @@
+using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Application.Interfaces.Services;
+using ToyStore.Application.Mappings;
+using ToyStore.Application.Validators.Vouchers;
 using ToyStore.Infrastructure.Data;
+using ToyStore.Infrastructure.Repositories;
+using ToyStore.Infrastructure.Services;
 
 namespace ToyStore.Infrastructure;
 
@@ -14,6 +21,13 @@ public static class DependencyInjection
         services.AddDbContext<SEP490ToyStoreContext>(options =>
             options.UseSqlServer(
                 configuration.GetConnectionString("DefaultConnection")));
+
+        services.AddAutoMapper(_ => { }, typeof(VoucherProfile).Assembly);
+        services.AddValidatorsFromAssemblyContaining<CreateVoucherValidator>();
+
+        services.AddScoped<IVoucherRepository, VoucherRepository>();
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddScoped<IVoucherService, VoucherService>();
 
         return services;
     }
