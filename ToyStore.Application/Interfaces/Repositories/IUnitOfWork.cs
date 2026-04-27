@@ -17,6 +17,11 @@ public interface IUnitOfWork : IDisposable
     ICategoryRepository Categories { get; }
 
     /// <summary>
+    /// Repository thao tác với Account.
+    /// </summary>
+    IAccountRepository Accounts { get; }
+
+    /// <summary>
     /// Lưu tất cả pending changes vào DB.
     /// </summary>
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
