@@ -13,12 +13,14 @@ public class UnitOfWork : IUnitOfWork
         SEP490ToyStoreContext context,
         ISuperCategoryRepository superCategories,
         ICategoryRepository categories,
-        IBrandRepository brands)
+        IBrandRepository brands,
+        ITemplateRepository templates)
     {
         _context = context;
         SuperCategories = superCategories;
         Categories = categories;
         Brands = brands;
+        Templates = templates;
     }
 
     public ISuperCategoryRepository SuperCategories { get; }
@@ -26,6 +28,8 @@ public class UnitOfWork : IUnitOfWork
     public ICategoryRepository Categories { get; }
 
     public IBrandRepository Brands { get; }
+
+    public ITemplateRepository Templates { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
