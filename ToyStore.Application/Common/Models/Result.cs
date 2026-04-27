@@ -44,7 +44,7 @@ public class Result<T>
     /// </summary>
     public static Result<T> ValidationFailure(Dictionary<string, string[]> errors)
     {
-        return new Result<T>(false, default, "VALIDATION_ERROR", "Một hoặc nhiều lỗi xác thực xảy ra.", errors);
+        return new Result<T>(false, default, "VALIDATION_ERROR", "One or more validation errors occurred.", errors);
     }
     
     /// <summary>
@@ -53,8 +53,8 @@ public class Result<T>
     public static Result<T> NotFound(string resourceType, object? id = null)
     {
         var message = id != null 
-            ? $"{resourceType} với ID '{id}' không tồn tại."
-            : $"{resourceType} không tồn tại.";
+            ? $"{resourceType} with ID '{id}' was not found."
+            : $"{resourceType} was not found.";
         return new Result<T>(false, default, "NOT_FOUND", message, null);
     }
     
@@ -77,7 +77,7 @@ public class Result<T>
     /// <summary>
     /// Creates a failure result for unauthorized access.
     /// </summary>
-    public static Result<T> Unauthorized(string message = "Bạn không có quyền thực hiện hành động này.")
+    public static Result<T> Unauthorized(string message = "You are not authorized to perform this action.")
     {
         return new Result<T>(false, default, "UNAUTHORIZED", message, null);
     }
@@ -124,14 +124,14 @@ public class Result
     
     public static Result ValidationFailure(Dictionary<string, string[]> errors)
     {
-        return new Result(false, "VALIDATION_ERROR", "Một hoặc nhiều lỗi xác thực xảy ra.", errors);
+        return new Result(false, "VALIDATION_ERROR", "One or more validation errors occurred.", errors);
     }
     
     public static Result NotFound(string resourceType, object? id = null)
     {
         var message = id != null 
-            ? $"{resourceType} với ID '{id}' không tồn tại."
-            : $"{resourceType} không tồn tại.";
+            ? $"{resourceType} with ID '{id}' was not found."
+            : $"{resourceType} was not found.";
         return new Result(false, "NOT_FOUND", message, null);
     }
     
