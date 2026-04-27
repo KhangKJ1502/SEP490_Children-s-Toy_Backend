@@ -25,12 +25,19 @@ public static class DependencyInjection
 
         services.AddScoped<ISuperCategoryRepository, SuperCategoryRepository>();
         services.AddScoped<ICategoryRepository, CategoryRepository>();
+<<<<<<< HEAD
+        services.AddScoped<IAccountRepository, AccountRepository>();
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddScoped<ICategoryService, CategoryService>();
+        services.AddScoped<IAccountService, AccountService>();
+=======
         services.AddScoped<IBrandRepository, BrandRepository>();
         services.AddScoped<ITemplateRepository, TemplateRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<IBrandService, BrandService>();
         services.AddScoped<ITemplateService, TemplateService>();
+>>>>>>> c3313c693d9206d48e345252f51210905121c246
 
         return services;
     }
