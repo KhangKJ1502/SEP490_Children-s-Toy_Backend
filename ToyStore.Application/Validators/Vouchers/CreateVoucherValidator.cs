@@ -8,26 +8,6 @@ namespace ToyStore.Application.Validators.Vouchers;
 /// </summary>
 public class CreateVoucherValidator : AbstractValidator<CreateVoucherDto>
 {
-    private static readonly HashSet<string> AllowedDiscountTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "FIXED",
-        "PERCENTAGE"
-    };
-
-    private static readonly HashSet<string> AllowedDiscountTargets = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "ORDER_TOTAL",
-        "SHIPPING_FEE"
-    };
-
-    private static readonly HashSet<string> AllowedStatuses = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Scheduled",
-        "Active",
-        "Inactive",
-        "Expired"
-    };
-
     public CreateVoucherValidator()
     {
         RuleFor(x => x.VoucherCode)
@@ -48,20 +28,24 @@ public class CreateVoucherValidator : AbstractValidator<CreateVoucherDto>
 
         RuleFor(x => x.DiscountType)
             .NotEmpty().WithMessage("Discount type is required.")
-            .Must(BeValidDiscountType).WithMessage("Discount type must be either FIXED or PERCENTAGE.");
+            .Must(v => VoucherValidatorConstants.AllowedDiscountTypes.Contains(v.Trim()))
+            .WithMessage("Discount type must be either FIXED or PERCENTAGE.");
 
         RuleFor(x => x.DiscountTarget)
             .NotEmpty().WithMessage("Discount target is required.")
-            .Must(BeValidDiscountTarget).WithMessage("Discount target must be either ORDER_TOTAL or SHIPPING_FEE.");
+            .Must(v => VoucherValidatorConstants.AllowedDiscountTargets.Contains(v.Trim()))
+            .WithMessage("Discount target must be either ORDER_TOTAL or SHIPPING_FEE.");
 
         RuleFor(x => x.Status)
             .NotEmpty().WithMessage("Status is required.")
-            .Must(BeValidStatus).WithMessage("Status must be one of Scheduled, Active, Inactive, or Expired.");
+            .Must(v => VoucherValidatorConstants.AllowedStatuses.Contains(v.Trim()))
+            .WithMessage("Status must be one of Scheduled, Active, Inactive, or Expired.");
 
         RuleFor(x => x.DiscountValue)
             .GreaterThan(0).WithMessage("Discount value must be greater than 0.")
             .LessThanOrEqualTo(1_000_000_000).WithMessage("Discount value must not exceed 1,000,000,000.");
 
+        // Giá trị % không được vượt 100
         RuleFor(x => x.DiscountValue)
             .LessThanOrEqualTo(100)
             .When(x => IsPercentage(x.DiscountType))
@@ -71,6 +55,7 @@ public class CreateVoucherValidator : AbstractValidator<CreateVoucherDto>
             .GreaterThan(0).When(x => x.MaxDiscountCap.HasValue)
             .WithMessage("Max discount cap must be greater than 0 when provided.");
 
+        // MaxDiscountCap chỉ áp dụng cho loại PERCENTAGE
         RuleFor(x => x.MaxDiscountCap)
             .Null()
             .When(x => IsFixed(x.DiscountType))
@@ -94,23 +79,16 @@ public class CreateVoucherValidator : AbstractValidator<CreateVoucherDto>
         RuleFor(x => x.EndDate)
             .NotEqual(default(DateTime)).WithMessage("End date is required.");
 
+        // StartDate phải trước EndDate
         RuleFor(x => x)
             .Must(x => x.StartDate < x.EndDate)
             .WithMessage("Start date must be earlier than end date.");
 
+        // MaxUsagePerUser không được vượt TotalQuantity
         RuleFor(x => x)
             .Must(x => !x.TotalQuantity.HasValue || !x.MaxUsagePerUser.HasValue || x.MaxUsagePerUser.Value <= x.TotalQuantity.Value)
             .WithMessage("Max usage per user must be less than or equal to total quantity.");
     }
-
-    private static bool BeValidDiscountType(string discountType)
-        => AllowedDiscountTypes.Contains(discountType.Trim());
-
-    private static bool BeValidDiscountTarget(string discountTarget)
-        => AllowedDiscountTargets.Contains(discountTarget.Trim());
-
-    private static bool BeValidStatus(string status)
-        => AllowedStatuses.Contains(status.Trim());
 
     private static bool IsPercentage(string discountType)
         => string.Equals(discountType?.Trim(), "PERCENTAGE", StringComparison.OrdinalIgnoreCase);

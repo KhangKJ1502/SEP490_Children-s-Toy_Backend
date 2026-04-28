@@ -12,7 +12,7 @@ public interface IVoucherService
     /// <summary>
     /// Lấy danh sách voucher có phân trang, sắp xếp và tìm kiếm.
     /// </summary>
-    Task<PaginatedResponse<VoucherListDto>> GetVouchersAsync(
+    Task<Result<PaginatedResponse<VoucherListDto>>> GetVouchersAsync(
         int pageNumber = 1,
         int pageSize = 10,
         string? sortBy = null,
