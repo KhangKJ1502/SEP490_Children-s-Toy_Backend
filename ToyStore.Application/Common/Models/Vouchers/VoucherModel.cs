@@ -1,27 +1,2 @@
-namespace ToyStore.Application.Common.Models.Vouchers;
-
-/// <summary>
-/// Model trung gian voucher dùng giữa Service và Repository.
-/// </summary>
-public class VoucherModel
-{
-    public int VoucherId { get; set; }
-    public int? CreatedBy { get; set; }
-    public string VoucherCode { get; set; } = string.Empty;
-    public string VoucherName { get; set; } = string.Empty;
-    public string VoucherDescription { get; set; } = string.Empty;
-    public string DiscountType { get; set; } = string.Empty;
-    public decimal DiscountValue { get; set; }
-    public decimal? MaxDiscountCap { get; set; }
-    public string DiscountTarget { get; set; } = string.Empty;
-    public decimal? MinOrderAmount { get; set; }
-    public int? TotalQuantity { get; set; }
-    public int UsedQuantity { get; set; }
-    public short? MaxUsagePerUser { get; set; }
-    public DateTime StartDate { get; set; }
-    public DateTime EndDate { get; set; }
-    public string Status { get; set; } = string.Empty;
-    public bool IsDeleted { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime? UpdatedAt { get; set; }
-}
+// VoucherModel đã được chuyển vào ToyStore.Application.Common.Models.CatalogModels.
+// Xem: Common/Models/CatalogModels.cs

@@ -1,4 +1,4 @@
-using ToyStore.Application.Common.Models.Vouchers;
+using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs;
 
 namespace ToyStore.Application.Interfaces.Repositories;

@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using ToyStore.Application.Common.Models.Vouchers;
+using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Infrastructure.Data;
@@ -13,12 +13,10 @@ namespace ToyStore.Infrastructure.Repositories;
 public class VoucherRepository : IVoucherRepository
 {
     private readonly SEP490ToyStoreContext _context;
-    private readonly DbSet<Voucher> _dbSet;
 
     public VoucherRepository(SEP490ToyStoreContext context)
     {
         _context = context;
-        _dbSet = context.Set<Voucher>();
     }
 
     public async Task<PaginatedResponse<VoucherModel>> GetPagedAsync(
@@ -30,7 +28,7 @@ public class VoucherRepository : IVoucherRepository
         string? status = null,
         CancellationToken cancellationToken = default)
     {
-        var query = _dbSet
+        var query = _context.Vouchers
             .AsNoTracking()
             .Where(x => !x.IsDeleted);
 
@@ -68,7 +66,7 @@ public class VoucherRepository : IVoucherRepository
 
     public async Task<VoucherModel?> GetByIdAsync(int voucherId, CancellationToken cancellationToken = default)
     {
-        var entity = await _dbSet
+        var entity = await _context.Vouchers
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.VoucherId == voucherId && !x.IsDeleted, cancellationToken);
 
@@ -77,7 +75,7 @@ public class VoucherRepository : IVoucherRepository
 
     public async Task<VoucherModel?> GetByCodeAsync(string voucherCode, CancellationToken cancellationToken = default)
     {
-        var entity = await _dbSet
+        var entity = await _context.Vouchers
             .AsNoTracking()
             .FirstOrDefaultAsync(
                 x => x.VoucherCode == voucherCode && !x.IsDeleted,
@@ -91,7 +89,7 @@ public class VoucherRepository : IVoucherRepository
         int? excludeVoucherId = null,
         CancellationToken cancellationToken = default)
     {
-        var query = _dbSet
+        var query = _context.Vouchers
             .AsNoTracking()
             .Where(x => !x.IsDeleted && x.VoucherCode == voucherCode);
 
@@ -106,13 +104,13 @@ public class VoucherRepository : IVoucherRepository
     public async Task AddAsync(VoucherModel voucher, CancellationToken cancellationToken = default)
     {
         var entity = MapToEntity(voucher);
-        await _dbSet.AddAsync(entity, cancellationToken);
+        await _context.AddAsync(entity, cancellationToken);
     }
 
     public void Update(VoucherModel voucher)
     {
         var entity = MapToEntity(voucher);
-        _dbSet.Update(entity);
+        _context.Update(entity);
     }
 
     private static IQueryable<Voucher> ApplySorting(IQueryable<Voucher> query, string? sortBy, bool sortDesc)

@@ -44,7 +44,7 @@ public class VouchersController : ControllerBase
             status,
             cancellationToken);
 
-        return Ok(result);
+        return result.ToActionResult();
     }
 
     /// <summary>

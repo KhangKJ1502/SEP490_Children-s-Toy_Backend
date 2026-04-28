@@ -8,26 +8,6 @@ namespace ToyStore.Application.Validators.Vouchers;
 /// </summary>
 public class UpdateVoucherValidator : AbstractValidator<UpdateVoucherDto>
 {
-    private static readonly HashSet<string> AllowedDiscountTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "FIXED",
-        "PERCENTAGE"
-    };
-
-    private static readonly HashSet<string> AllowedDiscountTargets = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "ORDER_TOTAL",
-        "SHIPPING_FEE"
-    };
-
-    private static readonly HashSet<string> AllowedStatuses = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Scheduled",
-        "Active",
-        "Inactive",
-        "Expired"
-    };
-
     public UpdateVoucherValidator()
     {
         RuleFor(x => x)
@@ -55,15 +35,18 @@ public class UpdateVoucherValidator : AbstractValidator<UpdateVoucherDto>
             .WithMessage("Voucher description must not exceed 255 characters.");
 
         RuleFor(x => x.DiscountType)
-            .Must(BeValidDiscountType).When(x => x.DiscountType is not null)
+            .Must(v => VoucherValidatorConstants.AllowedDiscountTypes.Contains(v!.Trim()))
+            .When(x => x.DiscountType is not null)
             .WithMessage("Discount type must be either FIXED or PERCENTAGE.");
 
         RuleFor(x => x.DiscountTarget)
-            .Must(BeValidDiscountTarget).When(x => x.DiscountTarget is not null)
+            .Must(v => VoucherValidatorConstants.AllowedDiscountTargets.Contains(v!.Trim()))
+            .When(x => x.DiscountTarget is not null)
             .WithMessage("Discount target must be either ORDER_TOTAL or SHIPPING_FEE.");
 
         RuleFor(x => x.Status)
-            .Must(BeValidStatus).When(x => x.Status is not null)
+            .Must(v => VoucherValidatorConstants.AllowedStatuses.Contains(v!.Trim()))
+            .When(x => x.Status is not null)
             .WithMessage("Status must be one of Scheduled, Active, Inactive, or Expired.");
 
         RuleFor(x => x.DiscountValue)
@@ -72,6 +55,7 @@ public class UpdateVoucherValidator : AbstractValidator<UpdateVoucherDto>
             .LessThanOrEqualTo(1_000_000_000).When(x => x.DiscountValue.HasValue)
             .WithMessage("Discount value must not exceed 1,000,000,000.");
 
+        // Giá trị % không được vượt 100
         RuleFor(x => x.DiscountValue)
             .LessThanOrEqualTo(100)
             .When(x => x.DiscountValue.HasValue && IsPercentage(x.DiscountType))
@@ -81,6 +65,7 @@ public class UpdateVoucherValidator : AbstractValidator<UpdateVoucherDto>
             .GreaterThan(0).When(x => x.MaxDiscountCap.HasValue)
             .WithMessage("Max discount cap must be greater than 0 when provided.");
 
+        // MaxDiscountCap chỉ áp dụng cho loại PERCENTAGE
         RuleFor(x => x.MaxDiscountCap)
             .Null()
             .When(x => IsFixed(x.DiscountType) && x.MaxDiscountCap.HasValue)
@@ -98,10 +83,12 @@ public class UpdateVoucherValidator : AbstractValidator<UpdateVoucherDto>
             .GreaterThanOrEqualTo((short)1).When(x => x.MaxUsagePerUser.HasValue)
             .WithMessage("Max usage per user must be greater than or equal to 1 when provided.");
 
+        // StartDate phải trước EndDate (khi cả 2 đều được cung cấp)
         RuleFor(x => x)
             .Must(x => !x.StartDate.HasValue || !x.EndDate.HasValue || x.StartDate.Value < x.EndDate.Value)
             .WithMessage("Start date must be earlier than end date when both dates are provided.");
 
+        // MaxUsagePerUser không được vượt TotalQuantity
         RuleFor(x => x)
             .Must(x => !x.TotalQuantity.HasValue || !x.MaxUsagePerUser.HasValue || x.MaxUsagePerUser.Value <= x.TotalQuantity.Value)
             .WithMessage("Max usage per user must be less than or equal to total quantity.");
@@ -123,18 +110,6 @@ public class UpdateVoucherValidator : AbstractValidator<UpdateVoucherDto>
                || dto.EndDate.HasValue
                || dto.Status is not null;
     }
-
-    private static bool BeValidDiscountType(string? discountType)
-        => !string.IsNullOrWhiteSpace(discountType)
-           && AllowedDiscountTypes.Contains(discountType.Trim());
-
-    private static bool BeValidDiscountTarget(string? discountTarget)
-        => !string.IsNullOrWhiteSpace(discountTarget)
-           && AllowedDiscountTargets.Contains(discountTarget.Trim());
-
-    private static bool BeValidStatus(string? status)
-        => !string.IsNullOrWhiteSpace(status)
-           && AllowedStatuses.Contains(status.Trim());
 
     private static bool IsPercentage(string? discountType)
         => string.Equals(discountType?.Trim(), "PERCENTAGE", StringComparison.OrdinalIgnoreCase);

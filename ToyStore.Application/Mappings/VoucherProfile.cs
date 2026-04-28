@@ -1,5 +1,5 @@
 using AutoMapper;
-using ToyStore.Application.Common.Models.Vouchers;
+using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs.Vouchers;
 
 namespace ToyStore.Application.Mappings;

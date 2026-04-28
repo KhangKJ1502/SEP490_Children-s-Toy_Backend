@@ -1,12 +1,11 @@
 using AutoMapper;
-using FluentValidation;
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.Common.Models;
-using ToyStore.Application.Common.Models.Vouchers;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Vouchers;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
+using ToyStore.Application.Validators.Vouchers;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -17,25 +16,23 @@ public class VoucherService : IVoucherService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
-    private readonly IValidator<CreateVoucherDto> _createValidator;
-    private readonly IValidator<UpdateVoucherDto> _updateValidator;
     private readonly ILogger<VoucherService> _logger;
+    private readonly CreateVoucherValidator _createValidator;
+    private readonly UpdateVoucherValidator _updateValidator;
 
     public VoucherService(
         IUnitOfWork unitOfWork,
         IMapper mapper,
-        IValidator<CreateVoucherDto> createValidator,
-        IValidator<UpdateVoucherDto> updateValidator,
         ILogger<VoucherService> logger)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
-        _createValidator = createValidator;
-        _updateValidator = updateValidator;
         _logger = logger;
+        _createValidator = new CreateVoucherValidator();
+        _updateValidator = new UpdateVoucherValidator();
     }
 
-    public async Task<PaginatedResponse<VoucherListDto>> GetVouchersAsync(
+    public async Task<Result<PaginatedResponse<VoucherListDto>>> GetVouchersAsync(
         int pageNumber = 1,
         int pageSize = 10,
         string? sortBy = null,
@@ -44,12 +41,21 @@ public class VoucherService : IVoucherService
         string? status = null,
         CancellationToken cancellationToken = default)
     {
-        var normalizedPageNumber = pageNumber < 1 ? 1 : pageNumber;
-        var normalizedPageSize = pageSize < 1 ? 10 : Math.Min(pageSize, 100);
+        if (pageNumber < 1)
+        {
+            return Result<PaginatedResponse<VoucherListDto>>.Failure(
+                "VALIDATION_ERROR", "Page number must be greater than 0.");
+        }
+
+        if (pageSize < 1 || pageSize > 100)
+        {
+            return Result<PaginatedResponse<VoucherListDto>>.Failure(
+                "VALIDATION_ERROR", "Page size must be between 1 and 100.");
+        }
 
         var pagedVouchers = await _unitOfWork.Vouchers.GetPagedAsync(
-            normalizedPageNumber,
-            normalizedPageSize,
+            pageNumber,
+            pageSize,
             sortBy,
             sortDesc,
             searchTerm,
@@ -60,22 +66,25 @@ public class VoucherService : IVoucherService
 
         _logger.LogInformation(
             "Retrieved vouchers list with PageNumber {PageNumber}, PageSize {PageSize}, SearchTerm {SearchTerm}, Status {Status}",
-            normalizedPageNumber,
-            normalizedPageSize,
+            pageNumber,
+            pageSize,
             searchTerm,
             status);
 
-        return new PaginatedResponse<VoucherListDto>(
+        var response = new PaginatedResponse<VoucherListDto>(
             items,
             pagedVouchers.TotalCount,
-            normalizedPageNumber,
-            normalizedPageSize);
+            pageNumber,
+            pageSize);
+
+        return Result<PaginatedResponse<VoucherListDto>>.Success(response);
     }
 
     public async Task<Result<VoucherDto>> CreateVoucherAsync(
         CreateVoucherDto request,
         CancellationToken cancellationToken = default)
     {
+        // Chuẩn hoá input trước khi validate
         var normalizedRequest = NormalizeCreateRequest(request);
         var validationResult = await _createValidator.ValidateAsync(normalizedRequest, cancellationToken);
 
@@ -84,6 +93,7 @@ public class VoucherService : IVoucherService
             return validationResult.ToResult<VoucherDto>();
         }
 
+        // Kiểm tra trùng voucher code
         var voucherCodeExists = await _unitOfWork.Vouchers.ExistsVoucherCodeAsync(
             normalizedRequest.VoucherCode,
             null,
@@ -101,8 +111,19 @@ public class VoucherService : IVoucherService
         voucherModel.UsedQuantity = 0;
         voucherModel.IsDeleted = false;
 
-        await _unitOfWork.Vouchers.AddAsync(voucherModel, cancellationToken);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await _unitOfWork.Vouchers.AddAsync(voucherModel, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Failed to create voucher with code {VoucherCode}", voucherModel.VoucherCode);
+            throw;
+        }
 
         var createdVoucher = await _unitOfWork.Vouchers.GetByCodeAsync(voucherModel.VoucherCode, cancellationToken);
         if (createdVoucher is null)
@@ -129,6 +150,7 @@ public class VoucherService : IVoucherService
             return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Voucher ID must be greater than 0.");
         }
 
+        // Validate partial update request
         var normalizedRequest = NormalizeUpdateRequest(request);
         var updateValidation = await _updateValidator.ValidateAsync(normalizedRequest, cancellationToken);
 
@@ -137,23 +159,25 @@ public class VoucherService : IVoucherService
             return updateValidation.ToResult<VoucherDto>();
         }
 
+        // Lấy voucher hiện tại
         var existingVoucher = await _unitOfWork.Vouchers.GetByIdAsync(voucherId, cancellationToken);
         if (existingVoucher is null)
         {
-            return Result<VoucherDto>.Failure("NOT_FOUND", "Voucher not found.");
+            return Result<VoucherDto>.NotFound("Voucher", voucherId);
         }
 
-        var mergedVoucher = CloneVoucher(existingVoucher);
-        _mapper.Map(normalizedRequest, mergedVoucher);
+        // Merge partial update vào entity hiện tại, AutoMapper chỉ ghi đè field != null
+        _mapper.Map(normalizedRequest, existingVoucher);
 
-        // Chuẩn hoá lại các field string trước khi validate toàn bộ dữ liệu.
-        mergedVoucher.VoucherCode = NormalizeCode(mergedVoucher.VoucherCode);
-        mergedVoucher.DiscountType = NormalizeToken(mergedVoucher.DiscountType);
-        mergedVoucher.DiscountTarget = NormalizeToken(mergedVoucher.DiscountTarget);
-        mergedVoucher.Status = NormalizeStatus(mergedVoucher.Status);
-        mergedVoucher.UpdatedAt = DateTime.UtcNow;
+        // Chuẩn hoá lại các field string sau khi merge
+        existingVoucher.VoucherCode = NormalizeCode(existingVoucher.VoucherCode);
+        existingVoucher.DiscountType = NormalizeToken(existingVoucher.DiscountType);
+        existingVoucher.DiscountTarget = NormalizeToken(existingVoucher.DiscountTarget);
+        existingVoucher.Status = NormalizeStatus(existingVoucher.Status);
+        existingVoucher.UpdatedAt = DateTime.UtcNow;
 
-        var fullValidationRequest = MapToCreateRequest(mergedVoucher);
+        // Validate toàn bộ dữ liệu sau merge
+        var fullValidationRequest = MapToCreateDto(existingVoucher);
         var fullValidationResult = await _createValidator.ValidateAsync(fullValidationRequest, cancellationToken);
 
         if (!fullValidationResult.IsValid)
@@ -161,8 +185,9 @@ public class VoucherService : IVoucherService
             return fullValidationResult.ToResult<VoucherDto>();
         }
 
+        // Kiểm tra trùng voucher code (bỏ qua chính mình)
         var voucherCodeExists = await _unitOfWork.Vouchers.ExistsVoucherCodeAsync(
-            mergedVoucher.VoucherCode,
+            existingVoucher.VoucherCode,
             voucherId,
             cancellationToken);
 
@@ -171,10 +196,21 @@ public class VoucherService : IVoucherService
             return Result<VoucherDto>.Conflict("Voucher code already exists.");
         }
 
-        _unitOfWork.Vouchers.Update(mergedVoucher);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            _unitOfWork.Vouchers.Update(existingVoucher);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Failed to update voucher {VoucherId}", voucherId);
+            throw;
+        }
 
-        var updatedVoucher = await _unitOfWork.Vouchers.GetByIdAsync(voucherId, cancellationToken) ?? mergedVoucher;
+        var updatedVoucher = await _unitOfWork.Vouchers.GetByIdAsync(voucherId, cancellationToken) ?? existingVoucher;
 
         _logger.LogInformation(
             "Updated voucher {VoucherId} with code {VoucherCode}",
@@ -183,6 +219,8 @@ public class VoucherService : IVoucherService
 
         return Result<VoucherDto>.Success(_mapper.Map<VoucherDto>(updatedVoucher));
     }
+
+    // ── Normalize helpers ─────────────────────────────────────────────────────
 
     private static CreateVoucherDto NormalizeCreateRequest(CreateVoucherDto request)
     {
@@ -224,33 +262,8 @@ public class VoucherService : IVoucherService
         };
     }
 
-    private static VoucherModel CloneVoucher(VoucherModel source)
-    {
-        return new VoucherModel
-        {
-            VoucherId = source.VoucherId,
-            CreatedBy = source.CreatedBy,
-            VoucherCode = source.VoucherCode,
-            VoucherName = source.VoucherName,
-            VoucherDescription = source.VoucherDescription,
-            DiscountType = source.DiscountType,
-            DiscountValue = source.DiscountValue,
-            MaxDiscountCap = source.MaxDiscountCap,
-            DiscountTarget = source.DiscountTarget,
-            MinOrderAmount = source.MinOrderAmount,
-            TotalQuantity = source.TotalQuantity,
-            UsedQuantity = source.UsedQuantity,
-            MaxUsagePerUser = source.MaxUsagePerUser,
-            StartDate = source.StartDate,
-            EndDate = source.EndDate,
-            Status = source.Status,
-            IsDeleted = source.IsDeleted,
-            CreatedAt = source.CreatedAt,
-            UpdatedAt = source.UpdatedAt
-        };
-    }
-
-    private static CreateVoucherDto MapToCreateRequest(VoucherModel voucher)
+    // Map VoucherModel → CreateVoucherDto để validate toàn bộ sau merge
+    private static CreateVoucherDto MapToCreateDto(VoucherModel voucher)
     {
         return new CreateVoucherDto
         {
@@ -271,18 +284,13 @@ public class VoucherService : IVoucherService
     }
 
     private static string NormalizeCode(string value)
-    {
-        return value.Trim().ToUpperInvariant();
-    }
+        => value.Trim().ToUpperInvariant();
 
     private static string NormalizeToken(string value)
-    {
-        return value.Trim().ToUpperInvariant();
-    }
+        => value.Trim().ToUpperInvariant();
 
     private static string NormalizeStatus(string value)
-    {
-        return value.Trim().ToLowerInvariant() switch
+        => value.Trim().ToLowerInvariant() switch
         {
             "scheduled" => "Scheduled",
             "active" => "Active",
@@ -290,5 +298,4 @@ public class VoucherService : IVoucherService
             "expired" => "Expired",
             _ => value.Trim()
         };
-    }
 }
