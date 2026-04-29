@@ -104,6 +104,21 @@ public class TemplateRepository : ITemplateRepository
             .AnyAsync(x => x.TemplateCode.ToLower() == normalized, cancellationToken);
     }
 
+    public async Task<bool> IsUsedAsync(string templateCode, CancellationToken cancellationToken = default)
+    {
+        var isUsedInCampaigns = await _context.Campaigns
+            .AsNoTracking()
+            .AnyAsync(x => x.TemplateCode == templateCode, cancellationToken);
+
+        if (isUsedInCampaigns) return true;
+
+        var isUsedInDeliveries = await _context.Deliveries
+            .AsNoTracking()
+            .AnyAsync(x => x.TemplateCode == templateCode, cancellationToken);
+
+        return isUsedInDeliveries;
+    }
+
     public Task<TemplateModel?> GetByIdAsync(short templateId, CancellationToken cancellationToken = default)
     {
         return _context.Templates

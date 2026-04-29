@@ -37,6 +37,11 @@ public interface ITemplateRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Kiem tra xem Template da duoc su dung chua.
+    /// </summary>
+    Task<bool> IsUsedAsync(string templateCode, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Tim Template theo ID.
     /// </summary>
     Task<TemplateModel?> GetByIdAsync(short templateId, CancellationToken cancellationToken = default);
