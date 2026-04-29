@@ -158,6 +158,14 @@ public class TemplateService : ITemplateService
             return Result<TemplateListDto>.NotFound("Template", templateId);
         }
 
+        var isUsed = await _unitOfWork.Templates.IsUsedAsync(existing.TemplateCode, cancellationToken);
+        if (isUsed)
+        {
+            return Result<TemplateListDto>.Failure(
+                "BUSINESS_RULE_VIOLATION",
+                "Cannot edit template because it is already in use by campaigns or deliveries.");
+        }
+
         var normalizedCode = dto.TemplateCode.Trim();
         var normalizedTitle = dto.TitleTemplate.Trim();
         var normalizedMessage = dto.MessageTemplate.Trim();
