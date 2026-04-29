@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using StackExchange.Redis;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Application.Mappings;
@@ -20,6 +21,11 @@ public static class DependencyInjection
         services.AddDbContext<SEP490ToyStoreContext>(options =>
             options.UseSqlServer(
                 configuration.GetConnectionString("DefaultConnection")));
+
+        var redisConnectionString = configuration["Redis:ConnectionString"] ?? "localhost:6379";
+        var redisOptions = ConfigurationOptions.Parse(redisConnectionString);
+        redisOptions.AbortOnConnectFail = false;
+        services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisOptions));
 
         // Đăng ký AutoMapper
         services.AddAutoMapper(cfg =>
@@ -44,6 +50,11 @@ public static class DependencyInjection
         services.AddScoped<IBrandService, BrandService>();
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<ITemplateService, TemplateService>();
+
+        services.AddScoped<IRedisService, RedisService>();
+        services.AddScoped<IEmailService, EmailService>();
+        services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<ICurrentUserService, CurrentUserService>();
 
         return services;
     }
