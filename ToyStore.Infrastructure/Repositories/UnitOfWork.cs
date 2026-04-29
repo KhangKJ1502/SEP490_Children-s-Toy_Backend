@@ -19,8 +19,9 @@ public class UnitOfWork : IUnitOfWork
         ICategoryRepository categories,
         IAccountRepository accounts,
         IBrandRepository brands,
-        ITemplateRepository templates,
-        ICampaignRepository campaigns)
+        ICampaignRepository campaigns,
+        IProductRepository products,
+        ITemplateRepository templates)
     {
         _context = context;
         Vouchers = vouchers;
@@ -28,6 +29,7 @@ public class UnitOfWork : IUnitOfWork
         Categories = categories;
         Accounts = accounts;
         Brands = brands;
+        Products = products;
         Templates = templates;
         Campaigns = campaigns;
     }
@@ -41,6 +43,8 @@ public class UnitOfWork : IUnitOfWork
     public IAccountRepository Accounts { get; }
 
     public IBrandRepository Brands { get; }
+
+    public IProductRepository Products { get; }
 
     public ITemplateRepository Templates { get; }
 

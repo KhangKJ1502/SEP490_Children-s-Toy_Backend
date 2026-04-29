@@ -12,6 +12,8 @@ public interface IUnitOfWork : IDisposable
 
     IBrandRepository Brands { get; }
 
+    IProductRepository Products { get; }
+
     ITemplateRepository Templates { get; }
 
     ICampaignRepository Campaigns { get; }
