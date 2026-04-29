@@ -19,7 +19,8 @@ public class UnitOfWork : IUnitOfWork
         ICategoryRepository categories,
         IAccountRepository accounts,
         IBrandRepository brands,
-        ITemplateRepository templates)
+        ITemplateRepository templates,
+        IPromotionRepository promotions)
     {
         _context = context;
         Vouchers = vouchers;
@@ -28,6 +29,7 @@ public class UnitOfWork : IUnitOfWork
         Accounts = accounts;
         Brands = brands;
         Templates = templates;
+        Promotions = promotions;
     }
 
     public IVoucherRepository Vouchers { get; }
@@ -41,6 +43,8 @@ public class UnitOfWork : IUnitOfWork
     public IBrandRepository Brands { get; }
 
     public ITemplateRepository Templates { get; }
+
+    public IPromotionRepository Promotions { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

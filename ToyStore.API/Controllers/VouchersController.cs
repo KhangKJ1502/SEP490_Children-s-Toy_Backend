@@ -80,4 +80,28 @@ public class VouchersController : ControllerBase
         var result = await _voucherService.UpdateVoucherAsync(voucherId, request, cancellationToken);
         return result.ToActionResult();
     }
+
+    /// <summary>
+    /// Lấy chi tiết voucher theo ID.
+    /// </summary>
+    [HttpGet("{voucherId:int}")]
+    public async Task<ActionResult<VoucherDto>> GetVoucherById(
+        int voucherId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _voucherService.GetVoucherByIdAsync(voucherId, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Xoá mềm voucher theo ID.
+    /// </summary>
+    [HttpDelete("{voucherId:int}")]
+    public async Task<ActionResult> DeleteVoucher(
+        int voucherId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _voucherService.DeleteVoucherAsync(voucherId, cancellationToken);
+        return result.ToActionResult();
+    }
 }

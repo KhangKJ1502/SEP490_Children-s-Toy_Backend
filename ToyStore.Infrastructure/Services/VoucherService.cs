@@ -220,6 +220,66 @@ public class VoucherService : IVoucherService
         return Result<VoucherDto>.Success(_mapper.Map<VoucherDto>(updatedVoucher));
     }
 
+    public async Task<Result<VoucherDto>> GetVoucherByIdAsync(
+        int voucherId,
+        CancellationToken cancellationToken = default)
+    {
+        if (voucherId <= 0)
+        {
+            return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Voucher ID must be greater than 0.");
+        }
+
+        var voucher = await _unitOfWork.Vouchers.GetByIdAsync(voucherId, cancellationToken);
+        if (voucher is null)
+        {
+            return Result<VoucherDto>.NotFound("Voucher", voucherId);
+        }
+
+        return Result<VoucherDto>.Success(_mapper.Map<VoucherDto>(voucher));
+    }
+
+    public async Task<Result> DeleteVoucherAsync(
+        int voucherId,
+        CancellationToken cancellationToken = default)
+    {
+        if (voucherId <= 0)
+        {
+            return Result.Failure("VALIDATION_ERROR", "Voucher ID must be greater than 0.");
+        }
+
+        var voucher = await _unitOfWork.Vouchers.GetByIdAsync(voucherId, cancellationToken);
+        if (voucher is null)
+        {
+            return Result.NotFound("Voucher", voucherId);
+        }
+
+        if (voucher.IsDeleted)
+        {
+            return Result.Conflict("Voucher is already deleted.");
+        }
+
+        voucher.IsDeleted = true;
+        voucher.UpdatedAt = DateTime.UtcNow;
+
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            _unitOfWork.Vouchers.Update(voucher);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Failed to delete voucher {VoucherId}", voucherId);
+            throw;
+        }
+
+        _logger.LogInformation("Deleted voucher {VoucherId}", voucherId);
+
+        return Result.Success();
+    }
+
     // ── Normalize helpers ─────────────────────────────────────────────────────
 
     private static CreateVoucherDto NormalizeCreateRequest(CreateVoucherDto request)

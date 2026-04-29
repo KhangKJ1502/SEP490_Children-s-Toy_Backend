@@ -26,6 +26,7 @@ public static class DependencyInjection
         {
             cfg.AddProfile<VoucherProfile>();
             cfg.AddProfile<TemplateProfile>();
+            cfg.AddProfile<PromotionProfile>();
         });
 
         services.AddScoped<IVoucherRepository, VoucherRepository>();
@@ -42,6 +43,9 @@ public static class DependencyInjection
         services.AddScoped<ISuperCategoryService, SuperCategoryService>();
         services.AddScoped<IBrandService, BrandService>();
         services.AddScoped<ITemplateService, TemplateService>();
+
+        services.AddScoped<IPromotionRepository, PromotionRepository>();
+        services.AddScoped<IPromotionService, PromotionService>();
 
         return services;
     }
