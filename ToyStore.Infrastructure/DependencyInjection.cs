@@ -1,10 +1,10 @@
-using AutoMapper;
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using ToyStore.Application.Mappings;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
+using ToyStore.Application.Mappings;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Repositories;
 using ToyStore.Infrastructure.Services;
@@ -21,17 +21,29 @@ public static class DependencyInjection
             options.UseSqlServer(
                 configuration.GetConnectionString("DefaultConnection")));
 
-        services.AddAutoMapper(cfg => { }, typeof(TemplateProfile).Assembly);
+        // Đăng ký AutoMapper
+        services.AddAutoMapper(cfg =>
+        {
+            cfg.AddProfile<VoucherProfile>();
+            cfg.AddProfile<TemplateProfile>();
+        });
+
+        services.AddScoped<IVoucherRepository, VoucherRepository>();
+        services.AddScoped<IVoucherService, VoucherService>();
 
         services.AddScoped<ISuperCategoryRepository, SuperCategoryRepository>();
         services.AddScoped<ICategoryRepository, CategoryRepository>();
+        services.AddScoped<IAccountRepository, AccountRepository>();
+        services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IBrandRepository, BrandRepository>();
         services.AddScoped<ITemplateRepository, TemplateRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ICategoryService, CategoryService>();
+        services.AddScoped<ISuperCategoryService, SuperCategoryService>();
         services.AddScoped<IBrandService, BrandService>();
         services.AddScoped<ITemplateService, TemplateService>();
 
         return services;
     }
 }
+

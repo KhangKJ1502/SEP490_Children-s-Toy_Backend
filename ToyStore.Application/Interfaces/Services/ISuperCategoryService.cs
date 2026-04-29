@@ -1,18 +1,18 @@
 using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs;
-using ToyStore.Application.DTOs.Categories;
+using ToyStore.Application.DTOs.SuperCategories;
 
 namespace ToyStore.Application.Interfaces.Services;
 
 /// <summary>
-/// Service quản lý Category.
+/// Service quan ly SuperCategory.
 /// </summary>
-public interface ICategoryService
+public interface ISuperCategoryService
 {
     /// <summary>
-    /// Lấy danh sách Category có phân trang.
+    /// Lay danh sach SuperCategory co phan trang.
     /// </summary>
-    Task<Result<PaginatedResponse<CategoryListDto>>> GetCategoriesAsync(
+    Task<Result<PaginatedResponse<SuperCategoryListDto>>> GetSuperCategoriesAsync(
         int pageNumber = 1,
         int pageSize = 10,
         string? sortBy = null,
@@ -21,24 +21,24 @@ public interface ICategoryService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Tạo mới Category.
+    /// Tao moi SuperCategory.
     /// </summary>
-    Task<Result<CategoryListDto>> CreateCategoryAsync(
-        CreateCategoryDto dto,
+    Task<Result<SuperCategoryListDto>> CreateSuperCategoryAsync(
+        CreateSuperCategoryDto dto,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Cập nhật Category.
+    /// Cap nhat SuperCategory.
     /// </summary>
-    Task<Result<CategoryListDto>> UpdateCategoryAsync(
-        short categoryId,
-        UpdateCategoryDto dto,
+    Task<Result<SuperCategoryListDto>> UpdateSuperCategoryAsync(
+        short superCategoryId,
+        UpdateSuperCategoryDto dto,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Tìm kiếm Category.
+    /// Tim kiem SuperCategory.
     /// </summary>
-    Task<Result<PaginatedResponse<CategoryListDto>>> SearchCategoriesAsync(
+    Task<Result<PaginatedResponse<SuperCategoryListDto>>> SearchSuperCategoriesAsync(
         string searchTerm,
         int pageNumber = 1,
         int pageSize = 10,

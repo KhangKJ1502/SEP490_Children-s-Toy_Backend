@@ -6,6 +6,10 @@ public interface IUnitOfWork : IDisposable
 
     ICategoryRepository Categories { get; }
 
+    IAccountRepository Accounts { get; }
+
+    IVoucherRepository Vouchers { get; }
+
     IBrandRepository Brands { get; }
 
     ITemplateRepository Templates { get; }
