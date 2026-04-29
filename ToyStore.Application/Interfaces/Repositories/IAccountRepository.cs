@@ -66,4 +66,14 @@ public interface IAccountRepository
         int accountId,
         bool isActive,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lấy thông tin Account theo email để xác thực (bao gồm PasswordHash).
+    /// </summary>
+    Task<AccountAuthModel?> GetByEmailForAuthAsync(string email, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cập nhật mật khẩu Account.
+    /// </summary>
+    Task UpdatePasswordHashAsync(int accountId, string passwordHash, CancellationToken cancellationToken = default);
 }

@@ -239,4 +239,36 @@ public class AccountRepository : IAccountRepository
             UpdatedAt = entity.UpdatedAt
         };
     }
+
+    public Task<AccountAuthModel?> GetByEmailForAuthAsync(string email, CancellationToken cancellationToken = default)
+    {
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        return _context.Accounts
+            .AsNoTracking()
+            .Where(x => x.Email.ToLower() == normalizedEmail)
+            .Select(x => new AccountAuthModel
+            {
+                AccountId = x.AccountId,
+                RoleId = x.RoleId,
+                RoleName = x.Role.RoleName,
+                AccountName = x.AccountName,
+                Email = x.Email,
+                ImageUrl = x.ImageUrl,
+                PasswordHash = x.PasswordHash,
+                IsActive = x.IsActive,
+                IsDeleted = x.IsDeleted
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task UpdatePasswordHashAsync(int accountId, string passwordHash, CancellationToken cancellationToken = default)
+    {
+        var entity = await _context.Accounts
+            .FirstAsync(x => x.AccountId == accountId && !x.IsDeleted, cancellationToken);
+
+        entity.PasswordHash = passwordHash;
+        entity.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(cancellationToken);
+    }
 }
