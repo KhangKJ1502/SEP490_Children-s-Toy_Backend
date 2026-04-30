@@ -18,6 +18,9 @@ public class AccountProfile : Profile
         CreateMap<Account, AccountListDto>()
             .ForMember(dest => dest.RoleName, opt => opt.MapFrom(src => src.Role.RoleName));
 
+        CreateMap<Account, AccountInfoDto>()
+            .ForMember(dest => dest.RoleName, opt => opt.MapFrom(src => src.Role.RoleName));
+
         CreateMap<CreateAccountDto, Account>();
     }
 }
