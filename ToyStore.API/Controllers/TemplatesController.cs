@@ -62,24 +62,4 @@ public class TemplatesController : ControllerBase
         var result = await _templateService.UpdateTemplateAsync(templateId, dto, cancellationToken);
         return result.ToActionResult();
     }
-
-    [HttpGet("search")]
-    public async Task<ActionResult<PaginatedResponse<TemplateListDto>>> SearchTemplates(
-        [FromQuery] string searchTerm,
-        [FromQuery] int pageNumber = 1,
-        [FromQuery] int pageSize = 10,
-        [FromQuery] string? sortBy = null,
-        [FromQuery] bool sortDesc = false,
-        CancellationToken cancellationToken = default)
-    {
-        var result = await _templateService.SearchTemplatesAsync(
-            searchTerm,
-            pageNumber,
-            pageSize,
-            sortBy,
-            sortDesc,
-            cancellationToken);
-
-        return result.ToActionResult();
-    }
 }

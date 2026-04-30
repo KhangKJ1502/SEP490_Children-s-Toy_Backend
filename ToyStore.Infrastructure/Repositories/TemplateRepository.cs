@@ -15,7 +15,7 @@ public class TemplateRepository : ITemplateRepository
         _context = context;
     }
 
-    public async Task<List<TemplateModel>> GetPagedAsync(
+    public async Task<List<Template>> GetPagedAsync(
         int pageNumber,
         int pageSize,
         string? sortBy = null,
@@ -52,17 +52,6 @@ public class TemplateRepository : ITemplateRepository
         return await query
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
-            .Select(x => new TemplateModel
-            {
-                TemplateId = x.TemplateId,
-                TemplateCode = x.TemplateCode,
-                TitleTemplate = x.TitleTemplate,
-                MessageTemplate = x.MessageTemplate,
-                IsActive = x.IsActive,
-                IsDeleted = x.IsDeleted,
-                CreatedAt = x.CreatedAt,
-                UpdatedAt = x.UpdatedAt
-            })
             .ToListAsync(cancellationToken);
     }
 
@@ -119,26 +108,15 @@ public class TemplateRepository : ITemplateRepository
         return isUsedInDeliveries;
     }
 
-    public Task<TemplateModel?> GetByIdAsync(short templateId, CancellationToken cancellationToken = default)
+    public Task<Template?> GetByIdAsync(short templateId, CancellationToken cancellationToken = default)
     {
         return _context.Templates
             .AsNoTracking()
             .Where(x => x.TemplateId == templateId && !x.IsDeleted)
-            .Select(x => new TemplateModel
-            {
-                TemplateId = x.TemplateId,
-                TemplateCode = x.TemplateCode,
-                TitleTemplate = x.TitleTemplate,
-                MessageTemplate = x.MessageTemplate,
-                IsActive = x.IsActive,
-                IsDeleted = x.IsDeleted,
-                CreatedAt = x.CreatedAt,
-                UpdatedAt = x.UpdatedAt
-            })
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<TemplateModel> CreateAsync(
+    public async Task<Template> CreateAsync(
         string templateCode,
         string titleTemplate,
         string messageTemplate,
@@ -158,20 +136,10 @@ public class TemplateRepository : ITemplateRepository
         await _context.Templates.AddAsync(entity, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
 
-        return new TemplateModel
-        {
-            TemplateId = entity.TemplateId,
-            TemplateCode = entity.TemplateCode,
-            TitleTemplate = entity.TitleTemplate,
-            MessageTemplate = entity.MessageTemplate,
-            IsActive = entity.IsActive,
-            IsDeleted = entity.IsDeleted,
-            CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt
-        };
+        return entity;
     }
 
-    public async Task<TemplateModel> UpdateAsync(
+    public async Task<Template> UpdateAsync(
         short templateId,
         string templateCode,
         string titleTemplate,
@@ -190,16 +158,6 @@ public class TemplateRepository : ITemplateRepository
 
         await _context.SaveChangesAsync(cancellationToken);
 
-        return new TemplateModel
-        {
-            TemplateId = entity.TemplateId,
-            TemplateCode = entity.TemplateCode,
-            TitleTemplate = entity.TitleTemplate,
-            MessageTemplate = entity.MessageTemplate,
-            IsActive = entity.IsActive,
-            IsDeleted = entity.IsDeleted,
-            CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt
-        };
+        return entity;
     }
 }

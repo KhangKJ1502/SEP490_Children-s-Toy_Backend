@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging;
+using AutoMapper;
+using FluentValidation;
 using ToyStore.Domain.Entities;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Campaigns;
@@ -16,18 +18,24 @@ public class CampaignService : ICampaignService
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<CampaignService> _logger;
-    private readonly CreateCampaignValidator _createCampaignValidator;
+    private readonly IMapper _mapper;
+    private readonly IValidator<CreateCampaignDto> _createCampaignValidator;
 
-    public CampaignService(IUnitOfWork unitOfWork, ILogger<CampaignService> logger)
+    public CampaignService(
+        IUnitOfWork unitOfWork,
+        ILogger<CampaignService> logger,
+        IMapper mapper,
+        IValidator<CreateCampaignDto> createCampaignValidator)
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
-        _createCampaignValidator = new CreateCampaignValidator();
+        _mapper = mapper;
+        _createCampaignValidator = createCampaignValidator;
     }
 
-   public async Task<Result<PaginatedResponse<CampaignListDto>>> GetCampaignsAsync(
-        CampaignQueryDto query,
-        CancellationToken cancellationToken = default)
+    public async Task<Result<PaginatedResponse<CampaignListDto>>> GetCampaignsAsync(
+         CampaignQueryDto query,
+         CancellationToken cancellationToken = default)
     {
         if (query.PageNumber < 1)
         {
@@ -72,10 +80,11 @@ public class CampaignService : ICampaignService
                 "VALIDATION_ERROR", "StartDate must be less than or equal to EndDate.");
         }
 
-       var items = await _unitOfWork.Campaigns.GetPagedAsync(query, cancellationToken);
+        var items = await _unitOfWork.Campaigns.GetPagedAsync(query, cancellationToken);
         var totalCount = await _unitOfWork.Campaigns.CountAsync(query, cancellationToken);
 
-        var response = new PaginatedResponse<CampaignListDto>(items, totalCount, query.PageNumber, query.PageSize);
+        var mappedItems = _mapper.Map<List<CampaignListDto>>(items);
+        var response = new PaginatedResponse<CampaignListDto>(mappedItems, totalCount, query.PageNumber, query.PageSize);
 
         _logger.LogDebug(
             "GetCampaignsAsync returned {Count}/{Total} campaigns (page {Page}, size {Size})",
@@ -102,7 +111,8 @@ public class CampaignService : ICampaignService
 
         _logger.LogDebug("GetCampaignByIdAsync returned campaign {CampaignId}", campaignId);
 
-        return Result<CampaignDto>.Success(campaign);
+        var mappedCampaign = _mapper.Map<CampaignDto>(campaign);
+        return Result<CampaignDto>.Success(mappedCampaign);
     }
 
     public async Task<Result<CampaignDto>> CreateCampaignAsync(
@@ -143,7 +153,8 @@ public class CampaignService : ICampaignService
             _logger.LogInformation("Campaign {CampaignId} created successfully by Account {AccountId}",
                 created.CampaignId, dto.CreatedByAccountId);
 
-            return Result<CampaignDto>.Success(created);
+            var mappedCreated = _mapper.Map<CampaignDto>(created);
+            return Result<CampaignDto>.Success(mappedCreated);
         }
         catch
         {

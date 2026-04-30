@@ -15,16 +15,21 @@ public class TemplateService : ITemplateService
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<TemplateService> _logger;
     private readonly IMapper _mapper;
-    private readonly CreateTemplateValidator _createTemplateValidator;
-    private readonly UpdateTemplateValidator _updateTemplateValidator;
+    private readonly IValidator<CreateTemplateDto> _createTemplateValidator;
+    private readonly IValidator<UpdateTemplateDto> _updateTemplateValidator;
 
-    public TemplateService(IUnitOfWork unitOfWork, ILogger<TemplateService> logger, IMapper mapper)
+    public TemplateService(
+        IUnitOfWork unitOfWork,
+        ILogger<TemplateService> logger,
+        IMapper mapper,
+        IValidator<CreateTemplateDto> createTemplateValidator,
+        IValidator<UpdateTemplateDto> updateTemplateValidator)
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
         _mapper = mapper;
-        _createTemplateValidator = new CreateTemplateValidator();
-        _updateTemplateValidator = new UpdateTemplateValidator();
+        _createTemplateValidator = createTemplateValidator;
+        _updateTemplateValidator = updateTemplateValidator;
     }
 
     public async Task<Result<PaginatedResponse<TemplateListDto>>> GetTemplatesAsync(
@@ -105,31 +110,6 @@ public class TemplateService : ITemplateService
             _logger.LogError(ex, "Failed to create template with code {TemplateCode}", dto.TemplateCode);
             throw;
         }
-    }
-
-    public Task<Result<PaginatedResponse<TemplateListDto>>> SearchTemplatesAsync(
-        string searchTerm,
-        int pageNumber = 1,
-        int pageSize = 10,
-        string? sortBy = null,
-        bool sortDesc = false,
-        CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(searchTerm))
-        {
-            return Task.FromResult(
-                Result<PaginatedResponse<TemplateListDto>>.Failure(
-                    "VALIDATION_ERROR",
-                    "Search term is required."));
-        }
-
-        return GetTemplatesAsync(
-            pageNumber,
-            pageSize,
-            sortBy,
-            sortDesc,
-            searchTerm.Trim(),
-            cancellationToken);
     }
 
     public async Task<Result<TemplateListDto>> UpdateTemplateAsync(
