@@ -3,7 +3,7 @@
 > Đây là file quy tắc kiến trúc bắt buộc. Khi được tag vào, AI PHẢI tuân thủ 100% nội dung bên dưới.
 > KHÔNG được phá vỡ cấu trúc, KHÔNG tự ý thay đổi pattern, KHÔNG refactor code hiện tại.
 
----
+## "TUYỆT ĐỐI không viết hàm map bằng tay. BẮT BUỘC inject IMapper vào Constructor và dùng \_mapper.Map<DTO>(entity). Nếu chưa cấu hình, hãy tạo Profile AutoMapper bên thư mục Mappings."
 
 ## 1. Kiến trúc Solution
 
@@ -82,15 +82,15 @@ docs/
 
 ## 3. Patterns bắt buộc
 
-### 3.1 Entity (DB First — Infrastructure Layer)
+### 3.1 Entity (DB First — Domain Layer)
 
-> ⚠️ **Dự án dùng DB First** — Entity được scaffold tự động vào `ToyStore.Infrastructure/Models/`.
+> ⚠️ **Dự án dùng DB First** — Entity được scaffold tự động vào `ToyStore.Domain/Entities/`.
 > KHÔNG tạo Entity bằng tay. KHÔNG kế thừa `AuditableEntity`.
 
 - Primary Key: **`int IDENTITY(1,1)`** — KHÔNG phải Guid
 - Các field audit (`CreatedAt`, `UpdatedAt`, `IsDeleted`) nằm trực tiếp trong schema DB
 - Mọi custom logic → dùng **partial class** (không sửa file scaffold)
-- Namespace scaffold: `ToyStore.Infrastructure.Models`
+- Namespace scaffold: `ToyStore.Domain.Entities`
 
 ```csharp
 // ═══ Ví dụ Entity scaffold (Infrastructure/Models/) — KHÔNG SỬA TRỰC TIẾP ═══
@@ -153,15 +153,15 @@ Validate không chỉ kiểm tra null/empty — mà phải đảm bảo DỮ LI�
 
 #### A. Validate theo kiểu dữ liệu (BẮT BUỘC cho MỌI field):
 
-| Kiểu dữ liệu | Phải validate |
-|---------------|---------------|
-| `string` | Null/empty, min length, max length, format (regex nếu cần) |
-| `decimal` / `int` | Giá trị > 0, min, max, giới hạn hợp lý |
-| `int` (FK/PK) | Phải `> 0` (IDENTITY bắt đầu từ 1) |
-| `DateTime` | Không được quá khứ / tương lai (tuỳ logic) |
-| `enum` | Giá trị hợp lệ (nằm trong range) |
-| `List<T>` | Null check, max items, validate từng item |
-| `string?` (nullable) | Nếu có giá trị → validate length/format |
+| Kiểu dữ liệu         | Phải validate                                              |
+| -------------------- | ---------------------------------------------------------- |
+| `string`             | Null/empty, min length, max length, format (regex nếu cần) |
+| `decimal` / `int`    | Giá trị > 0, min, max, giới hạn hợp lý                     |
+| `int` (FK/PK)        | Phải `> 0` (IDENTITY bắt đầu từ 1)                         |
+| `DateTime`           | Không được quá khứ / tương lai (tuỳ logic)                 |
+| `enum`               | Giá trị hợp lệ (nằm trong range)                           |
+| `List<T>`            | Null check, max items, validate từng item                  |
+| `string?` (nullable) | Nếu có giá trị → validate length/format                    |
 
 #### B. Validate logic nghiệp vụ (BẮT BUỘC — QUAN TRỌNG NHẤT):
 
@@ -187,16 +187,16 @@ Validate không chỉ kiểm tra null/empty — mà phải đảm bảo DỮ LI�
 
 **Ví dụ nghiệp vụ cụ thể (tham khảo, KHÔNG giới hạn ở đây):**
 
-| Feature | Ví dụ logic nghiệp vụ |
-|---------|----------------------|
-| Product | SalePrice < Price, StockQuantity >= 0, MinAge < MaxAge, Price < 100tr |
-| Order | Quantity > 0, TotalAmount = Price × Qty, Address bắt buộc |
-| User | Email unique (ở Service), SĐT VN format, Password strength |
-| Review | Rating 1-5, Content min length, không review sản phẩm chưa mua |
-| Coupon | Discount 1-99%, StartDate < EndDate, MinOrderValue hợp lý |
-| Payment | Amount > 0, Amount khớp Order total |
-| Category | Name unique, không tự reference parent |
-| **Bất kỳ** | **Áp dụng toàn bộ checklist bên trên — không bỏ sót field nào** |
+| Feature    | Ví dụ logic nghiệp vụ                                                 |
+| ---------- | --------------------------------------------------------------------- |
+| Product    | SalePrice < Price, StockQuantity >= 0, MinAge < MaxAge, Price < 100tr |
+| Order      | Quantity > 0, TotalAmount = Price × Qty, Address bắt buộc             |
+| User       | Email unique (ở Service), SĐT VN format, Password strength            |
+| Review     | Rating 1-5, Content min length, không review sản phẩm chưa mua        |
+| Coupon     | Discount 1-99%, StartDate < EndDate, MinOrderValue hợp lý             |
+| Payment    | Amount > 0, Amount khớp Order total                                   |
+| Category   | Name unique, không tự reference parent                                |
+| **Bất kỳ** | **Áp dụng toàn bộ checklist bên trên — không bỏ sót field nào**       |
 
 #### C. Ví dụ mẫu đầy đủ:
 
@@ -259,6 +259,7 @@ public class CreateProductValidator : AbstractValidator<CreateProductDto>
 ```
 
 **Cách dùng trong Service:**
+
 ```csharp
 var validator = new CreateProductValidator(); // Hoặc inject IValidator<CreateProductDto>
 var validationResult = await validator.ValidateAsync(dto, cancellationToken);
@@ -272,6 +273,7 @@ if (!validationResult.IsValid)
 ```
 
 **KHÔNG ĐƯỢC:**
+
 - ❌ Tạo DTO mà không có Validator
 - ❌ Validate chỉ 1-2 field rồi bỏ qua các field còn lại
 - ❌ Bỏ qua validate cross-field logic (SalePrice < Price, MinAge < MaxAge, ...)
@@ -355,6 +357,7 @@ services.AddScoped<IXxxService, XxxService>();
 ### 3.9 Response Wrapper
 
 Dùng wrapper có sẵn trong `CommonDtos.cs`:
+
 - `ApiResponse<T>.Ok(data, message)` — có data
 - `ApiResponse<T>.Fail(message)` — lỗi có data type
 - `ApiResponse.Ok(message)` — không data
@@ -395,14 +398,14 @@ return result.ToNoContentResult();    // 204 NoContent nếu success
 Project có sẵn các exception trong `Common/Exceptions/ApplicationExceptions.cs`.
 Dùng khi cần throw exception (thay vì Result pattern):
 
-| Exception | Khi nào dùng |
-|-----------|-------------|
-| `NotFoundException` | Không tìm thấy resource |
-| `ValidationException` | Dữ liệu không hợp lệ |
-| `BusinessRuleException` | Vi phạm quy tắc nghiệp vụ |
-| `UnauthorizedException` | Không có quyền truy cập |
-| `ForbiddenException` | Bị cấm truy cập |
-| `ConflictException` | Xung đột dữ liệu (duplicate, ...) |
+| Exception               | Khi nào dùng                      |
+| ----------------------- | --------------------------------- |
+| `NotFoundException`     | Không tìm thấy resource           |
+| `ValidationException`   | Dữ liệu không hợp lệ              |
+| `BusinessRuleException` | Vi phạm quy tắc nghiệp vụ         |
+| `UnauthorizedException` | Không có quyền truy cập           |
+| `ForbiddenException`    | Bị cấm truy cập                   |
+| `ConflictException`     | Xung đột dữ liệu (duplicate, ...) |
 
 ```csharp
 throw new NotFoundException("Product", id);
@@ -439,17 +442,17 @@ public class OrderService : IOrderService
 
 **Các trường hợp BẮT BUỘC dùng Transaction:**
 
-| Chức năng | Lý do |
-|-----------|-------|
-| Tạo đơn hàng (Create Order) | Tạo Order + OrderItems + trừ tồn kho cùng lúc |
-| Thanh toán (Payment) | Cập nhật trạng thái Order + ghi Payment record |
-| Huỷ đơn hàng (Cancel Order) | Cập nhật trạng thái + hoàn tồn kho |
-| Hoàn tiền (Refund) | Cập nhật trạng thái Order + Payment + hoàn tồn kho |
-| Cập nhật tồn kho hàng loạt | Nhiều Product cập nhật cùng lúc |
-| Xoá entity có quan hệ | Soft delete entity + các entity con liên quan |
-| Import/Bulk operations | Tạo/cập nhật nhiều record cùng lúc |
-| Chuyển trạng thái phức tạp | Thay đổi trạng thái kéo theo nhiều side effect |
-| Tạo entity có quan hệ | Tạo entity cha + entity con cùng lúc |
+| Chức năng                   | Lý do                                              |
+| --------------------------- | -------------------------------------------------- |
+| Tạo đơn hàng (Create Order) | Tạo Order + OrderItems + trừ tồn kho cùng lúc      |
+| Thanh toán (Payment)        | Cập nhật trạng thái Order + ghi Payment record     |
+| Huỷ đơn hàng (Cancel Order) | Cập nhật trạng thái + hoàn tồn kho                 |
+| Hoàn tiền (Refund)          | Cập nhật trạng thái Order + Payment + hoàn tồn kho |
+| Cập nhật tồn kho hàng loạt  | Nhiều Product cập nhật cùng lúc                    |
+| Xoá entity có quan hệ       | Soft delete entity + các entity con liên quan      |
+| Import/Bulk operations      | Tạo/cập nhật nhiều record cùng lúc                 |
+| Chuyển trạng thái phức tạp  | Thay đổi trạng thái kéo theo nhiều side effect     |
+| Tạo entity có quan hệ       | Tạo entity cha + entity con cùng lúc               |
 
 **Quy tắc chung:** Nếu 1 Service method có **≥ 2 thao tác write** (Add/Update/Delete) → **BẮT BUỘC** dùng Transaction.
 
@@ -503,6 +506,7 @@ public async Task<Result<OrderDto>> CreateOrderAsync(CreateOrderDto dto, Cancell
 ```
 
 **KHÔNG ĐƯỢC:**
+
 - ❌ Thao tác nhiều bảng mà KHÔNG dùng Transaction
 - ❌ Quên Rollback trong block catch
 - ❌ Commit trước khi SaveChanges
@@ -513,7 +517,9 @@ public async Task<Result<OrderDto>> CreateOrderAsync(CreateOrderDto dto, Cancell
 Project sử dụng **AutoMapper** để chuyển đổi dữ liệu. KHÔNG được map tay thủ công (trừ các trường hợp custom logic phức tạp).
 
 **Pattern chuẩn:**
+
 1. Khai báo thư mục `ToyStore.Application/Mappings/` và tạo class kế thừa `Profile` theo feature:
+
 ```csharp
 namespace ToyStore.Application.Mappings;
 
@@ -524,12 +530,13 @@ public class ProductProfile : Profile
         CreateMap<Product, ProductDto>();
         // Ignore hoặc map custom property nếu cần
         CreateMap<CreateProductDto, Product>()
-            .ForMember(dest => dest.Slug, opt => opt.Ignore()); 
+            .ForMember(dest => dest.Slug, opt => opt.Ignore());
     }
 }
 ```
 
 2. Cách dùng trong Service:
+
 ```csharp
 // Inject IMapper vào constructor
 private readonly IMapper _mapper;
@@ -540,7 +547,7 @@ var productList = _mapper.Map<List<ProductListDto>>(products);
 ```
 
 3. Đăng ký trong `DependencyInjection.cs` của Application (nếu có) hoặc API:
-`services.AddAutoMapper(Assembly.GetExecutingAssembly());`
+   `services.AddAutoMapper(Assembly.GetExecutingAssembly());`
 
 ### 3.14 Entity Framework Core Migrations
 
@@ -548,7 +555,6 @@ Do sử dụng Clean Architecture, cấu trúc project chia làm nhiều layer. 
 
 - **Tạo Migration mới:**
   `dotnet ef migrations add <TênMigration> --project ToyStore.Infrastructure --startup-project ToyStore.API`
-  
 - **Update Database:**
   `dotnet ef database update --project ToyStore.Infrastructure --startup-project ToyStore.API`
 
@@ -556,21 +562,21 @@ Do sử dụng Clean Architecture, cấu trúc project chia làm nhiều layer. 
 
 ## 4. Quy tắc đặt tên
 
-| Loại | Pattern | Ví dụ |
-|------|---------|-------|
-| Entity | Danh từ số ít, PascalCase | `Product`, `Order`, `User` |
-| DTO | `[Entity]Dto`, `Create[Entity]Dto` | `ProductDto`, `CreateProductDto` |
-| DTO Folder | `DTOs/[Features]/` (số nhiều) | `DTOs/Products/`, `DTOs/Orders/` |
-| DTO File | `[Entity]Dto.cs`, `Create[Entity]Dto.cs` | `ProductDto.cs`, `CreateProductDto.cs` |
-| Validator Folder | `Validators/[Features]/` (số nhiều) | `Validators/Products/`, `Validators/Orders/` |
-| Validator File | `Create[Entity]Validator.cs` | `CreateProductValidator.cs` |
-| AutoMapper Profile | `[Entity]Profile.cs` (trong `Mappings/`) | `ProductProfile.cs` |
-| Interface | `I` + tên class | `IProductService`, `IProductRepository` |
-| Service | `[Entity]Service` | `ProductService`, `OrderService` |
-| Repository | `[Entity]Repository` | `ProductRepository` |
-| Controller | `[Entity]s` + `Controller` (số nhiều) | `ProductsController` |
-| Enum | PascalCase | `OrderStatus`, `ToyCategory` |
-| Namespace | Theo thư mục: `ToyStore.[Layer].[Folder]` | `ToyStore.Domain.Entities` |
+| Loại               | Pattern                                   | Ví dụ                                        |
+| ------------------ | ----------------------------------------- | -------------------------------------------- |
+| Entity             | Danh từ số ít, PascalCase                 | `Product`, `Order`, `User`                   |
+| DTO                | `[Entity]Dto`, `Create[Entity]Dto`        | `ProductDto`, `CreateProductDto`             |
+| DTO Folder         | `DTOs/[Features]/` (số nhiều)             | `DTOs/Products/`, `DTOs/Orders/`             |
+| DTO File           | `[Entity]Dto.cs`, `Create[Entity]Dto.cs`  | `ProductDto.cs`, `CreateProductDto.cs`       |
+| Validator Folder   | `Validators/[Features]/` (số nhiều)       | `Validators/Products/`, `Validators/Orders/` |
+| Validator File     | `Create[Entity]Validator.cs`              | `CreateProductValidator.cs`                  |
+| AutoMapper Profile | `[Entity]Profile.cs` (trong `Mappings/`)  | `ProductProfile.cs`                          |
+| Interface          | `I` + tên class                           | `IProductService`, `IProductRepository`      |
+| Service            | `[Entity]Service`                         | `ProductService`, `OrderService`             |
+| Repository         | `[Entity]Repository`                      | `ProductRepository`                          |
+| Controller         | `[Entity]s` + `Controller` (số nhiều)     | `ProductsController`                         |
+| Enum               | PascalCase                                | `OrderStatus`, `ToyCategory`                 |
+| Namespace          | Theo thư mục: `ToyStore.[Layer].[Folder]` | `ToyStore.Domain.Entities`                   |
 
 ---
 
@@ -614,7 +620,7 @@ Do sử dụng Clean Architecture, cấu trúc project chia làm nhiều layer. 
 
 ### 6b. Sau khi scaffold — làm theo THỨ TỰ
 
-1. *(Scaffold đã chạy)* → `ToyStore.Infrastructure/Models/` + `Data/SEP490ToyStoreContext.cs` được cập nhật tự động
+1. _(Scaffold đã chạy)_ → `ToyStore.Domain/Entities/` + `Data/SEP490ToyStoreContext.cs` được cập nhật tự động
 2. `ToyStore.Application/DTOs/[Features]/` → Tạo folder (số nhiều) + các file CRUD DTO riêng
 3. `ToyStore.Application/Interfaces/Repositories/` → Tạo `IXxxRepository`
 4. `ToyStore.Application/Interfaces/Services/` → Tạo `IXxxService`
@@ -637,14 +643,14 @@ Do sử dụng Clean Architecture, cấu trúc project chia làm nhiều layer. 
 
 **Người sửa DB (bắt buộc làm đủ 6 bước):**
 
-| Bước | Hành động |
-|------|-----------|
-| 1 | Sửa DB trên SSMS local |
-| 2 | ✏️ Viết file SQL: `docs/database/changes/YYYYMMDD_HHMM_MoTa.sql` |
-| 3 | Chạy re-scaffold |
-| 4 | Cập nhật `CHANGELOG.md` + `erd.md` |
-| 5 | `git commit` TẤT CẢ (SQL + C# models + docs) + `git push` |
-| 6 | 📢 Thông báo nhóm chat kèm tên file SQL |
+| Bước | Hành động                                                        |
+| ---- | ---------------------------------------------------------------- |
+| 1    | Sửa DB trên SSMS local                                           |
+| 2    | ✏️ Viết file SQL: `docs/database/changes/YYYYMMDD_HHMM_MoTa.sql` |
+| 3    | Chạy re-scaffold                                                 |
+| 4    | Cập nhật `CHANGELOG.md` + `erd.md`                               |
+| 5    | `git commit` TẤT CẢ (SQL + C# models + docs) + `git push`        |
+| 6    | 📢 Thông báo nhóm chat kèm tên file SQL                          |
 
 **Người nhận thay đổi (khi pull về):**
 
@@ -656,9 +662,11 @@ dotnet build ToyStore.sln  # verify không lỗi
 ```
 
 **⚠️ KHÔNG ĐƯỢC:**
+
 - ❌ Sửa DB mà không viết SQL change script
 - ❌ Commit C# models mà không có file SQL đi kèm
-- ❌ Sửa trực tiếp file `Models/*.cs` hoặc `SEP490ToyStoreContext.cs` (sẽ bị overwrite khi scaffold)
+- ❌ Sửa trực tiếp file `Entities/*.cs` hoặc `SEP490ToyStoreContext.cs` (sẽ bị overwrite khi scaffold)
+
 ---
 
 ## 7. Quy tắc Test (BẮT BUỘC)
@@ -684,6 +692,7 @@ Khi muốn AI **tự động test** một chức năng, tag file template:
 ```
 
 AI sẽ thực hiện theo quy trình trong `docs/tests/feature_test.md`:
+
 1. Khởi động server
 2. Gọi API thật qua Swagger/Browser
 3. Test đầy đủ: Happy path + Validation Error + Not Found + Business Logic
@@ -697,22 +706,24 @@ AI sẽ thực hiện theo quy trình trong `docs/tests/feature_test.md`:
 
 > ⚠️ **TẤT CẢ thông báo hiển thị ra cho người dùng (user-facing) phải bằng TIẾNG ANH. KHÔNG CÓ NGOẠI LỆ.**
 
-| Loại | Ngôn ngữ | Ví dụ |
-|------|----------|-------|
-| Validation messages (WithMessage) | 🇬🇧 **Tiếng Anh** | `"Product name is required."` |
-| API Response messages | 🇬🇧 **Tiếng Anh** | `"Product created successfully."` |
-| Error messages (Exception, Result) | 🇬🇧 **Tiếng Anh** | `"Product not found."` |
-| Business rule messages | 🇬🇧 **Tiếng Anh** | `"Sale price must be less than original price."` |
-| HTTP status messages | 🇬🇧 **Tiếng Anh** | `"Unauthorized access."` |
-| XML summary comments (`/// <summary>`) | 🇻🇳 **Tiếng Việt** | `/// Tạo sản phẩm mới.` |
-| Inline code comments (`//`) | 🇻🇳 **Tiếng Việt** | `// Kiểm tra tồn kho` |
+| Loại                                   | Ngôn ngữ          | Ví dụ                                            |
+| -------------------------------------- | ----------------- | ------------------------------------------------ |
+| Validation messages (WithMessage)      | 🇬🇧 **Tiếng Anh**  | `"Product name is required."`                    |
+| API Response messages                  | 🇬🇧 **Tiếng Anh**  | `"Product created successfully."`                |
+| Error messages (Exception, Result)     | 🇬🇧 **Tiếng Anh**  | `"Product not found."`                           |
+| Business rule messages                 | 🇬🇧 **Tiếng Anh**  | `"Sale price must be less than original price."` |
+| HTTP status messages                   | 🇬🇧 **Tiếng Anh**  | `"Unauthorized access."`                         |
+| XML summary comments (`/// <summary>`) | 🇻🇳 **Tiếng Việt** | `/// Tạo sản phẩm mới.`                          |
+| Inline code comments (`//`)            | 🇻🇳 **Tiếng Việt** | `// Kiểm tra tồn kho`                            |
 
 **KHÔNG ĐƯỢC:**
+
 - ❌ Viết WithMessage bằng tiếng Việt: `WithMessage("Tên không được trống")` → SAI
 - ❌ Viết Response bằng tiếng Việt: `ApiResponse.Fail("Không tìm thấy")` → SAI
 - ❌ Viết Exception bằng tiếng Việt: `throw new NotFoundException("Sản phẩm", id)` → SAI
 
 **ĐÚNG:**
+
 - ✅ `WithMessage("Product name is required.")`
 - ✅ `ApiResponse.Fail("Product not found.")`
 - ✅ `throw new NotFoundException("Product", id)`
@@ -734,12 +745,12 @@ AI sẽ thực hiện theo quy trình trong `docs/tests/feature_test.md`:
 
 ### 10.1 Khi nào dùng LogLevel nào
 
-| LogLevel | Khi nào dùng | Ví dụ |
-|----------|-------------|-------|
-| `LogError` | Exception, lỗi nghiêm trọng, thao tác thất bại | `_logger.LogError(ex, "Failed to create order {OrderId}", orderId)` |
-| `LogWarning` | Tình huống bất thường nhưng không crash | `_logger.LogWarning("Product {ProductId} is out of stock", id)` |
-| `LogInformation` | Thao tác thành công, sự kiện quan trọng | `_logger.LogInformation("Order {OrderId} created by User {UserId}", orderId, userId)` |
-| `LogDebug` | Thông tin debug chi tiết (chỉ bật khi cần) | `_logger.LogDebug("Query returned {Count} products", count)` |
+| LogLevel         | Khi nào dùng                                   | Ví dụ                                                                                 |
+| ---------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `LogError`       | Exception, lỗi nghiêm trọng, thao tác thất bại | `_logger.LogError(ex, "Failed to create order {OrderId}", orderId)`                   |
+| `LogWarning`     | Tình huống bất thường nhưng không crash        | `_logger.LogWarning("Product {ProductId} is out of stock", id)`                       |
+| `LogInformation` | Thao tác thành công, sự kiện quan trọng        | `_logger.LogInformation("Order {OrderId} created by User {UserId}", orderId, userId)` |
+| `LogDebug`       | Thông tin debug chi tiết (chỉ bật khi cần)     | `_logger.LogDebug("Query returned {Count} products", count)`                          |
 
 ### 10.2 Structured Logging — BẮT BUỘC
 
@@ -757,6 +768,7 @@ _logger.LogInformation($"Order {order.Id} created by User {userId}");
 ### 10.3 KHÔNG log Sensitive Data
 
 **TUYỆT ĐỐI KHÔNG ĐƯỢC log:**
+
 - ❌ Password / PasswordHash
 - ❌ Token (JWT, refresh token, API key)
 - ❌ Thông tin cá nhân nhạy cảm (CMND/CCCD, số tài khoản ngân hàng)
@@ -764,6 +776,7 @@ _logger.LogInformation($"Order {order.Id} created by User {userId}");
 - ❌ Request body chứa password
 
 **ĐƯỢC phép log:**
+
 - ✅ Entity ID (ProductId, OrderId, UserId)
 - ✅ Email (cho mục đích trace)
 - ✅ Action name, endpoint, HTTP method
@@ -824,13 +837,13 @@ var products = await _context.Products
 
 ### 12.1 Tên tham số chuẩn
 
-| Param | Type | Default | Min | Max | Mô tả |
-|-------|------|---------|-----|-----|-------|
-| `pageNumber` | `int` | `1` | `1` | — | Trang hiện tại |
-| `pageSize` | `int` | `10` | `1` | `100` | Số item mỗi trang |
-| `sortBy` | `string?` | `null` | — | — | Tên field để sort (ví dụ: `"price"`, `"name"`, `"createdAt"`) |
-| `sortDesc` | `bool` | `false` | — | — | `true` = giảm dần, `false` = tăng dần |
-| `searchTerm` | `string?` | `null` | — | — | Từ khoá tìm kiếm |
+| Param        | Type      | Default | Min | Max   | Mô tả                                                         |
+| ------------ | --------- | ------- | --- | ----- | ------------------------------------------------------------- |
+| `pageNumber` | `int`     | `1`     | `1` | —     | Trang hiện tại                                                |
+| `pageSize`   | `int`     | `10`    | `1` | `100` | Số item mỗi trang                                             |
+| `sortBy`     | `string?` | `null`  | —   | —     | Tên field để sort (ví dụ: `"price"`, `"name"`, `"createdAt"`) |
+| `sortDesc`   | `bool`    | `false` | —   | —     | `true` = giảm dần, `false` = tăng dần                         |
+| `searchTerm` | `string?` | `null`  | —   | —     | Từ khoá tìm kiếm                                              |
 
 ### 12.2 Tất cả endpoint trả danh sách PHẢI dùng `PaginatedResponse<T>`
 
@@ -857,6 +870,7 @@ return new PaginatedResponse<ProductListDto>(items, totalCount, pageNumber, page
 ```
 
 **KHÔNG ĐƯỢC:**
+
 - ❌ Trả về `List<T>` cho endpoint danh sách (phải dùng `PaginatedResponse<T>`)
 - ❌ Dùng tên param khác (ví dụ: `page`, `size`, `limit`, `offset`)
 - ❌ Default `pageSize` lớn hơn 100
@@ -868,13 +882,13 @@ return new PaginatedResponse<ProductListDto>(items, totalCount, pageNumber, page
 
 ### 13.1 Các Role trong hệ thống
 
-| Role | Mô tả |
-|------|-------|
-| `Guest` | Khách chưa đăng nhập — chỉ xem sản phẩm, danh mục |
-| `Customer` | Khách hàng đã đăng nhập — mua hàng, quản lý đơn, review |
-| `Staff` | Nhân viên — xử lý đơn hàng, quản lý tồn kho |
-| `Merchandise` | Quản lý hàng hoá — CRUD sản phẩm, danh mục, khuyến mãi |
-| `Admin` | Quản trị viên — toàn quyền hệ thống |
+| Role          | Mô tả                                                   |
+| ------------- | ------------------------------------------------------- |
+| `Guest`       | Khách chưa đăng nhập — chỉ xem sản phẩm, danh mục       |
+| `Customer`    | Khách hàng đã đăng nhập — mua hàng, quản lý đơn, review |
+| `Staff`       | Nhân viên — xử lý đơn hàng, quản lý tồn kho             |
+| `Merchandise` | Quản lý hàng hoá — CRUD sản phẩm, danh mục, khuyến mãi  |
+| `Admin`       | Quản trị viên — toàn quyền hệ thống                     |
 
 ### 13.2 Quy tắc Authorize
 
@@ -945,6 +959,7 @@ public class CurrentUserService : ICurrentUserService
 ```
 
 **KHÔNG ĐƯỢC:**
+
 - ❌ Inject `IHttpContextAccessor` trực tiếp vào Service
 - ❌ Đọc `HttpContext.User.Claims` trong Service layer
 - ❌ Để endpoint public mà không ghi `[AllowAnonymous]`
@@ -1002,19 +1017,20 @@ public class FeatureConfiguration : IEntityTypeConfiguration<Feature>
 
 ### 14.3 Những gì PHẢI khai báo trong Configuration
 
-| Cấu hình | Bắt buộc | Ví dụ |
-|-----------|----------|-------|
-| Table name | ✅ | `builder.ToTable("Products")` |
-| Primary key | ✅ | `builder.HasKey(p => p.Id)` |
-| Required fields | ✅ | `.IsRequired()` |
-| MaxLength (string) | ✅ | `.HasMaxLength(256)` |
-| Precision (decimal) | ✅ | `.HasPrecision(12, 0)` (VND) hoặc `.HasPrecision(5, 2)` (%) |
-| Unique index | ✅ (nếu có) | `.HasIndex(p => p.SKU).IsUnique()` |
-| Foreign key | ✅ | `.HasForeignKey(p => p.CategoryId)` |
-| Delete behavior | ✅ | `.OnDelete(DeleteBehavior.Restrict)` |
-| Index (query perf) | Nên | `.HasIndex(p => p.CategoryId)` |
+| Cấu hình            | Bắt buộc    | Ví dụ                                                       |
+| ------------------- | ----------- | ----------------------------------------------------------- |
+| Table name          | ✅          | `builder.ToTable("Products")`                               |
+| Primary key         | ✅          | `builder.HasKey(p => p.Id)`                                 |
+| Required fields     | ✅          | `.IsRequired()`                                             |
+| MaxLength (string)  | ✅          | `.HasMaxLength(256)`                                        |
+| Precision (decimal) | ✅          | `.HasPrecision(12, 0)` (VND) hoặc `.HasPrecision(5, 2)` (%) |
+| Unique index        | ✅ (nếu có) | `.HasIndex(p => p.SKU).IsUnique()`                          |
+| Foreign key         | ✅          | `.HasForeignKey(p => p.CategoryId)`                         |
+| Delete behavior     | ✅          | `.OnDelete(DeleteBehavior.Restrict)`                        |
+| Index (query perf)  | Nên         | `.HasIndex(p => p.CategoryId)`                              |
 
 **KHÔNG ĐƯỢC:**
+
 - ❌ Dùng `[Required]`, `[MaxLength(200)]`, `[Key]` trên Entity class
 - ❌ Gộp nhiều Configuration vào 1 file (mỗi Entity 1 file riêng)
 - ❌ Quên khai báo `HasPrecision` cho decimal (sẽ bị truncate)
@@ -1036,11 +1052,11 @@ Pipeline: Request → Middleware (catch) → Controller → Service → Reposito
 
 ### 15.2 Quy tắc try/catch
 
-| Layer | try/catch | Giải thích |
-|-------|-----------|-----------|
-| **Controller** | ❌ **KHÔNG** dùng try/catch | Middleware đã xử lý |
-| **Service** | ✅ **CHỈ** cho Transaction | BeginTransaction → try → Commit → catch → Rollback |
-| **Repository** | ❌ **KHÔNG** dùng try/catch | Để exception bubble up |
+| Layer          | try/catch                   | Giải thích                                         |
+| -------------- | --------------------------- | -------------------------------------------------- |
+| **Controller** | ❌ **KHÔNG** dùng try/catch | Middleware đã xử lý                                |
+| **Service**    | ✅ **CHỈ** cho Transaction  | BeginTransaction → try → Commit → catch → Rollback |
+| **Repository** | ❌ **KHÔNG** dùng try/catch | Để exception bubble up                             |
 
 ```csharp
 // ✅ ĐÚNG — Controller KHÔNG có try/catch
@@ -1087,6 +1103,7 @@ public async Task<ActionResult> Create(CreateProductDto dto)
 ```
 
 **KHÔNG ĐƯỢC:**
+
 - ❌ Bọc try/catch trong Controller
 - ❌ Bọc try/catch trong Repository
 - ❌ Nuốt exception (catch mà không throw lại) trong Service
@@ -1109,6 +1126,7 @@ public async Task<ActionResult> Create(CreateProductDto dto)
 - ✅ Code phải build được trên cả Windows và Linux (Docker dùng Linux container)
 
 **KHÔNG ĐƯỢC:**
+
 - ❌ Commit code mà `dotnet build` fail
 - ❌ Hardcode password, API key, secret trong file `.cs`
 - ❌ Dùng đường dẫn Windows-only (`C:\`, `D:\`) trong code runtime
@@ -1118,23 +1136,23 @@ public async Task<ActionResult> Create(CreateProductDto dto)
 
 AI **được phép tự sửa** Entity + Configuration khi gặp các trường hợp rõ ràng sai:
 
-| Vấn đề | Ví dụ | AI được tự sửa? |
-|--------|-------|----------------|
-| Thiếu kiểu dữ liệu rõ ràng | `string` thay vì `decimal` cho giá tiền | ✅ Tự sửa + thông báo |
-| Thiếu `HasPrecision` cho decimal | `Price` không có precision | ✅ Tự sửa + thông báo |
-| Thiếu index cho FK | FK không có index | ✅ Tự sửa + thông báo |
-| `OnDelete` mặc định Cascade | FK chưa có `DeleteBehavior.Restrict` | ✅ Tự sửa + thông báo |
-| Thiếu `IsRequired` cho field bắt buộc | Field quan trọng có thể null | ✅ Tự sửa + thông báo |
+| Vấn đề                                | Ví dụ                                   | AI được tự sửa?       |
+| ------------------------------------- | --------------------------------------- | --------------------- |
+| Thiếu kiểu dữ liệu rõ ràng            | `string` thay vì `decimal` cho giá tiền | ✅ Tự sửa + thông báo |
+| Thiếu `HasPrecision` cho decimal      | `Price` không có precision              | ✅ Tự sửa + thông báo |
+| Thiếu index cho FK                    | FK không có index                       | ✅ Tự sửa + thông báo |
+| `OnDelete` mặc định Cascade           | FK chưa có `DeleteBehavior.Restrict`    | ✅ Tự sửa + thông báo |
+| Thiếu `IsRequired` cho field bắt buộc | Field quan trọng có thể null            | ✅ Tự sửa + thông báo |
 
 AI **PHẢI HỎI TRƯỚC** khi gặp thay đổi ảnh hưởng lớn:
 
-| Vấn đề | Ví dụ | Xử lý |
-|--------|-------|-------|
-| Đổi quan hệ giữa các bảng | 1-1 thành 1-N | ❓ Hỏi trước |
-| Thêm / xoá column | Thêm column vào bảng đang có data | ❓ Hỏi trước |
-| Đổi tên bảng / column | Rename entity hoặc property | ❓ Hỏi trước |
-| Tách / gộp bảng | Tách `Users` thành `Users` + `UserProfiles` | ❓ Hỏi trước |
-| Thay đổi Primary Key | Đổi từ `int` sang `Guid` | ❓ Hỏi trước |
+| Vấn đề                    | Ví dụ                                       | Xử lý        |
+| ------------------------- | ------------------------------------------- | ------------ |
+| Đổi quan hệ giữa các bảng | 1-1 thành 1-N                               | ❓ Hỏi trước |
+| Thêm / xoá column         | Thêm column vào bảng đang có data           | ❓ Hỏi trước |
+| Đổi tên bảng / column     | Rename entity hoặc property                 | ❓ Hỏi trước |
+| Tách / gộp bảng           | Tách `Users` thành `Users` + `UserProfiles` | ❓ Hỏi trước |
+| Thay đổi Primary Key      | Đổi từ `int` sang `Guid`                    | ❓ Hỏi trước |
 
 ### 16.2 Quy tắc Re-Scaffold (DB First)
 
@@ -1144,17 +1162,19 @@ AI **PHẢI HỎI TRƯỚC** khi gặp thay đổi ảnh hưởng lớn:
 - AI **KHÔNG được tự chạy scaffold** mà không hỏi trước
 - Khi cần re-scaffold, AI phải:
   1. Thông báo rõ bảng/cột nào vừa thay đổi trên DB
-  2. Hỏi: *"Bạn có muốn tôi chạy lại scaffold không?"*
+  2. Hỏi: _"Bạn có muốn tôi chạy lại scaffold không?"_
   3. Chờ xác nhận → mới chạy lệnh:
   ```powershell
   dotnet ef dbcontext scaffold "Server=DESKTOP-T27O90D\SQLEXPRESS;Database=SEP409_ToyStore;User ID=sa;Password=khangmc1502@;TrustServerCertificate=True;" Microsoft.EntityFrameworkCore.SqlServer --project ToyStore.Infrastructure --startup-project ToyStore.API --output-dir Models --context-dir Data --context SEP490ToyStoreContext --no-onconfiguring --force
   ```
+
   4. Sau khi chạy xong → **BẮT BUỘC cập nhật `docs/database/`** (xem Section 17)
 - **KHÔNG** dùng `dotnet ef migrations add` — project này không dùng Code First migration
 
 ### 16.3 Khi phát hiện DB chưa hợp lý
 
 Nếu phát hiện schema có vấn đề nhưng không thuộc diện tự sửa, AI phải:
+
 1. **Tiếp tục code theo schema hiện tại** — không dừng lại
 2. **Thông báo ở cuối response** theo format:
 
@@ -1208,6 +1228,7 @@ Data hiện tại:
 Chỉ tiến hành sau khi đã hiển thị bảng impact và được xác nhận (với thay đổi lớn).
 
 **KHÔNG ĐƯỢC:**
+
 - ❌ Sửa Entity mà không kiểm tra bảng nào đang có FK trỏ tới
 - ❌ Đổi quan hệ mà không kiểm tra Service/Repository đang dùng nó
 - ❌ Tạo migration mà không kiểm tra data hiện có bị ảnh hưởng không
@@ -1221,10 +1242,10 @@ Chỉ tiến hành sau khi đã hiển thị bảng impact và được xác nh�
 
 > ⚠️ **Hai sự kiện sau ĐỀU phải cập nhật tài liệu. KHÔNG CÓ NGOẠI LỆ.**
 
-| Sự kiện | Hành động bắt buộc |
-|---------|--------------------|
-| Tạo migration mới | Cập nhật `docs/database/CHANGELOG.md` + `docs/database/erd.md` |
-| Thêm feature mới (bước 16 trong Section 6) | Cập nhật `docs/database/erd.md` |
+| Sự kiện                                    | Hành động bắt buộc                                             |
+| ------------------------------------------ | -------------------------------------------------------------- |
+| Tạo migration mới                          | Cập nhật `docs/database/CHANGELOG.md` + `docs/database/erd.md` |
+| Thêm feature mới (bước 16 trong Section 6) | Cập nhật `docs/database/erd.md`                                |
 
 ---
 
@@ -1307,16 +1328,17 @@ erDiagram
 
 ## Ghi chú quan hệ
 
-| Quan hệ | Delete Behavior | Ghi chú |
-|---------|-----------------|---------|
-| Products → Categories | RESTRICT | Không xoá Category đang có Product |
-| Orders → Users | RESTRICT | Không xoá User đang có Order |
-| OrderItems → Orders | CASCADE | Xoá Order thì xoá Item |
-| OrderItems → Products | RESTRICT | Không xoá Product đang có OrderItem |
-| Categories → Categories | SET NULL | Xoá cha thì con.ParentId = NULL |
+| Quan hệ                 | Delete Behavior | Ghi chú                             |
+| ----------------------- | --------------- | ----------------------------------- |
+| Products → Categories   | RESTRICT        | Không xoá Category đang có Product  |
+| Orders → Users          | RESTRICT        | Không xoá User đang có Order        |
+| OrderItems → Orders     | CASCADE         | Xoá Order thì xoá Item              |
+| OrderItems → Products   | RESTRICT        | Không xoá Product đang có OrderItem |
+| Categories → Categories | SET NULL        | Xoá cha thì con.ParentId = NULL     |
 ````
 
 **Quy tắc cập nhật `erd.md`:**
+
 - Thêm Entity → thêm block entity + dòng relationship tương ứng
 - Sửa column → cập nhật trong block entity
 - Thêm FK → thêm dòng vào bảng "Ghi chú quan hệ"
@@ -1339,14 +1361,14 @@ Mỗi migration = 1 entry. Entry mới nhất **nằm trên cùng**.
 
 ### Thay đổi
 
-| Loại | Bảng | Chi tiết |
-|------|------|----------|
-| ➕ Thêm bảng | `OrderItems` | Lưu chi tiết từng dòng trong đơn hàng |
-| ➕ Thêm cột | `Products.SalePrice` | `decimal(18,2)`, nullable — giá khuyến mãi |
-| 🔧 Sửa cột | `Products.Name` | Tăng MaxLength từ 100 → 200 |
-| ➕ Thêm index | `IX_Products_CategoryId` | Tăng performance query theo danh mục |
-| ➕ Thêm FK | `Products.CategoryId → Categories.Id` | RESTRICT on delete |
-| 🗑️ Xoá cột | `Products.OldField` | Không còn sử dụng |
+| Loại          | Bảng                                  | Chi tiết                                   |
+| ------------- | ------------------------------------- | ------------------------------------------ |
+| ➕ Thêm bảng  | `OrderItems`                          | Lưu chi tiết từng dòng trong đơn hàng      |
+| ➕ Thêm cột   | `Products.SalePrice`                  | `decimal(18,2)`, nullable — giá khuyến mãi |
+| 🔧 Sửa cột    | `Products.Name`                       | Tăng MaxLength từ 100 → 200                |
+| ➕ Thêm index | `IX_Products_CategoryId`              | Tăng performance query theo danh mục       |
+| ➕ Thêm FK    | `Products.CategoryId → Categories.Id` | RESTRICT on delete                         |
+| 🗑️ Xoá cột    | `Products.OldField`                   | Không còn sử dụng                          |
 
 ### Lý do
 
@@ -1371,8 +1393,8 @@ dotnet ef dbcontext scaffold "Server=DESKTOP-T27O90D\SQLEXPRESS;Database=SEP409_
 
 > Xem chi tiết đầy đủ trong `docs/database/CHANGELOG.md`
 
-| Loại | Chi tiết |
-|------|----------|
+| Loại        | Chi tiết                                                  |
+| ----------- | --------------------------------------------------------- |
 | ➕ Khởi tạo | Toàn bộ 47 bảng + triggers + indexes — xem `CHANGELOG.md` |
 
 ### Cách áp dụng
@@ -1384,6 +1406,7 @@ dotnet ef dbcontext scaffold "Server=DESKTOP-T27O90D\SQLEXPRESS;Database=SEP409_
 ````
 
 **Quy tắc viết CHANGELOG:**
+
 - Dùng icon: ➕ thêm mới / 🔧 sửa / 🗑️ xoá
 - Tên migration phải mô tả rõ nội dung: `AddSalePriceToProducts`, `CreateOrderItemsTable`
 - **KHÔNG** đặt tên chung chung: `Update`, `Fix`, `Migration1`, `Change`
@@ -1411,6 +1434,7 @@ Sau khi hoàn thành migration hoặc thêm feature, AI **BẮT BUỘC** báo c�
 ```
 
 **KHÔNG ĐƯỢC:**
+
 - ❌ Tạo migration mà không thêm entry vào `CHANGELOG.md`
 - ❌ Thêm Entity mới mà không cập nhật `erd.md`
 - ❌ Viết entry CHANGELOG thiếu bảng "Thay đổi" hoặc "Lý do"
@@ -1425,7 +1449,9 @@ Sau khi hoàn thành migration hoặc thêm feature, AI **BẮT BUỘC** báo c�
 Vì dự án sẽ publish sản phẩm cho người dùng thực tế, AI và Developers **BẮT BUỘC** phải tuân thủ nghiêm ngặt các quy tắc về khả năng mở rộng (Scalability) và bảo vệ dữ liệu dưới tải cao (High Concurrency).
 
 ### 18.1 Concurrency Control (Kiểm soát đồng thời) — LUÔN PHẢI CHỐNG ÂM KHO
+
 Mọi thao tác thay đổi số lượng tồn kho (`StockQuantity`), số dư tài khoản, điểm thưởng hoặc mã giảm giá (giới hạn số lượng) **KHÔNG ĐƯỢC PHÉP** chỉ kiểm tra thông thường, vì nếu có 2 luồng (thread) chạy cùng một mili-giây sẽ dẫn đến thất thoát hoặc âm kho (Race Condition).
+
 - **Optimistic Concurrency:** Entity cần có 1 field dạng `.IsRowVersion()` (hoặc `[Timestamp]`). Dùng cơ chế bắt và xử lý `DbUpdateConcurrencyException`.
 - **Pessimistic Concurrency:** Sử dụng khoá raw SQL kiểu `SELECT ... WITH (UPDLOCK)` trước khi thay đổi lượng tồn (nếu không dùng RowVersion).
 
@@ -1435,12 +1461,12 @@ if (product.StockQuantity < item.Quantity) return Error;
 product.StockQuantity -= item.Quantity;
 
 // ✅ ĐÚNG: Xử lý theo Optimistic Concurrency (khi SaveChanges sẽ văng lỗi do RowVersion khác)
-try 
+try
 {
     product.StockQuantity -= item.Quantity;
     await _unitOfWork.SaveChangesAsync(ct);
 }
-catch (DbUpdateConcurrencyException ex) 
+catch (DbUpdateConcurrencyException ex)
 {
     // Báo lỗi conflict để chặn giao dịch thứ 2 nẫng tay trên
     return Result.Conflict("Sản phẩm đã bị thay đổi (hoặc hết hàng) trước khi bạn kịp thanh toán. Vui lòng kiểm tra lại giỏ hàng.");
@@ -1448,32 +1474,43 @@ catch (DbUpdateConcurrencyException ex)
 ```
 
 ### 18.2 Caching Strategy (Chiến lược bộ nhớ đệm)
+
 Do traffic trên trang thương mại điện tử có tới hơn 90% là đọc dữ liệu.
+
 - Mọi API truy xuất **thông tin dùng chung** như: List Category, Product trang chủ, Chi tiết Product, Cấu hình web, v.v.. **BẮT BUỘC** phải có Caching (dùng `IMemoryCache` cho ứng dụng đơn hoặc `Redis` cho môi trường Cluster/Microservice).
 - Cache Invalidation: Khi có lệnh tạo mới/cập nhật/xoá (Create/Update/Delete) tác động vào dữ liệu đã cache, phải tiến hành XÓA các key cache liên quan trước khi return result.
 
 ### 18.3 Xử lý tác vụ nền (Background Jobs / Asynchronous Messaging)
+
 Trong luồng (pipeline) thanh toán/tạo đơn hàng, **KHÔNG ĐƯỢC** gọi trực tiếp (synchronous) vào các dịch vụ bên thứ ba (Third-party) chậm chạp.
+
 - Ví dụ: Gửi Email xác nhận đơn giản, đẩy đơn sang đơn vị giao hàng ảo (GHN), tính toán phân tích user.
 - **BẮT BUỘC** dùng Queue/Message Broker (RabbitMQ / Azure Service Bus) hoặc Hangfire để đẩy Message cho `ToyStore.Worker` chạy ngầm. Việc này đảm bảo API phản hồi siêu nhanh cho người mua mà không lo sập toàn bộ giao dịch nếu máy chủ Email bị hỏng.
 
 ### 18.4 API Security, CORS & Rate Limiting (Bảo mật dịch vụ)
+
 - **Rate Limit:** Các API công cộng đặc thù (VD: `POST /api/users/login`, `POST /api/reviews`) phải được bọc [EnableRateLimiting] để giới hạn số request chặn Spam và Bruteforce.
 - **CORS Configuration:** Tuyệt đối không xài `.AllowAnyOrigin()` trên môi trường Production. Cấu hình Allowed Origins phải đọc từ `appsettings.Production.json` trỏ đúng vào các web domain (FrontEnd) đã mua.
 - Error handling: Đảm bảo code Middleware báo exception không bao giờ leak chi tiết SQL Query hay internal error lines ở chế độ Prod.
 
 ### 18.5 Idempotency Key (Tính luỹ đẳng cho hóa đơn)
+
 Trong API Checkout/Payment, người dùng có xu hướng ấn double click / spam chuột khi load chậm.
+
 - **BẮT BUỘC** API Payment / Create Order phải nhận vào một mã `Idempotency-Key` gửi từ phía giao diện UI (VD: UUID tự gen trong form).
 - Server phải lưu và check mã này (thường bằng Redis). Nếu request tiếp theo gửi đến có mang mã y hệt mà đơn trước đó đang chạy hoặc đã tạo xong, server nhả ra kết quả của đơn đầu tiên và bỏ qua không insert Db lần hai (Tránh việc trừ thẻ 2 lần hoặc đắp đúp giỏ hàng).
 
 ### 18.6 Health Checks & Giám sát hệ thống (Monitoring)
+
 Khi đưa lên Production (Deploy lên Docker/Kubernetes hay VPS), hệ thống cân bằng tải (Load Balancer / Nginx) cần biết API có đang bị "treo" hay không để khởi động lại.
+
 - **BẮT BUỘC** khai báo Endpoint `/health` (dùng `AddHealthChecks()`).
 - Health Check không chỉ quét server API, mà phải quét cả tình trạng kết nối tới SQL Server SQL, Redis và RabbitMQ. Nếu 1 trong 3 tèo, trả về 503 Unhealthy.
 
 ### 18.7 Khả năng chịu lỗi với bên thứ 3 (Resilience & Polly)
+
 Trong E-Commerce sẽ gọi rất nhiều API ngoài (VNPAY, Momo, Giao Hàng Nhanh, SendGrid). Các dịch vụ này thỉnh thoảng sẽ bị đứt cáp hoặc bảo trì.
+
 - **Quy tắc:** MỌI HTTP Call ra bên ngoài đều LỖI TIỀM ẨN.
 - **BẮT BUỘC** sử dụng thư viện **Polly** (hoặc `Microsoft.Extensions.Http.Resilience` ở .NET 8) gắn vào `HttpClient` để cài đặt cơ chế:
   1. **Retry:** Tự động thử lại 2-3 lần nếu rớt mạng (trừ thao tác thanh toán trực tiếp).
@@ -1481,11 +1518,15 @@ Trong E-Commerce sẽ gọi rất nhiều API ngoài (VNPAY, Momo, Giao Hàng Nh
   3. **Circuit Breaker:** Nếu GHN sập liên tục 5 lần, ngắt luôn việc gọi và trực tiếp báo lỗi cho khách: "Hệ thống vận chuyển đang bảo trì", 15 phút sau mới mở lại.
 
 ### 18.8 Quản lý thiết lập nhạy cảm (Secrets Management)
+
 Vì là mã nguồn Product, rò rỉ mã bí mật = Phá sản hoặc đền bù tiền tỷ.
+
 - **TUYỆT ĐỐI KHÔNG** lưu các giá trị sau vào `appsettings.json` hay code rồi Commit lên Github (kể cả Repo Private): ConnectionString chứa Pass SQL Prod, JWT Secret Key, VNPAY HashSecret, SendGrid API Key.
 - **BẮT BUỘC** phải đọc các biến này từ **Environment Variables (Biến môi trường OS)** hoặc dịch vụ mã hoá (AWS Secrets Manager / Azure Key Vault / Azure App Configuration). File `appsettings.json` chỉ chứa cấu trúc rỗng `""` hoặc cấu hình DEV.
 
 ### 18.9 Chống sập RAM (Out Of Memory) bằng Unbounded Queries
+
 Lỗi phổ biến nhất khi Dev E-commerce là lúc code thì DB có vài dòng chạy rất nhanh, lên Prod vài trăm ngàn dòng thì Server "Bùm".
+
 - **BẮT BUỘC PHẢI PAGINATION:** Ngoại trừ truy vấn lấy chi tiết 1 Entity bằng `Id` (`FirstOrDefaultAsync`), **TẤT CẢ** các câu lệnh lấy danh sách bằng `.ToListAsync()` đều phải có `.Take(n)` hoặc `.Where()` giới hạn tập dữ liệu rất gắt gao.
 - **HỌC THUỘC:** Đừng bao giờ làm điều này 👉 `var orders = await _context.Orders.ToListAsync();` (Kéo sạch dữ liệu bảng Orders lên bộ nhớ RAM Server C#). Hệ thống sẽ văng OutOfMemoryException (OOM) kịch kim CPU và sập máy chủ. Mọi danh sách phải giới hạn tối đa 50-100 bản ghi 1 lần lấy.
