@@ -93,6 +93,8 @@ public static class DependencyInjection
         services.AddScoped<IPromotionRepository, PromotionRepository>();
         services.AddScoped<IPromotionService, PromotionService>();
 
+        services.AddScoped<IImageUploadService, CloudinaryImageUploadService>();
+
         return services;
     }
 }
