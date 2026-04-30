@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using ToyStore.Application.Common.Models;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.API.Extensions;
 

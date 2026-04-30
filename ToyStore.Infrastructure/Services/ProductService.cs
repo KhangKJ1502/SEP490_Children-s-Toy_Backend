@@ -6,7 +6,7 @@ using ToyStore.Application.DTOs.Products;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Application.Validators.Products;
-
+using ToyStore.Domain.Entities;
 namespace ToyStore.Infrastructure.Services;
 
 public class ProductService : IProductService

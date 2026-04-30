@@ -1,6 +1,6 @@
 using FluentValidation;
 using Microsoft.Extensions.Logging;
-using ToyStore.Application.Common.Models;
+using ToyStore.Domain.Entities;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Categories;
 using ToyStore.Application.Interfaces.Repositories;

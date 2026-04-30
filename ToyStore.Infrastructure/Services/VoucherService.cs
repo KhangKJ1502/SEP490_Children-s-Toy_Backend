@@ -6,7 +6,7 @@ using ToyStore.Application.DTOs.Vouchers;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Application.Validators.Vouchers;
-
+using ToyStore.Domain.Entities;
 namespace ToyStore.Infrastructure.Services;
 
 /// <summary>

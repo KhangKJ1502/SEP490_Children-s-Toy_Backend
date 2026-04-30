@@ -1,13 +1,13 @@
 using System.Security.Cryptography;
 using System.Text;
+using AutoMapper;
 using FluentValidation;
 using Microsoft.Extensions.Logging;
-using ToyStore.Application.Common.Models;
+using ToyStore.Domain.Entities;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Accounts;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
-using ToyStore.Application.Validators.Accounts;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -17,16 +17,23 @@ public class AccountService : IAccountService
     private const byte MerchandiserRoleId = 4;
 
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMapper _mapper;
     private readonly ILogger<AccountService> _logger;
-    private readonly CreateAccountValidator _createAccountValidator;
-    private readonly UpdateAccountStatusValidator _updateAccountStatusValidator;
+    private readonly IValidator<CreateAccountDto> _createAccountValidator;
+    private readonly IValidator<UpdateAccountStatusDto> _updateAccountStatusValidator;
 
-    public AccountService(IUnitOfWork unitOfWork, ILogger<AccountService> logger)
+    public AccountService(
+        IUnitOfWork unitOfWork,
+        IMapper mapper,
+        ILogger<AccountService> logger,
+        IValidator<CreateAccountDto> createAccountValidator,
+        IValidator<UpdateAccountStatusDto> updateAccountStatusValidator)
     {
         _unitOfWork = unitOfWork;
+        _mapper = mapper;
         _logger = logger;
-        _createAccountValidator = new CreateAccountValidator();
-        _updateAccountStatusValidator = new UpdateAccountStatusValidator();
+        _createAccountValidator = createAccountValidator;
+        _updateAccountStatusValidator = updateAccountStatusValidator;
     }
 
     public async Task<Result<PaginatedResponse<AccountListDto>>> GetAccountsAsync(
@@ -61,7 +68,7 @@ public class AccountService : IAccountService
             normalizedSearchTerm,
             cancellationToken);
 
-        var mappedItems = items.Select(MapToListDto).ToList();
+        var mappedItems = _mapper.Map<List<AccountListDto>>(items);
 
         var response = new PaginatedResponse<AccountListDto>(mappedItems, totalCount, pageNumber, pageSize);
         return Result<PaginatedResponse<AccountListDto>>.Success(response);
@@ -82,7 +89,7 @@ public class AccountService : IAccountService
             return Result<AccountDto>.NotFound("Account", accountId);
         }
 
-        return Result<AccountDto>.Success(MapToDto(account));
+        return Result<AccountDto>.Success(_mapper.Map<AccountDto>(account));
     }
 
     public async Task<Result<AccountDto>> CreateAccountAsync(
@@ -147,7 +154,7 @@ public class AccountService : IAccountService
                 created.AccountId,
                 created.RoleId);
 
-            return Result<AccountDto>.Success(MapToDto(created));
+            return Result<AccountDto>.Success(_mapper.Map<AccountDto>(created));
         }
         catch (Exception ex)
         {
@@ -185,7 +192,7 @@ public class AccountService : IAccountService
 
         if (existing.IsActive == dto.IsActive!.Value)
         {
-            return Result<AccountDto>.Success(MapToDto(existing));
+            return Result<AccountDto>.Success(_mapper.Map<AccountDto>(existing));
         }
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
@@ -203,7 +210,7 @@ public class AccountService : IAccountService
                 accountId,
                 updated.IsActive);
 
-            return Result<AccountDto>.Success(MapToDto(updated));
+            return Result<AccountDto>.Success(_mapper.Map<AccountDto>(updated));
         }
         catch (Exception ex)
         {
@@ -259,37 +266,4 @@ public class AccountService : IAccountService
         return Convert.ToHexString(hashBytes);
     }
 
-    private static AccountListDto MapToListDto(AccountModel model)
-    {
-        return new AccountListDto
-        {
-            AccountId = model.AccountId,
-            AccountName = model.AccountName,
-            PhoneNumber = model.PhoneNumber,
-            Email = model.Email,
-            ImageUrl = model.ImageUrl,
-            RoleId = model.RoleId,
-            RoleName = model.RoleName,
-            IsActive = model.IsActive,
-            CreatedAt = model.CreatedAt,
-            UpdatedAt = model.UpdatedAt
-        };
-    }
-
-    private static AccountDto MapToDto(AccountModel model)
-    {
-        return new AccountDto
-        {
-            AccountId = model.AccountId,
-            RoleId = model.RoleId,
-            RoleName = model.RoleName,
-            EmployeeCode = model.EmployeeCode,
-            AccountName = model.AccountName,
-            PhoneNumber = model.PhoneNumber,
-            Email = model.Email,
-            IsActive = model.IsActive,
-            CreatedAt = model.CreatedAt,
-            UpdatedAt = model.UpdatedAt
-        };
-    }
 }

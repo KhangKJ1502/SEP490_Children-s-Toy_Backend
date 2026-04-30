@@ -1,4 +1,4 @@
-namespace ToyStore.Application.Common.Models;
+namespace ToyStore.Domain.Entities;
 
 /// <summary>
 /// Represents the result of an operation that can either succeed or fail.
