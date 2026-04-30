@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using ToyStore.Application.DTOs.Profiles;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Infrastructure.Services;
 

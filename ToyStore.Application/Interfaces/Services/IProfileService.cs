@@ -1,4 +1,5 @@
 using ToyStore.Application.DTOs.Profiles;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Interfaces.Services;
 
