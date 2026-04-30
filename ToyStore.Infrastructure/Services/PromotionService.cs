@@ -180,31 +180,49 @@ public class PromotionService : IPromotionService
             return Result<PromotionDto>.NotFound("Promotion", promotionId);
         }
 
-        _mapper.Map(request, existingPromotion);
-        existingPromotion.UpdatedAt = DateTime.UtcNow;
-
-        var fullValidationRequest = _mapper.Map<CreatePromotionDto>(existingPromotion);
-        var fullValidationResult = await _createValidator.ValidateAsync(fullValidationRequest, cancellationToken);
-
-        if (!fullValidationResult.IsValid)
+        // Nếu là yêu cầu xoá (Soft Delete)
+        if (request.IsDeleted == true)
         {
-            return fullValidationResult.ToResult<PromotionDto>();
+            existingPromotion.IsDeleted = true;
+            existingPromotion.UpdatedAt = DateTime.UtcNow;
+
+            // Fix legacy invalid data to satisfy SQL Server CHECK constraints during soft delete
+            if (existingPromotion.StartDate == default)
+            {
+                existingPromotion.StartDate = DateTime.UtcNow;
+            }
+            if (existingPromotion.EndDate <= existingPromotion.StartDate)
+            {
+                existingPromotion.EndDate = existingPromotion.StartDate.AddDays(1);
+            }
         }
-
-        var promotionNameExists = await _unitOfWork.Promotions.ExistsPromotionNameAsync(
-            existingPromotion.PromotionName,
-            promotionId,
-            cancellationToken);
-
-        if (promotionNameExists)
+        else
         {
-            return Result<PromotionDto>.Conflict("Promotion name already exists.");
+            _mapper.Map(request, existingPromotion);
+            existingPromotion.UpdatedAt = DateTime.UtcNow;
+
+            var fullValidationRequest = _mapper.Map<CreatePromotionDto>(existingPromotion);
+            var fullValidationResult = await _createValidator.ValidateAsync(fullValidationRequest, cancellationToken);
+
+            if (!fullValidationResult.IsValid)
+            {
+                return fullValidationResult.ToResult<PromotionDto>();
+            }
+
+            var promotionNameExists = await _unitOfWork.Promotions.ExistsPromotionNameAsync(
+                existingPromotion.PromotionName,
+                promotionId,
+                cancellationToken);
+
+            if (promotionNameExists)
+            {
+                return Result<PromotionDto>.Conflict("Promotion name already exists.");
+            }
         }
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            _unitOfWork.Promotions.Update(existingPromotion);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
         }

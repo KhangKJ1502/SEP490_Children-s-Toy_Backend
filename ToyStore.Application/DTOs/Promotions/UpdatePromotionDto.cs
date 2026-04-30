@@ -15,4 +15,6 @@ public class UpdatePromotionDto
     public string? Status { get; set; }
 
     public int? Priority { get; set; }
+
+    public bool? IsDeleted { get; set; }
 }

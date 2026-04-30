@@ -63,7 +63,6 @@ public class VoucherRepository : IVoucherRepository
     public async Task<Voucher?> GetByIdAsync(int voucherId, CancellationToken cancellationToken = default)
     {
         var entity = await _context.Vouchers
-            .AsNoTracking()
             .FirstOrDefaultAsync(x => x.VoucherId == voucherId && !x.IsDeleted, cancellationToken);
 
         return entity;
