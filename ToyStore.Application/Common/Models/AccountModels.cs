@@ -35,3 +35,24 @@ public class AccountRoleModel
 
     public string RoleName { get; set; } = string.Empty;
 }
+
+public class AccountAuthModel
+{
+    public int AccountId { get; set; }
+
+    public byte RoleId { get; set; }
+
+    public string RoleName { get; set; } = string.Empty;
+
+    public string AccountName { get; set; } = string.Empty;
+
+    public string Email { get; set; } = string.Empty;
+
+    public string? ImageUrl { get; set; }
+
+    public string PasswordHash { get; set; } = string.Empty;
+
+    public bool IsActive { get; set; }
+
+    public bool IsDeleted { get; set; }
+}
