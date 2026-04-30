@@ -28,6 +28,7 @@ public class CreateBlogDto
     public string BlogContent { get; set; } = string.Empty;
     public string? BlogThumbnail { get; set; }
     public bool IsFeatured { get; set; }
+    public DateTime? BlogAt { get; set; }
 }
 
 public class UpdateBlogDto

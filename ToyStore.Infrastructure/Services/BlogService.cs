@@ -10,9 +10,15 @@ namespace ToyStore.Infrastructure.Services;
 
 public class BlogService : IBlogService
 {
+    private const string DraftStatus = "Draft";
+    private const string PendingStatus = "Pending";
+    private const string ApprovedStatus = "Approved";
+    private const string ScheduledStatus = "Scheduled";
+    private const string RejectedStatus = "Rejected";
+
     private static readonly HashSet<string> AllowedSubmitStatus = new(StringComparer.OrdinalIgnoreCase)
     {
-        "Pending"
+        PendingStatus
     };
 
     private readonly IUnitOfWork _unitOfWork;
@@ -113,7 +119,8 @@ public class BlogService : IBlogService
             BlogTitle = dto.BlogTitle.Trim(),
             BlogContent = dto.BlogContent.Trim(),
             BlogThumbnail = dto.BlogThumbnail?.Trim(),
-            Status = "Draft",
+            BlogAt = dto.BlogAt,
+            Status = DraftStatus,
             Reason = null,
             ApprovedBy = null,
             IsFeatured = false,
@@ -155,7 +162,7 @@ public class BlogService : IBlogService
             return Result<BlogDetailDto>.Unauthorized("You are not allowed to edit this blog.");
         }
 
-        if (string.Equals(blog.Status, "Approved", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(blog.Status, ApprovedStatus, StringComparison.OrdinalIgnoreCase))
         {
             return await UpdateApprovedBlogAtAsync(blog, dto, cancellationToken);
         }
@@ -174,15 +181,15 @@ public class BlogService : IBlogService
         blog.BlogAt = dto.BlogAt;
         blog.UpdatedAt = DateTime.UtcNow;
 
-        blog.Status = "Draft";
-        if (string.Equals(dto.Status?.Trim(), "Draft", StringComparison.OrdinalIgnoreCase))
+        blog.Status = DraftStatus;
+        if (string.Equals(dto.Status?.Trim(), PendingStatus, StringComparison.OrdinalIgnoreCase))
         {
             if (!blog.BlogAt.HasValue)
             {
                 return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "BlogAt is required when submitting Draft to Pending.");
             }
 
-            blog.Status = "Pending";
+            blog.Status = PendingStatus;
         }
 
         blog.Reason = null;
@@ -231,7 +238,7 @@ public class BlogService : IBlogService
             return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "Status must be Pending.");
         }
 
-        if (!string.Equals(blog.Status, "Draft", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(blog.Status, DraftStatus, StringComparison.OrdinalIgnoreCase))
         {
             return Result<BlogDetailDto>.BusinessError("Only Draft blog can be submitted to Pending.");
         }
@@ -241,7 +248,7 @@ public class BlogService : IBlogService
             return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "BlogAt is required when submitting Draft to Pending.");
         }
 
-        blog.Status = "Pending";
+        blog.Status = PendingStatus;
         blog.Reason = null;
         blog.ApprovedBy = null;
 
@@ -265,7 +272,7 @@ public class BlogService : IBlogService
             return Result<BlogDetailDto>.NotFound("Blog", blogPostId);
         }
 
-        if (!string.Equals(blog.Status, "Pending", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(blog.Status, PendingStatus, StringComparison.OrdinalIgnoreCase))
         {
             return Result<BlogDetailDto>.BusinessError("Only Pending blog can be approved or rejected.");
         }
@@ -276,11 +283,11 @@ public class BlogService : IBlogService
             blog.Reason = null;
             if (blog.BlogAt.HasValue && blog.BlogAt.Value > DateTime.UtcNow)
             {
-                blog.Status = "Scheduled";
+                blog.Status = ScheduledStatus;
             }
             else
             {
-                blog.Status = "Approved";
+                blog.Status = ApprovedStatus;
                 blog.Reason = "Approval is late. Please update BlogAt to a future time so the system can schedule publishing.";
                 _logger.LogInformation("Blog {BlogId} approved late (BlogAt <= now). Waiting staff to update BlogAt.", blogPostId);
             }
@@ -291,7 +298,7 @@ public class BlogService : IBlogService
             {
                 return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "Reason is required when rejecting a blog.");
             }
-            blog.Status = "Rejected";
+            blog.Status = RejectedStatus;
             blog.Reason = dto.Reason.Trim();
         }
         else
@@ -325,7 +332,7 @@ public class BlogService : IBlogService
         }
 
         blog.BlogAt = dto.BlogAt.Value;
-        blog.Status = "Scheduled";
+        blog.Status = ScheduledStatus;
         blog.Reason = null;
         blog.UpdatedAt = DateTime.UtcNow;
 

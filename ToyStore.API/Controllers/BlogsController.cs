@@ -7,15 +7,22 @@ using ToyStore.Application.Interfaces.Services;
 
 namespace ToyStore.API.Controllers;
 
+public class UploadThumbnailRequest
+{
+    public IFormFile File { get; set; } = default!;
+}
+
 [ApiController]
 [Route("api/[controller]")]
 public class BlogsController : ControllerBase
 {
     private readonly IBlogService _blogService;
+    private readonly IWebHostEnvironment _environment;
 
-    public BlogsController(IBlogService blogService)
+    public BlogsController(IBlogService blogService, IWebHostEnvironment environment)
     {
         _blogService = blogService;
+        _environment = environment;
     }
 
     [HttpGet("search")]
@@ -111,5 +118,44 @@ public class BlogsController : ControllerBase
     {
         var result = await _blogService.ApproveBlogAsync(blogPostId, dto, cancellationToken);
         return result.ToActionResult();
+    }
+
+    [HttpPost("thumbnail/upload")]
+    [Authorize(Roles = "Admin,Staff")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    public async Task<ActionResult<object>> UploadThumbnail(
+        [FromForm] UploadThumbnailRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var file = request.File;
+        if (file == null || file.Length <= 0)
+        {
+            return BadRequest(new { code = "VALIDATION_ERROR", message = "Thumbnail file is required." });
+        }
+
+        var allowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ".jpg", ".jpeg", ".png", ".webp", ".gif"
+        };
+
+        var extension = Path.GetExtension(file.FileName);
+        if (string.IsNullOrWhiteSpace(extension) || !allowedExtensions.Contains(extension))
+        {
+            return BadRequest(new { code = "VALIDATION_ERROR", message = "Only JPG, JPEG, PNG, WEBP, GIF are supported." });
+        }
+
+        var uploadsFolder = Path.Combine(_environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot"), "uploads", "blogs");
+        Directory.CreateDirectory(uploadsFolder);
+
+        var fileName = $"blog-thumb-{DateTime.UtcNow:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}{extension}";
+        var filePath = Path.Combine(uploadsFolder, fileName);
+
+        await using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await file.CopyToAsync(stream, cancellationToken);
+        }
+
+        var publicUrl = $"{Request.Scheme}://{Request.Host}/uploads/blogs/{fileName}";
+        return Ok(new { url = publicUrl });
     }
 }
