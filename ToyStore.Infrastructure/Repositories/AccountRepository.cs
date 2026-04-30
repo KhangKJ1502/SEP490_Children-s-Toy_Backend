@@ -185,4 +185,31 @@ public class AccountRepository : IAccountRepository
 
         await _context.SaveChangesAsync(cancellationToken);
     }
+
+    public Task<Account?> GetByIdForProfileAsync(int accountId, CancellationToken cancellationToken = default)
+    {
+        return _context.Accounts
+            .Include(x => x.Role)
+            .Where(x => x.AccountId == accountId && !x.IsDeleted)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<Account> UpdateProfileAsync(
+        int accountId,
+        string? imageUrl,
+        string? phoneNumber,
+        CancellationToken cancellationToken = default)
+    {
+        var entity = await _context.Accounts
+            .Include(x => x.Role)
+            .FirstAsync(x => x.AccountId == accountId && !x.IsDeleted, cancellationToken);
+
+        entity.ImageUrl = imageUrl;
+        entity.PhoneNumber = phoneNumber;
+        entity.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(cancellationToken);
+        return entity;
+    }
+
 }
