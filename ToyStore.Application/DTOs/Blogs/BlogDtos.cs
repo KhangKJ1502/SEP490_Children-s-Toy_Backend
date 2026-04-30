@@ -37,12 +37,13 @@ public class UpdateBlogDto
     public string BlogContent { get; set; } = string.Empty;
     public string? BlogThumbnail { get; set; }
     public bool IsFeatured { get; set; }
+    public string? Status { get; set; }
+    public DateTime? BlogAt { get; set; }
 }
 
 public class SubmitBlogDto
 {
     public string Status { get; set; } = string.Empty;
-    public DateTime? ScheduledAt { get; set; }
 }
 
 public class ApproveBlogDto

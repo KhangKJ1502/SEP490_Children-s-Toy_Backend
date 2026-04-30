@@ -12,9 +12,7 @@ public class BlogService : IBlogService
 {
     private static readonly HashSet<string> AllowedSubmitStatus = new(StringComparer.OrdinalIgnoreCase)
     {
-        "Pending",
-        "Published",
-        "Scheduled"
+        "Pending"
     };
 
     private readonly IUnitOfWork _unitOfWork;
@@ -118,7 +116,7 @@ public class BlogService : IBlogService
             Status = "Draft",
             Reason = null,
             ApprovedBy = null,
-            IsFeatured = dto.IsFeatured,
+            IsFeatured = false,
             IsDeleted = false,
             CreatedAt = DateTime.UtcNow
         };
@@ -127,11 +125,6 @@ public class BlogService : IBlogService
         try
         {
             var created = await _unitOfWork.Blogs.CreateAsync(entity, cancellationToken);
-            if (created.IsFeatured)
-            {
-                await _unitOfWork.Blogs.DemoteOldestFeaturedAsync(cancellationToken);
-            }
-
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             var reloaded = await _unitOfWork.Blogs.GetByIdAsync(created.BlogPostId, cancellationToken);
@@ -162,6 +155,11 @@ public class BlogService : IBlogService
             return Result<BlogDetailDto>.Unauthorized("You are not allowed to edit this blog.");
         }
 
+        if (string.Equals(blog.Status, "Approved", StringComparison.OrdinalIgnoreCase))
+        {
+            return await UpdateApprovedBlogAtAsync(blog, dto, cancellationToken);
+        }
+
         var validateResult = await ValidateWriteInputAsync(dto.BlogCategoryId, dto.BlogTitle, dto.BlogContent, cancellationToken);
         if (validateResult != null)
         {
@@ -173,16 +171,22 @@ public class BlogService : IBlogService
         blog.BlogContent = dto.BlogContent.Trim();
         blog.BlogThumbnail = dto.BlogThumbnail?.Trim();
         blog.IsFeatured = dto.IsFeatured;
+        blog.BlogAt = dto.BlogAt;
         blog.UpdatedAt = DateTime.UtcNow;
 
-        if (!string.Equals(blog.Status, "Draft", StringComparison.OrdinalIgnoreCase))
+        blog.Status = "Draft";
+        if (string.Equals(dto.Status?.Trim(), "Draft", StringComparison.OrdinalIgnoreCase))
         {
-            blog.Status = "Draft";
+            if (!blog.BlogAt.HasValue)
+            {
+                return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "BlogAt is required when submitting Draft to Pending.");
+            }
+
+            blog.Status = "Pending";
         }
 
         blog.Reason = null;
         blog.ApprovedBy = null;
-        blog.BlogAt = null;
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
@@ -203,7 +207,6 @@ public class BlogService : IBlogService
             throw;
         }
     }
-
     public async Task<Result<BlogDetailDto>> SubmitBlogAsync(int blogPostId, SubmitBlogDto dto, CancellationToken cancellationToken = default)
     {
         if (_currentUserService.AccountId <= 0)
@@ -225,48 +228,22 @@ public class BlogService : IBlogService
         var targetStatus = dto.Status?.Trim() ?? string.Empty;
         if (!AllowedSubmitStatus.Contains(targetStatus))
         {
-            return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "Status must be Pending, Published or Scheduled.");
+            return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "Status must be Pending.");
         }
 
-        if (string.Equals(targetStatus, "Pending", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(blog.Status, "Draft", StringComparison.OrdinalIgnoreCase))
         {
-            if (!string.Equals(blog.Status, "Draft", StringComparison.OrdinalIgnoreCase))
-            {
-                return Result<BlogDetailDto>.BusinessError("Only Draft blog can be submitted to Pending.");
-            }
-            blog.Status = "Pending";
-            blog.BlogAt = null;
-            blog.Reason = null;
-            blog.ApprovedBy = null;
+            return Result<BlogDetailDto>.BusinessError("Only Draft blog can be submitted to Pending.");
         }
-        else
+
+        if (!blog.BlogAt.HasValue)
         {
-            if (!string.Equals(blog.Status, "Approved", StringComparison.OrdinalIgnoreCase))
-            {
-                return Result<BlogDetailDto>.BusinessError("Only Approved blog can be published or scheduled.");
-            }
-
-            if (string.Equals(targetStatus, "Published", StringComparison.OrdinalIgnoreCase))
-            {
-                blog.Status = "Published";
-                blog.BlogAt = DateTime.UtcNow;
-            }
-            else
-            {
-                if (!dto.ScheduledAt.HasValue)
-                {
-                    return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "ScheduledAt is required for Scheduled status.");
-                }
-
-                if (dto.ScheduledAt.Value <= DateTime.UtcNow)
-                {
-                    return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "ScheduledAt must be in the future.");
-                }
-
-                blog.Status = "Scheduled";
-                blog.BlogAt = dto.ScheduledAt.Value;
-            }
+            return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "BlogAt is required when submitting Draft to Pending.");
         }
+
+        blog.Status = "Pending";
+        blog.Reason = null;
+        blog.ApprovedBy = null;
 
         blog.UpdatedAt = DateTime.UtcNow;
         await _unitOfWork.Blogs.UpdateAsync(blog, cancellationToken);
@@ -296,8 +273,17 @@ public class BlogService : IBlogService
         var decision = dto.Decision?.Trim() ?? string.Empty;
         if (string.Equals(decision, "Approved", StringComparison.OrdinalIgnoreCase))
         {
-            blog.Status = "Approved";
             blog.Reason = null;
+            if (blog.BlogAt.HasValue && blog.BlogAt.Value > DateTime.UtcNow)
+            {
+                blog.Status = "Scheduled";
+            }
+            else
+            {
+                blog.Status = "Approved";
+                blog.Reason = "Approval is late. Please update BlogAt to a future time so the system can schedule publishing.";
+                _logger.LogInformation("Blog {BlogId} approved late (BlogAt <= now). Waiting staff to update BlogAt.", blogPostId);
+            }
         }
         else if (string.Equals(decision, "Rejected", StringComparison.OrdinalIgnoreCase))
         {
@@ -320,6 +306,31 @@ public class BlogService : IBlogService
         var updated = await _unitOfWork.Blogs.GetByIdAsync(blogPostId, cancellationToken);
 
         _logger.LogInformation("Blog {BlogId} reviewed by account {AccountId}. Decision: {Decision}", blogPostId, _currentUserService.AccountId, decision);
+        return Result<BlogDetailDto>.Success(_mapper.Map<BlogDetailDto>(updated!));
+    }
+
+    private async Task<Result<BlogDetailDto>> UpdateApprovedBlogAtAsync(
+        BlogPost blog,
+        UpdateBlogDto dto,
+        CancellationToken cancellationToken)
+    {
+        if (!dto.BlogAt.HasValue)
+        {
+            return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "BlogAt is required when blog is Approved.");
+        }
+
+        if (dto.BlogAt.Value <= DateTime.UtcNow)
+        {
+            return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "BlogAt must be in the future.");
+        }
+
+        blog.BlogAt = dto.BlogAt.Value;
+        blog.Status = "Scheduled";
+        blog.Reason = null;
+        blog.UpdatedAt = DateTime.UtcNow;
+
+        await _unitOfWork.Blogs.UpdateAsync(blog, cancellationToken);
+        var updated = await _unitOfWork.Blogs.GetByIdAsync(blog.BlogPostId, cancellationToken);
         return Result<BlogDetailDto>.Success(_mapper.Map<BlogDetailDto>(updated!));
     }
 
