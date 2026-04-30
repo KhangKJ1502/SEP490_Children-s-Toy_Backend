@@ -141,15 +141,9 @@ public class AccountRepository : IAccountRepository
 
         await _context.Accounts.AddAsync(entity, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
-<<<<<<< HEAD
 
-        await _context.Entry(entity)
-            .Reference(x => x.Role)
-            .LoadAsync(cancellationToken);
-
-=======
         await _context.Entry(entity).Reference(x => x.Role).LoadAsync(cancellationToken);
->>>>>>> 6d058857893bda1f59e25074ac7b5061c1ebaa7b
+
         return entity;
     }
 
@@ -166,11 +160,8 @@ public class AccountRepository : IAccountRepository
         entity.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);
-<<<<<<< HEAD
 
-=======
         await _context.Entry(entity).Reference(x => x.Role).LoadAsync(cancellationToken);
->>>>>>> 6d058857893bda1f59e25074ac7b5061c1ebaa7b
         return entity;
     }
 
