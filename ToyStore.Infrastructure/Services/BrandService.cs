@@ -1,3 +1,4 @@
+using AutoMapper;
 using FluentValidation;
 using Microsoft.Extensions.Logging;
 using ToyStore.Domain.Entities;
@@ -5,23 +6,31 @@ using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Brands;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
-using ToyStore.Application.Validators.Brands;
 
 namespace ToyStore.Infrastructure.Services;
 
 public class BrandService : IBrandService
 {
-    private readonly IUnitOfWork _unitOfWork;
-    private readonly ILogger<BrandService> _logger;
-    private readonly CreateBrandValidator _createBrandValidator;
-    private readonly UpdateBrandValidator _updateBrandValidator;
+    private const string InactiveStatus = "Inactive";
 
-    public BrandService(IUnitOfWork unitOfWork, ILogger<BrandService> logger)
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IMapper _mapper;
+    private readonly ILogger<BrandService> _logger;
+    private readonly IValidator<CreateBrandDto> _createBrandValidator;
+    private readonly IValidator<UpdateBrandDto> _updateBrandValidator;
+
+    public BrandService(
+        IUnitOfWork unitOfWork,
+        IMapper mapper,
+        ILogger<BrandService> logger,
+        IValidator<CreateBrandDto> createBrandValidator,
+        IValidator<UpdateBrandDto> updateBrandValidator)
     {
         _unitOfWork = unitOfWork;
+        _mapper = mapper;
         _logger = logger;
-        _createBrandValidator = new CreateBrandValidator();
-        _updateBrandValidator = new UpdateBrandValidator();
+        _createBrandValidator = createBrandValidator;
+        _updateBrandValidator = updateBrandValidator;
     }
 
     public async Task<Result<PaginatedResponse<BrandListDto>>> GetBrandsAsync(
@@ -52,12 +61,7 @@ public class BrandService : IBrandService
 
         var totalCount = await _unitOfWork.Brands.CountAsync(searchTerm, cancellationToken);
 
-        var mappedItems = items.Select(x => new BrandListDto
-        {
-            BrandId = x.BrandId,
-            BrandName = x.BrandName,
-            CreatedAt = x.CreatedAt
-        }).ToList();
+        var mappedItems = _mapper.Map<List<BrandListDto>>(items);
 
         var response = new PaginatedResponse<BrandListDto>(mappedItems, totalCount, pageNumber, pageSize);
         return Result<PaginatedResponse<BrandListDto>>.Success(response);
@@ -92,12 +96,7 @@ public class BrandService : IBrandService
 
             _logger.LogInformation("Brand {BrandId} created successfully.", created.BrandId);
 
-            return Result<BrandListDto>.Success(new BrandListDto
-            {
-                BrandId = created.BrandId,
-                BrandName = created.BrandName,
-                CreatedAt = created.CreatedAt
-            });
+            return Result<BrandListDto>.Success(_mapper.Map<BrandListDto>(created));
         }
         catch (Exception ex)
         {
@@ -105,31 +104,6 @@ public class BrandService : IBrandService
             _logger.LogError(ex, "Failed to create brand with name {BrandName}", dto.BrandName);
             throw;
         }
-    }
-
-    public Task<Result<PaginatedResponse<BrandListDto>>> SearchBrandsAsync(
-        string searchTerm,
-        int pageNumber = 1,
-        int pageSize = 10,
-        string? sortBy = null,
-        bool sortDesc = false,
-        CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(searchTerm))
-        {
-            return Task.FromResult(
-                Result<PaginatedResponse<BrandListDto>>.Failure(
-                    "VALIDATION_ERROR",
-                    "Search term is required."));
-        }
-
-        return GetBrandsAsync(
-            pageNumber,
-            pageSize,
-            sortBy,
-            sortDesc,
-            searchTerm.Trim(),
-            cancellationToken);
     }
 
     public async Task<Result<BrandListDto>> UpdateBrandAsync(
@@ -159,6 +133,16 @@ public class BrandService : IBrandService
         }
 
         var normalizedName = dto.BrandName.Trim();
+        var isDeleted = ParseStatusToIsDeleted(dto.Status);
+
+        var hasNameChanged = !string.Equals(existing.BrandName, normalizedName, StringComparison.Ordinal);
+        var hasStatusChanged = existing.IsDeleted != isDeleted;
+
+        if (!hasNameChanged && !hasStatusChanged)
+        {
+            return Result<BrandListDto>.Success(_mapper.Map<BrandListDto>(existing));
+        }
+
         var isDuplicate = await _unitOfWork.Brands.ExistsByNameExceptIdAsync(
             normalizedName,
             brandId,
@@ -174,17 +158,13 @@ public class BrandService : IBrandService
             var updated = await _unitOfWork.Brands.UpdateAsync(
                 brandId,
                 normalizedName,
+                isDeleted,
                 cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             _logger.LogInformation("Brand {BrandId} updated successfully.", updated.BrandId);
 
-            return Result<BrandListDto>.Success(new BrandListDto
-            {
-                BrandId = updated.BrandId,
-                BrandName = updated.BrandName,
-                CreatedAt = updated.CreatedAt
-            });
+            return Result<BrandListDto>.Success(_mapper.Map<BrandListDto>(updated));
         }
         catch (Exception ex)
         {
@@ -192,5 +172,13 @@ public class BrandService : IBrandService
             _logger.LogError(ex, "Failed to update brand {BrandId}", brandId);
             throw;
         }
+    }
+
+    private static bool ParseStatusToIsDeleted(string status)
+    {
+        return string.Equals(
+            status.Trim(),
+            InactiveStatus,
+            StringComparison.OrdinalIgnoreCase);
     }
 }
