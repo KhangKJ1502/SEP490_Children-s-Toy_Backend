@@ -11,12 +11,37 @@ namespace ToyStore.API.Controllers;
 public class ProductsController : ControllerBase
 {
     private readonly IProductService _productService;
+    private readonly IImageUploadService _imageUploadService;
     private readonly ILogger<ProductsController> _logger;
 
-    public ProductsController(IProductService productService, ILogger<ProductsController> logger)
+    public ProductsController(
+        IProductService productService, 
+        IImageUploadService imageUploadService,
+        ILogger<ProductsController> logger)
     {
         _productService = productService;
+        _imageUploadService = imageUploadService;
         _logger = logger;
+    }
+
+    [HttpPost("upload-image")]
+    public async Task<ActionResult<UploadImageResponseDto>> UploadImage(
+        IFormFile file,
+        CancellationToken cancellationToken = default)
+    {
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest(new { message = "No file was provided." });
+        }
+
+        using var stream = file.OpenReadStream();
+        var result = await _imageUploadService.UploadImageAsync(stream, file.FileName, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return BadRequest(new { message = result.ErrorMessage });
+        }
+
+        return Ok(new UploadImageResponseDto { Url = result.Data! });
     }
 
     [HttpGet]
