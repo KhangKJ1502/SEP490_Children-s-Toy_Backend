@@ -1,4 +1,4 @@
-using ToyStore.Application.Common.Models;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Interfaces.Repositories;
 
@@ -10,7 +10,7 @@ public interface ICategoryRepository
     /// <summary>
     /// Lấy danh sách Category có phân trang.
     /// </summary>
-    Task<List<CategoryModel>> GetPagedAsync(
+    Task<List<Category>> GetPagedAsync(
         int pageNumber,
         int pageSize,
         string? sortBy = null,
@@ -39,12 +39,12 @@ public interface ICategoryRepository
     /// <summary>
     /// Tìm Category theo ID.
     /// </summary>
-    Task<CategoryModel?> GetByIdAsync(short categoryId, CancellationToken cancellationToken = default);
+    Task<Category?> GetByIdAsync(short categoryId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Tạo mới Category.
     /// </summary>
-    Task<CategoryModel> CreateAsync(
+    Task<Category> CreateAsync(
         short superCategoryId,
         string categoryName,
         CancellationToken cancellationToken = default);
@@ -52,7 +52,7 @@ public interface ICategoryRepository
     /// <summary>
     /// Cập nhật Category.
     /// </summary>
-    Task<CategoryModel> UpdateAsync(
+    Task<Category> UpdateAsync(
         short categoryId,
         short superCategoryId,
         string categoryName,

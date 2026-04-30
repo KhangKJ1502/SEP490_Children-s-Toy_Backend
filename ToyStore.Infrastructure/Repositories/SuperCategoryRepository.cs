@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using ToyStore.Application.Common.Models;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Domain.Entities;
@@ -15,7 +14,7 @@ public class SuperCategoryRepository : ISuperCategoryRepository
         _context = context;
     }
 
-    public async Task<List<SuperCategoryModel>> GetPagedAsync(
+    public async Task<List<SuperCategory>> GetPagedAsync(
         int pageNumber,
         int pageSize,
         string? sortBy = null,
@@ -45,14 +44,6 @@ public class SuperCategoryRepository : ISuperCategoryRepository
         return await query
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
-            .Select(x => new SuperCategoryModel
-            {
-                SuperCategoryId = x.SuperCategoryId,
-                SuperCategoryName = x.SuperCategoryName,
-                IsDeleted = x.IsDeleted,
-                CreatedAt = x.CreatedAt,
-                UpdatedAt = x.UpdatedAt
-            })
             .ToListAsync(cancellationToken);
     }
 
@@ -91,23 +82,15 @@ public class SuperCategoryRepository : ISuperCategoryRepository
             .AnyAsync(x => x.SuperCategoryName.ToLower() == normalized, cancellationToken);
     }
 
-    public Task<SuperCategoryModel?> GetByIdAsync(short superCategoryId, CancellationToken cancellationToken = default)
+    public Task<SuperCategory?> GetByIdAsync(short superCategoryId, CancellationToken cancellationToken = default)
     {
         return _context.SuperCategories
             .AsNoTracking()
             .Where(x => x.SuperCategoryId == superCategoryId && !x.IsDeleted)
-            .Select(x => new SuperCategoryModel
-            {
-                SuperCategoryId = x.SuperCategoryId,
-                SuperCategoryName = x.SuperCategoryName,
-                IsDeleted = x.IsDeleted,
-                CreatedAt = x.CreatedAt,
-                UpdatedAt = x.UpdatedAt
-            })
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<SuperCategoryModel> CreateAsync(string superCategoryName, CancellationToken cancellationToken = default)
+    public async Task<SuperCategory> CreateAsync(string superCategoryName, CancellationToken cancellationToken = default)
     {
         var entity = new SuperCategory
         {
@@ -119,17 +102,10 @@ public class SuperCategoryRepository : ISuperCategoryRepository
         await _context.SuperCategories.AddAsync(entity, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
 
-        return new SuperCategoryModel
-        {
-            SuperCategoryId = entity.SuperCategoryId,
-            SuperCategoryName = entity.SuperCategoryName,
-            IsDeleted = entity.IsDeleted,
-            CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt
-        };
+        return entity;
     }
 
-    public async Task<SuperCategoryModel> UpdateAsync(
+    public async Task<SuperCategory> UpdateAsync(
         short superCategoryId,
         string superCategoryName,
         CancellationToken cancellationToken = default)
@@ -142,13 +118,6 @@ public class SuperCategoryRepository : ISuperCategoryRepository
 
         await _context.SaveChangesAsync(cancellationToken);
 
-        return new SuperCategoryModel
-        {
-            SuperCategoryId = entity.SuperCategoryId,
-            SuperCategoryName = entity.SuperCategoryName,
-            IsDeleted = entity.IsDeleted,
-            CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt
-        };
+        return entity;
     }
 }

@@ -1,3 +1,4 @@
+using AutoMapper;
 using FluentValidation;
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.Common.Models;
@@ -5,7 +6,6 @@ using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Categories;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
-using ToyStore.Application.Validators.Categories;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -13,15 +13,22 @@ public class CategoryService : ICategoryService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<CategoryService> _logger;
-    private readonly CreateCategoryValidator _createCategoryValidator;
-    private readonly UpdateCategoryValidator _updateCategoryValidator;
+    private readonly IMapper _mapper;
+    private readonly IValidator<CreateCategoryDto> _createCategoryValidator;
+    private readonly IValidator<UpdateCategoryDto> _updateCategoryValidator;
 
-    public CategoryService(IUnitOfWork unitOfWork, ILogger<CategoryService> logger)
+    public CategoryService(
+        IUnitOfWork unitOfWork,
+        ILogger<CategoryService> logger,
+        IMapper mapper,
+        IValidator<CreateCategoryDto> createCategoryValidator,
+        IValidator<UpdateCategoryDto> updateCategoryValidator)
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
-        _createCategoryValidator = new CreateCategoryValidator();
-        _updateCategoryValidator = new UpdateCategoryValidator();
+        _mapper = mapper;
+        _createCategoryValidator = createCategoryValidator;
+        _updateCategoryValidator = updateCategoryValidator;
     }
 
     public async Task<Result<PaginatedResponse<CategoryListDto>>> GetCategoriesAsync(
@@ -52,14 +59,7 @@ public class CategoryService : ICategoryService
 
         var totalCount = await _unitOfWork.Categories.CountAsync(searchTerm, cancellationToken);
 
-        var mappedItems = items.Select(x => new CategoryListDto
-        {
-            CategoryId = x.CategoryId,
-            CategoryName = x.CategoryName,
-            SuperCategoryId = x.SuperCategoryId,
-            SuperCategoryName = x.SuperCategoryName,
-            CreatedAt = x.CreatedAt
-        }).ToList();
+        var mappedItems = _mapper.Map<List<CategoryListDto>>(items);
 
         var response = new PaginatedResponse<CategoryListDto>(mappedItems, totalCount, pageNumber, pageSize);
         return Result<PaginatedResponse<CategoryListDto>>.Success(response);
@@ -103,14 +103,7 @@ public class CategoryService : ICategoryService
 
             _logger.LogInformation("Category {CategoryId} created successfully.", created.CategoryId);
 
-            return Result<CategoryListDto>.Success(new CategoryListDto
-            {
-                CategoryId = created.CategoryId,
-                CategoryName = created.CategoryName,
-                SuperCategoryId = superCategory.SuperCategoryId,
-                SuperCategoryName = superCategory.SuperCategoryName,
-                CreatedAt = created.CreatedAt
-            });
+            return Result<CategoryListDto>.Success(_mapper.Map<CategoryListDto>(created));
         }
         catch (Exception ex)
         {
@@ -199,14 +192,7 @@ public class CategoryService : ICategoryService
 
             _logger.LogInformation("Category {CategoryId} updated successfully.", updated.CategoryId);
 
-            return Result<CategoryListDto>.Success(new CategoryListDto
-            {
-                CategoryId = updated.CategoryId,
-                CategoryName = updated.CategoryName,
-                SuperCategoryId = updated.SuperCategoryId,
-                SuperCategoryName = updated.SuperCategoryName,
-                CreatedAt = updated.CreatedAt
-            });
+            return Result<CategoryListDto>.Success(_mapper.Map<CategoryListDto>(updated));
         }
         catch (Exception ex)
         {

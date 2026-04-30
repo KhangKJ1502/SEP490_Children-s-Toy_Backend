@@ -1,4 +1,5 @@
 
+using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -27,11 +28,18 @@ public static class DependencyInjection
         redisOptions.AbortOnConnectFail = false;
         services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisOptions));
 
+        // Đăng ký FluentValidation
+        services.AddValidatorsFromAssemblyContaining<Application.Validators.SuperCategories.CreateSuperCategoryValidator>();
+
         // Đăng ký AutoMapper
         services.AddAutoMapper(cfg =>
         {
             cfg.AddProfile<VoucherProfile>();
             cfg.AddProfile<TemplateProfile>();
+            cfg.AddProfile<SuperCategoryProfile>();
+            cfg.AddProfile<CategoryProfile>();
+            cfg.AddProfile<ProductProfile>();
+            cfg.AddProfile<AccountProfile>();
         });
 
         services.AddScoped<IVoucherRepository, VoucherRepository>();

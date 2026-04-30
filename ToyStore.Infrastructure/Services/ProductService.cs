@@ -1,3 +1,4 @@
+using AutoMapper;
 using FluentValidation;
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.Common.Models;
@@ -5,7 +6,7 @@ using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Products;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
-using ToyStore.Application.Validators.Products;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -13,15 +14,22 @@ public class ProductService : IProductService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<ProductService> _logger;
-    private readonly CreateProductValidator _createProductValidator;
-    private readonly UpdateProductValidator _updateProductValidator;
+    private readonly IMapper _mapper;
+    private readonly IValidator<CreateProductDto> _createProductValidator;
+    private readonly IValidator<UpdateProductDto> _updateProductValidator;
 
-    public ProductService(IUnitOfWork unitOfWork, ILogger<ProductService> logger)
+    public ProductService(
+        IUnitOfWork unitOfWork,
+        ILogger<ProductService> logger,
+        IMapper mapper,
+        IValidator<CreateProductDto> createProductValidator,
+        IValidator<UpdateProductDto> updateProductValidator)
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
-        _createProductValidator = new CreateProductValidator();
-        _updateProductValidator = new UpdateProductValidator();
+        _mapper = mapper;
+        _createProductValidator = createProductValidator;
+        _updateProductValidator = updateProductValidator;
     }
 
     public async Task<Result<PaginatedResponse<ProductListDto>>> GetProductsAsync(
@@ -52,7 +60,7 @@ public class ProductService : IProductService
 
         var totalCount = await _unitOfWork.Products.CountAsync(searchTerm, cancellationToken);
 
-        var mappedItems = items.Select(MapToListDto).ToList();
+        var mappedItems = _mapper.Map<List<ProductListDto>>(items);
         var response = new PaginatedResponse<ProductListDto>(mappedItems, totalCount, pageNumber, pageSize);
         return Result<PaginatedResponse<ProductListDto>>.Success(response);
     }
@@ -70,7 +78,7 @@ public class ProductService : IProductService
             return Result<ProductDto>.NotFound("Product", productId);
         }
 
-        return Result<ProductDto>.Success(MapToDto(product));
+        return Result<ProductDto>.Success(_mapper.Map<ProductDto>(product));
     }
 
     public async Task<Result<ProductDto>> CreateProductAsync(
@@ -147,35 +155,17 @@ public class ProductService : IProductService
             }
         }
 
-        var createModel = new ProductCreateModel
-        {
-            CategoryId = dto.CategoryId,
-            BrandId = dto.BrandId,
-            PriceRangeId = dto.PriceRangeId,
-            ProductName = dto.ProductName.Trim(),
-            Price = dto.Price,
-            Quantity = dto.Quantity,
-            ProductStatus = dto.ProductStatus.Trim(),
-            LaunchDate = dto.LaunchDate,
-            StockThreshold = dto.StockThreshold,
-            LowStockNotificationEnabled = dto.LowStockNotificationEnabled,
-            Description = dto.Description?.Trim(),
-            MaterialId = dto.MaterialId,
-            AgeId = dto.AgeId,
-            SexId = dto.SexId,
-            OriginId = dto.OriginId,
-            MainImageUrl = dto.MainImageUrl?.Trim()
-        };
+        var product = _mapper.Map<Product>(dto);
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            var created = await _unitOfWork.Products.CreateAsync(createModel, cancellationToken);
+            var created = await _unitOfWork.Products.CreateAsync(product, cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             _logger.LogInformation("Product {ProductId} created successfully.", created.ProductId);
 
-            return Result<ProductDto>.Success(MapToDto(created));
+            return Result<ProductDto>.Success(_mapper.Map<ProductDto>(created));
         }
         catch (Exception ex)
         {
@@ -292,35 +282,63 @@ public class ProductService : IProductService
             return Result<ProductDto>.BusinessError("Launch date must be today or later for coming soon products.");
         }
 
-        var updateModel = new ProductUpdateModel
+        _mapper.Map(dto, existing);
+        existing.ProductId = productId;
+
+        if (dto.Description != null || dto.MaterialId.HasValue || dto.AgeId.HasValue || dto.SexId.HasValue || dto.OriginId.HasValue)
         {
-            CategoryId = dto.CategoryId,
-            BrandId = dto.BrandId,
-            PriceRangeId = dto.PriceRangeId,
-            ProductName = dto.ProductName?.Trim(),
-            Price = dto.Price,
-            Quantity = dto.Quantity,
-            ProductStatus = dto.ProductStatus?.Trim(),
-            LaunchDate = dto.LaunchDate,
-            StockThreshold = dto.StockThreshold,
-            LowStockNotificationEnabled = dto.LowStockNotificationEnabled,
-            Description = dto.Description?.Trim(),
-            MaterialId = dto.MaterialId,
-            AgeId = dto.AgeId,
-            SexId = dto.SexId,
-            OriginId = dto.OriginId,
-            MainImageUrl = dto.MainImageUrl?.Trim()
-        };
+            if (existing.ProductDetail == null)
+            {
+                existing.ProductDetail = new ProductDetail { ProductId = productId };
+            }
+
+            if (dto.Description != null)
+            {
+                existing.ProductDetail.Description = dto.Description;
+            }
+            if (dto.MaterialId.HasValue)
+            {
+                existing.ProductDetail.MaterialId = dto.MaterialId;
+            }
+            if (dto.AgeId.HasValue)
+            {
+                existing.ProductDetail.AgeId = dto.AgeId;
+            }
+            if (dto.SexId.HasValue)
+            {
+                existing.ProductDetail.SexId = dto.SexId;
+            }
+            if (dto.OriginId.HasValue)
+            {
+                existing.ProductDetail.OriginId = dto.OriginId;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(dto.MainImageUrl))
+        {
+            if (existing.ProductImage == null)
+            {
+                existing.ProductImage = new ProductImage
+                {
+                    ProductId = productId,
+                    ImageUrl = dto.MainImageUrl
+                };
+            }
+            else
+            {
+                existing.ProductImage.ImageUrl = dto.MainImageUrl;
+            }
+        }
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            var updated = await _unitOfWork.Products.UpdateAsync(productId, updateModel, cancellationToken);
+            var updated = await _unitOfWork.Products.UpdateAsync(existing, cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             _logger.LogInformation("Product {ProductId} updated successfully.", updated.ProductId);
 
-            return Result<ProductDto>.Success(MapToDto(updated));
+            return Result<ProductDto>.Success(_mapper.Map<ProductDto>(updated));
         }
         catch (Exception ex)
         {
@@ -353,59 +371,6 @@ public class ProductService : IProductService
             sortDesc,
             searchTerm.Trim(),
             cancellationToken);
-    }
-
-    private static ProductDto MapToDto(ProductModel model)
-    {
-        return new ProductDto
-        {
-            ProductId = model.ProductId,
-            ProductName = model.ProductName,
-            Price = model.Price,
-            Quantity = model.Quantity,
-            ProductStatus = model.ProductStatus,
-            LaunchDate = model.LaunchDate,
-            StockThreshold = model.StockThreshold,
-            LowStockNotificationEnabled = model.LowStockNotificationEnabled,
-            LastLowStockNotifiedAt = model.LastLowStockNotifiedAt,
-            CategoryId = model.CategoryId,
-            CategoryName = model.CategoryName,
-            BrandId = model.BrandId,
-            BrandName = model.BrandName,
-            PriceRangeId = model.PriceRangeId,
-            PriceRangeMin = model.PriceRangeMin,
-            PriceRangeMax = model.PriceRangeMax,
-            Description = model.Description,
-            MaterialId = model.MaterialId,
-            MaterialName = model.MaterialName,
-            AgeId = model.AgeId,
-            AgeRange = model.AgeRange,
-            SexId = model.SexId,
-            SexName = model.SexName,
-            OriginId = model.OriginId,
-            OriginName = model.OriginName,
-            MainImageUrl = model.MainImageUrl,
-            CreatedAt = model.CreatedAt,
-            UpdatedAt = model.UpdatedAt
-        };
-    }
-
-    private static ProductListDto MapToListDto(ProductModel model)
-    {
-        return new ProductListDto
-        {
-            ProductId = model.ProductId,
-            ProductName = model.ProductName,
-            Price = model.Price,
-            Quantity = model.Quantity,
-            ProductStatus = model.ProductStatus,
-            CategoryId = model.CategoryId,
-            CategoryName = model.CategoryName,
-            BrandId = model.BrandId,
-            BrandName = model.BrandName,
-            MainImageUrl = model.MainImageUrl,
-            CreatedAt = model.CreatedAt
-        };
     }
 
     private static bool HasAnyUpdate(UpdateProductDto dto)

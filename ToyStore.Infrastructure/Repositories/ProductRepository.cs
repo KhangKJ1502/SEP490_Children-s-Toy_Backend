@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using ToyStore.Application.Common.Models;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Domain.Entities;
@@ -15,7 +14,7 @@ public class ProductRepository : IProductRepository
         _context = context;
     }
 
-    public async Task<List<ProductModel>> GetPagedAsync(
+    public async Task<List<Product>> GetPagedAsync(
         int pageNumber,
         int pageSize,
         string? sortBy = null,
@@ -25,6 +24,9 @@ public class ProductRepository : IProductRepository
     {
         IQueryable<Product> query = _context.Products
             .AsNoTracking()
+            .Include(x => x.Category)
+            .Include(x => x.Brand)
+            .Include(x => x.ProductImage)
             .Where(x => !x.IsDeleted && !x.Category.IsDeleted && (x.Brand == null || !x.Brand.IsDeleted));
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
@@ -54,22 +56,6 @@ public class ProductRepository : IProductRepository
         return await query
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
-            .Select(x => new ProductModel
-            {
-                ProductId = x.ProductId,
-                ProductName = x.ProductName,
-                Price = x.Price,
-                Quantity = x.Quantity,
-                ProductStatus = x.ProductStatus,
-                CategoryId = x.CategoryId,
-                CategoryName = x.Category.CategoryName,
-                BrandId = x.BrandId,
-                BrandName = x.Brand != null ? x.Brand.BrandName : null,
-                PriceRangeId = x.PriceRangeId,
-                MainImageUrl = x.ProductImage != null ? x.ProductImage.ImageUrl : null,
-                CreatedAt = x.CreatedAt,
-                UpdatedAt = x.UpdatedAt
-            })
             .ToListAsync(cancellationToken);
     }
 
@@ -90,208 +76,104 @@ public class ProductRepository : IProductRepository
         return query.CountAsync(cancellationToken);
     }
 
-    public Task<ProductModel?> GetByIdAsync(int productId, CancellationToken cancellationToken = default)
+    public Task<Product?> GetByIdAsync(int productId, CancellationToken cancellationToken = default)
     {
         return _context.Products
             .AsNoTracking()
+            .Include(x => x.Category)
+            .Include(x => x.Brand)
+            .Include(x => x.PriceRange)
+            .Include(x => x.ProductDetail)
+                .ThenInclude(d => d!.Material)
+            .Include(x => x.ProductDetail)
+                .ThenInclude(d => d!.Age)
+            .Include(x => x.ProductDetail)
+                .ThenInclude(d => d!.Sex)
+            .Include(x => x.ProductDetail)
+                .ThenInclude(d => d!.Origin)
+            .Include(x => x.ProductImage)
             .Where(x => x.ProductId == productId && !x.IsDeleted && !x.Category.IsDeleted && (x.Brand == null || !x.Brand.IsDeleted))
-            .Select(x => new ProductModel
-            {
-                ProductId = x.ProductId,
-                ProductName = x.ProductName,
-                Price = x.Price,
-                Quantity = x.Quantity,
-                ProductStatus = x.ProductStatus,
-                LaunchDate = x.LaunchDate,
-                StockThreshold = x.StockThreshold,
-                LowStockNotificationEnabled = x.LowStockNotificationEnabled,
-                LastLowStockNotifiedAt = x.LastLowStockNotifiedAt,
-                CategoryId = x.CategoryId,
-                CategoryName = x.Category.CategoryName,
-                BrandId = x.BrandId,
-                BrandName = x.Brand != null ? x.Brand.BrandName : null,
-                PriceRangeId = x.PriceRangeId,
-                PriceRangeMin = x.PriceRange != null ? x.PriceRange.PriceRangeMin : null,
-                PriceRangeMax = x.PriceRange != null ? x.PriceRange.PriceRangeMax : null,
-                Description = x.ProductDetail != null ? x.ProductDetail.Description : null,
-                MaterialId = x.ProductDetail != null ? x.ProductDetail.MaterialId : null,
-                MaterialName = x.ProductDetail != null && x.ProductDetail.Material != null ? x.ProductDetail.Material.MaterialName : null,
-                AgeId = x.ProductDetail != null ? x.ProductDetail.AgeId : null,
-                AgeRange = x.ProductDetail != null && x.ProductDetail.Age != null ? x.ProductDetail.Age.AgeRange : null,
-                SexId = x.ProductDetail != null ? x.ProductDetail.SexId : null,
-                SexName = x.ProductDetail != null && x.ProductDetail.Sex != null ? x.ProductDetail.Sex.SexName : null,
-                OriginId = x.ProductDetail != null ? x.ProductDetail.OriginId : null,
-                OriginName = x.ProductDetail != null && x.ProductDetail.Origin != null ? x.ProductDetail.Origin.OriginName : null,
-                MainImageUrl = x.ProductImage != null ? x.ProductImage.ImageUrl : null,
-                CreatedAt = x.CreatedAt,
-                UpdatedAt = x.UpdatedAt
-            })
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<ProductModel> CreateAsync(ProductCreateModel model, CancellationToken cancellationToken = default)
+    public async Task<Product> CreateAsync(Product product, CancellationToken cancellationToken = default)
     {
-        var entity = new Product
-        {
-            CategoryId = model.CategoryId,
-            BrandId = model.BrandId,
-            PriceRangeId = model.PriceRangeId,
-            ProductName = model.ProductName,
-            Price = model.Price,
-            Quantity = model.Quantity,
-            ProductStatus = model.ProductStatus,
-            LaunchDate = model.LaunchDate,
-            StockThreshold = model.StockThreshold,
-            LowStockNotificationEnabled = model.LowStockNotificationEnabled,
-            IsDeleted = false,
-            CreatedAt = DateTime.UtcNow
-        };
+        product.IsDeleted = false;
+        product.CreatedAt = DateTime.UtcNow;
 
-        if (model.HasDetail)
+        if (product.ProductImage != null)
         {
-            entity.ProductDetail = new ProductDetail
-            {
-                Description = model.Description,
-                MaterialId = model.MaterialId,
-                AgeId = model.AgeId,
-                SexId = model.SexId,
-                OriginId = model.OriginId
-            };
+            product.ProductImage.IsMain = true;
+            product.ProductImage.CreatedAt = DateTime.UtcNow;
         }
 
-        if (!string.IsNullOrWhiteSpace(model.MainImageUrl))
-        {
-            entity.ProductImage = new ProductImage
-            {
-                ImageUrl = model.MainImageUrl,
-                IsMain = true,
-                CreatedAt = DateTime.UtcNow
-            };
-        }
-
-        await _context.Products.AddAsync(entity, cancellationToken);
+        await _context.Products.AddAsync(product, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
 
-        var created = await GetByIdAsync(entity.ProductId, cancellationToken);
+        var created = await GetByIdAsync(product.ProductId, cancellationToken);
         return created!;
     }
 
-    public async Task<ProductModel> UpdateAsync(
-        int productId,
-        ProductUpdateModel model,
+    public async Task<Product> UpdateAsync(
+        Product product,
         CancellationToken cancellationToken = default)
     {
-        var entity = await _context.Products
+        var existing = await _context.Products
             .Include(x => x.ProductDetail)
             .Include(x => x.ProductImage)
-            .FirstAsync(x => x.ProductId == productId && !x.IsDeleted, cancellationToken);
+            .FirstAsync(x => x.ProductId == product.ProductId && !x.IsDeleted, cancellationToken);
 
-        if (model.CategoryId.HasValue)
-        {
-            entity.CategoryId = model.CategoryId.Value;
-        }
+        existing.CategoryId = product.CategoryId;
+        existing.BrandId = product.BrandId;
+        existing.PriceRangeId = product.PriceRangeId;
+        existing.ProductName = product.ProductName;
+        existing.Price = product.Price;
+        existing.Quantity = product.Quantity;
+        existing.ProductStatus = product.ProductStatus;
+        existing.LaunchDate = product.LaunchDate;
+        existing.StockThreshold = product.StockThreshold;
+        existing.LowStockNotificationEnabled = product.LowStockNotificationEnabled;
+        existing.UpdatedAt = DateTime.UtcNow;
 
-        if (model.BrandId.HasValue)
+        if (product.ProductDetail != null)
         {
-            entity.BrandId = model.BrandId;
-        }
-
-        if (model.PriceRangeId.HasValue)
-        {
-            entity.PriceRangeId = model.PriceRangeId;
-        }
-
-        if (!string.IsNullOrWhiteSpace(model.ProductName))
-        {
-            entity.ProductName = model.ProductName;
-        }
-
-        if (model.Price.HasValue)
-        {
-            entity.Price = model.Price.Value;
-        }
-
-        if (model.Quantity.HasValue)
-        {
-            entity.Quantity = model.Quantity.Value;
-        }
-
-        if (!string.IsNullOrWhiteSpace(model.ProductStatus))
-        {
-            entity.ProductStatus = model.ProductStatus;
-        }
-
-        if (model.LaunchDate.HasValue)
-        {
-            entity.LaunchDate = model.LaunchDate;
-        }
-
-        if (model.StockThreshold.HasValue)
-        {
-            entity.StockThreshold = model.StockThreshold.Value;
-        }
-
-        if (model.LowStockNotificationEnabled.HasValue)
-        {
-            entity.LowStockNotificationEnabled = model.LowStockNotificationEnabled.Value;
-        }
-
-        if (model.HasDetail)
-        {
-            if (entity.ProductDetail == null)
+            if (existing.ProductDetail == null)
             {
-                entity.ProductDetail = new ProductDetail();
-            }
-
-            if (model.Description != null)
-            {
-                entity.ProductDetail.Description = model.Description;
-            }
-
-            if (model.MaterialId.HasValue)
-            {
-                entity.ProductDetail.MaterialId = model.MaterialId;
-            }
-
-            if (model.AgeId.HasValue)
-            {
-                entity.ProductDetail.AgeId = model.AgeId;
-            }
-
-            if (model.SexId.HasValue)
-            {
-                entity.ProductDetail.SexId = model.SexId;
-            }
-
-            if (model.OriginId.HasValue)
-            {
-                entity.ProductDetail.OriginId = model.OriginId;
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(model.MainImageUrl))
-        {
-            if (entity.ProductImage == null)
-            {
-                entity.ProductImage = new ProductImage
+                existing.ProductDetail = new ProductDetail
                 {
-                    ImageUrl = model.MainImageUrl,
+                    ProductId = existing.ProductId
+                };
+            }
+
+            existing.ProductDetail.Description = product.ProductDetail.Description;
+            existing.ProductDetail.MaterialId = product.ProductDetail.MaterialId;
+            existing.ProductDetail.AgeId = product.ProductDetail.AgeId;
+            existing.ProductDetail.SexId = product.ProductDetail.SexId;
+            existing.ProductDetail.OriginId = product.ProductDetail.OriginId;
+        }
+
+        if (product.ProductImage != null)
+        {
+            if (existing.ProductImage == null)
+            {
+                existing.ProductImage = new ProductImage
+                {
+                    ProductId = existing.ProductId,
+                    ImageUrl = product.ProductImage.ImageUrl,
                     IsMain = true,
                     CreatedAt = DateTime.UtcNow
                 };
             }
             else
             {
-                entity.ProductImage.ImageUrl = model.MainImageUrl;
-                entity.ProductImage.UpdatedAt = DateTime.UtcNow;
+                existing.ProductImage.ImageUrl = product.ProductImage.ImageUrl;
+                existing.ProductImage.UpdatedAt = DateTime.UtcNow;
             }
         }
 
-        entity.UpdatedAt = DateTime.UtcNow;
-
         await _context.SaveChangesAsync(cancellationToken);
 
-        var updated = await GetByIdAsync(entity.ProductId, cancellationToken);
+        var updated = await GetByIdAsync(existing.ProductId, cancellationToken);
         return updated!;
     }
 

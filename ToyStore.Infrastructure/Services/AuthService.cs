@@ -2,6 +2,8 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using AutoMapper;
+using FluentValidation;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
@@ -9,7 +11,7 @@ using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs.Auth;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
-using ToyStore.Application.Validators.Auth;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -26,29 +28,37 @@ public class AuthService : IAuthService
     private readonly IRedisService _redisService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AuthService> _logger;
-    private readonly LoginValidator _loginValidator;
-    private readonly SendRegisterOtpValidator _sendRegisterOtpValidator;
-    private readonly RegisterValidator _registerValidator;
-    private readonly ForgotPasswordValidator _forgotPasswordValidator;
-    private readonly ResetPasswordValidator _resetPasswordValidator;
+    private readonly IMapper _mapper;
+    private readonly IValidator<LoginDto> _loginValidator;
+    private readonly IValidator<SendRegisterOtpDto> _sendRegisterOtpValidator;
+    private readonly IValidator<RegisterDto> _registerValidator;
+    private readonly IValidator<ForgotPasswordDto> _forgotPasswordValidator;
+    private readonly IValidator<ResetPasswordDto> _resetPasswordValidator;
 
     public AuthService(
         IUnitOfWork unitOfWork,
         IEmailService emailService,
         IRedisService redisService,
         IConfiguration configuration,
-        ILogger<AuthService> logger)
+        ILogger<AuthService> logger,
+        IMapper mapper,
+        IValidator<LoginDto> loginValidator,
+        IValidator<SendRegisterOtpDto> sendRegisterOtpValidator,
+        IValidator<RegisterDto> registerValidator,
+        IValidator<ForgotPasswordDto> forgotPasswordValidator,
+        IValidator<ResetPasswordDto> resetPasswordValidator)
     {
         _unitOfWork = unitOfWork;
         _emailService = emailService;
         _redisService = redisService;
         _configuration = configuration;
         _logger = logger;
-        _loginValidator = new LoginValidator();
-        _sendRegisterOtpValidator = new SendRegisterOtpValidator();
-        _registerValidator = new RegisterValidator();
-        _forgotPasswordValidator = new ForgotPasswordValidator();
-        _resetPasswordValidator = new ResetPasswordValidator();
+        _mapper = mapper;
+        _loginValidator = loginValidator;
+        _sendRegisterOtpValidator = sendRegisterOtpValidator;
+        _registerValidator = registerValidator;
+        _forgotPasswordValidator = forgotPasswordValidator;
+        _resetPasswordValidator = resetPasswordValidator;
     }
 
     public async Task<Result<AuthResponseDto>> LoginAsync(LoginDto dto, CancellationToken cancellationToken = default)
@@ -90,7 +100,7 @@ public class AuthService : IAuthService
             AccessToken = token,
             TokenType = "Bearer",
             ExpiresIn = expirationMinutes * 60,
-            Account = MapToAccountInfoDto(account)
+            Account = _mapper.Map<AccountInfoDto>(account)
         });
     }
 
@@ -172,15 +182,7 @@ public class AuthService : IAuthService
 
             _logger.LogInformation("Customer account {AccountId} registered successfully.", created.AccountId);
 
-            return Result<AccountInfoDto>.Success(new AccountInfoDto
-            {
-                AccountId = created.AccountId,
-                AccountName = created.AccountName,
-                Email = created.Email,
-                ImageUrl = created.ImageUrl,
-                RoleId = created.RoleId,
-                RoleName = created.RoleName
-            });
+            return Result<AccountInfoDto>.Success(_mapper.Map<AccountInfoDto>(created));
         }
         catch (Exception ex)
         {
@@ -271,7 +273,7 @@ public class AuthService : IAuthService
         return Result.Success();
     }
 
-    private string GenerateJwtToken(AccountAuthModel account)
+    private string GenerateJwtToken(Account account)
     {
         var secretKey = _configuration["Jwt:SecretKey"]!;
         var issuer = _configuration["Jwt:Issuer"]!;
@@ -287,10 +289,10 @@ public class AuthService : IAuthService
             new Claim(JwtRegisteredClaimNames.Sub, account.AccountId.ToString()),
             new Claim(JwtRegisteredClaimNames.Email, account.Email),
             new Claim(JwtRegisteredClaimNames.Jti, jti),
-            new Claim(ClaimTypes.Role, account.RoleName),
+            new Claim(ClaimTypes.Role, account.Role.RoleName),
             new Claim("accountId", account.AccountId.ToString()),
             new Claim("roleId", account.RoleId.ToString()),
-            new Claim("roleName", account.RoleName)
+            new Claim("roleName", account.Role.RoleName)
         };
 
         var token = new JwtSecurityToken(
@@ -318,18 +320,5 @@ public class AuthService : IAuthService
     private static string GenerateOtpCode()
     {
         return RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
-    }
-
-    private static AccountInfoDto MapToAccountInfoDto(AccountAuthModel account)
-    {
-        return new AccountInfoDto
-        {
-            AccountId = account.AccountId,
-            AccountName = account.AccountName,
-            Email = account.Email,
-            ImageUrl = account.ImageUrl,
-            RoleId = account.RoleId,
-            RoleName = account.RoleName
-        };
     }
 }

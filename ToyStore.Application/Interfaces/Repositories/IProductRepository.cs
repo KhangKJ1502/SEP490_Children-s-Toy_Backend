@@ -1,4 +1,4 @@
-using ToyStore.Application.Common.Models;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Interfaces.Repositories;
 
@@ -10,7 +10,7 @@ public interface IProductRepository
     /// <summary>
     /// Lay danh sach Product co phan trang.
     /// </summary>
-    Task<List<ProductModel>> GetPagedAsync(
+    Task<List<Product>> GetPagedAsync(
         int pageNumber,
         int pageSize,
         string? sortBy = null,
@@ -26,17 +26,17 @@ public interface IProductRepository
     /// <summary>
     /// Tim Product theo ID.
     /// </summary>
-    Task<ProductModel?> GetByIdAsync(int productId, CancellationToken cancellationToken = default);
+    Task<Product?> GetByIdAsync(int productId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Tao moi Product.
     /// </summary>
-    Task<ProductModel> CreateAsync(ProductCreateModel model, CancellationToken cancellationToken = default);
+    Task<Product> CreateAsync(Product product, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Cap nhat Product.
     /// </summary>
-    Task<ProductModel> UpdateAsync(int productId, ProductUpdateModel model, CancellationToken cancellationToken = default);
+    Task<Product> UpdateAsync(Product product, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Kiem tra Category ton tai.
