@@ -16,12 +16,20 @@ public interface ITemplateRepository
         string? sortBy = null,
         bool sortDesc = false,
         string? searchTerm = null,
+        bool? isActive = null,
+        DateTime? startDate = null,
+        DateTime? endDate = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Dem tong so Template theo dieu kien tim kiem.
     /// </summary>
-    Task<int> CountAsync(string? searchTerm = null, CancellationToken cancellationToken = default);
+    Task<int> CountAsync(
+        string? searchTerm = null,
+        bool? isActive = null,
+        DateTime? startDate = null,
+        DateTime? endDate = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Kiem tra Template code da ton tai chua.
