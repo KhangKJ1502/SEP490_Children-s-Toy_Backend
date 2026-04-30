@@ -1,4 +1,4 @@
-using ToyStore.Application.Common.Models;
+using ToyStore.Domain.Entities;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Templates;
 
@@ -33,16 +33,5 @@ public interface ITemplateService
     Task<Result<TemplateListDto>> UpdateTemplateAsync(
         short templateId,
         UpdateTemplateDto dto,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Tim kiem Template.
-    /// </summary>
-    Task<Result<PaginatedResponse<TemplateListDto>>> SearchTemplatesAsync(
-        string searchTerm,
-        int pageNumber = 1,
-        int pageSize = 10,
-        string? sortBy = null,
-        bool sortDesc = false,
         CancellationToken cancellationToken = default);
 }

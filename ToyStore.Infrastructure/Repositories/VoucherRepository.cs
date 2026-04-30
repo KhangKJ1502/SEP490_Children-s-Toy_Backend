@@ -3,7 +3,7 @@ using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Infrastructure.Data;
-using ToyStore.Infrastructure.Models;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Infrastructure.Repositories;
 
@@ -19,7 +19,7 @@ public class VoucherRepository : IVoucherRepository
         _context = context;
     }
 
-    public async Task<PaginatedResponse<VoucherModel>> GetPagedAsync(
+    public async Task<PaginatedResponse<Voucher>> GetPagedAsync(
         int pageNumber,
         int pageSize,
         string? sortBy = null,
@@ -57,23 +57,19 @@ public class VoucherRepository : IVoucherRepository
             .Take(pageSize)
             .ToListAsync(cancellationToken);
 
-        var items = entities
-            .Select(MapToModel)
-            .ToList();
-
-        return new PaginatedResponse<VoucherModel>(items, totalCount, pageNumber, pageSize);
+        return new PaginatedResponse<Voucher>(entities, totalCount, pageNumber, pageSize);
     }
 
-    public async Task<VoucherModel?> GetByIdAsync(int voucherId, CancellationToken cancellationToken = default)
+    public async Task<Voucher?> GetByIdAsync(int voucherId, CancellationToken cancellationToken = default)
     {
         var entity = await _context.Vouchers
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.VoucherId == voucherId && !x.IsDeleted, cancellationToken);
 
-        return entity is null ? null : MapToModel(entity);
+        return entity;
     }
 
-    public async Task<VoucherModel?> GetByCodeAsync(string voucherCode, CancellationToken cancellationToken = default)
+    public async Task<Voucher?> GetByCodeAsync(string voucherCode, CancellationToken cancellationToken = default)
     {
         var entity = await _context.Vouchers
             .AsNoTracking()
@@ -81,7 +77,7 @@ public class VoucherRepository : IVoucherRepository
                 x => x.VoucherCode == voucherCode && !x.IsDeleted,
                 cancellationToken);
 
-        return entity is null ? null : MapToModel(entity);
+        return entity;
     }
 
     public async Task<bool> ExistsVoucherCodeAsync(
@@ -101,16 +97,14 @@ public class VoucherRepository : IVoucherRepository
         return await query.AnyAsync(cancellationToken);
     }
 
-    public async Task AddAsync(VoucherModel voucher, CancellationToken cancellationToken = default)
+    public async Task AddAsync(Voucher voucher, CancellationToken cancellationToken = default)
     {
-        var entity = MapToEntity(voucher);
-        await _context.AddAsync(entity, cancellationToken);
+        await _context.AddAsync(voucher, cancellationToken);
     }
 
-    public void Update(VoucherModel voucher)
+    public void Update(Voucher voucher)
     {
-        var entity = MapToEntity(voucher);
-        _context.Update(entity);
+        _context.Update(voucher);
     }
 
     private static IQueryable<Voucher> ApplySorting(IQueryable<Voucher> query, string? sortBy, bool sortDesc)
@@ -140,58 +134,6 @@ public class VoucherRepository : IVoucherRepository
             _ => sortDesc
                 ? query.OrderByDescending(x => x.CreatedAt)
                 : query.OrderBy(x => x.CreatedAt)
-        };
-    }
-
-    private static VoucherModel MapToModel(Voucher entity)
-    {
-        return new VoucherModel
-        {
-            VoucherId = entity.VoucherId,
-            CreatedBy = entity.CreatedBy,
-            VoucherCode = entity.VoucherCode,
-            VoucherName = entity.VoucherName,
-            VoucherDescription = entity.VoucherDescription,
-            DiscountType = entity.DiscountType,
-            DiscountValue = entity.DiscountValue,
-            MaxDiscountCap = entity.MaxDiscountCap,
-            DiscountTarget = entity.DiscountTarget,
-            MinOrderAmount = entity.MinOrderAmount,
-            TotalQuantity = entity.TotalQuantity,
-            UsedQuantity = entity.UsedQuantity,
-            MaxUsagePerUser = entity.MaxUsagePerUser,
-            StartDate = entity.StartDate,
-            EndDate = entity.EndDate,
-            Status = entity.Status,
-            IsDeleted = entity.IsDeleted,
-            CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt
-        };
-    }
-
-    private static Voucher MapToEntity(VoucherModel model)
-    {
-        return new Voucher
-        {
-            VoucherId = model.VoucherId,
-            CreatedBy = model.CreatedBy,
-            VoucherCode = model.VoucherCode,
-            VoucherName = model.VoucherName,
-            VoucherDescription = model.VoucherDescription,
-            DiscountType = model.DiscountType,
-            DiscountValue = model.DiscountValue,
-            MaxDiscountCap = model.MaxDiscountCap,
-            DiscountTarget = model.DiscountTarget,
-            MinOrderAmount = model.MinOrderAmount,
-            TotalQuantity = model.TotalQuantity,
-            UsedQuantity = model.UsedQuantity,
-            MaxUsagePerUser = model.MaxUsagePerUser,
-            StartDate = model.StartDate,
-            EndDate = model.EndDate,
-            Status = model.Status,
-            IsDeleted = model.IsDeleted,
-            CreatedAt = model.CreatedAt,
-            UpdatedAt = model.UpdatedAt
         };
     }
 }

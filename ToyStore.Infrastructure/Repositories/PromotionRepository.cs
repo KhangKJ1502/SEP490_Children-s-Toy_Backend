@@ -2,8 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Domain.Entities;
 using ToyStore.Infrastructure.Data;
-using ToyStore.Infrastructure.Models;
 
 namespace ToyStore.Infrastructure.Repositories;
 
@@ -21,7 +21,7 @@ public class PromotionRepository : IPromotionRepository
         _dbSet = context.Set<Promotion>();
     }
 
-    public async Task<PaginatedResponse<PromotionModel>> GetPagedAsync(
+    public async Task<PaginatedResponse<Promotion>> GetPagedAsync(
         int pageNumber,
         int pageSize,
         string? sortBy = null,
@@ -57,45 +57,15 @@ public class PromotionRepository : IPromotionRepository
         var items = await query
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
-            .Select(x => new PromotionModel
-            {
-                PromotionId = x.PromotionId,
-                CreatedBy = x.CreatedBy,
-                PromotionName = x.PromotionName,
-                PromotionType = x.PromotionType,
-                Description = x.Description,
-                StartDate = x.StartDate,
-                EndDate = x.EndDate,
-                Status = x.Status,
-                Priority = x.Priority,
-                IsDeleted = x.IsDeleted,
-                CreatedAt = x.CreatedAt,
-                UpdatedAt = x.UpdatedAt
-            })
             .ToListAsync(cancellationToken);
 
-        return new PaginatedResponse<PromotionModel>(items, totalCount, pageNumber, pageSize);
+        return new PaginatedResponse<Promotion>(items, totalCount, pageNumber, pageSize);
     }
 
-    public async Task<PromotionModel?> GetByIdAsync(int promotionId, CancellationToken cancellationToken = default)
+    public async Task<Promotion?> GetByIdAsync(int promotionId, CancellationToken cancellationToken = default)
     {
         return await _dbSet
             .Where(x => !x.IsDeleted && x.PromotionId == promotionId)
-            .Select(x => new PromotionModel
-            {
-                PromotionId = x.PromotionId,
-                CreatedBy = x.CreatedBy,
-                PromotionName = x.PromotionName,
-                PromotionType = x.PromotionType,
-                Description = x.Description,
-                StartDate = x.StartDate,
-                EndDate = x.EndDate,
-                Status = x.Status,
-                Priority = x.Priority,
-                IsDeleted = x.IsDeleted,
-                CreatedAt = x.CreatedAt,
-                UpdatedAt = x.UpdatedAt
-            })
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -114,49 +84,18 @@ public class PromotionRepository : IPromotionRepository
         return await query.AnyAsync(cancellationToken);
     }
 
-    public async Task AddAsync(PromotionModel promotionModel, CancellationToken cancellationToken = default)
+    public async Task AddAsync(Promotion promotion, CancellationToken cancellationToken = default)
     {
-        var entity = new Promotion
-        {
-            CreatedBy = promotionModel.CreatedBy,
-            PromotionName = promotionModel.PromotionName,
-            PromotionType = promotionModel.PromotionType,
-            Description = promotionModel.Description,
-            StartDate = promotionModel.StartDate,
-            EndDate = promotionModel.EndDate,
-            Status = promotionModel.Status,
-            Priority = promotionModel.Priority,
-            IsDeleted = promotionModel.IsDeleted,
-            CreatedAt = promotionModel.CreatedAt,
-            UpdatedAt = promotionModel.UpdatedAt
-        };
-
-        await _dbSet.AddAsync(entity, cancellationToken);
+        await _dbSet.AddAsync(promotion, cancellationToken);
         
         // This is a hack to get the generated ID back to the model, usually done after SaveChanges
         // but UnitOfWork handles SaveChanges. We will update it in service if needed.
     }
 
-    public void Update(PromotionModel promotionModel)
+    public void Update(Promotion promotion)
     {
-        var entity = new Promotion
-        {
-            PromotionId = promotionModel.PromotionId,
-            CreatedBy = promotionModel.CreatedBy,
-            PromotionName = promotionModel.PromotionName,
-            PromotionType = promotionModel.PromotionType,
-            Description = promotionModel.Description,
-            StartDate = promotionModel.StartDate,
-            EndDate = promotionModel.EndDate,
-            Status = promotionModel.Status,
-            Priority = promotionModel.Priority,
-            IsDeleted = promotionModel.IsDeleted,
-            CreatedAt = promotionModel.CreatedAt,
-            UpdatedAt = promotionModel.UpdatedAt
-        };
-
         // Attach and mark as modified
-        _dbSet.Attach(entity);
-        _context.Entry(entity).State = EntityState.Modified;
+        _dbSet.Attach(promotion);
+        _context.Entry(promotion).State = EntityState.Modified;
     }
 }

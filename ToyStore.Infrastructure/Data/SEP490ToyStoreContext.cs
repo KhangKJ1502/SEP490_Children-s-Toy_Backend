@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
-using ToyStore.Infrastructure.Models;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Infrastructure.Data;
 

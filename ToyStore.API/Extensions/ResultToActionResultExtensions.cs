@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using ToyStore.Application.Common.Models;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.API.Extensions;
 
@@ -21,9 +21,10 @@ public static class ResultToActionResultExtensions
             "NOT_FOUND" => new NotFoundObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)),
             "VALIDATION_ERROR" => new BadRequestObjectResult(new ValidationErrorResponse(result.ErrorMessage!, result.ValidationErrors!)),
             "CONFLICT" => new ConflictObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)),
-            "UNAUTHORIZED" => new UnauthorizedObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)),
-            "FORBIDDEN" => new ObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)) { StatusCode = 403 },
+            "UNAUTHORIZED" or "INVALID_CREDENTIALS" => new UnauthorizedObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)),
+            "FORBIDDEN" or "ACCOUNT_INACTIVE" => new ObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)) { StatusCode = 403 },
             "BUSINESS_RULE_VIOLATION" => new BadRequestObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)),
+            "OTP_EXPIRED" or "OTP_INVALID" => new BadRequestObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)),
             _ => new BadRequestObjectResult(new ErrorResponse(result.ErrorCode ?? "ERROR", result.ErrorMessage!))
         };
     }
@@ -52,8 +53,10 @@ public static class ResultToActionResultExtensions
             "NOT_FOUND" => new NotFoundObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)),
             "VALIDATION_ERROR" => new BadRequestObjectResult(new ValidationErrorResponse(result.ErrorMessage!, result.ValidationErrors!)),
             "CONFLICT" => new ConflictObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)),
-            "UNAUTHORIZED" => new UnauthorizedObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)),
+            "UNAUTHORIZED" or "INVALID_CREDENTIALS" => new UnauthorizedObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)),
+            "FORBIDDEN" or "ACCOUNT_INACTIVE" => new ObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)) { StatusCode = 403 },
             "BUSINESS_RULE_VIOLATION" => new BadRequestObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)),
+            "OTP_EXPIRED" or "OTP_INVALID" => new BadRequestObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)),
             _ => new BadRequestObjectResult(new ErrorResponse(result.ErrorCode ?? "ERROR", result.ErrorMessage!))
         };
     }

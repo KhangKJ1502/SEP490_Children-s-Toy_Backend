@@ -1,4 +1,4 @@
-using ToyStore.Application.Common.Models;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Interfaces.Repositories;
 
@@ -10,7 +10,7 @@ public interface ISuperCategoryRepository
     /// <summary>
     /// Lấy danh sách SuperCategory có phân trang.
     /// </summary>
-    Task<List<SuperCategoryModel>> GetPagedAsync(
+    Task<List<SuperCategory>> GetPagedAsync(
         int pageNumber,
         int pageSize,
         string? sortBy = null,
@@ -39,17 +39,17 @@ public interface ISuperCategoryRepository
     /// <summary>
     /// Tìm SuperCategory theo ID.
     /// </summary>
-    Task<SuperCategoryModel?> GetByIdAsync(short superCategoryId, CancellationToken cancellationToken = default);
+    Task<SuperCategory?> GetByIdAsync(short superCategoryId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Tạo mới SuperCategory.
     /// </summary>
-    Task<SuperCategoryModel> CreateAsync(string superCategoryName, CancellationToken cancellationToken = default);
+    Task<SuperCategory> CreateAsync(string superCategoryName, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Cập nhật SuperCategory.
     /// </summary>
-    Task<SuperCategoryModel> UpdateAsync(
+    Task<SuperCategory> UpdateAsync(
         short superCategoryId,
         string superCategoryName,
         CancellationToken cancellationToken = default);

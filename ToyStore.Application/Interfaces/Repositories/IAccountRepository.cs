@@ -1,4 +1,4 @@
-using ToyStore.Application.Common.Models;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Interfaces.Repositories;
 
@@ -10,7 +10,7 @@ public interface IAccountRepository
     /// <summary>
     /// Lấy danh sách Account có phân trang và lọc.
     /// </summary>
-    Task<List<AccountModel>> GetPagedAsync(
+    Task<List<Account>> GetPagedAsync(
         int pageNumber,
         int pageSize,
         string? sortBy = null,
@@ -28,7 +28,7 @@ public interface IAccountRepository
     /// <summary>
     /// Tìm Account theo ID.
     /// </summary>
-    Task<AccountModel?> GetByIdAsync(int accountId, CancellationToken cancellationToken = default);
+    Task<Account?> GetByIdAsync(int accountId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Kiểm tra email đã tồn tại chưa.
@@ -43,12 +43,12 @@ public interface IAccountRepository
     /// <summary>
     /// Lấy thông tin role theo ID.
     /// </summary>
-    Task<AccountRoleModel?> GetRoleByIdAsync(byte roleId, CancellationToken cancellationToken = default);
+    Task<Role?> GetRoleByIdAsync(byte roleId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Tạo mới Account.
     /// </summary>
-    Task<AccountModel> CreateAsync(
+    Task<Account> CreateAsync(
         byte roleId,
         string? employeeCode,
         string accountName,
@@ -62,8 +62,18 @@ public interface IAccountRepository
     /// <summary>
     /// Cập nhật trạng thái Account.
     /// </summary>
-    Task<AccountModel> UpdateStatusAsync(
+    Task<Account> UpdateStatusAsync(
         int accountId,
         bool isActive,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lấy thông tin Account theo email để xác thực (bao gồm PasswordHash).
+    /// </summary>
+    Task<Account?> GetByEmailForAuthAsync(string email, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cập nhật mật khẩu Account.
+    /// </summary>
+    Task UpdatePasswordHashAsync(int accountId, string passwordHash, CancellationToken cancellationToken = default);
 }

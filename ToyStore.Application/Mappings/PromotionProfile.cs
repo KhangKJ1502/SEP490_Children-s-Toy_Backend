@@ -1,6 +1,6 @@
 using AutoMapper;
-using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs.Promotions;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Mappings;
 
@@ -11,20 +11,20 @@ public class PromotionProfile : Profile
 {
     public PromotionProfile()
     {
-        CreateMap<PromotionModel, PromotionDto>();
+        CreateMap<Promotion, PromotionDto>();
 
-        CreateMap<PromotionModel, PromotionListDto>();
+        CreateMap<Promotion, PromotionListDto>();
 
-        CreateMap<PromotionModel, CreatePromotionDto>();
+        CreateMap<Promotion, CreatePromotionDto>();
 
-        CreateMap<CreatePromotionDto, PromotionModel>()
+        CreateMap<CreatePromotionDto, Promotion>()
             .ForMember(dest => dest.PromotionId, opt => opt.Ignore())
             .ForMember(dest => dest.CreatedBy, opt => opt.Ignore())
             .ForMember(dest => dest.IsDeleted, opt => opt.MapFrom(_ => false))
             .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
             .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore());
 
-        CreateMap<UpdatePromotionDto, PromotionModel>()
+        CreateMap<UpdatePromotionDto, Promotion>()
             .ForAllMembers(opt =>
                 opt.Condition((_, _, srcMember) => srcMember is not null));
     }

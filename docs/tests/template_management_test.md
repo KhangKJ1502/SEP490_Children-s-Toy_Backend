@@ -61,6 +61,7 @@
 
 1. POST template with duplicated templateCode returns 409.
 2. PUT template with duplicated templateCode returns 409.
+3. PUT template that is already used in campaigns or deliveries returns 400 (BUSINESS_RULE_VIOLATION).
 
 ## Database Verification
 

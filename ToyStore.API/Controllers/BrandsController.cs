@@ -62,24 +62,4 @@ public class BrandsController : ControllerBase
         var result = await _brandService.UpdateBrandAsync(brandId, dto, cancellationToken);
         return result.ToActionResult();
     }
-
-    [HttpGet("search")]
-    public async Task<ActionResult<PaginatedResponse<BrandListDto>>> SearchBrands(
-        [FromQuery] string searchTerm,
-        [FromQuery] int pageNumber = 1,
-        [FromQuery] int pageSize = 10,
-        [FromQuery] string? sortBy = null,
-        [FromQuery] bool sortDesc = false,
-        CancellationToken cancellationToken = default)
-    {
-        var result = await _brandService.SearchBrandsAsync(
-            searchTerm,
-            pageNumber,
-            pageSize,
-            sortBy,
-            sortDesc,
-            cancellationToken);
-
-        return result.ToActionResult();
-    }
 }

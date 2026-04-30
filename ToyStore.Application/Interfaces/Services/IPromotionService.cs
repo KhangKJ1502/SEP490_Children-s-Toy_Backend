@@ -1,6 +1,6 @@
-using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Promotions;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Interfaces.Services;
 

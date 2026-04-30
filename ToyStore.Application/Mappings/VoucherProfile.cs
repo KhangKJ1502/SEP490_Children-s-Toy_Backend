@@ -1,6 +1,6 @@
 using AutoMapper;
-using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs.Vouchers;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Mappings;
 
@@ -11,11 +11,11 @@ public class VoucherProfile : Profile
 {
     public VoucherProfile()
     {
-        CreateMap<VoucherModel, VoucherDto>();
+        CreateMap<Voucher, VoucherDto>();
 
-        CreateMap<VoucherModel, VoucherListDto>();
+        CreateMap<Voucher, VoucherListDto>();
 
-        CreateMap<CreateVoucherDto, VoucherModel>()
+        CreateMap<CreateVoucherDto, Voucher>()
             .ForMember(dest => dest.VoucherId, opt => opt.Ignore())
             .ForMember(dest => dest.CreatedBy, opt => opt.Ignore())
             .ForMember(dest => dest.UsedQuantity, opt => opt.MapFrom(_ => 0))
@@ -23,7 +23,7 @@ public class VoucherProfile : Profile
             .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
             .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore());
 
-        CreateMap<UpdateVoucherDto, VoucherModel>()
+        CreateMap<UpdateVoucherDto, Voucher>()
             .ForAllMembers(opt =>
                 opt.Condition((_, _, srcMember) => srcMember is not null));
     }

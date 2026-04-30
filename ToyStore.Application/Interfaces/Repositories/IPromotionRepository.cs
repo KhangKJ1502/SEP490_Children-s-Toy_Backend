@@ -1,5 +1,6 @@
 using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Interfaces.Repositories;
 
@@ -11,7 +12,7 @@ public interface IPromotionRepository
     /// <summary>
     /// Lấy danh sách promotion có phân trang và tìm kiếm.
     /// </summary>
-    Task<PaginatedResponse<PromotionModel>> GetPagedAsync(
+    Task<PaginatedResponse<Promotion>> GetPagedAsync(
         int pageNumber,
         int pageSize,
         string? sortBy = null,
@@ -23,7 +24,7 @@ public interface IPromotionRepository
     /// <summary>
     /// Lấy promotion theo ID.
     /// </summary>
-    Task<PromotionModel?> GetByIdAsync(int promotionId, CancellationToken cancellationToken = default);
+    Task<Promotion?> GetByIdAsync(int promotionId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Kiểm tra promotion name đã tồn tại hay chưa.
@@ -36,10 +37,10 @@ public interface IPromotionRepository
     /// <summary>
     /// Thêm promotion mới vào context.
     /// </summary>
-    Task AddAsync(PromotionModel promotion, CancellationToken cancellationToken = default);
+    Task AddAsync(Promotion promotion, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Cập nhật promotion vào context.
     /// </summary>
-    void Update(PromotionModel promotion);
+    void Update(Promotion promotion);
 }

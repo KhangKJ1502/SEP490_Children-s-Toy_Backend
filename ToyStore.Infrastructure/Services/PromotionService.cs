@@ -1,4 +1,5 @@
 using AutoMapper;
+using FluentValidation;
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs;
@@ -6,6 +7,7 @@ using ToyStore.Application.DTOs.Promotions;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Application.Validators.Promotions;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -17,19 +19,21 @@ public class PromotionService : IPromotionService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
     private readonly ILogger<PromotionService> _logger;
-    private readonly CreatePromotionValidator _createValidator;
-    private readonly UpdatePromotionValidator _updateValidator;
+    private readonly IValidator<CreatePromotionDto> _createValidator;
+    private readonly IValidator<UpdatePromotionDto> _updateValidator;
 
     public PromotionService(
         IUnitOfWork unitOfWork,
         IMapper mapper,
-        ILogger<PromotionService> logger)
+        ILogger<PromotionService> logger,
+        IValidator<CreatePromotionDto> createValidator,
+        IValidator<UpdatePromotionDto> updateValidator)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _logger = logger;
-        _createValidator = new CreatePromotionValidator();
-        _updateValidator = new UpdatePromotionValidator();
+        _createValidator = createValidator;
+        _updateValidator = updateValidator;
     }
 
     public async Task<Result<PaginatedResponse<PromotionListDto>>> GetPromotionsAsync(
@@ -120,35 +124,35 @@ public class PromotionService : IPromotionService
             return Result<PromotionDto>.Conflict("Promotion name already exists.");
         }
 
-        var promotionModel = _mapper.Map<PromotionModel>(request);
+        var promotion = _mapper.Map<Promotion>(request);
         // Will be updated by auth mechanism later, set to 1 for now or 0
-        promotionModel.CreatedBy = 0; 
-        promotionModel.CreatedAt = DateTime.UtcNow;
-        promotionModel.UpdatedAt = null;
-        promotionModel.IsDeleted = false;
+        promotion.CreatedBy = 0; 
+        promotion.CreatedAt = DateTime.UtcNow;
+        promotion.UpdatedAt = null;
+        promotion.IsDeleted = false;
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            await _unitOfWork.Promotions.AddAsync(promotionModel, cancellationToken);
+            await _unitOfWork.Promotions.AddAsync(promotion, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
         }
         catch (Exception ex)
         {
             await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-            _logger.LogError(ex, "Failed to create promotion {PromotionName}", promotionModel.PromotionName);
+            _logger.LogError(ex, "Failed to create promotion {PromotionName}", promotion.PromotionName);
             throw;
         }
 
         _logger.LogInformation(
             "Created promotion with name {PromotionName}",
-            promotionModel.PromotionName);
+            promotion.PromotionName);
 
         // Since ID is generated, we might just return what we have mapped minus ID if we can't fetch it by Name
         // Or we can fetch it again:
-        var createdPromotion = await _unitOfWork.Promotions.GetPagedAsync(1, 1, null, false, promotionModel.PromotionName, null, cancellationToken);
-        var dto = _mapper.Map<PromotionDto>(createdPromotion.Items.FirstOrDefault() ?? promotionModel);
+        var createdPromotion = await _unitOfWork.Promotions.GetPagedAsync(1, 1, null, false, promotion.PromotionName, null, cancellationToken);
+        var dto = _mapper.Map<PromotionDto>(createdPromotion.Items.FirstOrDefault() ?? promotion);
 
         return Result<PromotionDto>.Success(dto);
     }

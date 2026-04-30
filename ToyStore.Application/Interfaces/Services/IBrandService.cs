@@ -1,4 +1,4 @@
-using ToyStore.Application.Common.Models;
+using ToyStore.Domain.Entities;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Brands;
 
@@ -21,13 +21,5 @@ public interface IBrandService
     Task<Result<BrandListDto>> UpdateBrandAsync(
         short brandId,
         UpdateBrandDto dto,
-        CancellationToken cancellationToken = default);
-
-    Task<Result<PaginatedResponse<BrandListDto>>> SearchBrandsAsync(
-        string searchTerm,
-        int pageNumber = 1,
-        int pageSize = 10,
-        string? sortBy = null,
-        bool sortDesc = false,
         CancellationToken cancellationToken = default);
 }
