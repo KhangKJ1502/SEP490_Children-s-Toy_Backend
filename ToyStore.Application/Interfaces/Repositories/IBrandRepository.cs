@@ -1,10 +1,10 @@
-using ToyStore.Application.Common.Models;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Interfaces.Repositories;
 
 public interface IBrandRepository
 {
-    Task<List<BrandModel>> GetPagedAsync(
+    Task<List<Brand>> GetPagedAsync(
         int pageNumber,
         int pageSize,
         string? sortBy = null,
@@ -21,12 +21,13 @@ public interface IBrandRepository
         short brandId,
         CancellationToken cancellationToken = default);
 
-    Task<BrandModel?> GetByIdAsync(short brandId, CancellationToken cancellationToken = default);
+    Task<Brand?> GetByIdAsync(short brandId, CancellationToken cancellationToken = default);
 
-    Task<BrandModel> CreateAsync(string brandName, CancellationToken cancellationToken = default);
+    Task<Brand> CreateAsync(string brandName, CancellationToken cancellationToken = default);
 
-    Task<BrandModel> UpdateAsync(
+    Task<Brand> UpdateAsync(
         short brandId,
         string brandName,
+        bool isDeleted,
         CancellationToken cancellationToken = default);
 }

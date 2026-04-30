@@ -22,12 +22,4 @@ public interface IBrandService
         short brandId,
         UpdateBrandDto dto,
         CancellationToken cancellationToken = default);
-
-    Task<Result<PaginatedResponse<BrandListDto>>> SearchBrandsAsync(
-        string searchTerm,
-        int pageNumber = 1,
-        int pageSize = 10,
-        string? sortBy = null,
-        bool sortDesc = false,
-        CancellationToken cancellationToken = default);
 }
