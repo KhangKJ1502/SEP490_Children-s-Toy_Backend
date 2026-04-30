@@ -15,6 +15,10 @@ public partial class Campaign
 
     public string? MessageOverride { get; set; }
 
+    public string? ReferenceType { get; set; }
+
+    public int? ReferenceId { get; set; }
+
     public string SourceType { get; set; } = null!;
 
     public string TargetType { get; set; } = null!;

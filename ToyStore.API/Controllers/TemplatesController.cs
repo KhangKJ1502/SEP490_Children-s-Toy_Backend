@@ -26,6 +26,9 @@ public class TemplatesController : ControllerBase
         [FromQuery] string? sortBy = null,
         [FromQuery] bool sortDesc = false,
         [FromQuery] string? searchTerm = null,
+        [FromQuery] bool? isActive = null,
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
         CancellationToken cancellationToken = default)
     {
         var result = await _templateService.GetTemplatesAsync(
@@ -34,6 +37,9 @@ public class TemplatesController : ControllerBase
             sortBy,
             sortDesc,
             searchTerm,
+            isActive,
+            startDate,
+            endDate,
             cancellationToken);
 
         return result.ToActionResult();

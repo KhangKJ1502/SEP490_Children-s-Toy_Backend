@@ -373,6 +373,10 @@ public partial class SEP490ToyStoreContext : DbContext
                 .IsUnicode(false);
             entity.Property(e => e.ImageUrl).HasMaxLength(500);
             entity.Property(e => e.MessageOverride).HasMaxLength(500);
+            entity.Property(e => e.ReferenceType)
+                .HasMaxLength(20)
+                .IsUnicode(false);
+            entity.Property(e => e.ReferenceId).HasColumnName("ReferenceID");
             entity.Property(e => e.ScheduledAt).HasPrecision(0);
             entity.Property(e => e.SourceType)
                 .HasMaxLength(10)

@@ -3,24 +3,21 @@ using ToyStore.Application.DTOs.Campaigns;
 
 namespace ToyStore.Application.Validators.Campaigns;
 
-public class CreateCampaignValidator : AbstractValidator<CreateCampaignDto>
+public class UpdateCampaignValidator : AbstractValidator<UpdateCampaignDto>
 {
-    private static readonly HashSet<string> ValidSourceTypes         = ["ADMIN", "SYSTEM"];
     private static readonly HashSet<string> ValidTargetTypes         = ["ALL", "SEGMENT", "INDIVIDUAL", "ROLE"];
     private static readonly HashSet<string> ValidCampaignTargetTypes = ["ACCOUNT_ID", "ROLE_ID", "SEGMENT"];
     private static readonly HashSet<string> ValidReferenceTypes      = ["VOUCHER", "PRODUCT", "BLOG", "SALE"];
 
-    public CreateCampaignValidator()
+    public UpdateCampaignValidator()
     {
+        RuleFor(x => x.CampaignId)
+            .GreaterThan(0).WithMessage("Campaign ID must be greater than 0.");
+
         RuleFor(x => x.CampaignName)
             .NotEmpty().WithMessage("Campaign name is required.")
             .MinimumLength(3).WithMessage("Campaign name must be at least 3 characters.")
             .MaximumLength(255).WithMessage("Campaign name must not exceed 255 characters.");
-
-        RuleFor(x => x.SourceType)
-            .NotEmpty().WithMessage("Source type is required.")
-            .Must(v => ValidSourceTypes.Contains(v))
-            .WithMessage($"Source type must be one of: {string.Join(", ", ValidSourceTypes)}.");
 
         RuleFor(x => x.TargetType)
             .NotEmpty().WithMessage("Target type is required.")
@@ -54,10 +51,6 @@ public class CreateCampaignValidator : AbstractValidator<CreateCampaignDto>
             .WithMessage("Scheduled time must not be in the past.")
             .When(x => x.ScheduledAt.HasValue);
 
-        RuleFor(x => x.EventKey)
-            .MaximumLength(100).WithMessage("Event key must not exceed 100 characters.")
-            .When(x => !string.IsNullOrEmpty(x.EventKey));
-
         RuleFor(x => x.ImageUrl)
             .MaximumLength(500).WithMessage("Image URL must not exceed 500 characters.")
             .Must(uri => Uri.IsWellFormedUriString(uri, UriKind.Absolute))
@@ -71,9 +64,6 @@ public class CreateCampaignValidator : AbstractValidator<CreateCampaignDto>
         RuleFor(x => x.ActionTarget)
             .MaximumLength(500).WithMessage("Action target must not exceed 500 characters.")
             .When(x => !string.IsNullOrEmpty(x.ActionTarget));
-
-        RuleFor(x => x.CreatedByAccountId)
-            .GreaterThan(0).WithMessage("Created by account ID must be greater than 0.");
 
         RuleFor(x => x.Targets)
             .Must(t => t != null && t.Count > 0)

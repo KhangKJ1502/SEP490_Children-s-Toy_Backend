@@ -18,6 +18,8 @@ public class CampaignListDto
 
     public string? TemplateCode { get; set; }
 
+    public string? ReferenceType { get; set; }
+
     public int CreatedByAccountId { get; set; }
 
     public DateTime CreatedAt { get; set; }

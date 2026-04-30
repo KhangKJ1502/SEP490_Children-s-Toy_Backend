@@ -18,6 +18,7 @@ using ToyStore.Application.Validators.Templates;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Repositories;
 using ToyStore.Infrastructure.Services;
+using ToyStore.Infrastructure.Services.Resolvers;
 
 
 namespace ToyStore.Infrastructure;
@@ -64,6 +65,7 @@ public static class DependencyInjection
         services.AddScoped<IValidator<CreateTemplateDto>, CreateTemplateValidator>();
         services.AddScoped<IValidator<UpdateTemplateDto>, UpdateTemplateValidator>();
         services.AddScoped<IValidator<CreateCampaignDto>, CreateCampaignValidator>();
+        services.AddScoped<IValidator<UpdateCampaignDto>, UpdateCampaignValidator>();
 
 
         services.AddScoped<IVoucherRepository, VoucherRepository>();
@@ -84,6 +86,16 @@ public static class DependencyInjection
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<ITemplateService, TemplateService>();
         services.AddScoped<ICampaignService, CampaignService>();
+
+        // Business-object resolvers
+        services.AddScoped<IBusinessObjectResolver, VoucherResolver>();
+        services.AddScoped<IBusinessObjectResolver, ProductResolver>();
+        services.AddScoped<IBusinessObjectResolver, BlogPostResolver>();
+        services.AddScoped<IBusinessObjectResolver, SaleResolver>();
+        services.AddScoped<BusinessObjectResolverFactory>();
+
+        // Template renderer
+        services.AddScoped<ITemplateRenderer, TemplateRenderer>();
 
         services.AddScoped<IRedisService, RedisService>();
         services.AddScoped<IEmailService, EmailService>();
