@@ -21,6 +21,9 @@ public class TemplateRepository : ITemplateRepository
         string? sortBy = null,
         bool sortDesc = false,
         string? searchTerm = null,
+        bool? isActive = null,
+        DateTime? startDate = null,
+        DateTime? endDate = null,
         CancellationToken cancellationToken = default)
     {
         var query = _context.Templates
@@ -33,6 +36,21 @@ public class TemplateRepository : ITemplateRepository
                 x.TemplateCode.Contains(searchTerm) ||
                 x.TitleTemplate.Contains(searchTerm) ||
                 x.MessageTemplate.Contains(searchTerm));
+        }
+
+        if (isActive.HasValue)
+        {
+            query = query.Where(x => x.IsActive == isActive.Value);
+        }
+
+        if (startDate.HasValue)
+        {
+            query = query.Where(x => x.CreatedAt >= startDate.Value);
+        }
+
+        if (endDate.HasValue)
+        {
+            query = query.Where(x => x.CreatedAt <= endDate.Value);
         }
 
         query = (sortBy?.Trim().ToLowerInvariant(), sortDesc) switch
@@ -55,7 +73,12 @@ public class TemplateRepository : ITemplateRepository
             .ToListAsync(cancellationToken);
     }
 
-    public Task<int> CountAsync(string? searchTerm = null, CancellationToken cancellationToken = default)
+    public Task<int> CountAsync(
+        string? searchTerm = null, 
+        bool? isActive = null,
+        DateTime? startDate = null,
+        DateTime? endDate = null,
+        CancellationToken cancellationToken = default)
     {
         var query = _context.Templates
             .AsNoTracking()
@@ -67,6 +90,21 @@ public class TemplateRepository : ITemplateRepository
                 x.TemplateCode.Contains(searchTerm) ||
                 x.TitleTemplate.Contains(searchTerm) ||
                 x.MessageTemplate.Contains(searchTerm));
+        }
+
+        if (isActive.HasValue)
+        {
+            query = query.Where(x => x.IsActive == isActive.Value);
+        }
+
+        if (startDate.HasValue)
+        {
+            query = query.Where(x => x.CreatedAt >= startDate.Value);
+        }
+
+        if (endDate.HasValue)
+        {
+            query = query.Where(x => x.CreatedAt <= endDate.Value);
         }
 
         return query.CountAsync(cancellationToken);
