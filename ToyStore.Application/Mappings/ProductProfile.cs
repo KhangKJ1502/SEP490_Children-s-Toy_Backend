@@ -19,8 +19,8 @@ public class ProductProfile : Profile
         CreateMap<Product, ProductDto>()
             .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.CategoryName))
             .ForMember(dest => dest.BrandName, opt => opt.MapFrom(src => src.Brand != null ? src.Brand.BrandName : null))
-            .ForMember(dest => dest.PriceRangeMin, opt => opt.MapFrom(src => src.PriceRange != null ? src.PriceRange.PriceRangeMin : null))
-            .ForMember(dest => dest.PriceRangeMax, opt => opt.MapFrom(src => src.PriceRange != null ? src.PriceRange.PriceRangeMax : null))
+            .ForMember(dest => dest.PriceRangeMin, opt => opt.MapFrom(src => GetPriceRangeMin(src)))
+            .ForMember(dest => dest.PriceRangeMax, opt => opt.MapFrom(src => GetPriceRangeMax(src)))
             .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.ProductDetail != null ? src.ProductDetail.Description : null))
             .ForMember(dest => dest.MaterialId, opt => opt.MapFrom(src => src.ProductDetail != null ? src.ProductDetail.MaterialId : null))
             .ForMember(dest => dest.MaterialName, opt => opt.MapFrom(src => src.ProductDetail != null && src.ProductDetail.Material != null ? src.ProductDetail.Material.MaterialName : null))
@@ -51,24 +51,8 @@ public class ProductProfile : Profile
             .ForMember(dest => dest.TrendingProducts, opt => opt.Ignore())
             .ForMember(dest => dest.UserProductScores, opt => opt.Ignore())
             .ForMember(dest => dest.Wishlists, opt => opt.Ignore())
-            .ForMember(dest => dest.ProductDetail, opt => opt.MapFrom(src => 
-                !string.IsNullOrWhiteSpace(src.Description) || src.MaterialId.HasValue || src.AgeId.HasValue || src.SexId.HasValue || src.OriginId.HasValue
-                ? new ProductDetail
-                {
-                    Description = src.Description,
-                    MaterialId = src.MaterialId,
-                    AgeId = src.AgeId,
-                    SexId = src.SexId,
-                    OriginId = src.OriginId
-                }
-                : null))
-            .ForMember(dest => dest.ProductImage, opt => opt.MapFrom(src => 
-                !string.IsNullOrWhiteSpace(src.MainImageUrl)
-                ? new ProductImage
-                {
-                    ImageUrl = src.MainImageUrl
-                }
-                : null));
+            .ForMember(dest => dest.ProductDetail, opt => opt.MapFrom(src => BuildProductDetail(src)))
+            .ForMember(dest => dest.ProductImage, opt => opt.MapFrom(src => BuildProductImage(src)));
 
         CreateMap<UpdateProductDto, Product>()
             .ForMember(dest => dest.ProductId, opt => opt.Ignore())
@@ -92,5 +76,46 @@ public class ProductProfile : Profile
             .ForMember(dest => dest.ProductDetail, opt => opt.Ignore())
             .ForMember(dest => dest.ProductImage, opt => opt.Ignore())
             .ForAllMembers(opt => opt.Condition((src, dest, srcMember) => srcMember != null));
+    }
+
+    private static ProductDetail? BuildProductDetail(CreateProductDto src)
+    {
+        if (string.IsNullOrWhiteSpace(src.Description) && !src.MaterialId.HasValue &&
+            !src.AgeId.HasValue && !src.SexId.HasValue && !src.OriginId.HasValue)
+        {
+            return null;
+        }
+
+        return new ProductDetail
+        {
+            Description = src.Description,
+            MaterialId = src.MaterialId,
+            AgeId = src.AgeId,
+            SexId = src.SexId,
+            OriginId = src.OriginId
+        };
+    }
+
+    private static ProductImage? BuildProductImage(CreateProductDto src)
+    {
+        if (string.IsNullOrWhiteSpace(src.MainImageUrl))
+        {
+            return null;
+        }
+
+        return new ProductImage
+        {
+            ImageUrl = src.MainImageUrl
+        };
+    }
+
+    private static decimal? GetPriceRangeMin(Product src)
+    {
+        return src.PriceRange?.PriceRangeMin;
+    }
+
+    private static decimal? GetPriceRangeMax(Product src)
+    {
+        return src.PriceRange?.PriceRangeMax;
     }
 }
