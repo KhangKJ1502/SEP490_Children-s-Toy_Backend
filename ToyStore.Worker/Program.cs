@@ -14,6 +14,7 @@ builder.Services.AddRecommendation();
 builder.Services.AddHostedService<OrderStatusWorker>();
 builder.Services.AddHostedService<RecommendationWorker>();
 builder.Services.AddHostedService<CampaignSenderWorker>();
+builder.Services.AddHostedService<BlogPublishWorker>();
 
 var host = builder.Build();
 host.Run();

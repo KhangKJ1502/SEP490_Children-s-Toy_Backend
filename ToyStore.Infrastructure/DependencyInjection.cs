@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using StackExchange.Redis;
 using ToyStore.Application.DTOs.Accounts;
+using ToyStore.Application.DTOs.Blogs;
 using ToyStore.Application.DTOs.Brands;
 using ToyStore.Application.DTOs.Campaigns;
 using ToyStore.Application.DTOs.Profiles;
@@ -56,6 +57,7 @@ public static class DependencyInjection
             cfg.AddProfile<CategoryProfile>();
             cfg.AddProfile<ProductProfile>();
             cfg.AddProfile<BrandProfile>();
+            cfg.AddProfile<BlogProfile>();
         });
 
         services.AddScoped<IValidator<CreateBrandDto>, CreateBrandValidator>();
@@ -82,6 +84,7 @@ public static class DependencyInjection
         services.AddScoped<IAccountRepository, AccountRepository>();
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IBrandRepository, BrandRepository>();
+        services.AddScoped<IBlogRepository, BlogRepository>();
         services.AddScoped<IProductRepository, ProductRepository>();
         services.AddScoped<ITemplateRepository, TemplateRepository>();
         services.AddScoped<ICampaignRepository, CampaignRepository>();
@@ -89,6 +92,7 @@ public static class DependencyInjection
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ISuperCategoryService, SuperCategoryService>();
         services.AddScoped<IBrandService, BrandService>();
+        services.AddScoped<IBlogService, BlogService>();
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<ITemplateService, TemplateService>();
         services.AddScoped<ICampaignService, CampaignService>();
