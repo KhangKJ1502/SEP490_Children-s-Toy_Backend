@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Logging;
-using ToyStore.Application.Common.Models;
+using ToyStore.Domain.Entities;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.SuperCategories;
 using ToyStore.Application.Interfaces.Repositories;

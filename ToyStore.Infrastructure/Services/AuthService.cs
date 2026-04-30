@@ -10,6 +10,7 @@ using ToyStore.Application.DTOs.Auth;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Application.Validators.Auth;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -179,7 +180,7 @@ public class AuthService : IAuthService
                 Email = created.Email,
                 ImageUrl = created.ImageUrl,
                 RoleId = created.RoleId,
-                RoleName = created.RoleName
+                RoleName = created.Role.RoleName
             });
         }
         catch (Exception ex)
@@ -271,7 +272,7 @@ public class AuthService : IAuthService
         return Result.Success();
     }
 
-    private string GenerateJwtToken(AccountAuthModel account)
+    private string GenerateJwtToken(Account account)
     {
         var secretKey = _configuration["Jwt:SecretKey"]!;
         var issuer = _configuration["Jwt:Issuer"]!;
@@ -287,10 +288,10 @@ public class AuthService : IAuthService
             new Claim(JwtRegisteredClaimNames.Sub, account.AccountId.ToString()),
             new Claim(JwtRegisteredClaimNames.Email, account.Email),
             new Claim(JwtRegisteredClaimNames.Jti, jti),
-            new Claim(ClaimTypes.Role, account.RoleName),
+            new Claim(ClaimTypes.Role, account.Role.RoleName),
             new Claim("accountId", account.AccountId.ToString()),
             new Claim("roleId", account.RoleId.ToString()),
-            new Claim("roleName", account.RoleName)
+            new Claim("roleName", account.Role.RoleName)
         };
 
         var token = new JwtSecurityToken(
@@ -320,7 +321,7 @@ public class AuthService : IAuthService
         return RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
     }
 
-    private static AccountInfoDto MapToAccountInfoDto(AccountAuthModel account)
+    private static AccountInfoDto MapToAccountInfoDto(Account account)
     {
         return new AccountInfoDto
         {
@@ -329,7 +330,7 @@ public class AuthService : IAuthService
             Email = account.Email,
             ImageUrl = account.ImageUrl,
             RoleId = account.RoleId,
-            RoleName = account.RoleName
+            RoleName = account.Role.RoleName
         };
     }
 }

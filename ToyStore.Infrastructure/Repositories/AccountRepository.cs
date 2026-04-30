@@ -1,8 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using ToyStore.Application.Common.Models;
 using ToyStore.Application.Interfaces.Repositories;
-using ToyStore.Infrastructure.Data;
 using ToyStore.Domain.Entities;
+using ToyStore.Infrastructure.Data;
 
 namespace ToyStore.Infrastructure.Repositories;
 
@@ -15,7 +14,7 @@ public class AccountRepository : IAccountRepository
         _context = context;
     }
 
-    public async Task<List<AccountModel>> GetPagedAsync(
+    public async Task<List<Account>> GetPagedAsync(
         int pageNumber,
         int pageSize,
         string? sortBy = null,
@@ -58,22 +57,6 @@ public class AccountRepository : IAccountRepository
         return await query
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
-            .Select(x => new AccountModel
-            {
-                AccountId = x.AccountId,
-                RoleId = x.RoleId,
-                RoleName = x.Role.RoleName,
-                EmployeeCode = x.EmployeeCode,
-                AccountName = x.AccountName,
-                PhoneNumber = x.PhoneNumber,
-                Email = x.Email,
-                ImageUrl = x.ImageUrl,
-                IsActive = x.IsActive,
-                IsDeleted = x.IsDeleted,
-                Provider = x.Provider,
-                CreatedAt = x.CreatedAt,
-                UpdatedAt = x.UpdatedAt
-            })
             .ToListAsync(cancellationToken);
     }
 
@@ -97,27 +80,12 @@ public class AccountRepository : IAccountRepository
         return query.CountAsync(cancellationToken);
     }
 
-    public Task<AccountModel?> GetByIdAsync(int accountId, CancellationToken cancellationToken = default)
+    public Task<Account?> GetByIdAsync(int accountId, CancellationToken cancellationToken = default)
     {
         return _context.Accounts
             .AsNoTracking()
+            .Include(x => x.Role)
             .Where(x => x.AccountId == accountId && !x.IsDeleted)
-            .Select(x => new AccountModel
-            {
-                AccountId = x.AccountId,
-                RoleId = x.RoleId,
-                RoleName = x.Role.RoleName,
-                EmployeeCode = x.EmployeeCode,
-                AccountName = x.AccountName,
-                PhoneNumber = x.PhoneNumber,
-                Email = x.Email,
-                ImageUrl = x.ImageUrl,
-                IsActive = x.IsActive,
-                IsDeleted = x.IsDeleted,
-                Provider = x.Provider,
-                CreatedAt = x.CreatedAt,
-                UpdatedAt = x.UpdatedAt
-            })
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -138,20 +106,15 @@ public class AccountRepository : IAccountRepository
             .AnyAsync(x => x.EmployeeCode!.ToLower() == normalizedEmployeeCode, cancellationToken);
     }
 
-    public Task<AccountRoleModel?> GetRoleByIdAsync(byte roleId, CancellationToken cancellationToken = default)
+    public Task<Role?> GetRoleByIdAsync(byte roleId, CancellationToken cancellationToken = default)
     {
         return _context.Roles
             .AsNoTracking()
             .Where(x => x.RoleId == roleId)
-            .Select(x => new AccountRoleModel
-            {
-                RoleId = x.RoleId,
-                RoleName = x.RoleName
-            })
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<AccountModel> CreateAsync(
+    public async Task<Account> CreateAsync(
         byte roleId,
         string? employeeCode,
         string accountName,
@@ -178,32 +141,11 @@ public class AccountRepository : IAccountRepository
 
         await _context.Accounts.AddAsync(entity, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
-
-        var roleName = await _context.Roles
-            .AsNoTracking()
-            .Where(x => x.RoleId == roleId)
-            .Select(x => x.RoleName)
-            .FirstAsync(cancellationToken);
-
-        return new AccountModel
-        {
-            AccountId = entity.AccountId,
-            RoleId = entity.RoleId,
-            RoleName = roleName,
-            EmployeeCode = entity.EmployeeCode,
-            AccountName = entity.AccountName,
-            PhoneNumber = entity.PhoneNumber,
-            Email = entity.Email,
-            ImageUrl = entity.ImageUrl,
-            IsActive = entity.IsActive,
-            IsDeleted = entity.IsDeleted,
-            Provider = entity.Provider,
-            CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt
-        };
+        await _context.Entry(entity).Reference(x => x.Role).LoadAsync(cancellationToken);
+        return entity;
     }
 
-    public async Task<AccountModel> UpdateStatusAsync(
+    public async Task<Account> UpdateStatusAsync(
         int accountId,
         bool isActive,
         CancellationToken cancellationToken = default)
@@ -215,49 +157,17 @@ public class AccountRepository : IAccountRepository
         entity.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);
-
-        var roleName = await _context.Roles
-            .AsNoTracking()
-            .Where(x => x.RoleId == entity.RoleId)
-            .Select(x => x.RoleName)
-            .FirstAsync(cancellationToken);
-
-        return new AccountModel
-        {
-            AccountId = entity.AccountId,
-            RoleId = entity.RoleId,
-            RoleName = roleName,
-            EmployeeCode = entity.EmployeeCode,
-            AccountName = entity.AccountName,
-            PhoneNumber = entity.PhoneNumber,
-            Email = entity.Email,
-            ImageUrl = entity.ImageUrl,
-            IsActive = entity.IsActive,
-            IsDeleted = entity.IsDeleted,
-            Provider = entity.Provider,
-            CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt
-        };
+        await _context.Entry(entity).Reference(x => x.Role).LoadAsync(cancellationToken);
+        return entity;
     }
 
-    public Task<AccountAuthModel?> GetByEmailForAuthAsync(string email, CancellationToken cancellationToken = default)
+    public Task<Account?> GetByEmailForAuthAsync(string email, CancellationToken cancellationToken = default)
     {
         var normalizedEmail = email.Trim().ToLowerInvariant();
         return _context.Accounts
             .AsNoTracking()
+            .Include(x => x.Role)
             .Where(x => x.Email.ToLower() == normalizedEmail)
-            .Select(x => new AccountAuthModel
-            {
-                AccountId = x.AccountId,
-                RoleId = x.RoleId,
-                RoleName = x.Role.RoleName,
-                AccountName = x.AccountName,
-                Email = x.Email,
-                ImageUrl = x.ImageUrl,
-                PasswordHash = x.PasswordHash,
-                IsActive = x.IsActive,
-                IsDeleted = x.IsDeleted
-            })
             .FirstOrDefaultAsync(cancellationToken);
     }
 
