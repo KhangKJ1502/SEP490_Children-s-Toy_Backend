@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Common.Models;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Infrastructure.Data;
-using ToyStore.Infrastructure.Models;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Infrastructure.Repositories;
 
