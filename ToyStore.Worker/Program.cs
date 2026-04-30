@@ -13,6 +13,7 @@ builder.Services.AddRecommendation();
 // Add hosted services (workers)
 builder.Services.AddHostedService<OrderStatusWorker>();
 builder.Services.AddHostedService<RecommendationWorker>();
+builder.Services.AddHostedService<CampaignSenderWorker>();
 builder.Services.AddHostedService<BlogPublishWorker>();
 
 var host = builder.Build();

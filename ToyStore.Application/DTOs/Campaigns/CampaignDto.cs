@@ -8,6 +8,12 @@ public class CampaignDto
 
     public string? TemplateCode { get; set; }
 
+    public string? ReferenceType { get; set; }
+
+    public int? ReferenceId { get; set; }
+
+    public ResolvedReferenceDto? ResolvedReference { get; set; }
+
     public string? TitleOverride { get; set; }
 
     public string? MessageOverride { get; set; }

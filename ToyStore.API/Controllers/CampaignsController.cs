@@ -20,18 +20,8 @@ public class CampaignsController : ControllerBase
     }
 
     /// <summary>
-    /// Lay danh sach Campaign co phan trang voi cac tuy chon loc va sap xep nang cao.
+    /// Lay danh sach Campaign co phan trang voi cac tuy chon loc va sap xep.
     /// </summary>
-    /// <param name="pageNumber">So trang (>=1, mac dinh 1).</param>
-    /// <param name="pageSize">So ban ghi moi trang (1-100, mac dinh 10).</param>
-    /// <param name="searchTerm">Tim kiem tren CampaignName, TemplateCode, EventKey.</param>
-    /// <param name="status">Loc theo trang thai: Draft | Active | Completed.</param>
-    /// <param name="sourceType">Loc theo kenh: Email | System | Push.</param>
-    /// <param name="startDate">Ngay bat dau (CreatedAt >=, dinh dang yyyy-MM-dd).</param>
-    /// <param name="endDate">Ngay ket thuc (CreatedAt <=, dinh dang yyyy-MM-dd).</param>
-    /// <param name="sortBy">Truong sap xep: createdAt | name | status (mac dinh: createdAt).</param>
-    /// <param name="sortDesc">True = giam dan, False = tang dan (mac dinh: false).</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
     [HttpGet]
     public async Task<ActionResult<PaginatedResponse<CampaignListDto>>> GetCampaigns(
         [FromQuery] int pageNumber      = 1,
@@ -59,15 +49,24 @@ public class CampaignsController : ControllerBase
         };
 
         var result = await _campaignService.GetCampaignsAsync(query, cancellationToken);
-
         return result.ToActionResult();
     }
 
     /// <summary>
-    /// Lay chi tiet Campaign theo ID.
+    /// Lay danh sach cac loai doi tuong nghiep vu duoc ho tro cung cac placeholder.
+    /// Dung de frontend hien thi options khi admin tao/sua campaign.
     /// </summary>
-    /// <param name="campaignId">ID cua Campaign.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
+    [HttpGet("reference-types")]
+    public async Task<ActionResult<List<ReferenceTypeDto>>> GetReferenceTypes(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _campaignService.GetReferenceTypesAsync(cancellationToken);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Lay chi tiet Campaign theo ID, bao gom thong tin doi tuong nghiep vu da resolve.
+    /// </summary>
     [HttpGet("{campaignId:int}")]
     public async Task<ActionResult<CampaignDto>> GetCampaignById(
         [FromRoute] int campaignId,
@@ -80,8 +79,6 @@ public class CampaignsController : ControllerBase
     /// <summary>
     /// Tao moi Campaign.
     /// </summary>
-    /// <param name="dto">Du lieu tao Campaign.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
     [HttpPost]
     public async Task<ActionResult<CampaignDto>> CreateCampaign(
         [FromBody] CreateCampaignDto dto,
@@ -89,5 +86,31 @@ public class CampaignsController : ControllerBase
     {
         var result = await _campaignService.CreateCampaignAsync(dto, cancellationToken);
         return result.ToCreatedResult($"api/campaigns/{result.Data?.CampaignId}");
+    }
+
+    /// <summary>
+    /// Cap nhat Campaign. Chi cho phep khi Status la Draft hoac Scheduled.
+    /// </summary>
+    [HttpPut("{campaignId:int}")]
+    public async Task<ActionResult<CampaignDto>> UpdateCampaign(
+        [FromRoute] int campaignId,
+        [FromBody] UpdateCampaignDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        dto.CampaignId = campaignId;
+        var result = await _campaignService.UpdateCampaignAsync(dto, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Huy Campaign. Chi cho phep khi Status la Draft hoac Scheduled.
+    /// </summary>
+    [HttpPost("{campaignId:int}/cancel")]
+    public async Task<ActionResult> CancelCampaign(
+        [FromRoute] int campaignId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _campaignService.CancelCampaignAsync(campaignId, cancellationToken);
+        return result.ToNoContentResult();
     }
 }

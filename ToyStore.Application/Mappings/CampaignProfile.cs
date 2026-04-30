@@ -10,8 +10,9 @@ public class CampaignProfile : Profile
     {
         CreateMap<Campaign, CampaignListDto>();
         CreateMap<Campaign, CampaignDto>()
-            .ForMember(dest => dest.Targets, opt => opt.MapFrom(src => src.CampaignTargets))
-            .ForMember(dest => dest.Stat, opt => opt.MapFrom(src => src.CampaignStat));
+            .ForMember(dest => dest.Targets,           opt => opt.MapFrom(src => src.CampaignTargets))
+            .ForMember(dest => dest.Stat,              opt => opt.MapFrom(src => src.CampaignStat))
+            .ForMember(dest => dest.ResolvedReference, opt => opt.Ignore());
 
         CreateMap<CampaignTarget, CampaignTargetDto>();
         CreateMap<CampaignStat, CampaignStatDto>();

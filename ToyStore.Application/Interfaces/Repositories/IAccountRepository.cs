@@ -76,4 +76,19 @@ public interface IAccountRepository
     /// Cập nhật mật khẩu Account.
     /// </summary>
     Task UpdatePasswordHashAsync(int accountId, string passwordHash, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lay thong tin Account theo ID cho nghiep vu Profile (bao gom PasswordHash).
+    /// </summary>
+    Task<Account?> GetByIdForProfileAsync(int accountId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cap nhat thong tin Profile (ImageUrl, PhoneNumber).
+    /// </summary>
+    Task<Account> UpdateProfileAsync(
+        int accountId,
+        string? imageUrl,
+        string? phoneNumber,
+        CancellationToken cancellationToken = default);
+
 }
