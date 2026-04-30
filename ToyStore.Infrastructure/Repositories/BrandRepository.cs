@@ -1,8 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using ToyStore.Application.Common.Models;
 using ToyStore.Application.Interfaces.Repositories;
-using ToyStore.Infrastructure.Data;
 using ToyStore.Domain.Entities;
+using ToyStore.Infrastructure.Data;
 
 namespace ToyStore.Infrastructure.Repositories;
 
@@ -15,7 +14,7 @@ public class BrandRepository : IBrandRepository
         _context = context;
     }
 
-    public async Task<List<BrandModel>> GetPagedAsync(
+    public async Task<List<Brand>> GetPagedAsync(
         int pageNumber,
         int pageSize,
         string? sortBy = null,
@@ -23,9 +22,7 @@ public class BrandRepository : IBrandRepository
         string? searchTerm = null,
         CancellationToken cancellationToken = default)
     {
-        var query = _context.Brands
-            .AsNoTracking()
-            .Where(x => !x.IsDeleted);
+        var query = _context.Brands.AsNoTracking();
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
@@ -40,6 +37,10 @@ public class BrandRepository : IBrandRepository
             ("brandname", false) => query.OrderBy(x => x.BrandName),
             ("createdat", true) => query.OrderByDescending(x => x.CreatedAt),
             ("createdat", false) => query.OrderBy(x => x.CreatedAt),
+            ("updatedat", true) => query.OrderByDescending(x => x.UpdatedAt),
+            ("updatedat", false) => query.OrderBy(x => x.UpdatedAt),
+            ("status", true) => query.OrderByDescending(x => x.IsDeleted),
+            ("status", false) => query.OrderBy(x => x.IsDeleted),
             (_, true) => query.OrderByDescending(x => x.BrandId),
             _ => query.OrderBy(x => x.BrandId)
         };
@@ -47,22 +48,12 @@ public class BrandRepository : IBrandRepository
         return await query
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
-            .Select(x => new BrandModel
-            {
-                BrandId = x.BrandId,
-                BrandName = x.BrandName,
-                IsDeleted = x.IsDeleted,
-                CreatedAt = x.CreatedAt,
-                UpdatedAt = x.UpdatedAt
-            })
             .ToListAsync(cancellationToken);
     }
 
     public Task<int> CountAsync(string? searchTerm = null, CancellationToken cancellationToken = default)
     {
-        var query = _context.Brands
-            .AsNoTracking()
-            .Where(x => !x.IsDeleted);
+        var query = _context.Brands.AsNoTracking();
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
@@ -77,7 +68,6 @@ public class BrandRepository : IBrandRepository
         var normalized = brandName.Trim().ToLower();
         return _context.Brands
             .AsNoTracking()
-            .Where(x => !x.IsDeleted)
             .AnyAsync(x => x.BrandName.ToLower() == normalized, cancellationToken);
     }
 
@@ -89,27 +79,19 @@ public class BrandRepository : IBrandRepository
         var normalized = brandName.Trim().ToLower();
         return _context.Brands
             .AsNoTracking()
-            .Where(x => !x.IsDeleted && x.BrandId != brandId)
+            .Where(x => x.BrandId != brandId)
             .AnyAsync(x => x.BrandName.ToLower() == normalized, cancellationToken);
     }
 
-    public Task<BrandModel?> GetByIdAsync(short brandId, CancellationToken cancellationToken = default)
+    public Task<Brand?> GetByIdAsync(short brandId, CancellationToken cancellationToken = default)
     {
         return _context.Brands
             .AsNoTracking()
-            .Where(x => x.BrandId == brandId && !x.IsDeleted)
-            .Select(x => new BrandModel
-            {
-                BrandId = x.BrandId,
-                BrandName = x.BrandName,
-                IsDeleted = x.IsDeleted,
-                CreatedAt = x.CreatedAt,
-                UpdatedAt = x.UpdatedAt
-            })
+            .Where(x => x.BrandId == brandId)
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<BrandModel> CreateAsync(string brandName, CancellationToken cancellationToken = default)
+    public async Task<Brand> CreateAsync(string brandName, CancellationToken cancellationToken = default)
     {
         var entity = new Brand
         {
@@ -121,36 +103,30 @@ public class BrandRepository : IBrandRepository
         await _context.Brands.AddAsync(entity, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
 
-        return new BrandModel
-        {
-            BrandId = entity.BrandId,
-            BrandName = entity.BrandName,
-            IsDeleted = entity.IsDeleted,
-            CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt
-        };
+        return entity;
     }
 
-    public async Task<BrandModel> UpdateAsync(
+    public async Task<Brand> UpdateAsync(
         short brandId,
         string brandName,
+        bool isDeleted,
         CancellationToken cancellationToken = default)
     {
         var entity = await _context.Brands
-            .FirstAsync(x => x.BrandId == brandId && !x.IsDeleted, cancellationToken);
+            .FirstAsync(x => x.BrandId == brandId, cancellationToken);
 
-        entity.BrandName = brandName;
-        entity.UpdatedAt = DateTime.UtcNow;
+        var hasNameChanged = !string.Equals(entity.BrandName, brandName, StringComparison.Ordinal);
+        var hasStatusChanged = entity.IsDeleted != isDeleted;
+
+        if (hasNameChanged || hasStatusChanged)
+        {
+            entity.BrandName = brandName;
+            entity.IsDeleted = isDeleted;
+            entity.UpdatedAt = DateTime.UtcNow;
+        }
 
         await _context.SaveChangesAsync(cancellationToken);
 
-        return new BrandModel
-        {
-            BrandId = entity.BrandId,
-            BrandName = entity.BrandName,
-            IsDeleted = entity.IsDeleted,
-            CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt
-        };
+        return entity;
     }
 }

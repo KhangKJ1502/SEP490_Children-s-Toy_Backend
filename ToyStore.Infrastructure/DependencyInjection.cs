@@ -1,21 +1,24 @@
 
+using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using StackExchange.Redis;
 using ToyStore.Application.DTOs.Accounts;
-using ToyStore.Application.DTOs.Templates;
+using ToyStore.Application.DTOs.Brands;
 using ToyStore.Application.DTOs.Campaigns;
+using ToyStore.Application.DTOs.Templates;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Application.Mappings;
 using ToyStore.Application.Validators.Accounts;
-using ToyStore.Application.Validators.Templates;
+using ToyStore.Application.Validators.Brands;
 using ToyStore.Application.Validators.Campaigns;
-using FluentValidation;
+using ToyStore.Application.Validators.Templates;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Repositories;
 using ToyStore.Infrastructure.Services;
+
 
 namespace ToyStore.Infrastructure;
 
@@ -34,19 +37,33 @@ public static class DependencyInjection
         redisOptions.AbortOnConnectFail = false;
         services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisOptions));
 
+
+        // Đăng ký FluentValidation
+        services.AddValidatorsFromAssemblyContaining<Application.Validators.SuperCategories.CreateSuperCategoryValidator>();
+
+        // Đăng ký AutoMapper
         services.AddAutoMapper(cfg =>
         {
             cfg.AddProfile<AccountProfile>();
             cfg.AddProfile<VoucherProfile>();
             cfg.AddProfile<TemplateProfile>();
             cfg.AddProfile<CampaignProfile>();
+            cfg.AddProfile<SuperCategoryProfile>();
+            cfg.AddProfile<CategoryProfile>();
+            cfg.AddProfile<ProductProfile>();
+            cfg.AddProfile<BrandProfile>();
         });
+
+        services.AddScoped<IValidator<CreateBrandDto>, CreateBrandValidator>();
+        services.AddScoped<IValidator<UpdateBrandDto>, UpdateBrandValidator>();
+
 
         services.AddScoped<IValidator<CreateAccountDto>, CreateAccountValidator>();
         services.AddScoped<IValidator<UpdateAccountStatusDto>, UpdateAccountStatusValidator>();
         services.AddScoped<IValidator<CreateTemplateDto>, CreateTemplateValidator>();
         services.AddScoped<IValidator<UpdateTemplateDto>, UpdateTemplateValidator>();
         services.AddScoped<IValidator<CreateCampaignDto>, CreateCampaignValidator>();
+
 
         services.AddScoped<IVoucherRepository, VoucherRepository>();
         services.AddScoped<IVoucherService, VoucherService>();
