@@ -4,9 +4,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using StackExchange.Redis;
+using ToyStore.Application.DTOs.Accounts;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Application.Mappings;
+using ToyStore.Application.Validators.Accounts;
+using FluentValidation;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Repositories;
 using ToyStore.Infrastructure.Services;
@@ -34,6 +37,7 @@ public static class DependencyInjection
         // Đăng ký AutoMapper
         services.AddAutoMapper(cfg =>
         {
+            cfg.AddProfile<AccountProfile>();
             cfg.AddProfile<VoucherProfile>();
             cfg.AddProfile<TemplateProfile>();
             cfg.AddProfile<SuperCategoryProfile>();
@@ -41,6 +45,9 @@ public static class DependencyInjection
             cfg.AddProfile<ProductProfile>();
             cfg.AddProfile<AccountProfile>();
         });
+
+        services.AddScoped<IValidator<CreateAccountDto>, CreateAccountValidator>();
+        services.AddScoped<IValidator<UpdateAccountStatusDto>, UpdateAccountStatusValidator>();
 
         services.AddScoped<IVoucherRepository, VoucherRepository>();
         services.AddScoped<IVoucherService, VoucherService>();

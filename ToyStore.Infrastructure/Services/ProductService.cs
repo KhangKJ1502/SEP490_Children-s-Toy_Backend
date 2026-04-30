@@ -8,6 +8,8 @@ using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
 
+using ToyStore.Application.Validators.Products;
+using ToyStore.Domain.Entities;
 namespace ToyStore.Infrastructure.Services;
 
 public class ProductService : IProductService

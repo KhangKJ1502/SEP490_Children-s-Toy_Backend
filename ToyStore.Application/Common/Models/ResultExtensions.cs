@@ -1,4 +1,5 @@
 using FluentValidation.Results;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Common.Models;
 

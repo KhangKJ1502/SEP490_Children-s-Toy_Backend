@@ -11,6 +11,7 @@ using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs.Auth;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
+using ToyStore.Application.Validators.Auth;
 using ToyStore.Domain.Entities;
 
 namespace ToyStore.Infrastructure.Services;
@@ -182,7 +183,19 @@ public class AuthService : IAuthService
 
             _logger.LogInformation("Customer account {AccountId} registered successfully.", created.AccountId);
 
+<<<<<<< HEAD
             return Result<AccountInfoDto>.Success(_mapper.Map<AccountInfoDto>(created));
+=======
+            return Result<AccountInfoDto>.Success(new AccountInfoDto
+            {
+                AccountId = created.AccountId,
+                AccountName = created.AccountName,
+                Email = created.Email,
+                ImageUrl = created.ImageUrl,
+                RoleId = created.RoleId,
+                RoleName = created.Role.RoleName
+            });
+>>>>>>> 6d058857893bda1f59e25074ac7b5061c1ebaa7b
         }
         catch (Exception ex)
         {
@@ -321,4 +334,20 @@ public class AuthService : IAuthService
     {
         return RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
     }
+<<<<<<< HEAD
+=======
+
+    private static AccountInfoDto MapToAccountInfoDto(Account account)
+    {
+        return new AccountInfoDto
+        {
+            AccountId = account.AccountId,
+            AccountName = account.AccountName,
+            Email = account.Email,
+            ImageUrl = account.ImageUrl,
+            RoleId = account.RoleId,
+            RoleName = account.Role.RoleName
+        };
+    }
+>>>>>>> 6d058857893bda1f59e25074ac7b5061c1ebaa7b
 }

@@ -1,4 +1,4 @@
-using ToyStore.Application.Common.Models;
+using ToyStore.Domain.Entities;
 using ToyStore.Application.DTOs.Auth;
 
 namespace ToyStore.Application.Interfaces.Services;
