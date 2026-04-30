@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.DTOs.Campaigns;
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Domain.Entities;
 using ToyStore.Infrastructure.Data;
 
 namespace ToyStore.Infrastructure.Repositories;
@@ -14,9 +15,9 @@ public class CampaignRepository : ICampaignRepository
         _context = context;
     }
 
-  public async Task<List<CampaignListDto>> GetPagedAsync(
-        CampaignQueryDto query,
-        CancellationToken cancellationToken = default)
+    public async Task<List<CampaignListDto>> GetPagedAsync(
+          CampaignQueryDto query,
+          CancellationToken cancellationToken = default)
     {
         var baseQuery = BuildBaseQuery(query);
 
@@ -27,65 +28,65 @@ public class CampaignRepository : ICampaignRepository
             .Take(query.PageSize)
             .Select(x => new CampaignListDto
             {
-                CampaignId           = x.CampaignId,
-                CampaignName         = x.CampaignName,
-                TemplateCode         = x.TemplateCode,
-                SourceType           = x.SourceType,
-                TargetType           = x.TargetType,
-                Status               = x.Status,
-                ScheduledAt          = x.ScheduledAt,
-                ImageUrl             = x.ImageUrl,
-                CreatedByAccountId   = x.CreatedByAccountId,
-                CreatedAt            = x.CreatedAt,
-                UpdatedAt            = x.UpdatedAt
+                CampaignId = x.CampaignId,
+                CampaignName = x.CampaignName,
+                TemplateCode = x.TemplateCode,
+                SourceType = x.SourceType,
+                TargetType = x.TargetType,
+                Status = x.Status,
+                ScheduledAt = x.ScheduledAt,
+                ImageUrl = x.ImageUrl,
+                CreatedByAccountId = x.CreatedByAccountId,
+                CreatedAt = x.CreatedAt,
+                UpdatedAt = x.UpdatedAt
             })
             .ToListAsync(cancellationToken);
     }
 
-   public Task<int> CountAsync(
-        CampaignQueryDto query,
-        CancellationToken cancellationToken = default)
+    public Task<int> CountAsync(
+         CampaignQueryDto query,
+         CancellationToken cancellationToken = default)
     {
         return BuildBaseQuery(query).CountAsync(cancellationToken);
     }
 
-   public Task<CampaignDto?> GetByIdAsync(int campaignId, CancellationToken cancellationToken = default)
+    public Task<CampaignDto?> GetByIdAsync(int campaignId, CancellationToken cancellationToken = default)
     {
         return _context.Campaigns
             .AsNoTracking()
             .Where(x => x.CampaignId == campaignId && !x.IsDeleted)
             .Select(x => new CampaignDto
             {
-                CampaignId           = x.CampaignId,
-                CampaignName         = x.CampaignName,
-                TemplateCode         = x.TemplateCode,
-                TitleOverride        = x.TitleOverride,
-                MessageOverride      = x.MessageOverride,
-                SourceType           = x.SourceType,
-                TargetType           = x.TargetType,
-                Status               = x.Status,
-                ScheduledAt          = x.ScheduledAt,
-                EventKey             = x.EventKey,
-                ImageUrl             = x.ImageUrl,
-                ActionType           = x.ActionType,
-                ActionTarget         = x.ActionTarget,
-                CreatedByAccountId   = x.CreatedByAccountId,
-                CreatedAt            = x.CreatedAt,
-                UpdatedAt            = x.UpdatedAt,
+                CampaignId = x.CampaignId,
+                CampaignName = x.CampaignName,
+                TemplateCode = x.TemplateCode,
+                TitleOverride = x.TitleOverride,
+                MessageOverride = x.MessageOverride,
+                SourceType = x.SourceType,
+                TargetType = x.TargetType,
+                Status = x.Status,
+                ScheduledAt = x.ScheduledAt,
+                EventKey = x.EventKey,
+                ImageUrl = x.ImageUrl,
+                ActionType = x.ActionType,
+                ActionTarget = x.ActionTarget,
+                CreatedByAccountId = x.CreatedByAccountId,
+                CreatedAt = x.CreatedAt,
+                UpdatedAt = x.UpdatedAt,
                 Stat = x.CampaignStat == null ? null : new CampaignStatDto
                 {
-                    StatId        = x.CampaignStat.StatId,
-                    TotalSent     = x.CampaignStat.TotalSent,
-                    TotalRead     = x.CampaignStat.TotalRead,
-                    TotalClicked  = x.CampaignStat.TotalClicked,
-                    ComputedAt    = x.CampaignStat.ComputedAt
+                    StatId = x.CampaignStat.StatId,
+                    TotalSent = x.CampaignStat.TotalSent,
+                    TotalRead = x.CampaignStat.TotalRead,
+                    TotalClicked = x.CampaignStat.TotalClicked,
+                    ComputedAt = x.CampaignStat.ComputedAt
                 },
                 Targets = x.CampaignTargets
                     .Select(t => new CampaignTargetDto
                     {
                         CampaignTargetId = t.CampaignTargetId,
-                        TargetType       = t.TargetType,
-                        TargetValue      = t.TargetValue
+                        TargetType = t.TargetType,
+                        TargetValue = t.TargetValue
                     })
                     .ToList()
             })
@@ -96,19 +97,19 @@ public class CampaignRepository : ICampaignRepository
     /// Xay dung IQueryable co ban voi tat ca dieu kien WHERE (khong sort, khong phan trang).
     /// Dung chung cho GetPagedAsync va CountAsync de dam bao nhat quan.
     /// </summary>
-    private IQueryable<Models.Campaign> BuildBaseQuery(CampaignQueryDto query)
+    private IQueryable<Campaign> BuildBaseQuery(CampaignQueryDto query)
     {
         var q = _context.Campaigns
             .AsNoTracking()
             .Where(x => !x.IsDeleted);
 
-    if (!string.IsNullOrWhiteSpace(query.SearchTerm))
+        if (!string.IsNullOrWhiteSpace(query.SearchTerm))
         {
             var term = query.SearchTerm.Trim();
             q = q.Where(x =>
                 x.CampaignName.Contains(term) ||
                 (x.TemplateCode != null && x.TemplateCode.Contains(term)) ||
-                (x.EventKey     != null && x.EventKey.Contains(term)));
+                (x.EventKey != null && x.EventKey.Contains(term)));
         }
 
         if (!string.IsNullOrWhiteSpace(query.Status))
@@ -116,12 +117,12 @@ public class CampaignRepository : ICampaignRepository
             q = q.Where(x => x.Status == query.Status);
         }
 
-       if (!string.IsNullOrWhiteSpace(query.SourceType))
+        if (!string.IsNullOrWhiteSpace(query.SourceType))
         {
             q = q.Where(x => x.SourceType == query.SourceType);
         }
 
-       if (query.StartDate.HasValue)
+        if (query.StartDate.HasValue)
         {
             var from = DateTime.SpecifyKind(query.StartDate.Value.Date, DateTimeKind.Utc);
             q = q.Where(x => x.CreatedAt >= from);
@@ -129,7 +130,7 @@ public class CampaignRepository : ICampaignRepository
 
         if (query.EndDate.HasValue)
         {
-      var to = DateTime.SpecifyKind(query.EndDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
+            var to = DateTime.SpecifyKind(query.EndDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
             q = q.Where(x => x.CreatedAt <= to);
         }
 
@@ -139,21 +140,21 @@ public class CampaignRepository : ICampaignRepository
     /// <summary>
     /// Ap dung sort theo sortBy: createdAt | name | status. Mac dinh: createdAt DESC.
     /// </summary>
-    private static IQueryable<Models.Campaign> ApplySort(
-        IQueryable<Models.Campaign> q,
+    private static IQueryable<Campaign> ApplySort(
+        IQueryable<Campaign> q,
         string? sortBy,
         bool sortDesc)
     {
         return (sortBy?.Trim().ToLowerInvariant(), sortDesc) switch
         {
-            ("name",      true)  => q.OrderByDescending(x => x.CampaignName),
-            ("name",      false) => q.OrderBy(x => x.CampaignName),
-            ("status",    true)  => q.OrderByDescending(x => x.Status),
-            ("status",    false) => q.OrderBy(x => x.Status),
-            ("createdat", true)  => q.OrderByDescending(x => x.CreatedAt),
+            ("name", true) => q.OrderByDescending(x => x.CampaignName),
+            ("name", false) => q.OrderBy(x => x.CampaignName),
+            ("status", true) => q.OrderByDescending(x => x.Status),
+            ("status", false) => q.OrderBy(x => x.Status),
+            ("createdat", true) => q.OrderByDescending(x => x.CreatedAt),
             ("createdat", false) => q.OrderBy(x => x.CreatedAt),
-            (_,           true)  => q.OrderByDescending(x => x.CreatedAt), 
-            _                    => q.OrderByDescending(x => x.CreatedAt)    
+            (_, true) => q.OrderByDescending(x => x.CreatedAt),
+            _ => q.OrderByDescending(x => x.CreatedAt)
         };
     }
 
@@ -170,35 +171,35 @@ public class CampaignRepository : ICampaignRepository
         CreateCampaignDto dto,
         CancellationToken cancellationToken = default)
     {
-        var campaign = new Models.Campaign
+        var campaign = new Campaign
         {
-            CampaignName       = dto.CampaignName.Trim(),
-            TemplateCode       = string.IsNullOrWhiteSpace(dto.TemplateCode) ? null : dto.TemplateCode.Trim(),
-            TitleOverride      = string.IsNullOrWhiteSpace(dto.TitleOverride) ? null : dto.TitleOverride.Trim(),
-            MessageOverride    = string.IsNullOrWhiteSpace(dto.MessageOverride) ? null : dto.MessageOverride.Trim(),
-            SourceType         = dto.SourceType,
-            TargetType         = dto.TargetType,
-            Status             = "Draft",
-            ScheduledAt        = dto.ScheduledAt,
-            EventKey           = string.IsNullOrWhiteSpace(dto.EventKey) ? null : dto.EventKey.Trim(),
-            ImageUrl           = string.IsNullOrWhiteSpace(dto.ImageUrl) ? null : dto.ImageUrl.Trim(),
-            ActionType         = string.IsNullOrWhiteSpace(dto.ActionType) ? null : dto.ActionType.Trim(),
-            ActionTarget       = string.IsNullOrWhiteSpace(dto.ActionTarget) ? null : dto.ActionTarget.Trim(),
+            CampaignName = dto.CampaignName.Trim(),
+            TemplateCode = string.IsNullOrWhiteSpace(dto.TemplateCode) ? null : dto.TemplateCode.Trim(),
+            TitleOverride = string.IsNullOrWhiteSpace(dto.TitleOverride) ? null : dto.TitleOverride.Trim(),
+            MessageOverride = string.IsNullOrWhiteSpace(dto.MessageOverride) ? null : dto.MessageOverride.Trim(),
+            SourceType = dto.SourceType,
+            TargetType = dto.TargetType,
+            Status = "Draft",
+            ScheduledAt = dto.ScheduledAt,
+            EventKey = string.IsNullOrWhiteSpace(dto.EventKey) ? null : dto.EventKey.Trim(),
+            ImageUrl = string.IsNullOrWhiteSpace(dto.ImageUrl) ? null : dto.ImageUrl.Trim(),
+            ActionType = string.IsNullOrWhiteSpace(dto.ActionType) ? null : dto.ActionType.Trim(),
+            ActionTarget = string.IsNullOrWhiteSpace(dto.ActionTarget) ? null : dto.ActionTarget.Trim(),
             CreatedByAccountId = dto.CreatedByAccountId,
-            IsDeleted          = false,
-            CreatedAt          = DateTime.UtcNow
+            IsDeleted = false,
+            CreatedAt = DateTime.UtcNow
         };
 
         await _context.Campaigns.AddAsync(campaign, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
 
-        var targets = new List<Models.CampaignTarget>();
+        var targets = new List<CampaignTarget>();
         if (dto.Targets.Count > 0)
         {
-            targets = dto.Targets.Select(t => new Models.CampaignTarget
+            targets = dto.Targets.Select(t => new CampaignTarget
             {
-                CampaignId  = campaign.CampaignId,
-                TargetType  = t.TargetType.Trim(),
+                CampaignId = campaign.CampaignId,
+                TargetType = t.TargetType.Trim(),
                 TargetValue = t.TargetValue.Trim()
             }).ToList();
 
@@ -208,28 +209,28 @@ public class CampaignRepository : ICampaignRepository
 
         return new CampaignDto
         {
-            CampaignId         = campaign.CampaignId,
-            CampaignName       = campaign.CampaignName,
-            TemplateCode       = campaign.TemplateCode,
-            TitleOverride      = campaign.TitleOverride,
-            MessageOverride    = campaign.MessageOverride,
-            SourceType         = campaign.SourceType,
-            TargetType         = campaign.TargetType,
-            Status             = campaign.Status,
-            ScheduledAt        = campaign.ScheduledAt,
-            EventKey           = campaign.EventKey,
-            ImageUrl           = campaign.ImageUrl,
-            ActionType         = campaign.ActionType,
-            ActionTarget       = campaign.ActionTarget,
+            CampaignId = campaign.CampaignId,
+            CampaignName = campaign.CampaignName,
+            TemplateCode = campaign.TemplateCode,
+            TitleOverride = campaign.TitleOverride,
+            MessageOverride = campaign.MessageOverride,
+            SourceType = campaign.SourceType,
+            TargetType = campaign.TargetType,
+            Status = campaign.Status,
+            ScheduledAt = campaign.ScheduledAt,
+            EventKey = campaign.EventKey,
+            ImageUrl = campaign.ImageUrl,
+            ActionType = campaign.ActionType,
+            ActionTarget = campaign.ActionTarget,
             CreatedByAccountId = campaign.CreatedByAccountId,
-            CreatedAt          = campaign.CreatedAt,
-            UpdatedAt          = campaign.UpdatedAt,
-            Stat               = null,
-            Targets            = targets.Select(t => new CampaignTargetDto
+            CreatedAt = campaign.CreatedAt,
+            UpdatedAt = campaign.UpdatedAt,
+            Stat = null,
+            Targets = targets.Select(t => new CampaignTargetDto
             {
                 CampaignTargetId = t.CampaignTargetId,
-                TargetType       = t.TargetType,
-                TargetValue      = t.TargetValue
+                TargetType = t.TargetType,
+                TargetValue = t.TargetValue
             }).ToList()
         };
     }

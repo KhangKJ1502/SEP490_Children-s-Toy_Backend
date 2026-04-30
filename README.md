@@ -1,7 +1,7 @@
 # ToyStore BackEnd
 
 Câu Lệnh Update db
-"dotnet ef dbcontext scaffold "Server=DESKTOP-T27O90D\SQLEXPRESS;Database=SEP490_ToyStore;User ID=sa;Password=khangmc1502@;TrustServerCertificate=True;" Microsoft.EntityFrameworkCore.SqlServer -o Models -c SEP490ToyStoreContext --context-dir Data --no-onconfiguring"
+"dotnet ef dbcontext scaffold "Server=DESKTOP-T27O90D\SQLEXPRESS;Database=SEP490_ToyStore;User ID=sa;Password=khangmc1502@;TrustServerCertificate=True;" Microsoft.EntityFrameworkCore.SqlServer --project ToyStore.Infrastructure --startup-project ToyStore.API --output-dir ../ToyStore.Domain/Entities --context-dir Data --context SEP490ToyStoreContext --namespace ToyStore.Domain.Entities --context-namespace ToyStore.Infrastructure.Data --no-onconfiguring --force"
 
 ASP.NET Core 8 backend cho hệ thống bán đồ chơi — SEP490 Capstone Project.
 
@@ -68,7 +68,7 @@ Swagger: `https://localhost:7xxx/swagger`
 3. Chạy lại scaffold để sync C# models:
 
 ```powershell
-dotnet ef dbcontext scaffold "Server=DESKTOP-T27O90D\SQLEXPRESS;Database=SEP409_ToyStore;User ID=sa;Password=khangmc1502@;TrustServerCertificate=True;" Microsoft.EntityFrameworkCore.SqlServer --project ToyStore.Infrastructure --startup-project ToyStore.API --output-dir Models --context-dir Data --context SEP490ToyStoreContext --no-onconfiguring --force
+dotnet ef dbcontext scaffold "Server=DESKTOP-T27O90D\SQLEXPRESS;Database=SEP409_ToyStore;User ID=sa;Password=khangmc1502@;TrustServerCertificate=True;" Microsoft.EntityFrameworkCore.SqlServer --project ToyStore.Infrastructure --startup-project ToyStore.API --output-dir ../ToyStore.Domain/Entities --context-dir Data --context SEP490ToyStoreContext --namespace ToyStore.Domain.Entities --context-namespace ToyStore.Infrastructure.Data --no-onconfiguring --force
 ```
 
 4. Commit **TẤT CẢ** (SQL script + C# models + docs)
