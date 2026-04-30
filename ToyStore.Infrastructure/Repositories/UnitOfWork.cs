@@ -19,6 +19,7 @@ public class UnitOfWork : IUnitOfWork
         ICategoryRepository categories,
         IAccountRepository accounts,
         IBrandRepository brands,
+        IBlogRepository blogs,
         IPromotionRepository promotions,
         ICampaignRepository campaigns,
         IProductRepository products,
@@ -30,6 +31,7 @@ public class UnitOfWork : IUnitOfWork
         Categories = categories;
         Accounts = accounts;
         Brands = brands;
+        Blogs = blogs;
         Products = products;
         Templates = templates;
         Promotions = promotions;
@@ -45,6 +47,8 @@ public class UnitOfWork : IUnitOfWork
     public IAccountRepository Accounts { get; }
 
     public IBrandRepository Brands { get; }
+
+    public IBlogRepository Blogs { get; }
 
     public IProductRepository Products { get; }
 
