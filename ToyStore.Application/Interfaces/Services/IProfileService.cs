@@ -1,0 +1,19 @@
+using ToyStore.Application.DTOs.Profiles;
+
+namespace ToyStore.Application.Interfaces.Services;
+
+public interface IProfileService
+{
+    /// <summary>
+    /// Lay thong tin profile cua tai khoan dang dang nhap.
+    /// </summary>
+    Task<Result<ProfileDto>> GetMyProfileAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cap nhat profile cua tai khoan dang dang nhap.
+    /// </summary>
+    Task<Result<ProfileDto>> UpdateMyProfileAsync(
+        UpdateProfileDto dto,
+        CancellationToken cancellationToken = default);
+
+}

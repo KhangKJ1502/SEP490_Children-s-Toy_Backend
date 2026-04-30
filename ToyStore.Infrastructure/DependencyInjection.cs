@@ -7,6 +7,7 @@ using StackExchange.Redis;
 using ToyStore.Application.DTOs.Accounts;
 using ToyStore.Application.DTOs.Brands;
 using ToyStore.Application.DTOs.Campaigns;
+using ToyStore.Application.DTOs.Profiles;
 using ToyStore.Application.DTOs.Templates;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
@@ -14,6 +15,7 @@ using ToyStore.Application.Mappings;
 using ToyStore.Application.Validators.Accounts;
 using ToyStore.Application.Validators.Brands;
 using ToyStore.Application.Validators.Campaigns;
+using ToyStore.Application.Validators.Profiles;
 using ToyStore.Application.Validators.Templates;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Repositories;
@@ -64,6 +66,7 @@ public static class DependencyInjection
         services.AddScoped<IValidator<CreateTemplateDto>, CreateTemplateValidator>();
         services.AddScoped<IValidator<UpdateTemplateDto>, UpdateTemplateValidator>();
         services.AddScoped<IValidator<CreateCampaignDto>, CreateCampaignValidator>();
+        services.AddScoped<IValidator<UpdateProfileDto>, UpdateProfileValidator>();
 
 
         services.AddScoped<IVoucherRepository, VoucherRepository>();
@@ -89,6 +92,7 @@ public static class DependencyInjection
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
+        services.AddScoped<IProfileService, ProfileService>();
 
         services.AddScoped<IPromotionRepository, PromotionRepository>();
         services.AddScoped<IPromotionService, PromotionService>();
