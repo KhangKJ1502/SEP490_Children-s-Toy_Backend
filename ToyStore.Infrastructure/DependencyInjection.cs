@@ -1,17 +1,20 @@
 
+using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using FluentValidation;
 using StackExchange.Redis;
 using ToyStore.Application.DTOs.Brands;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Application.Mappings;
 using ToyStore.Application.Validators.Brands;
+
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Repositories;
 using ToyStore.Infrastructure.Services;
+using ToyStore.Application.DTOs.Accounts;
+using ToyStore.Application.Validators.Accounts;
 
 namespace ToyStore.Infrastructure;
 
@@ -30,16 +33,28 @@ public static class DependencyInjection
         redisOptions.AbortOnConnectFail = false;
         services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisOptions));
 
+        // Đăng ký FluentValidation
+        services.AddValidatorsFromAssemblyContaining<Application.Validators.SuperCategories.CreateSuperCategoryValidator>();
+
         // Đăng ký AutoMapper
         services.AddAutoMapper(cfg =>
         {
+            cfg.AddProfile<AccountProfile>();
             cfg.AddProfile<VoucherProfile>();
             cfg.AddProfile<TemplateProfile>();
+            cfg.AddProfile<SuperCategoryProfile>();
+            cfg.AddProfile<CategoryProfile>();
+            cfg.AddProfile<ProductProfile>();
             cfg.AddProfile<BrandProfile>();
         });
 
         services.AddScoped<IValidator<CreateBrandDto>, CreateBrandValidator>();
         services.AddScoped<IValidator<UpdateBrandDto>, UpdateBrandValidator>();
+       
+
+        services.AddScoped<IValidator<CreateAccountDto>, CreateAccountValidator>();
+        services.AddScoped<IValidator<UpdateAccountStatusDto>, UpdateAccountStatusValidator>();
+
 
         services.AddScoped<IVoucherRepository, VoucherRepository>();
         services.AddScoped<IVoucherService, VoucherService>();

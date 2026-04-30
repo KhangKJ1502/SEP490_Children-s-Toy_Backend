@@ -1,10 +1,11 @@
+using AutoMapper;
+using FluentValidation;
 using Microsoft.Extensions.Logging;
-using ToyStore.Application.Common.Models;
+using ToyStore.Domain.Entities;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.SuperCategories;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
-using ToyStore.Application.Validators.SuperCategories;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -12,15 +13,22 @@ public class SuperCategoryService : ISuperCategoryService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<SuperCategoryService> _logger;
-    private readonly CreateSuperCategoryValidator _createSuperCategoryValidator;
-    private readonly UpdateSuperCategoryValidator _updateSuperCategoryValidator;
+    private readonly IMapper _mapper;
+    private readonly IValidator<CreateSuperCategoryDto> _createSuperCategoryValidator;
+    private readonly IValidator<UpdateSuperCategoryDto> _updateSuperCategoryValidator;
 
-    public SuperCategoryService(IUnitOfWork unitOfWork, ILogger<SuperCategoryService> logger)
+    public SuperCategoryService(
+        IUnitOfWork unitOfWork,
+        ILogger<SuperCategoryService> logger,
+        IMapper mapper,
+        IValidator<CreateSuperCategoryDto> createSuperCategoryValidator,
+        IValidator<UpdateSuperCategoryDto> updateSuperCategoryValidator)
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
-        _createSuperCategoryValidator = new CreateSuperCategoryValidator();
-        _updateSuperCategoryValidator = new UpdateSuperCategoryValidator();
+        _mapper = mapper;
+        _createSuperCategoryValidator = createSuperCategoryValidator;
+        _updateSuperCategoryValidator = updateSuperCategoryValidator;
     }
 
     public async Task<Result<PaginatedResponse<SuperCategoryListDto>>> GetSuperCategoriesAsync(
@@ -51,12 +59,7 @@ public class SuperCategoryService : ISuperCategoryService
 
         var totalCount = await _unitOfWork.SuperCategories.CountAsync(searchTerm, cancellationToken);
 
-        var mappedItems = items.Select(x => new SuperCategoryListDto
-        {
-            SuperCategoryId = x.SuperCategoryId,
-            SuperCategoryName = x.SuperCategoryName,
-            CreatedAt = x.CreatedAt
-        }).ToList();
+        var mappedItems = _mapper.Map<List<SuperCategoryListDto>>(items);
 
         var response = new PaginatedResponse<SuperCategoryListDto>(mappedItems, totalCount, pageNumber, pageSize);
         return Result<PaginatedResponse<SuperCategoryListDto>>.Success(response);
@@ -91,12 +94,7 @@ public class SuperCategoryService : ISuperCategoryService
 
             _logger.LogInformation("Super category {SuperCategoryId} created successfully.", created.SuperCategoryId);
 
-            return Result<SuperCategoryListDto>.Success(new SuperCategoryListDto
-            {
-                SuperCategoryId = created.SuperCategoryId,
-                SuperCategoryName = created.SuperCategoryName,
-                CreatedAt = created.CreatedAt
-            });
+            return Result<SuperCategoryListDto>.Success(_mapper.Map<SuperCategoryListDto>(created));
         }
         catch (Exception ex)
         {
@@ -178,12 +176,7 @@ public class SuperCategoryService : ISuperCategoryService
 
             _logger.LogInformation("Super category {SuperCategoryId} updated successfully.", updated.SuperCategoryId);
 
-            return Result<SuperCategoryListDto>.Success(new SuperCategoryListDto
-            {
-                SuperCategoryId = updated.SuperCategoryId,
-                SuperCategoryName = updated.SuperCategoryName,
-                CreatedAt = updated.CreatedAt
-            });
+            return Result<SuperCategoryListDto>.Success(_mapper.Map<SuperCategoryListDto>(updated));
         }
         catch (Exception ex)
         {
