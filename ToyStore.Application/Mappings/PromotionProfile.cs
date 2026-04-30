@@ -1,29 +1,30 @@
 using AutoMapper;
-using ToyStore.Application.DTOs.Vouchers;
+using ToyStore.Application.DTOs.Promotions;
 using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Mappings;
 
 /// <summary>
-/// Cấu hình AutoMapper cho voucher.
+/// Cấu hình AutoMapper cho promotion.
 /// </summary>
-public class VoucherProfile : Profile
+public class PromotionProfile : Profile
 {
-    public VoucherProfile()
+    public PromotionProfile()
     {
-        CreateMap<Voucher, VoucherDto>();
+        CreateMap<Promotion, PromotionDto>();
 
-        CreateMap<Voucher, VoucherListDto>();
+        CreateMap<Promotion, PromotionListDto>();
 
-        CreateMap<CreateVoucherDto, Voucher>()
-            .ForMember(dest => dest.VoucherId, opt => opt.Ignore())
+        CreateMap<Promotion, CreatePromotionDto>();
+
+        CreateMap<CreatePromotionDto, Promotion>()
+            .ForMember(dest => dest.PromotionId, opt => opt.Ignore())
             .ForMember(dest => dest.CreatedBy, opt => opt.Ignore())
-            .ForMember(dest => dest.UsedQuantity, opt => opt.MapFrom(_ => 0))
             .ForMember(dest => dest.IsDeleted, opt => opt.MapFrom(_ => false))
             .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
             .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore());
 
-        CreateMap<UpdateVoucherDto, Voucher>()
+        CreateMap<UpdatePromotionDto, Promotion>()
             .ForAllMembers(opt =>
                 opt.Condition((_, _, srcMember) => srcMember is not null));
     }

@@ -16,6 +16,8 @@ public interface IUnitOfWork : IDisposable
 
     ITemplateRepository Templates { get; }
 
+    IPromotionRepository Promotions { get; }
+    
     ICampaignRepository Campaigns { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

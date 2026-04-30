@@ -19,6 +19,7 @@ public class UnitOfWork : IUnitOfWork
         ICategoryRepository categories,
         IAccountRepository accounts,
         IBrandRepository brands,
+        IPromotionRepository promotions,
         ICampaignRepository campaigns,
         IProductRepository products,
         ITemplateRepository templates)
@@ -31,6 +32,7 @@ public class UnitOfWork : IUnitOfWork
         Brands = brands;
         Products = products;
         Templates = templates;
+        Promotions = promotions;
         Campaigns = campaigns;
     }
 
@@ -48,6 +50,8 @@ public class UnitOfWork : IUnitOfWork
 
     public ITemplateRepository Templates { get; }
 
+    public IPromotionRepository Promotions { get; }
+    
     public ICampaignRepository Campaigns { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

@@ -47,6 +47,7 @@ public static class DependencyInjection
             cfg.AddProfile<AccountProfile>();
             cfg.AddProfile<VoucherProfile>();
             cfg.AddProfile<TemplateProfile>();
+            cfg.AddProfile<PromotionProfile>();
             cfg.AddProfile<CampaignProfile>();
             cfg.AddProfile<SuperCategoryProfile>();
             cfg.AddProfile<CategoryProfile>();
@@ -88,6 +89,9 @@ public static class DependencyInjection
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
+
+        services.AddScoped<IPromotionRepository, PromotionRepository>();
+        services.AddScoped<IPromotionService, PromotionService>();
 
         return services;
     }

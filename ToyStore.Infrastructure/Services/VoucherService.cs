@@ -1,4 +1,5 @@
 using AutoMapper;
+using FluentValidation;
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs;
@@ -17,19 +18,21 @@ public class VoucherService : IVoucherService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
     private readonly ILogger<VoucherService> _logger;
-    private readonly CreateVoucherValidator _createValidator;
-    private readonly UpdateVoucherValidator _updateValidator;
+    private readonly IValidator<CreateVoucherDto> _createValidator;
+    private readonly IValidator<UpdateVoucherDto> _updateValidator;
 
     public VoucherService(
         IUnitOfWork unitOfWork,
         IMapper mapper,
-        ILogger<VoucherService> logger)
+        ILogger<VoucherService> logger,
+        IValidator<CreateVoucherDto> createValidator,
+        IValidator<UpdateVoucherDto> updateValidator)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _logger = logger;
-        _createValidator = new CreateVoucherValidator();
-        _updateValidator = new UpdateVoucherValidator();
+        _createValidator = createValidator;
+        _updateValidator = updateValidator;
     }
 
     public async Task<Result<PaginatedResponse<VoucherListDto>>> GetVouchersAsync(
@@ -104,31 +107,31 @@ public class VoucherService : IVoucherService
             return Result<VoucherDto>.Conflict("Voucher code already exists.");
         }
 
-        var voucherModel = _mapper.Map<VoucherModel>(normalizedRequest);
-        voucherModel.CreatedBy = null;
-        voucherModel.CreatedAt = DateTime.UtcNow;
-        voucherModel.UpdatedAt = null;
-        voucherModel.UsedQuantity = 0;
-        voucherModel.IsDeleted = false;
+        var voucher = _mapper.Map<Voucher>(normalizedRequest);
+        voucher.CreatedBy = null;
+        voucher.CreatedAt = DateTime.UtcNow;
+        voucher.UpdatedAt = null;
+        voucher.UsedQuantity = 0;
+        voucher.IsDeleted = false;
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            await _unitOfWork.Vouchers.AddAsync(voucherModel, cancellationToken);
+            await _unitOfWork.Vouchers.AddAsync(voucher, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
         }
         catch (Exception ex)
         {
             await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-            _logger.LogError(ex, "Failed to create voucher with code {VoucherCode}", voucherModel.VoucherCode);
+            _logger.LogError(ex, "Failed to create voucher with code {VoucherCode}", voucher.VoucherCode);
             throw;
         }
 
-        var createdVoucher = await _unitOfWork.Vouchers.GetByCodeAsync(voucherModel.VoucherCode, cancellationToken);
+        var createdVoucher = await _unitOfWork.Vouchers.GetByCodeAsync(voucher.VoucherCode, cancellationToken);
         if (createdVoucher is null)
         {
-            _logger.LogError("Failed to load created voucher by code {VoucherCode}", voucherModel.VoucherCode);
+            _logger.LogError("Failed to load created voucher by code {VoucherCode}", voucher.VoucherCode);
             return Result<VoucherDto>.Failure("ERROR", "Failed to create voucher.");
         }
 
@@ -220,6 +223,66 @@ public class VoucherService : IVoucherService
         return Result<VoucherDto>.Success(_mapper.Map<VoucherDto>(updatedVoucher));
     }
 
+    public async Task<Result<VoucherDto>> GetVoucherByIdAsync(
+        int voucherId,
+        CancellationToken cancellationToken = default)
+    {
+        if (voucherId <= 0)
+        {
+            return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Voucher ID must be greater than 0.");
+        }
+
+        var voucher = await _unitOfWork.Vouchers.GetByIdAsync(voucherId, cancellationToken);
+        if (voucher is null)
+        {
+            return Result<VoucherDto>.NotFound("Voucher", voucherId);
+        }
+
+        return Result<VoucherDto>.Success(_mapper.Map<VoucherDto>(voucher));
+    }
+
+    public async Task<Result> DeleteVoucherAsync(
+        int voucherId,
+        CancellationToken cancellationToken = default)
+    {
+        if (voucherId <= 0)
+        {
+            return Result.Failure("VALIDATION_ERROR", "Voucher ID must be greater than 0.");
+        }
+
+        var voucher = await _unitOfWork.Vouchers.GetByIdAsync(voucherId, cancellationToken);
+        if (voucher is null)
+        {
+            return Result.NotFound("Voucher", voucherId);
+        }
+
+        if (voucher.IsDeleted)
+        {
+            return Result.Conflict("Voucher is already deleted.");
+        }
+
+        voucher.IsDeleted = true;
+        voucher.UpdatedAt = DateTime.UtcNow;
+
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            _unitOfWork.Vouchers.Update(voucher);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Failed to delete voucher {VoucherId}", voucherId);
+            throw;
+        }
+
+        _logger.LogInformation("Deleted voucher {VoucherId}", voucherId);
+
+        return Result.Success();
+    }
+
     // ── Normalize helpers ─────────────────────────────────────────────────────
 
     private static CreateVoucherDto NormalizeCreateRequest(CreateVoucherDto request)
@@ -262,8 +325,8 @@ public class VoucherService : IVoucherService
         };
     }
 
-    // Map VoucherModel → CreateVoucherDto để validate toàn bộ sau merge
-    private static CreateVoucherDto MapToCreateDto(VoucherModel voucher)
+    // Map Voucher → CreateVoucherDto để validate toàn bộ sau merge
+    private static CreateVoucherDto MapToCreateDto(Voucher voucher)
     {
         return new CreateVoucherDto
         {

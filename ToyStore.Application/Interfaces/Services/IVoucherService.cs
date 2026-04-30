@@ -35,4 +35,18 @@ public interface IVoucherService
         int voucherId,
         UpdateVoucherDto request,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lấy chi tiết voucher theo ID.
+    /// </summary>
+    Task<Result<VoucherDto>> GetVoucherByIdAsync(
+        int voucherId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Xoá mềm voucher theo ID.
+    /// </summary>
+    Task<Result> DeleteVoucherAsync(
+        int voucherId,
+        CancellationToken cancellationToken = default);
 }
