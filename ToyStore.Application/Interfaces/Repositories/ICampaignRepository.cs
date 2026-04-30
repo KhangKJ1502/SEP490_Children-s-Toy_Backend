@@ -1,3 +1,4 @@
+using ToyStore.Domain.Entities;
 using ToyStore.Application.DTOs.Campaigns;
 
 namespace ToyStore.Application.Interfaces.Repositories;
@@ -10,7 +11,7 @@ public interface ICampaignRepository
     /// <summary>
     /// Lay danh sach Campaign co phan trang, multi-field search, filter va sort.
     /// </summary>
-    Task<List<CampaignListDto>> GetPagedAsync(
+    Task<List<Campaign>> GetPagedAsync(
         CampaignQueryDto query,
         CancellationToken cancellationToken = default);
 
@@ -24,7 +25,7 @@ public interface ICampaignRepository
     /// <summary>
     /// Tim Campaign theo ID, bao gom Stat va Targets.
     /// </summary>
-    Task<CampaignDto?> GetByIdAsync(int campaignId, CancellationToken cancellationToken = default);
+    Task<Campaign?> GetByIdAsync(int campaignId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Kiem tra ten Campaign da ton tai chua (case-insensitive, chi trong ban ghi chua xoa).
@@ -34,7 +35,7 @@ public interface ICampaignRepository
     /// <summary>
     /// Tao moi Campaign kem danh sach CampaignTarget.
     /// </summary>
-    Task<CampaignDto> CreateAsync(
+    Task<Campaign> CreateAsync(
         CreateCampaignDto dto,
         CancellationToken cancellationToken = default);
 }

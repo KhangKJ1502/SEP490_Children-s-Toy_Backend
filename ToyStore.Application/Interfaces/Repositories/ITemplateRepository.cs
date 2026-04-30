@@ -1,4 +1,4 @@
-using ToyStore.Application.Common.Models;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Interfaces.Repositories;
 
@@ -10,7 +10,7 @@ public interface ITemplateRepository
     /// <summary>
     /// Lay danh sach Template co phan trang.
     /// </summary>
-    Task<List<TemplateModel>> GetPagedAsync(
+    Task<List<Template>> GetPagedAsync(
         int pageNumber,
         int pageSize,
         string? sortBy = null,
@@ -44,12 +44,12 @@ public interface ITemplateRepository
     /// <summary>
     /// Tim Template theo ID.
     /// </summary>
-    Task<TemplateModel?> GetByIdAsync(short templateId, CancellationToken cancellationToken = default);
+    Task<Template?> GetByIdAsync(short templateId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Tao moi Template.
     /// </summary>
-    Task<TemplateModel> CreateAsync(
+    Task<Template> CreateAsync(
         string templateCode,
         string titleTemplate,
         string messageTemplate,
@@ -59,7 +59,7 @@ public interface ITemplateRepository
     /// <summary>
     /// Cap nhat Template.
     /// </summary>
-    Task<TemplateModel> UpdateAsync(
+    Task<Template> UpdateAsync(
         short templateId,
         string templateCode,
         string titleTemplate,

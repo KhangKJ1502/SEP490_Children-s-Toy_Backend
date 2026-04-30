@@ -34,15 +34,4 @@ public interface ITemplateService
         short templateId,
         UpdateTemplateDto dto,
         CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Tim kiem Template.
-    /// </summary>
-    Task<Result<PaginatedResponse<TemplateListDto>>> SearchTemplatesAsync(
-        string searchTerm,
-        int pageNumber = 1,
-        int pageSize = 10,
-        string? sortBy = null,
-        bool sortDesc = false,
-        CancellationToken cancellationToken = default);
 }
