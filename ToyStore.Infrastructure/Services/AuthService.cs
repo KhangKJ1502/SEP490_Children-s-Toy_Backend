@@ -2,6 +2,8 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using AutoMapper;
+using FluentValidation;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
@@ -27,29 +29,37 @@ public class AuthService : IAuthService
     private readonly IRedisService _redisService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AuthService> _logger;
-    private readonly LoginValidator _loginValidator;
-    private readonly SendRegisterOtpValidator _sendRegisterOtpValidator;
-    private readonly RegisterValidator _registerValidator;
-    private readonly ForgotPasswordValidator _forgotPasswordValidator;
-    private readonly ResetPasswordValidator _resetPasswordValidator;
+    private readonly IMapper _mapper;
+    private readonly IValidator<LoginDto> _loginValidator;
+    private readonly IValidator<SendRegisterOtpDto> _sendRegisterOtpValidator;
+    private readonly IValidator<RegisterDto> _registerValidator;
+    private readonly IValidator<ForgotPasswordDto> _forgotPasswordValidator;
+    private readonly IValidator<ResetPasswordDto> _resetPasswordValidator;
 
     public AuthService(
         IUnitOfWork unitOfWork,
         IEmailService emailService,
         IRedisService redisService,
         IConfiguration configuration,
-        ILogger<AuthService> logger)
+        ILogger<AuthService> logger,
+        IMapper mapper,
+        IValidator<LoginDto> loginValidator,
+        IValidator<SendRegisterOtpDto> sendRegisterOtpValidator,
+        IValidator<RegisterDto> registerValidator,
+        IValidator<ForgotPasswordDto> forgotPasswordValidator,
+        IValidator<ResetPasswordDto> resetPasswordValidator)
     {
         _unitOfWork = unitOfWork;
         _emailService = emailService;
         _redisService = redisService;
         _configuration = configuration;
         _logger = logger;
-        _loginValidator = new LoginValidator();
-        _sendRegisterOtpValidator = new SendRegisterOtpValidator();
-        _registerValidator = new RegisterValidator();
-        _forgotPasswordValidator = new ForgotPasswordValidator();
-        _resetPasswordValidator = new ResetPasswordValidator();
+        _mapper = mapper;
+        _loginValidator = loginValidator;
+        _sendRegisterOtpValidator = sendRegisterOtpValidator;
+        _registerValidator = registerValidator;
+        _forgotPasswordValidator = forgotPasswordValidator;
+        _resetPasswordValidator = resetPasswordValidator;
     }
 
     public async Task<Result<AuthResponseDto>> LoginAsync(LoginDto dto, CancellationToken cancellationToken = default)
@@ -91,7 +101,7 @@ public class AuthService : IAuthService
             AccessToken = token,
             TokenType = "Bearer",
             ExpiresIn = expirationMinutes * 60,
-            Account = MapToAccountInfoDto(account)
+            Account = _mapper.Map<AccountInfoDto>(account)
         });
     }
 
@@ -173,6 +183,9 @@ public class AuthService : IAuthService
 
             _logger.LogInformation("Customer account {AccountId} registered successfully.", created.AccountId);
 
+<<<<<<< HEAD
+            return Result<AccountInfoDto>.Success(_mapper.Map<AccountInfoDto>(created));
+=======
             return Result<AccountInfoDto>.Success(new AccountInfoDto
             {
                 AccountId = created.AccountId,
@@ -182,6 +195,7 @@ public class AuthService : IAuthService
                 RoleId = created.RoleId,
                 RoleName = created.Role.RoleName
             });
+>>>>>>> 6d058857893bda1f59e25074ac7b5061c1ebaa7b
         }
         catch (Exception ex)
         {
@@ -320,6 +334,8 @@ public class AuthService : IAuthService
     {
         return RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
     }
+<<<<<<< HEAD
+=======
 
     private static AccountInfoDto MapToAccountInfoDto(Account account)
     {
@@ -333,4 +349,5 @@ public class AuthService : IAuthService
             RoleName = account.Role.RoleName
         };
     }
+>>>>>>> 6d058857893bda1f59e25074ac7b5061c1ebaa7b
 }

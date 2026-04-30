@@ -1,9 +1,13 @@
 using AutoMapper;
+using ToyStore.Application.DTOs.Auth;
 using ToyStore.Application.DTOs.Accounts;
 using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Mappings;
 
+/// <summary>
+/// Cấu hình AutoMapper cho Account và Authentication.
+/// </summary>
 public class AccountProfile : Profile
 {
     public AccountProfile()

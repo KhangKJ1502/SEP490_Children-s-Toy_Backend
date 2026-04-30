@@ -24,8 +24,8 @@ public class AccountRepository : IAccountRepository
     {
         IQueryable<Account> query = _context.Accounts
             .AsNoTracking()
-            .Where(x => !x.IsDeleted)
-            .Include(x => x.Role);
+            .Include(x => x.Role)
+            .Where(x => !x.IsDeleted);
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
@@ -141,7 +141,15 @@ public class AccountRepository : IAccountRepository
 
         await _context.Accounts.AddAsync(entity, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
+<<<<<<< HEAD
+
+        await _context.Entry(entity)
+            .Reference(x => x.Role)
+            .LoadAsync(cancellationToken);
+
+=======
         await _context.Entry(entity).Reference(x => x.Role).LoadAsync(cancellationToken);
+>>>>>>> 6d058857893bda1f59e25074ac7b5061c1ebaa7b
         return entity;
     }
 
@@ -151,13 +159,18 @@ public class AccountRepository : IAccountRepository
         CancellationToken cancellationToken = default)
     {
         var entity = await _context.Accounts
+            .Include(x => x.Role)
             .FirstAsync(x => x.AccountId == accountId && !x.IsDeleted, cancellationToken);
 
         entity.IsActive = isActive;
         entity.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);
+<<<<<<< HEAD
+
+=======
         await _context.Entry(entity).Reference(x => x.Role).LoadAsync(cancellationToken);
+>>>>>>> 6d058857893bda1f59e25074ac7b5061c1ebaa7b
         return entity;
     }
 
