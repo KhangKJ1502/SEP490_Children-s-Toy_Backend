@@ -5,8 +5,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using StackExchange.Redis;
 using ToyStore.Application.DTOs.Accounts;
+using ToyStore.Application.DTOs.Blogs;
 using ToyStore.Application.DTOs.Brands;
 using ToyStore.Application.DTOs.Campaigns;
+using ToyStore.Application.DTOs.Profiles;
 using ToyStore.Application.DTOs.Templates;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
@@ -14,10 +16,12 @@ using ToyStore.Application.Mappings;
 using ToyStore.Application.Validators.Accounts;
 using ToyStore.Application.Validators.Brands;
 using ToyStore.Application.Validators.Campaigns;
+using ToyStore.Application.Validators.Profiles;
 using ToyStore.Application.Validators.Templates;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Repositories;
 using ToyStore.Infrastructure.Services;
+using ToyStore.Infrastructure.Services.Resolvers;
 
 
 namespace ToyStore.Infrastructure;
@@ -53,6 +57,7 @@ public static class DependencyInjection
             cfg.AddProfile<CategoryProfile>();
             cfg.AddProfile<ProductProfile>();
             cfg.AddProfile<BrandProfile>();
+            cfg.AddProfile<BlogProfile>();
         });
 
         services.AddScoped<IValidator<CreateBrandDto>, CreateBrandValidator>();
@@ -64,6 +69,11 @@ public static class DependencyInjection
         services.AddScoped<IValidator<CreateTemplateDto>, CreateTemplateValidator>();
         services.AddScoped<IValidator<UpdateTemplateDto>, UpdateTemplateValidator>();
         services.AddScoped<IValidator<CreateCampaignDto>, CreateCampaignValidator>();
+<<<<<<< HEAD
+        services.AddScoped<IValidator<UpdateProfileDto>, UpdateProfileValidator>();
+=======
+        services.AddScoped<IValidator<UpdateCampaignDto>, UpdateCampaignValidator>();
+>>>>>>> 884118dc4257a9a67aa78cfc8fc1f5ca40554bae
 
 
         services.AddScoped<IVoucherRepository, VoucherRepository>();
@@ -74,6 +84,7 @@ public static class DependencyInjection
         services.AddScoped<IAccountRepository, AccountRepository>();
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IBrandRepository, BrandRepository>();
+        services.AddScoped<IBlogRepository, BlogRepository>();
         services.AddScoped<IProductRepository, ProductRepository>();
         services.AddScoped<ITemplateRepository, TemplateRepository>();
         services.AddScoped<ICampaignRepository, CampaignRepository>();
@@ -81,14 +92,26 @@ public static class DependencyInjection
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ISuperCategoryService, SuperCategoryService>();
         services.AddScoped<IBrandService, BrandService>();
+        services.AddScoped<IBlogService, BlogService>();
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<ITemplateService, TemplateService>();
         services.AddScoped<ICampaignService, CampaignService>();
+
+        // Business-object resolvers
+        services.AddScoped<IBusinessObjectResolver, VoucherResolver>();
+        services.AddScoped<IBusinessObjectResolver, ProductResolver>();
+        services.AddScoped<IBusinessObjectResolver, BlogPostResolver>();
+        services.AddScoped<IBusinessObjectResolver, SaleResolver>();
+        services.AddScoped<BusinessObjectResolverFactory>();
+
+        // Template renderer
+        services.AddScoped<ITemplateRenderer, TemplateRenderer>();
 
         services.AddScoped<IRedisService, RedisService>();
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
+        services.AddScoped<IProfileService, ProfileService>();
 
         services.AddScoped<IPromotionRepository, PromotionRepository>();
         services.AddScoped<IPromotionService, PromotionService>();

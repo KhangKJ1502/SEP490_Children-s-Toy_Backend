@@ -38,6 +38,9 @@ public class TemplateService : ITemplateService
         string? sortBy = null,
         bool sortDesc = false,
         string? searchTerm = null,
+        bool? isActive = null,
+        DateTime? startDate = null,
+        DateTime? endDate = null,
         CancellationToken cancellationToken = default)
     {
         if (pageNumber < 1)
@@ -56,9 +59,12 @@ public class TemplateService : ITemplateService
             sortBy,
             sortDesc,
             searchTerm,
+            isActive,
+            startDate,
+            endDate,
             cancellationToken);
 
-        var totalCount = await _unitOfWork.Templates.CountAsync(searchTerm, cancellationToken);
+        var totalCount = await _unitOfWork.Templates.CountAsync(searchTerm, isActive, startDate, endDate, cancellationToken);
         var mappedItems = _mapper.Map<List<TemplateListDto>>(items);
 
         var response = new PaginatedResponse<TemplateListDto>(mappedItems, totalCount, pageNumber, pageSize);

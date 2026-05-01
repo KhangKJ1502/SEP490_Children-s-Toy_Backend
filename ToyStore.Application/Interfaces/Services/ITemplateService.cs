@@ -18,6 +18,9 @@ public interface ITemplateService
         string? sortBy = null,
         bool sortDesc = false,
         string? searchTerm = null,
+        bool? isActive = null,
+        DateTime? startDate = null,
+        DateTime? endDate = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

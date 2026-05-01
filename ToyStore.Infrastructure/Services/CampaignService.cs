@@ -1,147 +1,147 @@
-using Microsoft.Extensions.Logging;
 using AutoMapper;
 using FluentValidation;
-using ToyStore.Domain.Entities;
+using Microsoft.Extensions.Logging;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Campaigns;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
-using ToyStore.Application.Validators.Campaigns;
+using ToyStore.Domain.Entities;
+using ToyStore.Infrastructure.Services.Resolvers;
 
 namespace ToyStore.Infrastructure.Services;
 
 public class CampaignService : ICampaignService
 {
-    private static readonly HashSet<string> ValidStatuses = ["Draft", "Scheduled", "Sending", "Sent", "Cancelled"];
-    private static readonly HashSet<string> ValidSourceTypes = ["ADMIN", "SYSTEM"];
-    private static readonly HashSet<string> ValidSortFields = ["createdat", "name", "status"];
+    private static readonly HashSet<string> ValidStatuses =
+        ["Draft", "Scheduled", "Sending", "Sent", "Cancelled"];
+
+    private static readonly HashSet<string> ValidSourceTypes  = ["ADMIN", "SYSTEM"];
+    private static readonly HashSet<string> ValidSortFields   = ["createdat", "name", "status"];
+    private static readonly HashSet<string> EditableStatuses  = ["Draft", "Scheduled"];
+    private static readonly HashSet<string> ValidReferenceTypes = ["VOUCHER", "PRODUCT", "BLOG", "SALE"];
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<CampaignService> _logger;
     private readonly IMapper _mapper;
-    private readonly IValidator<CreateCampaignDto> _createCampaignValidator;
+    private readonly IValidator<CreateCampaignDto> _createValidator;
+    private readonly IValidator<UpdateCampaignDto> _updateValidator;
+    private readonly BusinessObjectResolverFactory _resolverFactory;
 
     public CampaignService(
         IUnitOfWork unitOfWork,
         ILogger<CampaignService> logger,
         IMapper mapper,
-        IValidator<CreateCampaignDto> createCampaignValidator)
+        IValidator<CreateCampaignDto> createValidator,
+        IValidator<UpdateCampaignDto> updateValidator,
+        BusinessObjectResolverFactory resolverFactory)
     {
-        _unitOfWork = unitOfWork;
-        _logger = logger;
-        _mapper = mapper;
-        _createCampaignValidator = createCampaignValidator;
+        _unitOfWork      = unitOfWork;
+        _logger          = logger;
+        _mapper          = mapper;
+        _createValidator = createValidator;
+        _updateValidator = updateValidator;
+        _resolverFactory = resolverFactory;
     }
 
+    // ── GET list ──────────────────────────────────────────────────────────────
+
     public async Task<Result<PaginatedResponse<CampaignListDto>>> GetCampaignsAsync(
-         CampaignQueryDto query,
-         CancellationToken cancellationToken = default)
+        CampaignQueryDto query,
+        CancellationToken cancellationToken = default)
     {
         if (query.PageNumber < 1)
-        {
             return Result<PaginatedResponse<CampaignListDto>>.Failure(
                 "VALIDATION_ERROR", "Page number must be greater than 0.");
-        }
 
         if (query.PageSize < 1 || query.PageSize > 100)
-        {
             return Result<PaginatedResponse<CampaignListDto>>.Failure(
                 "VALIDATION_ERROR", "Page size must be between 1 and 100.");
-        }
 
-        if (!string.IsNullOrWhiteSpace(query.Status) &&
-            !ValidStatuses.Contains(query.Status))
-        {
+        if (!string.IsNullOrWhiteSpace(query.Status) && !ValidStatuses.Contains(query.Status))
             return Result<PaginatedResponse<CampaignListDto>>.Failure(
                 "VALIDATION_ERROR",
-                $"Invalid status '{query.Status}'. Allowed values: {string.Join(", ", ValidStatuses)}.");
-        }
+                $"Invalid status '{query.Status}'. Allowed: {string.Join(", ", ValidStatuses)}.");
 
-        if (!string.IsNullOrWhiteSpace(query.SourceType) &&
-            !ValidSourceTypes.Contains(query.SourceType))
-        {
+        if (!string.IsNullOrWhiteSpace(query.SourceType) && !ValidSourceTypes.Contains(query.SourceType))
             return Result<PaginatedResponse<CampaignListDto>>.Failure(
                 "VALIDATION_ERROR",
-                $"Invalid sourceType '{query.SourceType}'. Allowed values: {string.Join(", ", ValidSourceTypes)}.");
-        }
+                $"Invalid sourceType '{query.SourceType}'. Allowed: {string.Join(", ", ValidSourceTypes)}.");
 
         if (!string.IsNullOrWhiteSpace(query.SortBy) &&
             !ValidSortFields.Contains(query.SortBy.Trim().ToLowerInvariant()))
-        {
             return Result<PaginatedResponse<CampaignListDto>>.Failure(
                 "VALIDATION_ERROR",
-                $"Invalid sortBy '{query.SortBy}'. Allowed values: createdAt, name, status.");
-        }
+                $"Invalid sortBy '{query.SortBy}'. Allowed: createdAt, name, status.");
 
         if (query.StartDate.HasValue && query.EndDate.HasValue &&
             query.StartDate.Value.Date > query.EndDate.Value.Date)
-        {
             return Result<PaginatedResponse<CampaignListDto>>.Failure(
                 "VALIDATION_ERROR", "StartDate must be less than or equal to EndDate.");
-        }
 
-        var items = await _unitOfWork.Campaigns.GetPagedAsync(query, cancellationToken);
+        var items      = await _unitOfWork.Campaigns.GetPagedAsync(query, cancellationToken);
         var totalCount = await _unitOfWork.Campaigns.CountAsync(query, cancellationToken);
-
-        var mappedItems = _mapper.Map<List<CampaignListDto>>(items);
-        var response = new PaginatedResponse<CampaignListDto>(mappedItems, totalCount, query.PageNumber, query.PageSize);
-
-        _logger.LogDebug(
-            "GetCampaignsAsync returned {Count}/{Total} campaigns (page {Page}, size {Size})",
-            items.Count, totalCount, query.PageNumber, query.PageSize);
+        var mapped     = _mapper.Map<List<CampaignListDto>>(items);
+        var response   = new PaginatedResponse<CampaignListDto>(mapped, totalCount, query.PageNumber, query.PageSize);
 
         return Result<PaginatedResponse<CampaignListDto>>.Success(response);
     }
+
+    // ── GET by ID ─────────────────────────────────────────────────────────────
 
     public async Task<Result<CampaignDto>> GetCampaignByIdAsync(
         int campaignId,
         CancellationToken cancellationToken = default)
     {
         if (campaignId <= 0)
-        {
             return Result<CampaignDto>.Failure("VALIDATION_ERROR", "Campaign ID must be greater than 0.");
-        }
 
         var campaign = await _unitOfWork.Campaigns.GetByIdAsync(campaignId, cancellationToken);
-
         if (campaign is null)
-        {
             return Result<CampaignDto>.NotFound("Campaign", campaignId);
+
+        var dto = _mapper.Map<CampaignDto>(campaign);
+
+        // Enrich with resolved reference data
+        if (!string.IsNullOrWhiteSpace(campaign.ReferenceType) && campaign.ReferenceId.HasValue)
+        {
+            dto.ResolvedReference = await _resolverFactory.ResolveAsync(
+                campaign.ReferenceType, campaign.ReferenceId.Value, cancellationToken);
         }
 
-        _logger.LogDebug("GetCampaignByIdAsync returned campaign {CampaignId}", campaignId);
-
-        var mappedCampaign = _mapper.Map<CampaignDto>(campaign);
-        return Result<CampaignDto>.Success(mappedCampaign);
+        return Result<CampaignDto>.Success(dto);
     }
+
+    // ── CREATE ────────────────────────────────────────────────────────────────
 
     public async Task<Result<CampaignDto>> CreateCampaignAsync(
         CreateCampaignDto dto,
         CancellationToken cancellationToken = default)
     {
-        var validationResult = await _createCampaignValidator.ValidateAsync(dto, cancellationToken);
-        if (!validationResult.IsValid)
+        var validation = await _createValidator.ValidateAsync(dto, cancellationToken);
+        if (!validation.IsValid)
         {
-            var errors = validationResult.Errors
+            var errors = validation.Errors
                 .GroupBy(x => x.PropertyName)
                 .ToDictionary(g => g.Key, g => g.Select(x => x.ErrorMessage).ToArray());
-
             return Result<CampaignDto>.ValidationFailure(errors);
         }
 
-        var isDuplicate = await _unitOfWork.Campaigns.ExistsByNameAsync(dto.CampaignName.Trim(), cancellationToken);
+        var isDuplicate = await _unitOfWork.Campaigns.ExistsByNameAsync(
+            dto.CampaignName.Trim(), cancellationToken: cancellationToken);
         if (isDuplicate)
-        {
             return Result<CampaignDto>.Conflict("Campaign name already exists.");
-        }
 
         if (!string.IsNullOrWhiteSpace(dto.TemplateCode))
         {
             var templateExists = await _unitOfWork.Templates.ExistsByCodeAsync(dto.TemplateCode.Trim(), cancellationToken);
             if (!templateExists)
-            {
                 return Result<CampaignDto>.NotFound("Template", dto.TemplateCode);
-            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(dto.ReferenceType))
+        {
+            var refCheck = await ValidateReferenceAsync(dto.ReferenceType, dto.ReferenceId, cancellationToken);
+            if (refCheck is not null) return refCheck;
         }
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
@@ -150,11 +150,12 @@ public class CampaignService : ICampaignService
             var created = await _unitOfWork.Campaigns.CreateAsync(dto, cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-            _logger.LogInformation("Campaign {CampaignId} created successfully by Account {AccountId}",
-                created.CampaignId, dto.CreatedByAccountId);
+            _logger.LogInformation(
+                "Campaign {CampaignId} created (status={Status}) by Account {AccountId}",
+                created.CampaignId, created.Status, dto.CreatedByAccountId);
 
-            var mappedCreated = _mapper.Map<CampaignDto>(created);
-            return Result<CampaignDto>.Success(mappedCreated);
+            var result = _mapper.Map<CampaignDto>(created);
+            return Result<CampaignDto>.Success(result);
         }
         catch
         {
@@ -162,5 +163,159 @@ public class CampaignService : ICampaignService
             throw;
         }
     }
-}
 
+    // ── UPDATE ────────────────────────────────────────────────────────────────
+
+    public async Task<Result<CampaignDto>> UpdateCampaignAsync(
+        UpdateCampaignDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var validation = await _updateValidator.ValidateAsync(dto, cancellationToken);
+        if (!validation.IsValid)
+        {
+            var errors = validation.Errors
+                .GroupBy(x => x.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ErrorMessage).ToArray());
+            return Result<CampaignDto>.ValidationFailure(errors);
+        }
+
+        var existing = await _unitOfWork.Campaigns.GetByIdAsync(dto.CampaignId, cancellationToken);
+        if (existing is null)
+            return Result<CampaignDto>.NotFound("Campaign", dto.CampaignId);
+
+        if (!EditableStatuses.Contains(existing.Status))
+            return Result<CampaignDto>.BusinessError(
+                $"Campaign cannot be edited in status '{existing.Status}'. Only Draft and Scheduled campaigns can be modified.");
+
+        var isDuplicate = await _unitOfWork.Campaigns.ExistsByNameAsync(
+            dto.CampaignName.Trim(), dto.CampaignId, cancellationToken);
+        if (isDuplicate)
+            return Result<CampaignDto>.Conflict("Campaign name already exists.");
+
+        if (!string.IsNullOrWhiteSpace(dto.TemplateCode))
+        {
+            var templateExists = await _unitOfWork.Templates.ExistsByCodeAsync(dto.TemplateCode.Trim(), cancellationToken);
+            if (!templateExists)
+                return Result<CampaignDto>.NotFound("Template", dto.TemplateCode);
+        }
+
+        if (!string.IsNullOrWhiteSpace(dto.ReferenceType))
+        {
+            var refCheck = await ValidateReferenceAsync(dto.ReferenceType, dto.ReferenceId, cancellationToken);
+            if (refCheck is not null) return refCheck;
+        }
+
+        // Apply fields
+        existing.CampaignName    = dto.CampaignName.Trim();
+        existing.TemplateCode    = string.IsNullOrWhiteSpace(dto.TemplateCode)    ? null : dto.TemplateCode.Trim();
+        existing.ReferenceType   = string.IsNullOrWhiteSpace(dto.ReferenceType)   ? null : dto.ReferenceType.Trim().ToUpper();
+        existing.ReferenceId     = dto.ReferenceId;
+        existing.TitleOverride   = string.IsNullOrWhiteSpace(dto.TitleOverride)   ? null : dto.TitleOverride.Trim();
+        existing.MessageOverride = string.IsNullOrWhiteSpace(dto.MessageOverride) ? null : dto.MessageOverride.Trim();
+        existing.TargetType      = dto.TargetType;
+        existing.ScheduledAt     = dto.ScheduledAt;
+        existing.ImageUrl        = string.IsNullOrWhiteSpace(dto.ImageUrl)        ? null : dto.ImageUrl.Trim();
+        existing.ActionType      = string.IsNullOrWhiteSpace(dto.ActionType)      ? null : dto.ActionType.Trim();
+        existing.ActionTarget    = string.IsNullOrWhiteSpace(dto.ActionTarget)    ? null : dto.ActionTarget.Trim();
+
+        // Auto-transition status
+        existing.Status = dto.ScheduledAt.HasValue ? "Scheduled" : "Draft";
+
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var updated = await _unitOfWork.Campaigns.UpdateAsync(existing, dto.Targets, cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            _logger.LogInformation(
+                "Campaign {CampaignId} updated (status={Status})",
+                updated.CampaignId, updated.Status);
+
+            var result = _mapper.Map<CampaignDto>(updated);
+            return Result<CampaignDto>.Success(result);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    // ── CANCEL ────────────────────────────────────────────────────────────────
+
+    public async Task<Result> CancelCampaignAsync(
+        int campaignId,
+        CancellationToken cancellationToken = default)
+    {
+        if (campaignId <= 0)
+            return Result.Failure("VALIDATION_ERROR", "Campaign ID must be greater than 0.");
+
+        var existing = await _unitOfWork.Campaigns.GetByIdAsync(campaignId, cancellationToken);
+        if (existing is null)
+            return Result.NotFound("Campaign", campaignId);
+
+        if (!EditableStatuses.Contains(existing.Status))
+            return Result.BusinessError(
+                $"Campaign cannot be cancelled in status '{existing.Status}'. Only Draft and Scheduled campaigns can be cancelled.");
+
+        var cancelled = await _unitOfWork.Campaigns.CancelAsync(campaignId, cancellationToken);
+        if (!cancelled)
+            return Result.NotFound("Campaign", campaignId);
+
+        _logger.LogInformation("Campaign {CampaignId} cancelled", campaignId);
+        return Result.Success();
+    }
+
+    // ── REFERENCE TYPES ───────────────────────────────────────────────────────
+
+    public Task<Result<List<ReferenceTypeDto>>> GetReferenceTypesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var list = _resolverFactory.GetAll()
+            .Select(r => new ReferenceTypeDto
+            {
+                ReferenceType = r.ReferenceType,
+                DisplayName   = r.ReferenceType switch
+                {
+                    "VOUCHER" => "Voucher giảm giá",
+                    "PRODUCT" => "Sản phẩm mới",
+                    "BLOG"    => "Bài blog",
+                    "SALE"    => "Chương trình sale",
+                    _         => r.ReferenceType
+                },
+                Placeholders = r.AvailablePlaceholders.ToList()
+            })
+            .ToList();
+
+        return Task.FromResult(Result<List<ReferenceTypeDto>>.Success(list));
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Kiem tra ReferenceType hop le va ReferenceId co ton tai khong.
+    /// Tra ve Result loi neu co van de, null neu OK.
+    /// </summary>
+    private async Task<Result<CampaignDto>?> ValidateReferenceAsync(
+        string referenceType,
+        int? referenceId,
+        CancellationToken cancellationToken)
+    {
+        var upper = referenceType.Trim().ToUpper();
+        if (!ValidReferenceTypes.Contains(upper))
+            return Result<CampaignDto>.Failure(
+                "VALIDATION_ERROR",
+                $"Invalid referenceType '{referenceType}'. Allowed: {string.Join(", ", ValidReferenceTypes)}.");
+
+        if (!referenceId.HasValue || referenceId.Value <= 0)
+            return Result<CampaignDto>.Failure(
+                "VALIDATION_ERROR",
+                "ReferenceId is required and must be greater than 0 when ReferenceType is set.");
+
+        var resolved = await _resolverFactory.ResolveAsync(upper, referenceId.Value, cancellationToken);
+        if (resolved is null)
+            return Result<CampaignDto>.NotFound(upper, referenceId.Value);
+
+        return null;
+    }
+}

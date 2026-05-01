@@ -5,9 +5,10 @@ namespace ToyStore.Application.Validators.Campaigns;
 
 public class CreateCampaignValidator : AbstractValidator<CreateCampaignDto>
 {
-    private static readonly HashSet<string> ValidSourceTypes = ["ADMIN", "SYSTEM"];
-    private static readonly HashSet<string> ValidTargetTypes = ["ALL", "SEGMENT"];
-    private static readonly HashSet<string> ValidCampaignTargetTypes = ["ACCOUNT_ID", "ROLE", "SEGMENT"];
+    private static readonly HashSet<string> ValidSourceTypes         = ["ADMIN", "SYSTEM"];
+    private static readonly HashSet<string> ValidTargetTypes         = ["ALL", "SEGMENT", "INDIVIDUAL", "ROLE"];
+    private static readonly HashSet<string> ValidCampaignTargetTypes = ["ACCOUNT_ID", "ROLE_ID", "SEGMENT"];
+    private static readonly HashSet<string> ValidReferenceTypes      = ["VOUCHER", "PRODUCT", "BLOG", "SALE"];
 
     public CreateCampaignValidator()
     {
@@ -30,6 +31,15 @@ public class CreateCampaignValidator : AbstractValidator<CreateCampaignDto>
             .MaximumLength(50).WithMessage("Template code must not exceed 50 characters.")
             .Matches(@"^[A-Za-z0-9_]+$").WithMessage("Template code can only contain letters, numbers, and underscores.")
             .When(x => !string.IsNullOrEmpty(x.TemplateCode));
+
+        RuleFor(x => x.ReferenceType)
+            .Must(v => ValidReferenceTypes.Contains(v!.ToUpper()))
+            .WithMessage($"ReferenceType must be one of: {string.Join(", ", ValidReferenceTypes)}.")
+            .When(x => !string.IsNullOrEmpty(x.ReferenceType));
+
+        RuleFor(x => x.ReferenceId)
+            .GreaterThan(0).WithMessage("ReferenceId must be greater than 0 when ReferenceType is provided.")
+            .When(x => !string.IsNullOrEmpty(x.ReferenceType));
 
         RuleFor(x => x.TitleOverride)
             .MaximumLength(255).WithMessage("Title override must not exceed 255 characters.")
@@ -67,8 +77,8 @@ public class CreateCampaignValidator : AbstractValidator<CreateCampaignDto>
 
         RuleFor(x => x.Targets)
             .Must(t => t != null && t.Count > 0)
-            .WithMessage("At least one target is required when target type is SEGMENT.")
-            .When(x => x.TargetType == "SEGMENT");
+            .WithMessage("At least one target is required when target type is SEGMENT, INDIVIDUAL, or ROLE.")
+            .When(x => x.TargetType is "SEGMENT" or "INDIVIDUAL" or "ROLE");
 
         RuleFor(x => x.Targets)
             .Must(t => t == null || t.Count <= 100)

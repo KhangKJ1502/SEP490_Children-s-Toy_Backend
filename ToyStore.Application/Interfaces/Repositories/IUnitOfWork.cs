@@ -20,6 +20,8 @@ public interface IUnitOfWork : IDisposable
     
     ICampaignRepository Campaigns { get; }
 
+    IBlogRepository Blogs { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 
     Task BeginTransactionAsync(CancellationToken cancellationToken = default);
