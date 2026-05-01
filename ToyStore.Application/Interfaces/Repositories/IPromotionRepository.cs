@@ -24,7 +24,7 @@ public interface IPromotionRepository
     /// <summary>
     /// Lấy promotion theo ID.
     /// </summary>
-    Task<Promotion?> GetByIdAsync(int promotionId, CancellationToken cancellationToken = default);
+    Task<Promotion?> GetByIdAsync(int promotionId, CancellationToken cancellationToken = default, string? includeProperties = null);
 
     /// <summary>
     /// Kiểm tra promotion name đã tồn tại hay chưa.

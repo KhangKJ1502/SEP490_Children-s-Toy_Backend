@@ -62,9 +62,19 @@ public class PromotionRepository : IPromotionRepository
         return new PaginatedResponse<Promotion>(items, totalCount, pageNumber, pageSize);
     }
 
-    public async Task<Promotion?> GetByIdAsync(int promotionId, CancellationToken cancellationToken = default)
+    public async Task<Promotion?> GetByIdAsync(int promotionId, CancellationToken cancellationToken = default, string? includeProperties = null)
     {
-        return await _dbSet
+        IQueryable<Promotion> query = _dbSet;
+
+        if (!string.IsNullOrWhiteSpace(includeProperties))
+        {
+            foreach (var includeProperty in includeProperties.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                query = query.Include(includeProperty);
+            }
+        }
+
+        return await query
             .Where(x => !x.IsDeleted && x.PromotionId == promotionId)
             .FirstOrDefaultAsync(cancellationToken);
     }

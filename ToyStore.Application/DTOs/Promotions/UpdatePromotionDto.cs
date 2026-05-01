@@ -17,4 +17,6 @@ public class UpdatePromotionDto
     public int? Priority { get; set; }
 
     public bool? IsDeleted { get; set; }
+
+    public List<CreateProductPromotionDto>? ProductPromotions { get; set; }
 }
