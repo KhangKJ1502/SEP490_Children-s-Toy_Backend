@@ -78,15 +78,32 @@ public class ProfileService : IProfileService
             return Result<ProfileDto>.NotFound("Account", accountId);
         }
 
+        var normalizedImageUrl = dto.ImageUrl != null
+            ? NormalizeNullable(dto.ImageUrl)
+            : existing.ImageUrl;
+        var normalizedPhoneNumber = dto.PhoneNumber != null
+            ? NormalizeNullable(dto.PhoneNumber)
+            : existing.PhoneNumber;
+
+        if (dto.PhoneNumber != null && normalizedPhoneNumber != null)
+        {
+            var isPhoneNumberExisted = await _unitOfWork.Accounts.ExistsByPhoneNumberAsync(
+                normalizedPhoneNumber,
+                accountId,
+                cancellationToken);
+
+            if (isPhoneNumberExisted)
+            {
+                return Result<ProfileDto>.ValidationFailure(new Dictionary<string, string[]>
+                {
+                    ["PhoneNumber"] = ["Phone number already exists."]
+                });
+            }
+        }
+
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            var normalizedImageUrl = dto.ImageUrl != null
-                ? NormalizeNullable(dto.ImageUrl)
-                : existing.ImageUrl;
-            var normalizedPhoneNumber = dto.PhoneNumber != null
-                ? NormalizeNullable(dto.PhoneNumber)
-                : existing.PhoneNumber;
 
             var updated = await _unitOfWork.Accounts.UpdateProfileAsync(
                 accountId,
