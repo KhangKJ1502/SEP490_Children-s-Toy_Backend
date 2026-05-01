@@ -14,6 +14,7 @@ public class ProductProfile : Profile
         CreateMap<Product, ProductListDto>()
             .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.CategoryName))
             .ForMember(dest => dest.BrandName, opt => opt.MapFrom(src => src.Brand != null ? src.Brand.BrandName : null))
+            .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.IsDeleted ? "Inactive" : "Active"))
             .ForMember(dest => dest.MainImageUrl, opt => opt.MapFrom(src => src.ProductImage != null ? src.ProductImage.ImageUrl : null));
 
         CreateMap<Product, ProductDto>()

@@ -17,4 +17,11 @@ public interface IProfileService
         UpdateProfileDto dto,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Doi mat khau cua tai khoan dang dang nhap.
+    /// </summary>
+    Task<Result> ChangeMyPasswordAsync(
+        ChangePasswordDto dto,
+        CancellationToken cancellationToken = default);
+
 }

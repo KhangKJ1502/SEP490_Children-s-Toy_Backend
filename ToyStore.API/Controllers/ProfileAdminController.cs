@@ -43,6 +43,16 @@ public class ProfileAdminController : ControllerBase
         return result.ToActionResult();
     }
 
+    [HttpPut("me/change-password")]
+    public async Task<ActionResult> ChangeMyPassword(
+        [FromBody] ChangePasswordDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Change password requested by authenticated account.");
+        var result = await _profileService.ChangeMyPasswordAsync(dto, cancellationToken);
+        return result.ToActionResult();
+    }
+
     [HttpPost("me/avatar")]
     [Consumes("multipart/form-data")]
     public async Task<ActionResult<UploadImageResponseDto>> UploadImage(

@@ -33,4 +33,6 @@ public class CreateProductDto
     public byte? OriginId { get; set; }
 
     public string? MainImageUrl { get; set; }
+
+    public List<string> AdditionalImageUrls { get; set; } = [];
 }

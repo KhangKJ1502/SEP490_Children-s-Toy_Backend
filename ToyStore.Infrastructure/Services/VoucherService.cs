@@ -169,40 +169,62 @@ public class VoucherService : IVoucherService
             return Result<VoucherDto>.NotFound("Voucher", voucherId);
         }
 
-        // Merge partial update vào entity hiện tại, AutoMapper chỉ ghi đè field != null
-        _mapper.Map(normalizedRequest, existingVoucher);
-
-        // Chuẩn hoá lại các field string sau khi merge
-        existingVoucher.VoucherCode = NormalizeCode(existingVoucher.VoucherCode);
-        existingVoucher.DiscountType = NormalizeToken(existingVoucher.DiscountType);
-        existingVoucher.DiscountTarget = NormalizeToken(existingVoucher.DiscountTarget);
-        existingVoucher.Status = NormalizeStatus(existingVoucher.Status);
-        existingVoucher.UpdatedAt = DateTime.UtcNow;
-
-        // Validate toàn bộ dữ liệu sau merge
-        var fullValidationRequest = MapToCreateDto(existingVoucher);
-        var fullValidationResult = await _createValidator.ValidateAsync(fullValidationRequest, cancellationToken);
-
-        if (!fullValidationResult.IsValid)
+        // Nếu là yêu cầu xoá (Soft Delete)
+        if (normalizedRequest.IsDeleted == true)
         {
-            return fullValidationResult.ToResult<VoucherDto>();
+            existingVoucher.IsDeleted = true;
+            existingVoucher.UpdatedAt = DateTime.UtcNow;
+
+            // Fix legacy invalid data to satisfy SQL Server CHECK constraints during soft delete
+            if (existingVoucher.DiscountValue <= 0)
+            {
+                existingVoucher.DiscountValue = 1;
+            }
+            if (existingVoucher.StartDate == default)
+            {
+                existingVoucher.StartDate = DateTime.UtcNow;
+            }
+            if (existingVoucher.EndDate <= existingVoucher.StartDate)
+            {
+                existingVoucher.EndDate = existingVoucher.StartDate.AddDays(1);
+            }
         }
-
-        // Kiểm tra trùng voucher code (bỏ qua chính mình)
-        var voucherCodeExists = await _unitOfWork.Vouchers.ExistsVoucherCodeAsync(
-            existingVoucher.VoucherCode,
-            voucherId,
-            cancellationToken);
-
-        if (voucherCodeExists)
+        else
         {
-            return Result<VoucherDto>.Conflict("Voucher code already exists.");
+            // Merge partial update vào entity hiện tại, AutoMapper chỉ ghi đè field != null
+            _mapper.Map(normalizedRequest, existingVoucher);
+
+            // Chuẩn hoá lại các field string sau khi merge
+            existingVoucher.VoucherCode = NormalizeCode(existingVoucher.VoucherCode);
+            existingVoucher.DiscountType = NormalizeToken(existingVoucher.DiscountType);
+            existingVoucher.DiscountTarget = NormalizeToken(existingVoucher.DiscountTarget);
+            existingVoucher.Status = NormalizeStatus(existingVoucher.Status);
+            existingVoucher.UpdatedAt = DateTime.UtcNow;
+
+            // Validate toàn bộ dữ liệu sau merge
+            var fullValidationRequest = MapToCreateDto(existingVoucher);
+            var fullValidationResult = await _createValidator.ValidateAsync(fullValidationRequest, cancellationToken);
+
+            if (!fullValidationResult.IsValid)
+            {
+                return fullValidationResult.ToResult<VoucherDto>();
+            }
+
+            // Kiểm tra trùng voucher code (bỏ qua chính mình)
+            var voucherCodeExists = await _unitOfWork.Vouchers.ExistsVoucherCodeAsync(
+                existingVoucher.VoucherCode,
+                voucherId,
+                cancellationToken);
+
+            if (voucherCodeExists)
+            {
+                return Result<VoucherDto>.Conflict("Voucher code already exists.");
+            }
         }
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            _unitOfWork.Vouchers.Update(existingVoucher);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
         }
@@ -241,47 +263,7 @@ public class VoucherService : IVoucherService
         return Result<VoucherDto>.Success(_mapper.Map<VoucherDto>(voucher));
     }
 
-    public async Task<Result> DeleteVoucherAsync(
-        int voucherId,
-        CancellationToken cancellationToken = default)
-    {
-        if (voucherId <= 0)
-        {
-            return Result.Failure("VALIDATION_ERROR", "Voucher ID must be greater than 0.");
-        }
 
-        var voucher = await _unitOfWork.Vouchers.GetByIdAsync(voucherId, cancellationToken);
-        if (voucher is null)
-        {
-            return Result.NotFound("Voucher", voucherId);
-        }
-
-        if (voucher.IsDeleted)
-        {
-            return Result.Conflict("Voucher is already deleted.");
-        }
-
-        voucher.IsDeleted = true;
-        voucher.UpdatedAt = DateTime.UtcNow;
-
-        await _unitOfWork.BeginTransactionAsync(cancellationToken);
-        try
-        {
-            _unitOfWork.Vouchers.Update(voucher);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-            await _unitOfWork.CommitTransactionAsync(cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-            _logger.LogError(ex, "Failed to delete voucher {VoucherId}", voucherId);
-            throw;
-        }
-
-        _logger.LogInformation("Deleted voucher {VoucherId}", voucherId);
-
-        return Result.Success();
-    }
 
     // ── Normalize helpers ─────────────────────────────────────────────────────
 
@@ -321,7 +303,8 @@ public class VoucherService : IVoucherService
             MaxUsagePerUser = request.MaxUsagePerUser,
             StartDate = request.StartDate,
             EndDate = request.EndDate,
-            Status = request.Status is null ? null : NormalizeStatus(request.Status)
+            Status = request.Status is null ? null : NormalizeStatus(request.Status),
+            IsDeleted = request.IsDeleted
         };
     }
 

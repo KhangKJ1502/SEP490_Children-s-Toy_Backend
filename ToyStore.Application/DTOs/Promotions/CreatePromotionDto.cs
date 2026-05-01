@@ -15,4 +15,6 @@ public class CreatePromotionDto
     public string Status { get; set; } = string.Empty;
 
     public int Priority { get; set; }
+
+    public List<CreateProductPromotionDto> ProductPromotions { get; set; } = new();
 }

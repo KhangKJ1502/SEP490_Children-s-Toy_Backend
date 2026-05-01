@@ -108,7 +108,8 @@ public class UpdateVoucherValidator : AbstractValidator<UpdateVoucherDto>
                || dto.MaxUsagePerUser.HasValue
                || dto.StartDate.HasValue
                || dto.EndDate.HasValue
-               || dto.Status is not null;
+               || dto.Status is not null
+               || dto.IsDeleted.HasValue;
     }
 
     private static bool IsPercentage(string? discountType)

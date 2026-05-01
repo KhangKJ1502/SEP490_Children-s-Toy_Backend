@@ -43,10 +43,4 @@ public interface IVoucherService
         int voucherId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Xoá mềm voucher theo ID.
-    /// </summary>
-    Task<Result> DeleteVoucherAsync(
-        int voucherId,
-        CancellationToken cancellationToken = default);
 }

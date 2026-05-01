@@ -93,7 +93,11 @@ public class PromotionService : IPromotionService
             return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Promotion ID must be greater than 0.");
         }
 
-        var promotion = await _unitOfWork.Promotions.GetByIdAsync(promotionId, cancellationToken);
+        var promotion = await _unitOfWork.Promotions.GetByIdAsync(
+            promotionId,
+            cancellationToken,
+            includeProperties: "ProductPromotions,ProductPromotions.Product"
+        );
         
         if (promotion is null)
         {
@@ -131,6 +135,16 @@ public class PromotionService : IPromotionService
         promotion.UpdatedAt = null;
         promotion.IsDeleted = false;
 
+        if (request.ProductPromotions != null && request.ProductPromotions.Any())
+        {
+            foreach (var pp in request.ProductPromotions)
+            {
+                var productPromotion = _mapper.Map<ProductPromotion>(pp);
+                productPromotion.CreatedAt = DateTime.UtcNow;
+                promotion.ProductPromotions.Add(productPromotion);
+            }
+        }
+
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -151,8 +165,12 @@ public class PromotionService : IPromotionService
 
         // Since ID is generated, we might just return what we have mapped minus ID if we can't fetch it by Name
         // Or we can fetch it again:
-        var createdPromotion = await _unitOfWork.Promotions.GetPagedAsync(1, 1, null, false, promotion.PromotionName, null, cancellationToken);
-        var dto = _mapper.Map<PromotionDto>(createdPromotion.Items.FirstOrDefault() ?? promotion);
+        var createdPromotion = await _unitOfWork.Promotions.GetByIdAsync(
+            promotion.PromotionId, 
+            cancellationToken, 
+            includeProperties: "ProductPromotions,ProductPromotions.Product"
+        );
+        var dto = _mapper.Map<PromotionDto>(createdPromotion ?? promotion);
 
         return Result<PromotionDto>.Success(dto);
     }
@@ -174,37 +192,98 @@ public class PromotionService : IPromotionService
             return updateValidation.ToResult<PromotionDto>();
         }
 
-        var existingPromotion = await _unitOfWork.Promotions.GetByIdAsync(promotionId, cancellationToken);
+        var existingPromotion = await _unitOfWork.Promotions.GetByIdAsync(
+            promotionId, 
+            cancellationToken,
+            includeProperties: "ProductPromotions"
+        );
         if (existingPromotion is null)
         {
             return Result<PromotionDto>.NotFound("Promotion", promotionId);
         }
 
-        _mapper.Map(request, existingPromotion);
-        existingPromotion.UpdatedAt = DateTime.UtcNow;
-
-        var fullValidationRequest = _mapper.Map<CreatePromotionDto>(existingPromotion);
-        var fullValidationResult = await _createValidator.ValidateAsync(fullValidationRequest, cancellationToken);
-
-        if (!fullValidationResult.IsValid)
+        // Nếu là yêu cầu xoá (Soft Delete)
+        if (request.IsDeleted == true)
         {
-            return fullValidationResult.ToResult<PromotionDto>();
+            existingPromotion.IsDeleted = true;
+            existingPromotion.UpdatedAt = DateTime.UtcNow;
+
+            // Fix legacy invalid data to satisfy SQL Server CHECK constraints during soft delete
+            if (existingPromotion.StartDate == default)
+            {
+                existingPromotion.StartDate = DateTime.UtcNow;
+            }
+            if (existingPromotion.EndDate <= existingPromotion.StartDate)
+            {
+                existingPromotion.EndDate = existingPromotion.StartDate.AddDays(1);
+            }
         }
-
-        var promotionNameExists = await _unitOfWork.Promotions.ExistsPromotionNameAsync(
-            existingPromotion.PromotionName,
-            promotionId,
-            cancellationToken);
-
-        if (promotionNameExists)
+        else
         {
-            return Result<PromotionDto>.Conflict("Promotion name already exists.");
+            _mapper.Map(request, existingPromotion);
+            existingPromotion.UpdatedAt = DateTime.UtcNow;
+
+            var fullValidationRequest = _mapper.Map<CreatePromotionDto>(existingPromotion);
+            var fullValidationResult = await _createValidator.ValidateAsync(fullValidationRequest, cancellationToken);
+
+            if (!fullValidationResult.IsValid)
+            {
+                return fullValidationResult.ToResult<PromotionDto>();
+            }
+
+            var promotionNameExists = await _unitOfWork.Promotions.ExistsPromotionNameAsync(
+                existingPromotion.PromotionName,
+                promotionId,
+                cancellationToken);
+
+            if (promotionNameExists)
+            {
+                return Result<PromotionDto>.Conflict("Promotion name already exists.");
+            }
+
+            if (request.ProductPromotions != null)
+            {
+                // Remove deleted items
+                var incomingProductIds = request.ProductPromotions.Select(p => p.ProductId).ToList();
+                var toRemove = existingPromotion.ProductPromotions
+                    .Where(pp => !incomingProductIds.Contains(pp.ProductId))
+                    .ToList();
+                
+                foreach (var item in toRemove)
+                {
+                    existingPromotion.ProductPromotions.Remove(item);
+                }
+
+                // Update or add items
+                foreach (var incomingPp in request.ProductPromotions)
+                {
+                    var existingPp = existingPromotion.ProductPromotions
+                        .FirstOrDefault(pp => pp.ProductId == incomingPp.ProductId);
+
+                    if (existingPp != null)
+                    {
+                        // Update
+                        existingPp.SalePrice = incomingPp.SalePrice;
+                        existingPp.DiscountPercent = incomingPp.DiscountPercent;
+                        existingPp.SaleQuantity = incomingPp.SaleQuantity;
+                        existingPp.IsActive = incomingPp.IsActive;
+                        existingPp.UpdatedAt = DateTime.UtcNow;
+                    }
+                    else
+                    {
+                        // Add
+                        var newPp = _mapper.Map<ProductPromotion>(incomingPp);
+                        newPp.PromotionId = promotionId;
+                        newPp.CreatedAt = DateTime.UtcNow;
+                        existingPromotion.ProductPromotions.Add(newPp);
+                    }
+                }
+            }
         }
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            _unitOfWork.Promotions.Update(existingPromotion);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
         }
@@ -215,7 +294,11 @@ public class PromotionService : IPromotionService
             throw;
         }
 
-        var updatedPromotion = await _unitOfWork.Promotions.GetByIdAsync(promotionId, cancellationToken) ?? existingPromotion;
+        var updatedPromotion = await _unitOfWork.Promotions.GetByIdAsync(
+            promotionId, 
+            cancellationToken,
+            includeProperties: "ProductPromotions,ProductPromotions.Product"
+        ) ?? existingPromotion;
 
         _logger.LogInformation(
             "Updated promotion {PromotionId} with name {PromotionName}",

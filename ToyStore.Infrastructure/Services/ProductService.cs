@@ -77,8 +77,11 @@ public class ProductService : IProductService
         {
             return Result<ProductDto>.NotFound("Product", productId);
         }
-
-        return Result<ProductDto>.Success(_mapper.Map<ProductDto>(product));
+        var mappedProduct = _mapper.Map<ProductDto>(product);
+        mappedProduct.AdditionalImageUrls = await _unitOfWork.Products.GetAdditionalImageUrlsAsync(
+            productId,
+            cancellationToken);
+        return Result<ProductDto>.Success(mappedProduct);
     }
 
     public async Task<Result<ProductDto>> CreateProductAsync(
@@ -160,12 +163,19 @@ public class ProductService : IProductService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            var created = await _unitOfWork.Products.CreateAsync(product, cancellationToken);
+            var created = await _unitOfWork.Products.CreateAsync(
+                product,
+                dto.AdditionalImageUrls,
+                cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             _logger.LogInformation("Product {ProductId} created successfully.", created.ProductId);
 
-            return Result<ProductDto>.Success(_mapper.Map<ProductDto>(created));
+            var mappedCreated = _mapper.Map<ProductDto>(created);
+            mappedCreated.AdditionalImageUrls = await _unitOfWork.Products.GetAdditionalImageUrlsAsync(
+                created.ProductId,
+                cancellationToken);
+            return Result<ProductDto>.Success(mappedCreated);
         }
         catch (Exception ex)
         {
@@ -333,12 +343,19 @@ public class ProductService : IProductService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            var updated = await _unitOfWork.Products.UpdateAsync(existing, cancellationToken);
+            var updated = await _unitOfWork.Products.UpdateAsync(
+                existing,
+                dto.AdditionalImageUrls,
+                cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             _logger.LogInformation("Product {ProductId} updated successfully.", updated.ProductId);
 
-            return Result<ProductDto>.Success(_mapper.Map<ProductDto>(updated));
+            var mappedUpdated = _mapper.Map<ProductDto>(updated);
+            mappedUpdated.AdditionalImageUrls = await _unitOfWork.Products.GetAdditionalImageUrlsAsync(
+                updated.ProductId,
+                cancellationToken);
+            return Result<ProductDto>.Success(mappedUpdated);
         }
         catch (Exception ex)
         {
@@ -390,6 +407,7 @@ public class ProductService : IProductService
                || dto.AgeId.HasValue
                || dto.SexId.HasValue
                || dto.OriginId.HasValue
-               || !string.IsNullOrWhiteSpace(dto.MainImageUrl);
+               || !string.IsNullOrWhiteSpace(dto.MainImageUrl)
+               || dto.AdditionalImageUrls != null;
     }
 }
