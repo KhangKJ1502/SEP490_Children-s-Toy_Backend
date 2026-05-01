@@ -31,12 +31,23 @@ public interface IProductRepository
     /// <summary>
     /// Tao moi Product.
     /// </summary>
-    Task<Product> CreateAsync(Product product, CancellationToken cancellationToken = default);
+    Task<Product> CreateAsync(
+        Product product,
+        IReadOnlyCollection<string>? additionalImageUrls = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Cap nhat Product.
     /// </summary>
-    Task<Product> UpdateAsync(Product product, CancellationToken cancellationToken = default);
+    Task<Product> UpdateAsync(
+        Product product,
+        IReadOnlyCollection<string>? additionalImageUrls = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lay danh sach anh phu cua Product.
+    /// </summary>
+    Task<List<string>> GetAdditionalImageUrlsAsync(int productId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Kiem tra Category ton tai.

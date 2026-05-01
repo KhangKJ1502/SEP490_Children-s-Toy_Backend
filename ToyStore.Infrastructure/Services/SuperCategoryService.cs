@@ -165,13 +165,30 @@ public class SuperCategoryService : ISuperCategoryService
             return Result<SuperCategoryListDto>.Conflict("Super category name already exists.");
         }
 
+        // Map Status to IsDeleted
+        bool? isDeleted = null;
+        if (!string.IsNullOrWhiteSpace(dto.Status))
+        {
+            isDeleted = dto.Status.Trim().Equals("Inactive", StringComparison.OrdinalIgnoreCase);
+        }
+
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
             var updated = await _unitOfWork.SuperCategories.UpdateAsync(
                 superCategoryId,
                 normalizedName,
+                isDeleted,
                 cancellationToken);
+
+            if (isDeleted.HasValue)
+            {
+                await _unitOfWork.SuperCategories.UpdateRelatedStatusAsync(
+                    superCategoryId,
+                    isDeleted.Value,
+                    cancellationToken);
+            }
+
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             _logger.LogInformation("Super category {SuperCategoryId} updated successfully.", updated.SuperCategoryId);

@@ -56,5 +56,14 @@ public interface ICategoryRepository
         short categoryId,
         short superCategoryId,
         string categoryName,
+        bool? isDeleted = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cập nhật trạng thái của toàn bộ Product thuộc Category.
+    /// </summary>
+    Task UpdateRelatedProductStatusAsync(
+        short categoryId,
+        bool isDeleted,
         CancellationToken cancellationToken = default);
 }
