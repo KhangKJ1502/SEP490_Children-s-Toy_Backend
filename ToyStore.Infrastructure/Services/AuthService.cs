@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using AutoMapper;
 using FluentValidation;
+using Google.Apis.Auth;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
@@ -34,6 +35,8 @@ public class AuthService : IAuthService
     private readonly IValidator<RegisterDto> _registerValidator;
     private readonly IValidator<ForgotPasswordDto> _forgotPasswordValidator;
     private readonly IValidator<ResetPasswordDto> _resetPasswordValidator;
+    private readonly IValidator<GoogleLoginDto> _googleLoginValidator;
+    private readonly IValidator<GoogleRegisterDto> _googleRegisterValidator;
 
     public AuthService(
         IUnitOfWork unitOfWork,
@@ -46,7 +49,9 @@ public class AuthService : IAuthService
         IValidator<SendRegisterOtpDto> sendRegisterOtpValidator,
         IValidator<RegisterDto> registerValidator,
         IValidator<ForgotPasswordDto> forgotPasswordValidator,
-        IValidator<ResetPasswordDto> resetPasswordValidator)
+        IValidator<ResetPasswordDto> resetPasswordValidator,
+        IValidator<GoogleLoginDto> googleLoginValidator,
+        IValidator<GoogleRegisterDto> googleRegisterValidator)
     {
         _unitOfWork = unitOfWork;
         _emailService = emailService;
@@ -59,6 +64,8 @@ public class AuthService : IAuthService
         _registerValidator = registerValidator;
         _forgotPasswordValidator = forgotPasswordValidator;
         _resetPasswordValidator = resetPasswordValidator;
+        _googleLoginValidator = googleLoginValidator;
+        _googleRegisterValidator = googleRegisterValidator;
     }
 
     public async Task<Result<AuthResponseDto>> LoginAsync(LoginDto dto, CancellationToken cancellationToken = default)
@@ -321,5 +328,238 @@ public class AuthService : IAuthService
     private static string GenerateOtpCode()
     {
         return RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+    }
+
+    /// <summary>
+    /// Đăng nhập bằng Google OAuth cho account đã tồn tại trong hệ thống.
+    /// Không tự động tạo account mới trong luồng login.
+    /// </summary>
+    public async Task<Result<AuthResponseDto>> GoogleLoginAsync(GoogleLoginDto dto, CancellationToken cancellationToken = default)
+    {
+        // Validate DTO
+        var validationResult = await _googleLoginValidator.ValidateAsync(dto, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            var errors = validationResult.Errors
+                .GroupBy(x => x.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ErrorMessage).ToArray());
+            return Result<AuthResponseDto>.ValidationFailure(errors);
+        }
+
+        // Verify Google ID Token
+        var payload = await VerifyGoogleTokenAsync(dto.IdToken);
+        if (payload == null)
+        {
+            return Result<AuthResponseDto>.Failure("INVALID_TOKEN", "Invalid Google ID token.");
+        }
+
+        // Extract thông tin từ Google payload
+        var googleEmail = payload.Email.Trim().ToLowerInvariant();
+        // Kiểm tra account đã tồn tại chưa
+        var existingAccount = await _unitOfWork.Accounts.GetByEmailForAuthAsync(googleEmail, cancellationToken);
+
+        // Nếu account chưa tồn tại → yêu cầu đăng ký trước
+        if (existingAccount == null)
+        {
+            _logger.LogWarning("Google login failed: Account with email {Email} does not exist.", googleEmail);
+            return Result<AuthResponseDto>.Failure("ACCOUNT_NOT_FOUND", 
+                "No account found with this email. Please register first.");
+        }
+
+        // Kiểm tra account có bị xóa hoặc inactive không
+        if (existingAccount.IsDeleted)
+        {
+            return Result<AuthResponseDto>.Failure("ACCOUNT_DELETED", "This account has been deleted.");
+        }
+
+        if (!existingAccount.IsActive)
+        {
+            return Result<AuthResponseDto>.Failure("ACCOUNT_INACTIVE", "Your account has been deactivated. Please contact support.");
+        }
+
+        var provider = existingAccount.Provider?.Trim().ToLowerInvariant();
+        var providerSupportedForGoogle = string.IsNullOrWhiteSpace(provider)
+            || provider is "local"
+            || provider is "email"
+            || provider is "google";
+        if (!providerSupportedForGoogle)
+        {
+            return Result<AuthResponseDto>.Failure(
+                "PROVIDER_NOT_SUPPORTED",
+                "This account does not support Google login.");
+        }
+
+        // Nếu chỉ định RoleId, kiểm tra role có khớp không
+        if (dto.RoleId.HasValue && existingAccount.RoleId != dto.RoleId.Value)
+        {
+            return Result<AuthResponseDto>.Failure("ROLE_MISMATCH", 
+                $"This account does not have {GetRoleName(dto.RoleId.Value)} role.");
+        }
+
+        // Login thành công
+        var token = GenerateJwtToken(existingAccount);
+        var expirationMinutes = int.Parse(_configuration["Jwt:ExpirationMinutes"] ?? "1440");
+
+        _logger.LogInformation("Account {AccountId} logged in via Google OAuth.", existingAccount.AccountId);
+
+        return Result<AuthResponseDto>.Success(new AuthResponseDto
+        {
+            AccessToken = token,
+            TokenType = "Bearer",
+            ExpiresIn = expirationMinutes * 60,
+            Account = _mapper.Map<AccountInfoDto>(existingAccount)
+        });
+    }
+
+    /// <summary>
+    /// Register account mới bằng Google OAuth (chỉ Customer).
+    /// Nếu account đã tồn tại, trả lỗi.
+    /// </summary>
+    public async Task<Result<AuthResponseDto>> GoogleRegisterAsync(GoogleRegisterDto dto, CancellationToken cancellationToken = default)
+    {
+        // Validate DTO
+        var validationResult = await _googleRegisterValidator.ValidateAsync(dto, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            var errors = validationResult.Errors
+                .GroupBy(x => x.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ErrorMessage).ToArray());
+            return Result<AuthResponseDto>.ValidationFailure(errors);
+        }
+
+        // Verify Google ID Token
+        var payload = await VerifyGoogleTokenAsync(dto.IdToken);
+        if (payload == null)
+        {
+            return Result<AuthResponseDto>.Failure("INVALID_TOKEN", "Invalid Google ID token.");
+        }
+
+        // Extract thông tin từ Google payload
+        var googleEmail = payload.Email.Trim().ToLowerInvariant();
+        var googleName = payload.Name ?? "Google User";
+        var googlePicture = payload.Picture;
+
+        // Kiểm tra email đã được sử dụng chưa
+        var emailExists = await _unitOfWork.Accounts.ExistsByEmailAsync(googleEmail, cancellationToken);
+        if (emailExists)
+        {
+            return Result<AuthResponseDto>.Conflict("Email already registered. Please login instead.");
+        }
+
+        // Tạo account mới với role Customer
+        var randomPassword = GenerateRandomPassword();
+        var newAccount = await _unitOfWork.Accounts.CreateAsync(
+            roleId: CustomerRoleId,
+            employeeCode: null,
+            accountName: googleName,
+            phoneNumber: null,
+            email: googleEmail,
+            passwordHash: HashPassword(randomPassword),
+            isActive: true,
+            provider: "Google",
+            cancellationToken: cancellationToken);
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Load lại account với Role navigation property
+        var createdAccount = await _unitOfWork.Accounts.GetByEmailForAuthAsync(googleEmail, cancellationToken);
+        if (createdAccount == null)
+        {
+            return Result<AuthResponseDto>.Failure("ACCOUNT_CREATION_FAILED", "Failed to create account.");
+        }
+
+        var token = GenerateJwtToken(createdAccount);
+        var expirationMinutes = int.Parse(_configuration["Jwt:ExpirationMinutes"] ?? "1440");
+
+        _logger.LogInformation("New Customer account {AccountId} registered via Google OAuth.", createdAccount.AccountId);
+
+        return Result<AuthResponseDto>.Success(new AuthResponseDto
+        {
+            AccessToken = token,
+            TokenType = "Bearer",
+            ExpiresIn = expirationMinutes * 60,
+            Account = _mapper.Map<AccountInfoDto>(createdAccount)
+        });
+    }
+
+    /// <summary>
+    /// Verify Google ID Token và trả về payload nếu hợp lệ.
+    /// </summary>
+    private async Task<GoogleJsonWebSignature.Payload?> VerifyGoogleTokenAsync(string idToken)
+    {
+        try
+        {
+            var googleClientId = _configuration["GoogleOAuth:ClientId"];
+            if (string.IsNullOrWhiteSpace(googleClientId))
+            {
+                _logger.LogError("GoogleOAuth:ClientId is not configured in appsettings.json.");
+                return null;
+            }
+
+            var settings = new GoogleJsonWebSignature.ValidationSettings
+            {
+                Audience = new[] { googleClientId }
+            };
+
+            var payload = await GoogleJsonWebSignature.ValidateAsync(idToken, settings);
+            return payload;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to verify Google ID token.");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Generate random password cho Google OAuth users (16 ký tự: chữ hoa, chữ thường, số, ký tự đặc biệt).
+    /// </summary>
+    private static string GenerateRandomPassword()
+    {
+        const string upperCase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        const string lowerCase = "abcdefghijklmnopqrstuvwxyz";
+        const string digits = "0123456789";
+        const string specialChars = "!@#$%^&*()_+-=[]{}|;:,.<>?";
+        const string allChars = upperCase + lowerCase + digits + specialChars;
+
+        var random = new Random();
+        var password = new char[16];
+
+        // Đảm bảo có ít nhất 1 ký tự mỗi loại
+        password[0] = upperCase[random.Next(upperCase.Length)];
+        password[1] = lowerCase[random.Next(lowerCase.Length)];
+        password[2] = digits[random.Next(digits.Length)];
+        password[3] = specialChars[random.Next(specialChars.Length)];
+
+        // Fill các ký tự còn lại random
+        for (int i = 4; i < password.Length; i++)
+        {
+            password[i] = allChars[random.Next(allChars.Length)];
+        }
+
+        // Shuffle password để không có pattern cố định
+        for (int i = password.Length - 1; i > 0; i--)
+        {
+            int j = random.Next(i + 1);
+            (password[i], password[j]) = (password[j], password[i]);
+        }
+
+        return new string(password);
+    }
+
+    /// <summary>
+    /// Get role name từ RoleId.
+    /// </summary>
+    private static string GetRoleName(byte roleId)
+    {
+        return roleId switch
+        {
+            1 => "Customer",
+            2 => "Staff",
+            3 => "Merchandise",
+            4 => "Admin",
+            5 => "Guest",
+            _ => "Unknown"
+        };
     }
 }
