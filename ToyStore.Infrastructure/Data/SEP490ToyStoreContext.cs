@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using ToyStore.Domain.Entities;
@@ -1278,6 +1278,8 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.HasIndex(e => e.ProductId, "UQ_ProductImages_OneMain")
                 .IsUnique()
                 .HasFilter("([IsMain]=(1))");
+
+            entity.HasQueryFilter(e => e.IsMain); // Fix duplicate issue in Include
 
             entity.Property(e => e.ImageId).HasColumnName("ImageID");
             entity.Property(e => e.CreatedAt)

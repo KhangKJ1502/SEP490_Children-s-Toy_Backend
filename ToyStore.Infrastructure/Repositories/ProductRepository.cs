@@ -23,7 +23,7 @@ public class ProductRepository : IProductRepository
         CancellationToken cancellationToken = default)
     {
         IQueryable<Product> query = _context.Products
-            .AsNoTracking()
+            .AsNoTrackingWithIdentityResolution()
             .Include(x => x.Category)
             .Include(x => x.Brand)
             .Include(x => x.ProductImage)
