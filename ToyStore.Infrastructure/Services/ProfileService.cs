@@ -17,19 +17,22 @@ public class ProfileService : IProfileService
     private readonly IMapper _mapper;
     private readonly ILogger<ProfileService> _logger;
     private readonly IValidator<UpdateProfileDto> _updateProfileValidator;
+    private readonly IValidator<ChangePasswordDto> _changePasswordValidator;
 
     public ProfileService(
         IUnitOfWork unitOfWork,
         ICurrentUserService currentUserService,
         IMapper mapper,
         ILogger<ProfileService> logger,
-        IValidator<UpdateProfileDto> updateProfileValidator)
+        IValidator<UpdateProfileDto> updateProfileValidator,
+        IValidator<ChangePasswordDto> changePasswordValidator)
     {
         _unitOfWork = unitOfWork;
         _currentUserService = currentUserService;
         _mapper = mapper;
         _logger = logger;
         _updateProfileValidator = updateProfileValidator;
+        _changePasswordValidator = changePasswordValidator;
     }
 
     public async Task<Result<ProfileDto>> GetMyProfileAsync(CancellationToken cancellationToken = default)
@@ -75,31 +78,21 @@ public class ProfileService : IProfileService
             return Result<ProfileDto>.NotFound("Account", accountId);
         }
 
-        var isPasswordChangeRequested = HasPasswordChangeRequest(dto);
-        if (isPasswordChangeRequested && !VerifyPassword(dto.CurrentPassword!, existing.PasswordHash))
-        {
-            return Result<ProfileDto>.Failure("INVALID_CREDENTIALS", "Current password is incorrect.");
-        }
-
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            var normalizedImageUrl = NormalizeNullable(dto.ImageUrl);
-            var normalizedPhoneNumber = NormalizeNullable(dto.PhoneNumber);
+            var normalizedImageUrl = dto.ImageUrl != null
+                ? NormalizeNullable(dto.ImageUrl)
+                : existing.ImageUrl;
+            var normalizedPhoneNumber = dto.PhoneNumber != null
+                ? NormalizeNullable(dto.PhoneNumber)
+                : existing.PhoneNumber;
 
             var updated = await _unitOfWork.Accounts.UpdateProfileAsync(
                 accountId,
                 normalizedImageUrl,
                 normalizedPhoneNumber,
                 cancellationToken);
-
-            if (isPasswordChangeRequested)
-            {
-                await _unitOfWork.Accounts.UpdatePasswordHashAsync(
-                    accountId,
-                    HashPassword(dto.NewPassword!),
-                    cancellationToken);
-            }
 
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
@@ -114,12 +107,58 @@ public class ProfileService : IProfileService
         }
     }
 
-
-    private static bool HasPasswordChangeRequest(UpdateProfileDto dto)
+    public async Task<Result> ChangeMyPasswordAsync(
+        ChangePasswordDto dto,
+        CancellationToken cancellationToken = default)
     {
-        return !string.IsNullOrWhiteSpace(dto.CurrentPassword)
-               || !string.IsNullOrWhiteSpace(dto.NewPassword)
-               || !string.IsNullOrWhiteSpace(dto.ConfirmNewPassword);
+        var accountId = _currentUserService.AccountId;
+        if (accountId <= 0)
+        {
+            return Result.Failure("UNAUTHORIZED", "Unauthorized.");
+        }
+
+        var validationResult = await _changePasswordValidator.ValidateAsync(dto, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            var errors = validationResult.Errors
+                .GroupBy(x => x.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ErrorMessage).ToArray());
+
+            return Result.ValidationFailure(errors);
+        }
+
+        var existing = await _unitOfWork.Accounts.GetByIdForProfileAsync(accountId, cancellationToken);
+        if (existing == null)
+        {
+            return Result.NotFound("Account", accountId);
+        }
+
+        if (!VerifyPassword(dto.CurrentPassword, existing.PasswordHash))
+        {
+            return Result.ValidationFailure(new Dictionary<string, string[]>
+            {
+                ["CurrentPassword"] = ["Current password is incorrect."]
+            });
+        }
+
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await _unitOfWork.Accounts.UpdatePasswordHashAsync(
+                accountId,
+                HashPassword(dto.NewPassword),
+                cancellationToken);
+
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+            _logger.LogInformation("Password changed for account {AccountId}.", accountId);
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Failed to change password for account {AccountId}.", accountId);
+            throw;
+        }
     }
 
     private static string? NormalizeNullable(string? value)
