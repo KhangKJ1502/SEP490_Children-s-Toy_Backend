@@ -25,7 +25,7 @@ public class AccountRepository : IAccountRepository
         IQueryable<Account> query = _context.Accounts
             .AsNoTracking()
             .Include(x => x.Role)
-            .Where(x => !x.IsDeleted);
+            .Where(x => !x.IsDeleted && x.Role.RoleName != "Admin");
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
@@ -66,7 +66,7 @@ public class AccountRepository : IAccountRepository
     {
         IQueryable<Account> query = _context.Accounts
             .AsNoTracking()
-            .Where(x => !x.IsDeleted);
+            .Where(x => !x.IsDeleted && x.Role.RoleName != "Admin");
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
@@ -104,6 +104,18 @@ public class AccountRepository : IAccountRepository
             .AsNoTracking()
             .Where(x => x.EmployeeCode != null)
             .AnyAsync(x => x.EmployeeCode!.ToLower() == normalizedEmployeeCode, cancellationToken);
+    }
+
+    public Task<bool> ExistsByPhoneNumberAsync(
+        string phoneNumber,
+        int excludeAccountId,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedPhoneNumber = phoneNumber.Trim();
+        return _context.Accounts
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted && x.AccountId != excludeAccountId && x.PhoneNumber != null)
+            .AnyAsync(x => x.PhoneNumber == normalizedPhoneNumber, cancellationToken);
     }
 
     public Task<Role?> GetRoleByIdAsync(byte roleId, CancellationToken cancellationToken = default)
