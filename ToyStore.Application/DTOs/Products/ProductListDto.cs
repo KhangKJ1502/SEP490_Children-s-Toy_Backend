@@ -12,6 +12,8 @@ public class ProductListDto
 
     public string ProductStatus { get; set; } = string.Empty;
 
+    public string Status { get; set; } = string.Empty;
+
     public short CategoryId { get; set; }
 
     public string CategoryName { get; set; } = string.Empty;

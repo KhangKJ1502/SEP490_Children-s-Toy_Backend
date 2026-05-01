@@ -12,7 +12,8 @@ public class CategoryProfile : Profile
     public CategoryProfile()
     {
         CreateMap<Category, CategoryListDto>()
-            .ForMember(dest => dest.SuperCategoryName, opt => opt.MapFrom(src => src.SuperCategory.SuperCategoryName));
+            .ForMember(dest => dest.SuperCategoryName, opt => opt.MapFrom(src => src.SuperCategory.SuperCategoryName))
+            .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.IsDeleted ? "Inactive" : "Active"));
 
         CreateMap<CreateCategoryDto, Category>()
             .ForMember(dest => dest.CategoryId, opt => opt.Ignore())

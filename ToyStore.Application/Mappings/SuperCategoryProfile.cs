@@ -11,7 +11,8 @@ public class SuperCategoryProfile : Profile
 {
     public SuperCategoryProfile()
     {
-        CreateMap<SuperCategory, SuperCategoryListDto>();
+        CreateMap<SuperCategory, SuperCategoryListDto>()
+            .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.IsDeleted ? "Inactive" : "Active"));
 
         CreateMap<CreateSuperCategoryDto, SuperCategory>()
             .ForMember(dest => dest.SuperCategoryId, opt => opt.Ignore())
