@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using StackExchange.Redis;
 using ToyStore.Application.DTOs.Accounts;
+using ToyStore.Application.DTOs.Auth;
 using ToyStore.Application.DTOs.Brands;
 using ToyStore.Application.DTOs.Campaigns;
 using ToyStore.Application.DTOs.Profiles;
@@ -13,6 +14,7 @@ using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Application.Mappings;
 using ToyStore.Application.Validators.Accounts;
+using ToyStore.Application.Validators.Auth;
 using ToyStore.Application.Validators.Brands;
 using ToyStore.Application.Validators.Campaigns;
 using ToyStore.Application.Validators.Profiles;
@@ -71,6 +73,10 @@ public static class DependencyInjection
         services.AddScoped<IValidator<UpdateProfileDto>, UpdateProfileValidator>();
         services.AddScoped<IValidator<ChangePasswordDto>, ChangePasswordValidator>();
         services.AddScoped<IValidator<UpdateCampaignDto>, UpdateCampaignValidator>();
+
+        // Google OAuth validators
+        services.AddScoped<IValidator<GoogleLoginDto>, GoogleLoginValidator>();
+        services.AddScoped<IValidator<GoogleRegisterDto>, GoogleRegisterValidator>();
 
 
 
