@@ -52,5 +52,14 @@ public interface ISuperCategoryRepository
     Task<SuperCategory> UpdateAsync(
         short superCategoryId,
         string superCategoryName,
+        bool? isDeleted = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cập nhật trạng thái của toàn bộ Category/Product thuộc SuperCategory.
+    /// </summary>
+    Task UpdateRelatedStatusAsync(
+        short superCategoryId,
+        bool isDeleted,
         CancellationToken cancellationToken = default);
 }

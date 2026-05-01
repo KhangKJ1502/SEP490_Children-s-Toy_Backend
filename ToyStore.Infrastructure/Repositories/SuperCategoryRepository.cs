@@ -23,8 +23,7 @@ public class SuperCategoryRepository : ISuperCategoryRepository
         CancellationToken cancellationToken = default)
     {
         var query = _context.SuperCategories
-            .AsNoTracking()
-            .Where(x => !x.IsDeleted);
+            .AsNoTracking();
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
@@ -35,6 +34,10 @@ public class SuperCategoryRepository : ISuperCategoryRepository
         {
             ("name", true) => query.OrderByDescending(x => x.SuperCategoryName),
             ("name", false) => query.OrderBy(x => x.SuperCategoryName),
+            ("supercategoryname", true) => query.OrderByDescending(x => x.SuperCategoryName),
+            ("supercategoryname", false) => query.OrderBy(x => x.SuperCategoryName),
+            ("status", true) => query.OrderByDescending(x => x.IsDeleted),
+            ("status", false) => query.OrderBy(x => x.IsDeleted),
             ("createdat", true) => query.OrderByDescending(x => x.CreatedAt),
             ("createdat", false) => query.OrderBy(x => x.CreatedAt),
             (_, true) => query.OrderByDescending(x => x.SuperCategoryId),
@@ -50,8 +53,7 @@ public class SuperCategoryRepository : ISuperCategoryRepository
     public Task<int> CountAsync(string? searchTerm = null, CancellationToken cancellationToken = default)
     {
         var query = _context.SuperCategories
-            .AsNoTracking()
-            .Where(x => !x.IsDeleted);
+            .AsNoTracking();
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
@@ -86,7 +88,7 @@ public class SuperCategoryRepository : ISuperCategoryRepository
     {
         return _context.SuperCategories
             .AsNoTracking()
-            .Where(x => x.SuperCategoryId == superCategoryId && !x.IsDeleted)
+            .Where(x => x.SuperCategoryId == superCategoryId)
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -108,16 +110,46 @@ public class SuperCategoryRepository : ISuperCategoryRepository
     public async Task<SuperCategory> UpdateAsync(
         short superCategoryId,
         string superCategoryName,
+        bool? isDeleted = null,
         CancellationToken cancellationToken = default)
     {
         var entity = await _context.SuperCategories
-            .FirstAsync(x => x.SuperCategoryId == superCategoryId && !x.IsDeleted, cancellationToken);
+            .FirstAsync(x => x.SuperCategoryId == superCategoryId, cancellationToken);
 
         entity.SuperCategoryName = superCategoryName;
+        if (isDeleted.HasValue)
+        {
+            entity.IsDeleted = isDeleted.Value;
+        }
         entity.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);
 
         return entity;
+    }
+
+    public async Task UpdateRelatedStatusAsync(
+        short superCategoryId,
+        bool isDeleted,
+        CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+
+        await _context.Categories
+            .Where(x => x.SuperCategoryId == superCategoryId)
+            .ExecuteUpdateAsync(
+                updates => updates
+                    .SetProperty(x => x.IsDeleted, _ => isDeleted)
+                    .SetProperty(x => x.UpdatedAt, _ => now),
+                cancellationToken);
+
+        await _context.Products
+            .Where(x => x.Category.SuperCategoryId == superCategoryId)
+            .ExecuteUpdateAsync(
+                updates => updates
+                    .SetProperty(x => x.IsDeleted, _ => isDeleted)
+                    .SetProperty(x => x.ProductStatus, _ => isDeleted ? "Inactive" : "Active")
+                    .SetProperty(x => x.UpdatedAt, _ => now),
+                cancellationToken);
     }
 }

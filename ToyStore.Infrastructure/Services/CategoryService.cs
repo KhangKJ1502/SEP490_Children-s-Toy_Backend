@@ -91,6 +91,10 @@ public class CategoryService : ICategoryService
         {
             return Result<CategoryListDto>.NotFound("Super category", dto.SuperCategoryId);
         }
+        if (superCategory.IsDeleted)
+        {
+            return Result<CategoryListDto>.BusinessError("Cannot create category under an inactive super category.");
+        }
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
@@ -180,6 +184,20 @@ public class CategoryService : ICategoryService
             return Result<CategoryListDto>.Conflict("Category name already exists.");
         }
 
+        // Map Status to IsDeleted
+        bool? isDeleted = null;
+        if (!string.IsNullOrWhiteSpace(dto.Status))
+        {
+            isDeleted = dto.Status.Trim().Equals("Inactive", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Keep hierarchy consistent: category cannot be active when parent super category is inactive.
+        var finalIsDeleted = isDeleted ?? existingCategory.IsDeleted;
+        if (!finalIsDeleted && superCategory.IsDeleted)
+        {
+            return Result<CategoryListDto>.BusinessError("Cannot set category to active while its super category is inactive.");
+        }
+
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -187,7 +205,17 @@ public class CategoryService : ICategoryService
                 categoryId,
                 dto.SuperCategoryId,
                 normalizedName,
+                isDeleted,
                 cancellationToken);
+
+            if (isDeleted.HasValue)
+            {
+                await _unitOfWork.Categories.UpdateRelatedProductStatusAsync(
+                    categoryId,
+                    isDeleted.Value,
+                    cancellationToken);
+            }
+
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             _logger.LogInformation("Category {CategoryId} updated successfully.", updated.CategoryId);
