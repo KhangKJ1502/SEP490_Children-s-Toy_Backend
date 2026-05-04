@@ -38,5 +38,9 @@ public class UpdatePromotionValidator : AbstractValidator<UpdatePromotionDto>
         RuleFor(x => x.Priority)
             .GreaterThanOrEqualTo(0).WithMessage("Priority must be greater than or equal to 0.")
             .When(x => x.Priority.HasValue);
+
+        RuleForEach(x => x.ProductPromotions)
+            .SetValidator(new CreateProductPromotionValidator())
+            .When(x => x.ProductPromotions != null);
     }
 }

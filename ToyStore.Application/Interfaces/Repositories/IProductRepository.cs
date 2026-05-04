@@ -83,4 +83,9 @@ public interface IProductRepository
     /// Kiem tra Origin ton tai.
     /// </summary>
     Task<bool> OriginExistsAsync(byte originId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lay danh sach Product theo tap hop ID.
+    /// </summary>
+    Task<List<Product>> GetByIdsAsync(IEnumerable<int> productIds, CancellationToken cancellationToken = default);
 }

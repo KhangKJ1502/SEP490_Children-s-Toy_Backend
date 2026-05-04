@@ -285,4 +285,12 @@ public class ProductRepository : IProductRepository
             .AsNoTracking()
             .AnyAsync(x => x.OriginId == originId, cancellationToken);
     }
+
+    public Task<List<Product>> GetByIdsAsync(IEnumerable<int> productIds, CancellationToken cancellationToken = default)
+    {
+        return _context.Products
+            .AsNoTracking()
+            .Where(x => productIds.Contains(x.ProductId) && !x.IsDeleted)
+            .ToListAsync(cancellationToken);
+    }
 }

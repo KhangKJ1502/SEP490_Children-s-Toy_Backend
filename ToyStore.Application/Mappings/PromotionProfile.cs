@@ -25,11 +25,14 @@ public class PromotionProfile : Profile
             .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore());
 
         CreateMap<UpdatePromotionDto, Promotion>()
+            .ForMember(dest => dest.ProductPromotions, opt => opt.Ignore())
             .ForAllMembers(opt =>
                 opt.Condition((_, _, srcMember) => srcMember is not null));
 
         CreateMap<ProductPromotion, ProductPromotionDto>()
-            .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.ProductName : string.Empty));
+            .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.ProductName : string.Empty))
+            .ForMember(dest => dest.OriginalPrice, opt => opt.MapFrom(src => src.Product != null ? src.Product.Price : 0))
+            .ForMember(dest => dest.Stock, opt => opt.MapFrom(src => src.Product != null ? src.Product.Quantity : 0));
 
         CreateMap<CreateProductPromotionDto, ProductPromotion>()
             .ForMember(dest => dest.SoldQuantity, opt => opt.MapFrom(_ => 0))
@@ -39,5 +42,7 @@ public class PromotionProfile : Profile
             .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
             .ForMember(dest => dest.Product, opt => opt.Ignore())
             .ForMember(dest => dest.Promotion, opt => opt.Ignore());
+
+        CreateMap<ProductPromotion, CreateProductPromotionDto>();
     }
 }
