@@ -32,5 +32,8 @@ public class CreatePromotionValidator : AbstractValidator<CreatePromotionDto>
 
         RuleFor(x => x.Priority)
             .GreaterThanOrEqualTo(0).WithMessage("Priority must be greater than or equal to 0.");
+
+        RuleForEach(x => x.ProductPromotions)
+            .SetValidator(new CreateProductPromotionValidator());
     }
 }

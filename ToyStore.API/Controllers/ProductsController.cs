@@ -56,6 +56,9 @@ public class ProductsController : ControllerBase
         [FromQuery] string? sortBy = null,
         [FromQuery] bool sortDesc = false,
         [FromQuery] string? searchTerm = null,
+        [FromQuery] int? brandId = null,
+        [FromQuery] short? categoryId = null,
+        [FromQuery] string? status = null,
         CancellationToken cancellationToken = default)
     {
         var result = await _productService.GetProductsAsync(
@@ -64,6 +67,9 @@ public class ProductsController : ControllerBase
             sortBy,
             sortDesc,
             searchTerm,
+            brandId,
+            categoryId,
+            status,
             cancellationToken);
 
         return result.ToActionResult();
