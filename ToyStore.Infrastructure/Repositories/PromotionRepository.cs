@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Domain.Entities;
@@ -13,12 +12,10 @@ namespace ToyStore.Infrastructure.Repositories;
 public class PromotionRepository : IPromotionRepository
 {
     private readonly SEP490ToyStoreContext _context;
-    private readonly DbSet<Promotion> _dbSet;
 
     public PromotionRepository(SEP490ToyStoreContext context)
     {
         _context = context;
-        _dbSet = context.Set<Promotion>();
     }
 
     public async Task<PaginatedResponse<Promotion>> GetPagedAsync(
@@ -30,11 +27,11 @@ public class PromotionRepository : IPromotionRepository
         string? status = null,
         CancellationToken cancellationToken = default)
     {
-        var query = _dbSet.Where(x => !x.IsDeleted);
+        var query = _context.Promotions.Where(x => !x.IsDeleted);
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
-            query = query.Where(x => x.PromotionName.Contains(searchTerm) || 
+            query = query.Where(x => x.PromotionName.Contains(searchTerm) ||
                                      (x.Description != null && x.Description.Contains(searchTerm)));
         }
 
@@ -64,7 +61,7 @@ public class PromotionRepository : IPromotionRepository
 
     public async Task<Promotion?> GetByIdAsync(int promotionId, CancellationToken cancellationToken = default, string? includeProperties = null)
     {
-        IQueryable<Promotion> query = _dbSet;
+        IQueryable<Promotion> query = _context.Promotions;
 
         if (!string.IsNullOrWhiteSpace(includeProperties))
         {
@@ -84,7 +81,7 @@ public class PromotionRepository : IPromotionRepository
         int? excludePromotionId = null,
         CancellationToken cancellationToken = default)
     {
-        var query = _dbSet.Where(x => !x.IsDeleted && x.PromotionName == promotionName);
+        var query = _context.Promotions.Where(x => !x.IsDeleted && x.PromotionName == promotionName);
 
         if (excludePromotionId.HasValue)
         {
@@ -96,8 +93,8 @@ public class PromotionRepository : IPromotionRepository
 
     public async Task AddAsync(Promotion promotion, CancellationToken cancellationToken = default)
     {
-        await _dbSet.AddAsync(promotion, cancellationToken);
-        
+        await _context.AddAsync(promotion, cancellationToken);
+
         // This is a hack to get the generated ID back to the model, usually done after SaveChanges
         // but UnitOfWork handles SaveChanges. We will update it in service if needed.
     }
@@ -105,7 +102,12 @@ public class PromotionRepository : IPromotionRepository
     public void Update(Promotion promotion)
     {
         // Attach and mark as modified
-        _dbSet.Attach(promotion);
+        _context.Attach(promotion);
         _context.Entry(promotion).State = EntityState.Modified;
+    }
+
+    public void RemoveProductPromotion(ProductPromotion productPromotion)
+    {
+        _context.ProductPromotions.Remove(productPromotion);
     }
 }

@@ -38,6 +38,9 @@ public class ProductService : IProductService
         string? sortBy = null,
         bool sortDesc = false,
         string? searchTerm = null,
+        int? brandId = null,
+        short? categoryId = null,
+        string? status = null,
         CancellationToken cancellationToken = default)
     {
         if (pageNumber < 1)
@@ -56,9 +59,12 @@ public class ProductService : IProductService
             sortBy,
             sortDesc,
             searchTerm,
+            brandId,
+            categoryId,
+            status,
             cancellationToken);
 
-        var totalCount = await _unitOfWork.Products.CountAsync(searchTerm, cancellationToken);
+        var totalCount = await _unitOfWork.Products.CountAsync(searchTerm, brandId, categoryId, status, cancellationToken);
 
         var mappedItems = _mapper.Map<List<ProductListDto>>(items);
         var response = new PaginatedResponse<ProductListDto>(mappedItems, totalCount, pageNumber, pageSize);
@@ -382,12 +388,12 @@ public class ProductService : IProductService
         }
 
         return GetProductsAsync(
-            pageNumber,
-            pageSize,
-            sortBy,
-            sortDesc,
-            searchTerm.Trim(),
-            cancellationToken);
+            pageNumber: pageNumber,
+            pageSize: pageSize,
+            sortBy: sortBy,
+            sortDesc: sortDesc,
+            searchTerm: searchTerm.Trim(),
+            cancellationToken: cancellationToken);
     }
 
     private static bool HasAnyUpdate(UpdateProductDto dto)

@@ -18,6 +18,9 @@ public interface IProductService
         string? sortBy = null,
         bool sortDesc = false,
         string? searchTerm = null,
+        int? brandId = null,
+        short? categoryId = null,
+        string? status = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

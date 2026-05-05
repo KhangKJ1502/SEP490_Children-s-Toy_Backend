@@ -278,7 +278,7 @@ public class PromotionService : IPromotionService
                 
                 foreach (var item in toRemove)
                 {
-                    existingPromotion.ProductPromotions.Remove(item);
+                    _unitOfWork.Promotions.RemoveProductPromotion(item);
                 }
 
                 // Update or add items

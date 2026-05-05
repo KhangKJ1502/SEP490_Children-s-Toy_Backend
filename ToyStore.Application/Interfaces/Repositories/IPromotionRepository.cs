@@ -43,4 +43,9 @@ public interface IPromotionRepository
     /// Cập nhật promotion vào context.
     /// </summary>
     void Update(Promotion promotion);
+
+    /// <summary>
+    /// Xoá ProductPromotion khỏi context.
+    /// </summary>
+    void RemoveProductPromotion(ProductPromotion productPromotion);
 }

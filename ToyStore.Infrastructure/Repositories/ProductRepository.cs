@@ -20,6 +20,9 @@ public class ProductRepository : IProductRepository
         string? sortBy = null,
         bool sortDesc = false,
         string? searchTerm = null,
+        int? brandId = null,
+        short? categoryId = null,
+        string? status = null,
         CancellationToken cancellationToken = default)
     {
         IQueryable<Product> query = _context.Products
@@ -28,6 +31,21 @@ public class ProductRepository : IProductRepository
             .Include(x => x.Brand)
             .Include(x => x.ProductImage)
             .AsQueryable();
+
+        if (brandId.HasValue)
+        {
+            query = query.Where(x => x.BrandId == brandId.Value);
+        }
+
+        if (categoryId.HasValue)
+        {
+            query = query.Where(x => x.CategoryId == categoryId.Value);
+        }
+        
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            query = query.Where(x => x.ProductStatus == status);
+        }
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
@@ -59,11 +77,31 @@ public class ProductRepository : IProductRepository
             .ToListAsync(cancellationToken);
     }
 
-    public Task<int> CountAsync(string? searchTerm = null, CancellationToken cancellationToken = default)
+    public Task<int> CountAsync(
+        string? searchTerm = null, 
+        int? brandId = null,
+        short? categoryId = null,
+        string? status = null,
+        CancellationToken cancellationToken = default)
     {
         IQueryable<Product> query = _context.Products
             .AsNoTracking()
             .AsQueryable();
+
+        if (brandId.HasValue)
+        {
+            query = query.Where(x => x.BrandId == brandId.Value);
+        }
+
+        if (categoryId.HasValue)
+        {
+            query = query.Where(x => x.CategoryId == categoryId.Value);
+        }
+        
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            query = query.Where(x => x.ProductStatus == status);
+        }
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {

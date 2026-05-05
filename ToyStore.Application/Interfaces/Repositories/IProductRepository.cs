@@ -16,12 +16,20 @@ public interface IProductRepository
         string? sortBy = null,
         bool sortDesc = false,
         string? searchTerm = null,
+        int? brandId = null,
+        short? categoryId = null,
+        string? status = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Dem tong so Product theo dieu kien tim kiem.
     /// </summary>
-    Task<int> CountAsync(string? searchTerm = null, CancellationToken cancellationToken = default);
+    Task<int> CountAsync(
+        string? searchTerm = null, 
+        int? brandId = null,
+        short? categoryId = null,
+        string? status = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Tim Product theo ID.
