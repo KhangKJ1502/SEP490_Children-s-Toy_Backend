@@ -20,8 +20,16 @@ public class ProductRepository : IProductRepository
         string? sortBy = null,
         bool sortDesc = false,
         string? searchTerm = null,
-        int? brandId = null,
+        short? superCategoryId = null,
         short? categoryId = null,
+        IReadOnlyCollection<short>? categoryIds = null,
+        IReadOnlyCollection<int>? brandIds = null,
+        IReadOnlyCollection<byte>? priceRangeIds = null,
+        IReadOnlyCollection<short>? materialIds = null,
+        IReadOnlyCollection<byte>? ageIds = null,
+        IReadOnlyCollection<byte>? sexIds = null,
+        IReadOnlyCollection<byte>? originIds = null,
+        int? rating = null,
         string? status = null,
         CancellationToken cancellationToken = default)
     {
@@ -29,17 +37,75 @@ public class ProductRepository : IProductRepository
             .AsNoTrackingWithIdentityResolution()
             .Include(x => x.Category)
             .Include(x => x.Brand)
+            .Include(x => x.ProductDetail)
             .Include(x => x.ProductImage)
             .AsQueryable();
 
-        if (brandId.HasValue)
+        if (superCategoryId.HasValue)
         {
-            query = query.Where(x => x.BrandId == brandId.Value);
+            query = query.Where(x => x.Category.SuperCategoryId == superCategoryId.Value);
         }
 
         if (categoryId.HasValue)
         {
             query = query.Where(x => x.CategoryId == categoryId.Value);
+        }
+
+        if (categoryIds is { Count: > 0 })
+        {
+            query = query.Where(x => categoryIds.Contains(x.CategoryId));
+        }
+
+        if (brandIds is { Count: > 0 })
+        {
+            query = query.Where(x => x.BrandId.HasValue && brandIds.Contains(x.BrandId.Value));
+        }
+
+        if (priceRangeIds is { Count: > 0 })
+        {
+            query = query.Where(x => x.PriceRangeId.HasValue && priceRangeIds.Contains(x.PriceRangeId.Value));
+        }
+
+        if (materialIds is { Count: > 0 })
+        {
+            query = query.Where(x => x.ProductDetail != null
+                && x.ProductDetail.MaterialId.HasValue
+                && materialIds.Contains(x.ProductDetail.MaterialId.Value));
+        }
+
+        if (ageIds is { Count: > 0 })
+        {
+            query = query.Where(x => x.ProductDetail != null
+                && x.ProductDetail.AgeId.HasValue
+                && ageIds.Contains(x.ProductDetail.AgeId.Value));
+        }
+
+        if (sexIds is { Count: > 0 })
+        {
+            query = query.Where(x => x.ProductDetail != null
+                && x.ProductDetail.SexId.HasValue
+                && sexIds.Contains(x.ProductDetail.SexId.Value));
+        }
+
+        if (originIds is { Count: > 0 })
+        {
+            query = query.Where(x => x.ProductDetail != null
+                && x.ProductDetail.OriginId.HasValue
+                && originIds.Contains(x.ProductDetail.OriginId.Value));
+        }
+
+        if (rating.HasValue)
+        {
+            query = query.Where(x =>
+                _context.ReviewProducts
+                    .Where(r => r.ProductId == x.ProductId && !r.IsDeleted)
+                    .Select(r => (double?)r.Rating)
+                    .Average() != null
+                && Math.Round(
+                    _context.ReviewProducts
+                        .Where(r => r.ProductId == x.ProductId && !r.IsDeleted)
+                        .Select(r => (double?)r.Rating)
+                        .Average()!.Value) == rating.Value);
         }
         
         if (!string.IsNullOrWhiteSpace(status))
@@ -78,24 +144,91 @@ public class ProductRepository : IProductRepository
     }
 
     public Task<int> CountAsync(
-        string? searchTerm = null, 
-        int? brandId = null,
+        string? searchTerm = null,
+        short? superCategoryId = null,
         short? categoryId = null,
+        IReadOnlyCollection<short>? categoryIds = null,
+        IReadOnlyCollection<int>? brandIds = null,
+        IReadOnlyCollection<byte>? priceRangeIds = null,
+        IReadOnlyCollection<short>? materialIds = null,
+        IReadOnlyCollection<byte>? ageIds = null,
+        IReadOnlyCollection<byte>? sexIds = null,
+        IReadOnlyCollection<byte>? originIds = null,
+        int? rating = null,
         string? status = null,
         CancellationToken cancellationToken = default)
     {
         IQueryable<Product> query = _context.Products
             .AsNoTracking()
+            .Include(x => x.Category)
+            .Include(x => x.ProductDetail)
             .AsQueryable();
 
-        if (brandId.HasValue)
+        if (superCategoryId.HasValue)
         {
-            query = query.Where(x => x.BrandId == brandId.Value);
+            query = query.Where(x => x.Category.SuperCategoryId == superCategoryId.Value);
         }
 
         if (categoryId.HasValue)
         {
             query = query.Where(x => x.CategoryId == categoryId.Value);
+        }
+
+        if (categoryIds is { Count: > 0 })
+        {
+            query = query.Where(x => categoryIds.Contains(x.CategoryId));
+        }
+
+        if (brandIds is { Count: > 0 })
+        {
+            query = query.Where(x => x.BrandId.HasValue && brandIds.Contains(x.BrandId.Value));
+        }
+
+        if (priceRangeIds is { Count: > 0 })
+        {
+            query = query.Where(x => x.PriceRangeId.HasValue && priceRangeIds.Contains(x.PriceRangeId.Value));
+        }
+
+        if (materialIds is { Count: > 0 })
+        {
+            query = query.Where(x => x.ProductDetail != null
+                && x.ProductDetail.MaterialId.HasValue
+                && materialIds.Contains(x.ProductDetail.MaterialId.Value));
+        }
+
+        if (ageIds is { Count: > 0 })
+        {
+            query = query.Where(x => x.ProductDetail != null
+                && x.ProductDetail.AgeId.HasValue
+                && ageIds.Contains(x.ProductDetail.AgeId.Value));
+        }
+
+        if (sexIds is { Count: > 0 })
+        {
+            query = query.Where(x => x.ProductDetail != null
+                && x.ProductDetail.SexId.HasValue
+                && sexIds.Contains(x.ProductDetail.SexId.Value));
+        }
+
+        if (originIds is { Count: > 0 })
+        {
+            query = query.Where(x => x.ProductDetail != null
+                && x.ProductDetail.OriginId.HasValue
+                && originIds.Contains(x.ProductDetail.OriginId.Value));
+        }
+
+        if (rating.HasValue)
+        {
+            query = query.Where(x =>
+                _context.ReviewProducts
+                    .Where(r => r.ProductId == x.ProductId && !r.IsDeleted)
+                    .Select(r => (double?)r.Rating)
+                    .Average() != null
+                && Math.Round(
+                    _context.ReviewProducts
+                        .Where(r => r.ProductId == x.ProductId && !r.IsDeleted)
+                        .Select(r => (double?)r.Rating)
+                        .Average()!.Value) == rating.Value);
         }
         
         if (!string.IsNullOrWhiteSpace(status))
@@ -130,6 +263,9 @@ public class ProductRepository : IProductRepository
             .Include(x => x.ProductDetail)
                 .ThenInclude(d => d!.Origin)
             .Include(x => x.ProductImage)
+            .Include(x => x.ReviewProducts)
+            .Include(x => x.OrderDetails)
+                .ThenInclude(od => od.Order)
             .Where(x => x.ProductId == productId)
             .FirstOrDefaultAsync(cancellationToken);
     }

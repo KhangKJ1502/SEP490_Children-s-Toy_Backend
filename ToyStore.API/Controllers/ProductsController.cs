@@ -56,8 +56,16 @@ public class ProductsController : ControllerBase
         [FromQuery] string? sortBy = null,
         [FromQuery] bool sortDesc = false,
         [FromQuery] string? searchTerm = null,
-        [FromQuery] int? brandId = null,
+        [FromQuery] short? superCategoryId = null,
         [FromQuery] short? categoryId = null,
+        [FromQuery] List<short>? categoryIds = null,
+        [FromQuery] List<int>? brandIds = null,
+        [FromQuery] List<byte>? priceRangeIds = null,
+        [FromQuery] List<short>? materialIds = null,
+        [FromQuery] List<byte>? ageIds = null,
+        [FromQuery] List<byte>? sexIds = null,
+        [FromQuery] List<byte>? originIds = null,
+        [FromQuery] int? rating = null,
         [FromQuery] string? status = null,
         CancellationToken cancellationToken = default)
     {
@@ -67,8 +75,16 @@ public class ProductsController : ControllerBase
             sortBy,
             sortDesc,
             searchTerm,
-            brandId,
+            superCategoryId,
             categoryId,
+            categoryIds,
+            brandIds,
+            priceRangeIds,
+            materialIds,
+            ageIds,
+            sexIds,
+            originIds,
+            rating,
             status,
             cancellationToken);
 
@@ -87,13 +103,46 @@ public class ProductsController : ControllerBase
     [HttpGet("lookups")]
     public async Task<ActionResult<object>> GetProductLookups(CancellationToken cancellationToken = default)
     {
+        var superCategories = await _dbContext.SuperCategories
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted)
+            .OrderBy(x => x.SuperCategoryName)
+            .Select(x => new
+            {
+                id = x.SuperCategoryId,
+                label = x.SuperCategoryName
+            })
+            .ToListAsync(cancellationToken);
+
+        var categories = await _dbContext.Categories
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted)
+            .OrderBy(x => x.CategoryName)
+            .Select(x => new
+            {
+                id = x.CategoryId,
+                label = x.CategoryName,
+                superCategoryId = x.SuperCategoryId,
+                superCategoryName = x.SuperCategory.SuperCategoryName
+            })
+            .ToListAsync(cancellationToken);
+
+        var brands = await _dbContext.Brands
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted)
+            .OrderBy(x => x.BrandName)
+            .Select(x => new { id = x.BrandId, label = x.BrandName })
+            .ToListAsync(cancellationToken);
+
         var priceRanges = await _dbContext.PriceRanges
             .AsNoTracking()
             .OrderBy(x => x.PriceRangeMin)
             .Select(x => new
             {
                 id = x.PriceRangeId,
-                label = $"{x.PriceRangeMin:N0} - {x.PriceRangeMax:N0} VND"
+                label = $"{x.PriceRangeMin:N0} - {x.PriceRangeMax:N0} VND",
+                min = x.PriceRangeMin,
+                max = x.PriceRangeMax
             })
             .ToListAsync(cancellationToken);
 
@@ -124,6 +173,9 @@ public class ProductsController : ControllerBase
 
         return Ok(new
         {
+            superCategories,
+            categories,
+            brands,
             priceRanges,
             materials,
             ages,
