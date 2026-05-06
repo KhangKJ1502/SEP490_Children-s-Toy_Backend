@@ -18,8 +18,16 @@ public interface IProductService
         string? sortBy = null,
         bool sortDesc = false,
         string? searchTerm = null,
-        int? brandId = null,
+        short? superCategoryId = null,
         short? categoryId = null,
+        IReadOnlyCollection<short>? categoryIds = null,
+        IReadOnlyCollection<int>? brandIds = null,
+        IReadOnlyCollection<byte>? priceRangeIds = null,
+        IReadOnlyCollection<short>? materialIds = null,
+        IReadOnlyCollection<byte>? ageIds = null,
+        IReadOnlyCollection<byte>? sexIds = null,
+        IReadOnlyCollection<byte>? originIds = null,
+        int? rating = null,
         string? status = null,
         CancellationToken cancellationToken = default);
 

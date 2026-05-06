@@ -31,7 +31,18 @@ public class ProductProfile : Profile
             .ForMember(dest => dest.SexName, opt => opt.MapFrom(src => src.ProductDetail != null && src.ProductDetail.Sex != null ? src.ProductDetail.Sex.SexName : null))
             .ForMember(dest => dest.OriginId, opt => opt.MapFrom(src => src.ProductDetail != null ? src.ProductDetail.OriginId : null))
             .ForMember(dest => dest.OriginName, opt => opt.MapFrom(src => src.ProductDetail != null && src.ProductDetail.Origin != null ? src.ProductDetail.Origin.OriginName : null))
-            .ForMember(dest => dest.MainImageUrl, opt => opt.MapFrom(src => src.ProductImage != null ? src.ProductImage.ImageUrl : null));
+            .ForMember(dest => dest.MainImageUrl, opt => opt.MapFrom(src => src.ProductImage != null ? src.ProductImage.ImageUrl : null))
+            .ForMember(dest => dest.AverageRating, opt => opt.MapFrom(src =>
+                src.ReviewProducts
+                    .Where(r => !r.IsDeleted)
+                    .Select(r => (double?)r.Rating)
+                    .Average()))
+            .ForMember(dest => dest.ReviewCount, opt => opt.MapFrom(src =>
+                src.ReviewProducts.Count(r => !r.IsDeleted)))
+            .ForMember(dest => dest.SoldQuantity, opt => opt.MapFrom(src =>
+                src.OrderDetails
+                    .Where(od => !od.Order.IsDeleted && od.Order.CancelledAt == null)
+                    .Sum(od => (int?)od.Quantity) ?? 0));
 
         CreateMap<CreateProductDto, Product>()
             .ForMember(dest => dest.ProductId, opt => opt.Ignore())
