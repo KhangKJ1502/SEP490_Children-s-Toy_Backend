@@ -18,11 +18,8 @@ public class ProfileService : IProfileService
     private readonly IMapper _mapper;
     private readonly ILogger<ProfileService> _logger;
     private readonly IValidator<UpdateProfileDto> _updateProfileValidator;
-<<<<<<< HEAD
     private readonly IValidator<ChangeCustomerPasswordDto> _changeCustomerPasswordValidator;
-=======
     private readonly IValidator<ChangePasswordDto> _changePasswordValidator;
->>>>>>> 795d974b069b9975e634345444a506a1d7b9e79d
 
     public ProfileService(
         IUnitOfWork unitOfWork,
@@ -30,18 +27,15 @@ public class ProfileService : IProfileService
         IMapper mapper,
         ILogger<ProfileService> logger,
         IValidator<UpdateProfileDto> updateProfileValidator,
-<<<<<<< HEAD
-        IValidator<ChangeCustomerPasswordDto> changeCustomerPasswordValidator)
-=======
+        IValidator<ChangeCustomerPasswordDto> changeCustomerPasswordValidator,
         IValidator<ChangePasswordDto> changePasswordValidator)
->>>>>>> 795d974b069b9975e634345444a506a1d7b9e79d
     {
         _unitOfWork = unitOfWork;
         _currentUserService = currentUserService;
         _mapper = mapper;
         _logger = logger;
         _updateProfileValidator = updateProfileValidator;
-<<<<<<< HEAD
+        _changePasswordValidator = changePasswordValidator;
         _changeCustomerPasswordValidator = changeCustomerPasswordValidator;
     }
 
@@ -108,9 +102,6 @@ public class ProfileService : IProfileService
 
         _logger.LogInformation("Customer {AccountId} changed password.", _currentUserService.AccountId);
         return Result.Success();
-=======
-        _changePasswordValidator = changePasswordValidator;
->>>>>>> 795d974b069b9975e634345444a506a1d7b9e79d
     }
 
     public async Task<Result<ProfileDto>> GetMyProfileAsync(CancellationToken cancellationToken = default)
