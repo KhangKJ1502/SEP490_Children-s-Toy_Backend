@@ -21,6 +21,7 @@ public interface IUnitOfWork : IDisposable
     IPromotionRepository Promotions { get; }
 
     ICampaignRepository Campaigns { get; }
+    IAddressRepository Addresses { get; }
 
     IBlogRepository Blogs { get; }
 
