@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ToyStore.Domain.Entities;
@@ -18,8 +18,6 @@ public partial class OrderRefund
     public int? ApprovedBy { get; set; }
 
     public int? WalletTransactionId { get; set; }
-
-    public string? ComplaintImageUrl { get; set; }
 
     public string? ReasonDetails { get; set; }
 
@@ -42,4 +40,6 @@ public partial class OrderRefund
     public virtual Account? RequestedByNavigation { get; set; }
 
     public virtual WalletTransaction? WalletTransaction { get; set; }
+
+    public virtual ICollection<RefundImage> RefundImages { get; set; } = new List<RefundImage>();
 }

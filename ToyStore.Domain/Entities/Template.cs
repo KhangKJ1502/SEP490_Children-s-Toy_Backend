@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ToyStore.Domain.Entities;
@@ -8,6 +8,8 @@ public partial class Template
     public short TemplateId { get; set; }
 
     public string TemplateCode { get; set; } = null!;
+
+    public string UsageScope { get; set; } = null!;
 
     public string TitleTemplate { get; set; } = null!;
 

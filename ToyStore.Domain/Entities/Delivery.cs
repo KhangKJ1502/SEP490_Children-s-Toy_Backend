@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ToyStore.Domain.Entities;
@@ -17,6 +17,8 @@ public partial class Delivery
 
     public string RecipientType { get; set; } = null!;
 
+    public string Channel { get; set; } = null!;
+
     public string? ImageUrl { get; set; }
 
     public string NotificationType { get; set; } = null!;
@@ -34,6 +36,12 @@ public partial class Delivery
     public string Status { get; set; } = null!;
 
     public DateTime? ReadAt { get; set; }
+
+    public string? EmailStatus { get; set; }
+
+    public string? PushStatus { get; set; }
+
+    public bool IsDeleted { get; set; }
 
     public DateTime CreatedAt { get; set; }
 
