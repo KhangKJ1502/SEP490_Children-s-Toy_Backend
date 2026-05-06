@@ -108,4 +108,31 @@ public class AuthController : ControllerBase
         var result = await _authService.LogoutAsync(jti, remainingTime, cancellationToken);
         return result.ToActionResult();
     }
+
+    /// <summary>
+    /// Login hoặc tự động register bằng Google OAuth (Customer).
+    /// Nếu account chưa tồn tại, tự động tạo mới với role Customer.
+    /// Admin login: cần chỉ định RoleId trong body và account phải đã tồn tại.
+    /// </summary>
+    [HttpPost("google-login")]
+    public async Task<ActionResult<AuthResponseDto>> GoogleLogin(
+        [FromBody] GoogleLoginDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _authService.GoogleLoginAsync(dto, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Register account mới bằng Google OAuth (chỉ Customer).
+    /// Nếu account đã tồn tại, trả lỗi.
+    /// </summary>
+    [HttpPost("google-register")]
+    public async Task<ActionResult<AuthResponseDto>> GoogleRegister(
+        [FromBody] GoogleRegisterDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _authService.GoogleRegisterAsync(dto, cancellationToken);
+        return result.ToActionResult();
+    }
 }

@@ -29,7 +29,7 @@ public class UpdateProductValidator : AbstractValidator<UpdateProductDto>
             .When(x => x.PriceRangeId.HasValue);
 
         RuleFor(x => x.ProductName)
-            .MinimumLength(3).WithMessage("Product name must be at least 3 characters.")
+            .NotEmpty().WithMessage("Product name must not be empty.")
             .MaximumLength(255).WithMessage("Product name must not exceed 255 characters.")
             .When(x => !string.IsNullOrWhiteSpace(x.ProductName));
 
@@ -63,7 +63,6 @@ public class UpdateProductValidator : AbstractValidator<UpdateProductDto>
             .When(x => x.StockThreshold.HasValue);
 
         RuleFor(x => x.Description)
-            .MinimumLength(10).WithMessage("Description must be at least 10 characters.")
             .MaximumLength(1500).WithMessage("Description must not exceed 1500 characters.")
             .When(x => !string.IsNullOrWhiteSpace(x.Description));
 
@@ -87,5 +86,14 @@ public class UpdateProductValidator : AbstractValidator<UpdateProductDto>
             .Must(url => Uri.IsWellFormedUriString(url, UriKind.Absolute))
             .WithMessage("Main image URL is not valid.")
             .When(x => !string.IsNullOrWhiteSpace(x.MainImageUrl));
+
+        RuleFor(x => x.AdditionalImageUrls)
+            .Must(urls => urls == null || urls.Count <= 6)
+            .WithMessage("Additional images must not exceed 6.");
+
+        RuleForEach(x => x.AdditionalImageUrls!)
+            .Must(url => Uri.IsWellFormedUriString(url, UriKind.Absolute))
+            .WithMessage("Additional image URL is not valid.")
+            .When(x => x.AdditionalImageUrls != null);
     }
 }

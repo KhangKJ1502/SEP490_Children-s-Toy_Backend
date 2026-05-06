@@ -5,6 +5,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using StackExchange.Redis;
 using ToyStore.Application.DTOs.Accounts;
+using ToyStore.Application.DTOs.Addresses;
+using ToyStore.Application.DTOs.Auth;
 using ToyStore.Application.DTOs.Brands;
 using ToyStore.Application.DTOs.Campaigns;
 using ToyStore.Application.DTOs.Profiles;
@@ -13,6 +15,8 @@ using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Application.Mappings;
 using ToyStore.Application.Validators.Accounts;
+using ToyStore.Application.Validators.Addresses;
+using ToyStore.Application.Validators.Auth;
 using ToyStore.Application.Validators.Brands;
 using ToyStore.Application.Validators.Campaigns;
 using ToyStore.Application.Validators.Profiles;
@@ -57,6 +61,8 @@ public static class DependencyInjection
             cfg.AddProfile<ProductProfile>();
             cfg.AddProfile<BrandProfile>();
             cfg.AddProfile<BlogProfile>();
+            cfg.AddProfile<RoleProfile>();
+            cfg.AddProfile<AddressProfile>();
         });
 
         services.AddScoped<IValidator<CreateBrandDto>, CreateBrandValidator>();
@@ -71,7 +77,14 @@ public static class DependencyInjection
         services.AddScoped<IValidator<UpdateProfileDto>, UpdateProfileValidator>();
         services.AddScoped<IValidator<ChangeCustomerPasswordDto>, ChangeCustomerPasswordValidator>();
         services.AddScoped<IValidator<UpdateCampaignDto>, UpdateCampaignValidator>();
+        services.AddScoped<IValidator<ChangePasswordDto>, ChangePasswordValidator>();
+        services.AddScoped<IValidator<UpdateCampaignDto>, UpdateCampaignValidator>();
 
+        // Google OAuth validators
+        services.AddScoped<IValidator<GoogleLoginDto>, GoogleLoginValidator>();
+        services.AddScoped<IValidator<GoogleRegisterDto>, GoogleRegisterValidator>();
+        services.AddScoped<IValidator<CreateAddressDto>, CreateAddressValidator>();
+        services.AddScoped<IValidator<UpdateAddressDto>, UpdateAddressValidator>();
 
 
         services.AddScoped<IVoucherRepository, VoucherRepository>();
@@ -80,12 +93,15 @@ public static class DependencyInjection
         services.AddScoped<ISuperCategoryRepository, SuperCategoryRepository>();
         services.AddScoped<ICategoryRepository, CategoryRepository>();
         services.AddScoped<IAccountRepository, AccountRepository>();
+        services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<IAccountService, AccountService>();
+        services.AddScoped<IRoleService, RoleService>();
         services.AddScoped<IBrandRepository, BrandRepository>();
         services.AddScoped<IBlogRepository, BlogRepository>();
         services.AddScoped<IProductRepository, ProductRepository>();
         services.AddScoped<ITemplateRepository, TemplateRepository>();
         services.AddScoped<ICampaignRepository, CampaignRepository>();
+        services.AddScoped<IAddressRepository, AddressRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ISuperCategoryService, SuperCategoryService>();
@@ -94,6 +110,7 @@ public static class DependencyInjection
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<ITemplateService, TemplateService>();
         services.AddScoped<ICampaignService, CampaignService>();
+        services.AddScoped<IAddressService, AddressService>();
 
         // Business-object resolvers
         services.AddScoped<IBusinessObjectResolver, VoucherResolver>();

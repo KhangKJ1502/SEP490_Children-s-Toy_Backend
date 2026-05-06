@@ -20,6 +20,9 @@ public class ProductRepository : IProductRepository
         string? sortBy = null,
         bool sortDesc = false,
         string? searchTerm = null,
+        int? brandId = null,
+        short? categoryId = null,
+        string? status = null,
         CancellationToken cancellationToken = default)
     {
         IQueryable<Product> query = _context.Products
@@ -27,7 +30,22 @@ public class ProductRepository : IProductRepository
             .Include(x => x.Category)
             .Include(x => x.Brand)
             .Include(x => x.ProductImage)
-            .Where(x => !x.IsDeleted && !x.Category.IsDeleted && (x.Brand == null || !x.Brand.IsDeleted));
+            .AsQueryable();
+
+        if (brandId.HasValue)
+        {
+            query = query.Where(x => x.BrandId == brandId.Value);
+        }
+
+        if (categoryId.HasValue)
+        {
+            query = query.Where(x => x.CategoryId == categoryId.Value);
+        }
+        
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            query = query.Where(x => x.ProductStatus == status);
+        }
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
@@ -59,11 +77,31 @@ public class ProductRepository : IProductRepository
             .ToListAsync(cancellationToken);
     }
 
-    public Task<int> CountAsync(string? searchTerm = null, CancellationToken cancellationToken = default)
+    public Task<int> CountAsync(
+        string? searchTerm = null, 
+        int? brandId = null,
+        short? categoryId = null,
+        string? status = null,
+        CancellationToken cancellationToken = default)
     {
         IQueryable<Product> query = _context.Products
             .AsNoTracking()
-            .Where(x => !x.IsDeleted && !x.Category.IsDeleted && (x.Brand == null || !x.Brand.IsDeleted));
+            .AsQueryable();
+
+        if (brandId.HasValue)
+        {
+            query = query.Where(x => x.BrandId == brandId.Value);
+        }
+
+        if (categoryId.HasValue)
+        {
+            query = query.Where(x => x.CategoryId == categoryId.Value);
+        }
+        
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            query = query.Where(x => x.ProductStatus == status);
+        }
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
@@ -92,11 +130,14 @@ public class ProductRepository : IProductRepository
             .Include(x => x.ProductDetail)
                 .ThenInclude(d => d!.Origin)
             .Include(x => x.ProductImage)
-            .Where(x => x.ProductId == productId && !x.IsDeleted && !x.Category.IsDeleted && (x.Brand == null || !x.Brand.IsDeleted))
+            .Where(x => x.ProductId == productId)
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<Product> CreateAsync(Product product, CancellationToken cancellationToken = default)
+    public async Task<Product> CreateAsync(
+        Product product,
+        IReadOnlyCollection<string>? additionalImageUrls = null,
+        CancellationToken cancellationToken = default)
     {
         product.IsDeleted = false;
         product.CreatedAt = DateTime.UtcNow;
@@ -110,18 +151,21 @@ public class ProductRepository : IProductRepository
         await _context.Products.AddAsync(product, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
 
+        await SaveAdditionalImagesAsync(product.ProductId, additionalImageUrls, cancellationToken);
+
         var created = await GetByIdAsync(product.ProductId, cancellationToken);
         return created!;
     }
 
     public async Task<Product> UpdateAsync(
         Product product,
+        IReadOnlyCollection<string>? additionalImageUrls = null,
         CancellationToken cancellationToken = default)
     {
         var existing = await _context.Products
             .Include(x => x.ProductDetail)
             .Include(x => x.ProductImage)
-            .FirstAsync(x => x.ProductId == product.ProductId && !x.IsDeleted, cancellationToken);
+            .FirstAsync(x => x.ProductId == product.ProductId, cancellationToken);
 
         existing.CategoryId = product.CategoryId;
         existing.BrandId = product.BrandId;
@@ -171,10 +215,64 @@ public class ProductRepository : IProductRepository
             }
         }
 
+        if (additionalImageUrls != null)
+        {
+            await _context.ProductImages
+                .IgnoreQueryFilters()
+                .Where(x => x.ProductId == existing.ProductId && !x.IsMain)
+                .ExecuteDeleteAsync(cancellationToken);
+
+            await SaveAdditionalImagesAsync(existing.ProductId, additionalImageUrls, cancellationToken);
+        }
+
         await _context.SaveChangesAsync(cancellationToken);
 
         var updated = await GetByIdAsync(existing.ProductId, cancellationToken);
         return updated!;
+    }
+
+    public Task<List<string>> GetAdditionalImageUrlsAsync(
+        int productId,
+        CancellationToken cancellationToken = default)
+    {
+        return _context.ProductImages
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x => x.ProductId == productId && !x.IsMain)
+            .OrderBy(x => x.ImageId)
+            .Select(x => x.ImageUrl)
+            .ToListAsync(cancellationToken);
+    }
+
+    private async Task SaveAdditionalImagesAsync(
+        int productId,
+        IReadOnlyCollection<string>? additionalImageUrls,
+        CancellationToken cancellationToken)
+    {
+        if (additionalImageUrls is not { Count: > 0 })
+        {
+            return;
+        }
+
+        var sanitizedUrls = additionalImageUrls
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Select(url => url.Trim())
+            .Distinct()
+            .ToList();
+
+        if (sanitizedUrls.Count == 0)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        foreach (var url in sanitizedUrls)
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $@"INSERT INTO [ProductImages] ([ProductID], [ImageUrl], [IsMain], [CreatedAt], [UpdatedAt])
+                   VALUES ({productId}, {url}, {false}, {now}, {null})",
+                cancellationToken);
+        }
     }
 
     public Task<bool> CategoryExistsAsync(short categoryId, CancellationToken cancellationToken = default)
@@ -224,5 +322,13 @@ public class ProductRepository : IProductRepository
         return _context.Origins
             .AsNoTracking()
             .AnyAsync(x => x.OriginId == originId, cancellationToken);
+    }
+
+    public Task<List<Product>> GetByIdsAsync(IEnumerable<int> productIds, CancellationToken cancellationToken = default)
+    {
+        return _context.Products
+            .AsNoTracking()
+            .Where(x => productIds.Contains(x.ProductId) && !x.IsDeleted)
+            .ToListAsync(cancellationToken);
     }
 }

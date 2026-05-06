@@ -38,6 +38,9 @@ public class ProductService : IProductService
         string? sortBy = null,
         bool sortDesc = false,
         string? searchTerm = null,
+        int? brandId = null,
+        short? categoryId = null,
+        string? status = null,
         CancellationToken cancellationToken = default)
     {
         if (pageNumber < 1)
@@ -56,9 +59,12 @@ public class ProductService : IProductService
             sortBy,
             sortDesc,
             searchTerm,
+            brandId,
+            categoryId,
+            status,
             cancellationToken);
 
-        var totalCount = await _unitOfWork.Products.CountAsync(searchTerm, cancellationToken);
+        var totalCount = await _unitOfWork.Products.CountAsync(searchTerm, brandId, categoryId, status, cancellationToken);
 
         var mappedItems = _mapper.Map<List<ProductListDto>>(items);
         var response = new PaginatedResponse<ProductListDto>(mappedItems, totalCount, pageNumber, pageSize);
@@ -77,8 +83,11 @@ public class ProductService : IProductService
         {
             return Result<ProductDto>.NotFound("Product", productId);
         }
-
-        return Result<ProductDto>.Success(_mapper.Map<ProductDto>(product));
+        var mappedProduct = _mapper.Map<ProductDto>(product);
+        mappedProduct.AdditionalImageUrls = await _unitOfWork.Products.GetAdditionalImageUrlsAsync(
+            productId,
+            cancellationToken);
+        return Result<ProductDto>.Success(mappedProduct);
     }
 
     public async Task<Result<ProductDto>> CreateProductAsync(
@@ -160,12 +169,19 @@ public class ProductService : IProductService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            var created = await _unitOfWork.Products.CreateAsync(product, cancellationToken);
+            var created = await _unitOfWork.Products.CreateAsync(
+                product,
+                dto.AdditionalImageUrls,
+                cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             _logger.LogInformation("Product {ProductId} created successfully.", created.ProductId);
 
-            return Result<ProductDto>.Success(_mapper.Map<ProductDto>(created));
+            var mappedCreated = _mapper.Map<ProductDto>(created);
+            mappedCreated.AdditionalImageUrls = await _unitOfWork.Products.GetAdditionalImageUrlsAsync(
+                created.ProductId,
+                cancellationToken);
+            return Result<ProductDto>.Success(mappedCreated);
         }
         catch (Exception ex)
         {
@@ -333,12 +349,19 @@ public class ProductService : IProductService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            var updated = await _unitOfWork.Products.UpdateAsync(existing, cancellationToken);
+            var updated = await _unitOfWork.Products.UpdateAsync(
+                existing,
+                dto.AdditionalImageUrls,
+                cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             _logger.LogInformation("Product {ProductId} updated successfully.", updated.ProductId);
 
-            return Result<ProductDto>.Success(_mapper.Map<ProductDto>(updated));
+            var mappedUpdated = _mapper.Map<ProductDto>(updated);
+            mappedUpdated.AdditionalImageUrls = await _unitOfWork.Products.GetAdditionalImageUrlsAsync(
+                updated.ProductId,
+                cancellationToken);
+            return Result<ProductDto>.Success(mappedUpdated);
         }
         catch (Exception ex)
         {
@@ -365,12 +388,12 @@ public class ProductService : IProductService
         }
 
         return GetProductsAsync(
-            pageNumber,
-            pageSize,
-            sortBy,
-            sortDesc,
-            searchTerm.Trim(),
-            cancellationToken);
+            pageNumber: pageNumber,
+            pageSize: pageSize,
+            sortBy: sortBy,
+            sortDesc: sortDesc,
+            searchTerm: searchTerm.Trim(),
+            cancellationToken: cancellationToken);
     }
 
     private static bool HasAnyUpdate(UpdateProductDto dto)
@@ -390,6 +413,7 @@ public class ProductService : IProductService
                || dto.AgeId.HasValue
                || dto.SexId.HasValue
                || dto.OriginId.HasValue
-               || !string.IsNullOrWhiteSpace(dto.MainImageUrl);
+               || !string.IsNullOrWhiteSpace(dto.MainImageUrl)
+               || dto.AdditionalImageUrls != null;
     }
 }

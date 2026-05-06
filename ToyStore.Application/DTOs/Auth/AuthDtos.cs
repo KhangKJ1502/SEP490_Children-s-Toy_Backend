@@ -50,3 +50,33 @@ public class AccountInfoDto
     public byte RoleId { get; set; }
     public string RoleName { get; set; } = null!;
 }
+
+/// <summary>
+/// DTO cho login bằng Google OAuth - Customer và Admin.
+/// </summary>
+public class GoogleLoginDto
+{
+    /// <summary>
+    /// Google ID Token (JWT) nhận từ frontend sau khi user đăng nhập Google.
+    /// </summary>
+    public string IdToken { get; set; } = null!;
+    
+    /// <summary>
+    /// RoleId mong muốn - chỉ dùng cho Admin login (tùy chọn).
+    /// Nếu null: mặc định là Customer (RoleId = 1).
+    /// Nếu có giá trị: kiểm tra xem account đã tồn tại có role này không.
+    /// </summary>
+    public byte? RoleId { get; set; }
+}
+
+/// <summary>
+/// DTO cho register bằng Google OAuth - chỉ Customer.
+/// Admin không được phép register bằng Google, chỉ login nếu account đã tồn tại.
+/// </summary>
+public class GoogleRegisterDto
+{
+    /// <summary>
+    /// Google ID Token (JWT) nhận từ frontend sau khi user đăng nhập Google.
+    /// </summary>
+    public string IdToken { get; set; } = null!;
+}

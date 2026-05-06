@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using ToyStore.API.Extensions;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Campaigns;
+using ToyStore.Application.DTOs.Products;
 using ToyStore.Application.Interfaces.Services;
 
 namespace ToyStore.API.Controllers;
@@ -11,12 +12,17 @@ namespace ToyStore.API.Controllers;
 public class CampaignsController : ControllerBase
 {
     private readonly ICampaignService _campaignService;
+    private readonly IImageUploadService _imageUploadService;
     private readonly ILogger<CampaignsController> _logger;
 
-    public CampaignsController(ICampaignService campaignService, ILogger<CampaignsController> logger)
+    public CampaignsController(
+        ICampaignService campaignService,
+        IImageUploadService imageUploadService,
+        ILogger<CampaignsController> logger)
     {
         _campaignService = campaignService;
-        _logger          = logger;
+        _imageUploadService = imageUploadService;
+        _logger = logger;
     }
 
     /// <summary>
@@ -24,28 +30,28 @@ public class CampaignsController : ControllerBase
     /// </summary>
     [HttpGet]
     public async Task<ActionResult<PaginatedResponse<CampaignListDto>>> GetCampaigns(
-        [FromQuery] int pageNumber      = 1,
-        [FromQuery] int pageSize        = 10,
-        [FromQuery] string? searchTerm  = null,
-        [FromQuery] string? status      = null,
-        [FromQuery] string? sourceType  = null,
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? searchTerm = null,
+        [FromQuery] string? status = null,
+        [FromQuery] string? sourceType = null,
         [FromQuery] DateTime? startDate = null,
-        [FromQuery] DateTime? endDate   = null,
-        [FromQuery] string? sortBy      = null,
-        [FromQuery] bool sortDesc       = false,
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] bool sortDesc = false,
         CancellationToken cancellationToken = default)
     {
         var query = new CampaignQueryDto
         {
             PageNumber = pageNumber,
-            PageSize   = pageSize,
+            PageSize = pageSize,
             SearchTerm = searchTerm,
-            Status     = status,
+            Status = status,
             SourceType = sourceType,
-            StartDate  = startDate,
-            EndDate    = endDate,
-            SortBy     = sortBy,
-            SortDesc   = sortDesc
+            StartDate = startDate,
+            EndDate = endDate,
+            SortBy = sortBy,
+            SortDesc = sortDesc
         };
 
         var result = await _campaignService.GetCampaignsAsync(query, cancellationToken);
@@ -74,6 +80,31 @@ public class CampaignsController : ControllerBase
     {
         var result = await _campaignService.GetCampaignByIdAsync(campaignId, cancellationToken);
         return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Upload image for campaign content.
+    /// </summary>
+    [HttpPost("upload-image")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    public async Task<ActionResult<UploadImageResponseDto>> UploadImage(
+        IFormFile file,
+        CancellationToken cancellationToken = default)
+    {
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest(new { message = "No file was provided." });
+        }
+
+        using var stream = file.OpenReadStream();
+        var result = await _imageUploadService.UploadImageAsync(stream, file.FileName, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return BadRequest(new { message = result.ErrorMessage });
+        }
+
+        return Ok(new UploadImageResponseDto { Url = result.Data! });
     }
 
     /// <summary>

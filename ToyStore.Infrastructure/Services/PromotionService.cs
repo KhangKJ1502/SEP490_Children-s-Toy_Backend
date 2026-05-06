@@ -137,8 +137,27 @@ public class PromotionService : IPromotionService
 
         if (request.ProductPromotions != null && request.ProductPromotions.Any())
         {
+            var productIds = request.ProductPromotions.Select(p => p.ProductId).Distinct().ToList();
+            var products = await _unitOfWork.Products.GetByIdsAsync(productIds, cancellationToken);
+
+            if (products.Count != productIds.Count)
+            {
+                return Result<PromotionDto>.Failure("VALIDATION_ERROR", "One or more products do not exist.");
+            }
+
             foreach (var pp in request.ProductPromotions)
             {
+                var product = products.First(p => p.ProductId == pp.ProductId);
+                if (pp.SalePrice > product.Price)
+                {
+                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", $"Sale price for product {product.ProductName} cannot be greater than original price ({product.Price}).");
+                }
+
+                if (pp.SaleQuantity.HasValue && pp.SaleQuantity.Value > product.Quantity)
+                {
+                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", $"Sale quantity for product {product.ProductName} cannot exceed available stock ({product.Quantity}).");
+                }
+
                 var productPromotion = _mapper.Map<ProductPromotion>(pp);
                 productPromotion.CreatedAt = DateTime.UtcNow;
                 promotion.ProductPromotions.Add(productPromotion);
@@ -243,6 +262,14 @@ public class PromotionService : IPromotionService
 
             if (request.ProductPromotions != null)
             {
+                var productIds = request.ProductPromotions.Select(p => p.ProductId).Distinct().ToList();
+                var products = await _unitOfWork.Products.GetByIdsAsync(productIds, cancellationToken);
+
+                if (products.Count != productIds.Count)
+                {
+                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", "One or more products do not exist.");
+                }
+
                 // Remove deleted items
                 var incomingProductIds = request.ProductPromotions.Select(p => p.ProductId).ToList();
                 var toRemove = existingPromotion.ProductPromotions
@@ -251,12 +278,23 @@ public class PromotionService : IPromotionService
                 
                 foreach (var item in toRemove)
                 {
-                    existingPromotion.ProductPromotions.Remove(item);
+                    _unitOfWork.Promotions.RemoveProductPromotion(item);
                 }
 
                 // Update or add items
                 foreach (var incomingPp in request.ProductPromotions)
                 {
+                    var product = products.First(p => p.ProductId == incomingPp.ProductId);
+                    if (incomingPp.SalePrice > product.Price)
+                    {
+                        return Result<PromotionDto>.Failure("VALIDATION_ERROR", $"Sale price for product {product.ProductName} cannot be greater than original price ({product.Price}).");
+                    }
+
+                    if (incomingPp.SaleQuantity.HasValue && incomingPp.SaleQuantity.Value > product.Quantity)
+                    {
+                        return Result<PromotionDto>.Failure("VALIDATION_ERROR", $"Sale quantity for product {product.ProductName} cannot exceed available stock ({product.Quantity}).");
+                    }
+
                     var existingPp = existingPromotion.ProductPromotions
                         .FirstOrDefault(pp => pp.ProductId == incomingPp.ProductId);
 

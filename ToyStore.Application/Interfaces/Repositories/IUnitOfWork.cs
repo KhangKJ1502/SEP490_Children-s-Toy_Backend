@@ -8,6 +8,8 @@ public interface IUnitOfWork : IDisposable
 
     IAccountRepository Accounts { get; }
 
+    IRoleRepository Roles { get; }
+
     IVoucherRepository Vouchers { get; }
 
     IBrandRepository Brands { get; }
@@ -17,8 +19,9 @@ public interface IUnitOfWork : IDisposable
     ITemplateRepository Templates { get; }
 
     IPromotionRepository Promotions { get; }
-    
+
     ICampaignRepository Campaigns { get; }
+    IAddressRepository Addresses { get; }
 
     IBlogRepository Blogs { get; }
 

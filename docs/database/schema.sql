@@ -34,12 +34,12 @@
 
 USE [master];
 GO
-IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'SEP490_ToyStore_v2')
+IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'SEP490_ToyStore')
 BEGIN
-    CREATE DATABASE [SEP490_ToyStore_v2];
+    CREATE DATABASE [SEP490_ToyStore];
 END
 GO
-USE [SEP490_ToyStore_v2];
+USE [SEP490_ToyStore];
 GO
 
 /* =============================================

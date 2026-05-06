@@ -18,6 +18,7 @@ public interface IProfileService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+<<<<<<< HEAD
     /// Lay thong tin profile cua customer dang dang nhap.
     /// </summary>
     Task<Result<CustomerProfileDto>> GetMyCustomerProfileAsync(CancellationToken cancellationToken = default);
@@ -27,6 +28,12 @@ public interface IProfileService
     /// </summary>
     Task<Result> ChangeMyCustomerPasswordAsync(
         ChangeCustomerPasswordDto dto,
+=======
+    /// Doi mat khau cua tai khoan dang dang nhap.
+    /// </summary>
+    Task<Result> ChangeMyPasswordAsync(
+        ChangePasswordDto dto,
+>>>>>>> 795d974b069b9975e634345444a506a1d7b9e79d
         CancellationToken cancellationToken = default);
 
 }

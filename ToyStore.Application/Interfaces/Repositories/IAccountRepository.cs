@@ -40,6 +40,11 @@ public interface IAccountRepository
     /// </summary>
     Task<bool> ExistsByEmployeeCodeAsync(string employeeCode, CancellationToken cancellationToken = default);
 
+    Task<bool> ExistsByPhoneNumberAsync(
+        string phoneNumber,
+        int excludeAccountId,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Lấy thông tin role theo ID.
     /// </summary>

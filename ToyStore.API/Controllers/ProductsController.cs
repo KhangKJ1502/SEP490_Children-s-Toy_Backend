@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using ToyStore.API.Extensions;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Products;
 using ToyStore.Application.Interfaces.Services;
+using ToyStore.Infrastructure.Data;
 
 namespace ToyStore.API.Controllers;
 
@@ -12,15 +14,18 @@ public class ProductsController : ControllerBase
 {
     private readonly IProductService _productService;
     private readonly IImageUploadService _imageUploadService;
+    private readonly SEP490ToyStoreContext _dbContext;
     private readonly ILogger<ProductsController> _logger;
 
     public ProductsController(
         IProductService productService, 
         IImageUploadService imageUploadService,
+        SEP490ToyStoreContext dbContext,
         ILogger<ProductsController> logger)
     {
         _productService = productService;
         _imageUploadService = imageUploadService;
+        _dbContext = dbContext;
         _logger = logger;
     }
 
@@ -51,6 +56,9 @@ public class ProductsController : ControllerBase
         [FromQuery] string? sortBy = null,
         [FromQuery] bool sortDesc = false,
         [FromQuery] string? searchTerm = null,
+        [FromQuery] int? brandId = null,
+        [FromQuery] short? categoryId = null,
+        [FromQuery] string? status = null,
         CancellationToken cancellationToken = default)
     {
         var result = await _productService.GetProductsAsync(
@@ -59,6 +67,9 @@ public class ProductsController : ControllerBase
             sortBy,
             sortDesc,
             searchTerm,
+            brandId,
+            categoryId,
+            status,
             cancellationToken);
 
         return result.ToActionResult();
@@ -71,6 +82,54 @@ public class ProductsController : ControllerBase
     {
         var result = await _productService.GetProductByIdAsync(productId, cancellationToken);
         return result.ToActionResult();
+    }
+
+    [HttpGet("lookups")]
+    public async Task<ActionResult<object>> GetProductLookups(CancellationToken cancellationToken = default)
+    {
+        var priceRanges = await _dbContext.PriceRanges
+            .AsNoTracking()
+            .OrderBy(x => x.PriceRangeMin)
+            .Select(x => new
+            {
+                id = x.PriceRangeId,
+                label = $"{x.PriceRangeMin:N0} - {x.PriceRangeMax:N0} VND"
+            })
+            .ToListAsync(cancellationToken);
+
+        var materials = await _dbContext.Materials
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted)
+            .OrderBy(x => x.MaterialName)
+            .Select(x => new { id = x.MaterialId, label = x.MaterialName })
+            .ToListAsync(cancellationToken);
+
+        var ages = await _dbContext.Ages
+            .AsNoTracking()
+            .OrderBy(x => x.AgeRange)
+            .Select(x => new { id = x.AgeId, label = x.AgeRange })
+            .ToListAsync(cancellationToken);
+
+        var sexes = await _dbContext.Sexes
+            .AsNoTracking()
+            .OrderBy(x => x.SexName)
+            .Select(x => new { id = x.SexId, label = x.SexName })
+            .ToListAsync(cancellationToken);
+
+        var origins = await _dbContext.Origins
+            .AsNoTracking()
+            .OrderBy(x => x.OriginName)
+            .Select(x => new { id = x.OriginId, label = x.OriginName })
+            .ToListAsync(cancellationToken);
+
+        return Ok(new
+        {
+            priceRanges,
+            materials,
+            ages,
+            sexes,
+            origins
+        });
     }
 
     [HttpPost]

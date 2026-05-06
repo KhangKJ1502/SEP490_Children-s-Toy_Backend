@@ -24,7 +24,6 @@ public class CategoryRepository : ICategoryRepository
     {
         IQueryable<Category> query = _context.Categories
             .AsNoTracking()
-            .Where(x => !x.IsDeleted && !x.SuperCategory.IsDeleted)
             .Include(x => x.SuperCategory);
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
@@ -38,8 +37,12 @@ public class CategoryRepository : ICategoryRepository
         {
             ("name", true) => query.OrderByDescending(x => x.CategoryName),
             ("name", false) => query.OrderBy(x => x.CategoryName),
+            ("categoryname", true) => query.OrderByDescending(x => x.CategoryName),
+            ("categoryname", false) => query.OrderBy(x => x.CategoryName),
             ("supercategoryname", true) => query.OrderByDescending(x => x.SuperCategory.SuperCategoryName),
             ("supercategoryname", false) => query.OrderBy(x => x.SuperCategory.SuperCategoryName),
+            ("status", true) => query.OrderByDescending(x => x.IsDeleted),
+            ("status", false) => query.OrderBy(x => x.IsDeleted),
             ("createdat", true) => query.OrderByDescending(x => x.CreatedAt),
             ("createdat", false) => query.OrderBy(x => x.CreatedAt),
             (_, true) => query.OrderByDescending(x => x.CategoryId),
@@ -56,7 +59,6 @@ public class CategoryRepository : ICategoryRepository
     {
         IQueryable<Category> query = _context.Categories
             .AsNoTracking()
-            .Where(x => !x.IsDeleted && !x.SuperCategory.IsDeleted)
             .Include(x => x.SuperCategory);
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
@@ -95,7 +97,7 @@ public class CategoryRepository : ICategoryRepository
         return _context.Categories
             .AsNoTracking()
             .Include(x => x.SuperCategory)
-            .Where(x => x.CategoryId == categoryId && !x.IsDeleted && !x.SuperCategory.IsDeleted)
+            .Where(x => x.CategoryId == categoryId)
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -126,14 +128,19 @@ public class CategoryRepository : ICategoryRepository
         short categoryId,
         short superCategoryId,
         string categoryName,
+        bool? isDeleted = null,
         CancellationToken cancellationToken = default)
     {
         var entity = await _context.Categories
             .Include(x => x.SuperCategory)
-            .FirstAsync(x => x.CategoryId == categoryId && !x.IsDeleted, cancellationToken);
+            .FirstAsync(x => x.CategoryId == categoryId, cancellationToken);
 
         entity.SuperCategoryId = superCategoryId;
         entity.CategoryName = categoryName;
+        if (isDeleted.HasValue)
+        {
+            entity.IsDeleted = isDeleted.Value;
+        }
         entity.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);
@@ -146,5 +153,22 @@ public class CategoryRepository : ICategoryRepository
         }
 
         return entity;
+    }
+
+    public async Task UpdateRelatedProductStatusAsync(
+        short categoryId,
+        bool isDeleted,
+        CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+
+        await _context.Products
+            .Where(x => x.CategoryId == categoryId)
+            .ExecuteUpdateAsync(
+                updates => updates
+                    .SetProperty(x => x.IsDeleted, _ => isDeleted)
+                    .SetProperty(x => x.ProductStatus, _ => isDeleted ? "Inactive" : "Active")
+                    .SetProperty(x => x.UpdatedAt, _ => now),
+                cancellationToken);
     }
 }
