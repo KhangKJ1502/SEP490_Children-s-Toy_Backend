@@ -13,6 +13,7 @@ public interface IBlogService
         bool sortDesc = false,
         string? searchTerm = null,
         string? status = null,
+        bool featuredOnly = false,
         CancellationToken cancellationToken = default);
 
     Task<Result<PaginatedResponse<BlogListDto>>> GetBlogsForStaffAsync(
@@ -22,6 +23,7 @@ public interface IBlogService
         bool sortDesc = false,
         string? searchTerm = null,
         string? status = null,
+        bool featuredOnly = false,
         CancellationToken cancellationToken = default);
 
     Task<Result<PaginatedResponse<BlogListDto>>> SearchPublishedBlogsAsync(
@@ -41,4 +43,10 @@ public interface IBlogService
     Task<Result<BlogDetailDto>> SubmitBlogAsync(int blogPostId, SubmitBlogDto dto, CancellationToken cancellationToken = default);
 
     Task<Result<BlogDetailDto>> ApproveBlogAsync(int blogPostId, ApproveBlogDto dto, CancellationToken cancellationToken = default);
+
+    Task<Result<BlogDetailDto>> PublishNowAsync(int blogPostId, CancellationToken cancellationToken = default);
+
+    Task<Result<BlogDetailDto>> UpdateFeaturedAsync(int blogPostId, UpdateBlogFeaturedDto dto, CancellationToken cancellationToken = default);
+
+    Task<Result<BlogDetailDto>> HideBlogAsync(int blogPostId, CancellationToken cancellationToken = default);
 }

@@ -14,7 +14,9 @@ public class BlogService : IBlogService
     private const string PendingStatus = "Pending";
     private const string ApprovedStatus = "Approved";
     private const string ScheduledStatus = "Scheduled";
+    private const string PublishedStatus = "Published";
     private const string RejectedStatus = "Rejected";
+    private const string HiddenStatus = "Hidden";
 
     private static readonly HashSet<string> AllowedSubmitStatus = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -45,9 +47,10 @@ public class BlogService : IBlogService
         bool sortDesc = false,
         string? searchTerm = null,
         string? status = null,
+        bool featuredOnly = false,
         CancellationToken cancellationToken = default)
     {
-        return await GetPagedBlogsAsync(pageNumber, pageSize, sortBy, sortDesc, searchTerm, status, null, false, cancellationToken);
+        return await GetPagedBlogsAsync(pageNumber, pageSize, sortBy, sortDesc, searchTerm, status, featuredOnly, null, false, cancellationToken);
     }
 
     public async Task<Result<PaginatedResponse<BlogListDto>>> GetBlogsForStaffAsync(
@@ -57,6 +60,7 @@ public class BlogService : IBlogService
         bool sortDesc = false,
         string? searchTerm = null,
         string? status = null,
+        bool featuredOnly = false,
         CancellationToken cancellationToken = default)
     {
         if (_currentUserService.AccountId <= 0)
@@ -64,7 +68,7 @@ public class BlogService : IBlogService
             return Result<PaginatedResponse<BlogListDto>>.Unauthorized();
         }
 
-        return await GetPagedBlogsAsync(pageNumber, pageSize, sortBy, sortDesc, searchTerm, status, _currentUserService.AccountId, false, cancellationToken);
+        return await GetPagedBlogsAsync(pageNumber, pageSize, sortBy, sortDesc, searchTerm, status, featuredOnly, _currentUserService.AccountId, false, cancellationToken);
     }
 
     public async Task<Result<PaginatedResponse<BlogListDto>>> SearchPublishedBlogsAsync(
@@ -75,7 +79,7 @@ public class BlogService : IBlogService
         string? searchTerm = null,
         CancellationToken cancellationToken = default)
     {
-        return await GetPagedBlogsAsync(pageNumber, pageSize, sortBy, sortDesc, searchTerm, "Published", null, true, cancellationToken);
+        return await GetPagedBlogsAsync(pageNumber, pageSize, sortBy, sortDesc, searchTerm, "Published", false, null, true, cancellationToken);
     }
 
     public async Task<Result<BlogDetailDto>> GetBlogDetailsAsync(int blogPostId, CancellationToken cancellationToken = default)
@@ -123,7 +127,6 @@ public class BlogService : IBlogService
             Status = DraftStatus,
             Reason = null,
             ApprovedBy = null,
-            IsFeatured = false,
             IsDeleted = false,
             CreatedAt = DateTime.UtcNow
         };
@@ -162,6 +165,8 @@ public class BlogService : IBlogService
             return Result<BlogDetailDto>.Unauthorized("You are not allowed to edit this blog.");
         }
 
+        var wasHidden = string.Equals(blog.Status, HiddenStatus, StringComparison.OrdinalIgnoreCase);
+
         if (string.Equals(blog.Status, ApprovedStatus, StringComparison.OrdinalIgnoreCase))
         {
             return await UpdateApprovedBlogAtAsync(blog, dto, cancellationToken);
@@ -177,12 +182,11 @@ public class BlogService : IBlogService
         blog.BlogTitle = dto.BlogTitle.Trim();
         blog.BlogContent = dto.BlogContent.Trim();
         blog.BlogThumbnail = dto.BlogThumbnail?.Trim();
-        blog.IsFeatured = dto.IsFeatured;
         blog.BlogAt = dto.BlogAt;
         blog.UpdatedAt = DateTime.UtcNow;
 
         blog.Status = DraftStatus;
-        if (string.Equals(dto.Status?.Trim(), PendingStatus, StringComparison.OrdinalIgnoreCase))
+        if (!wasHidden && string.Equals(dto.Status?.Trim(), PendingStatus, StringComparison.OrdinalIgnoreCase))
         {
             if (!blog.BlogAt.HasValue)
             {
@@ -199,11 +203,6 @@ public class BlogService : IBlogService
         try
         {
             await _unitOfWork.Blogs.UpdateAsync(blog, cancellationToken);
-            if (blog.IsFeatured)
-            {
-                await _unitOfWork.Blogs.DemoteOldestFeaturedAsync(cancellationToken);
-            }
-
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
             var reloaded = await _unitOfWork.Blogs.GetByIdAsync(blogPostId, cancellationToken);
             return Result<BlogDetailDto>.Success(_mapper.Map<BlogDetailDto>(reloaded!));
@@ -287,9 +286,9 @@ public class BlogService : IBlogService
             }
             else
             {
-                blog.Status = ApprovedStatus;
-                blog.Reason = "Approval is late. Please update BlogAt to a future time so the system can schedule publishing.";
-                _logger.LogInformation("Blog {BlogId} approved late (BlogAt <= now). Waiting staff to update BlogAt.", blogPostId);
+                blog.Status = PublishedStatus;
+                blog.BlogAt ??= DateTime.UtcNow;
+                _logger.LogInformation("Blog {BlogId} approved and published immediately (BlogAt <= now).", blogPostId);
             }
         }
         else if (string.Equals(decision, "Rejected", StringComparison.OrdinalIgnoreCase))
@@ -314,6 +313,83 @@ public class BlogService : IBlogService
 
         _logger.LogInformation("Blog {BlogId} reviewed by account {AccountId}. Decision: {Decision}", blogPostId, _currentUserService.AccountId, decision);
         return Result<BlogDetailDto>.Success(_mapper.Map<BlogDetailDto>(updated!));
+    }
+
+    public async Task<Result<BlogDetailDto>> PublishNowAsync(int blogPostId, CancellationToken cancellationToken = default)
+    {
+        if (_currentUserService.AccountId <= 0)
+        {
+            return Result<BlogDetailDto>.Unauthorized();
+        }
+
+        var blog = await _unitOfWork.Blogs.GetByIdAsync(blogPostId, cancellationToken);
+        if (blog == null)
+        {
+            return Result<BlogDetailDto>.NotFound("Blog", blogPostId);
+        }
+
+        if (!string.Equals(blog.Status, ScheduledStatus, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(blog.Status, ApprovedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<BlogDetailDto>.BusinessError("Only Scheduled or Approved blog can be published now.");
+        }
+
+        blog.Status = PublishedStatus;
+        blog.BlogAt = DateTime.UtcNow;
+        blog.Reason = null;
+        blog.UpdatedAt = DateTime.UtcNow;
+
+        await _unitOfWork.Blogs.UpdateAsync(blog, cancellationToken);
+        var updated = await _unitOfWork.Blogs.GetByIdAsync(blogPostId, cancellationToken);
+        return Result<BlogDetailDto>.Success(_mapper.Map<BlogDetailDto>(updated!));
+    }
+
+    public async Task<Result<BlogDetailDto>> UpdateFeaturedAsync(
+        int blogPostId,
+        UpdateBlogFeaturedDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        _ = blogPostId;
+        _ = dto;
+        _ = cancellationToken;
+        return Result<BlogDetailDto>.BusinessError(
+            "Featured status is managed automatically by database triggers based on blog interactions.");
+    }
+
+    public async Task<Result<BlogDetailDto>> HideBlogAsync(int blogPostId, CancellationToken cancellationToken = default)
+    {
+        if (_currentUserService.AccountId <= 0)
+        {
+            return Result<BlogDetailDto>.Unauthorized();
+        }
+
+        var blog = await _unitOfWork.Blogs.GetByIdAsync(blogPostId, cancellationToken);
+        if (blog == null)
+        {
+            return Result<BlogDetailDto>.NotFound("Blog", blogPostId);
+        }
+
+        var roleName = _currentUserService.RoleName;
+        var isAdmin = string.Equals(roleName, "Admin", StringComparison.OrdinalIgnoreCase);
+        var isStaff = string.Equals(roleName, "Staff", StringComparison.OrdinalIgnoreCase);
+        if (!isAdmin && !(isStaff && blog.AccountId == _currentUserService.AccountId))
+        {
+            return Result<BlogDetailDto>.Unauthorized("You are not allowed to hide this blog.");
+        }
+
+        if (string.Equals(blog.Status, HiddenStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<BlogDetailDto>.BusinessError("Blog is already hidden.");
+        }
+
+        blog.Status = HiddenStatus;
+        blog.IsFeatured = false;
+        blog.Reason = null;
+        blog.UpdatedAt = DateTime.UtcNow;
+
+        await _unitOfWork.Blogs.HideAsync(blog, cancellationToken);
+        var hiddenBlog = await _unitOfWork.Blogs.GetByIdAsync(blogPostId, cancellationToken);
+        return Result<BlogDetailDto>.Success(hiddenBlog != null ? _mapper.Map<BlogDetailDto>(hiddenBlog) : _mapper.Map<BlogDetailDto>(blog));
     }
 
     private async Task<Result<BlogDetailDto>> UpdateApprovedBlogAtAsync(
@@ -348,6 +424,7 @@ public class BlogService : IBlogService
         bool sortDesc,
         string? searchTerm,
         string? status,
+        bool featuredOnly,
         int? createdByAccountId,
         bool onlyPublished,
         CancellationToken cancellationToken)
@@ -369,11 +446,12 @@ public class BlogService : IBlogService
             sortDesc,
             searchTerm,
             status,
+            featuredOnly,
             createdByAccountId,
             onlyPublished,
             cancellationToken);
 
-        var totalCount = await _unitOfWork.Blogs.CountAsync(searchTerm, status, createdByAccountId, onlyPublished, cancellationToken);
+        var totalCount = await _unitOfWork.Blogs.CountAsync(searchTerm, status, featuredOnly, createdByAccountId, onlyPublished, cancellationToken);
         var mapped = _mapper.Map<List<BlogListDto>>(items);
         return Result<PaginatedResponse<BlogListDto>>.Success(new PaginatedResponse<BlogListDto>(mapped, totalCount, pageNumber, pageSize));
     }
@@ -410,6 +488,23 @@ public class BlogService : IBlogService
 
     private bool CanViewBlog(BlogPost blog)
     {
+        if (string.Equals(blog.Status, HiddenStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            if (_currentUserService.AccountId <= 0)
+            {
+                return false;
+            }
+
+            if (blog.AccountId == _currentUserService.AccountId)
+            {
+                return true;
+            }
+
+            var hiddenRoleName = _currentUserService.RoleName;
+            return string.Equals(hiddenRoleName, "Admin", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(hiddenRoleName, "Staff", StringComparison.OrdinalIgnoreCase);
+        }
+
         if (string.Equals(blog.Status, "Published", StringComparison.OrdinalIgnoreCase))
         {
             return true;

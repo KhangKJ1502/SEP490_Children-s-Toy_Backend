@@ -8,7 +8,7 @@ namespace ToyStore.Infrastructure.Repositories;
 public class BlogRepository : IBlogRepository
 {
     private readonly SEP490ToyStoreContext _context;
-    private static readonly string[] AdminVisibleStatuses = ["Pending", "Published", "Scheduled"];
+    private static readonly string[] AdminVisibleStatuses = ["Pending", "Published", "Scheduled", "Hidden"];
 
     public BlogRepository(SEP490ToyStoreContext context)
     {
@@ -22,11 +22,12 @@ public class BlogRepository : IBlogRepository
         bool sortDesc = false,
         string? searchTerm = null,
         string? status = null,
+        bool featuredOnly = false,
         int? createdByAccountId = null,
         bool onlyPublished = false,
         CancellationToken cancellationToken = default)
     {
-        var query = BuildQuery(searchTerm, status, createdByAccountId, onlyPublished);
+        var query = BuildQuery(searchTerm, status, featuredOnly, createdByAccountId, onlyPublished);
         query = ApplySorting(query, sortBy, sortDesc);
 
         return await query
@@ -38,11 +39,12 @@ public class BlogRepository : IBlogRepository
     public Task<int> CountAsync(
         string? searchTerm = null,
         string? status = null,
+        bool featuredOnly = false,
         int? createdByAccountId = null,
         bool onlyPublished = false,
         CancellationToken cancellationToken = default)
     {
-        return BuildQuery(searchTerm, status, createdByAccountId, onlyPublished).CountAsync(cancellationToken);
+        return BuildQuery(searchTerm, status, featuredOnly, createdByAccountId, onlyPublished).CountAsync(cancellationToken);
     }
 
     public Task<BlogPost?> GetByIdAsync(int blogPostId, CancellationToken cancellationToken = default)
@@ -50,7 +52,9 @@ public class BlogRepository : IBlogRepository
         return _context.BlogPosts
             .Include(x => x.Account)
             .Include(x => x.ApprovedByNavigation)
-            .FirstOrDefaultAsync(x => x.BlogPostId == blogPostId && !x.IsDeleted, cancellationToken);
+            .Include(x => x.BlogCategory)
+            .Include(x => x.BlogPostStat)
+            .FirstOrDefaultAsync(x => x.BlogPostId == blogPostId, cancellationToken);
     }
 
     public Task<bool> BlogCategoryExistsAsync(short blogCategoryId, CancellationToken cancellationToken = default)
@@ -74,37 +78,11 @@ public class BlogRepository : IBlogRepository
         return entity;
     }
 
-    public async Task<int> DemoteOldestFeaturedAsync(CancellationToken cancellationToken = default)
-    {
-        var featuredCount = await _context.BlogPosts
-            .CountAsync(x => !x.IsDeleted && x.IsFeatured, cancellationToken);
-
-        if (featuredCount <= 5)
-        {
-            return 0;
-        }
-
-        var oldestFeatured = await _context.BlogPosts
-            .Where(x => !x.IsDeleted && x.IsFeatured)
-            .OrderBy(x => x.CreatedAt)
-            .ThenBy(x => x.BlogPostId)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (oldestFeatured == null)
-        {
-            return 0;
-        }
-
-        oldestFeatured.IsFeatured = false;
-        oldestFeatured.UpdatedAt = DateTime.UtcNow;
-        return await _context.SaveChangesAsync(cancellationToken);
-    }
-
     public async Task<int> PublishDueScheduledBlogsAsync(DateTime utcNow, CancellationToken cancellationToken = default)
     {
         var dueBlogs = await _context.BlogPosts
             .Where(x => !x.IsDeleted
-                && x.Status == "Approved"
+                && x.Status == "Scheduled"
                 && x.BlogAt != null
                 && x.BlogAt <= utcNow)
             .ToListAsync(cancellationToken);
@@ -118,17 +96,26 @@ public class BlogRepository : IBlogRepository
         return await _context.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<BlogPost> HideAsync(BlogPost entity, CancellationToken cancellationToken = default)
+    {
+        _context.BlogPosts.Update(entity);
+        await _context.SaveChangesAsync(cancellationToken);
+        return entity;
+    }
+
     private IQueryable<BlogPost> BuildQuery(
         string? searchTerm,
         string? status,
+        bool featuredOnly,
         int? createdByAccountId,
         bool onlyPublished)
     {
-        var query = _context.BlogPosts
+        IQueryable<BlogPost> query = _context.BlogPosts
             .AsNoTracking()
             .Include(x => x.Account)
             .Include(x => x.ApprovedByNavigation)
-            .Where(x => !x.IsDeleted);
+            .Include(x => x.BlogCategory)
+            .Include(x => x.BlogPostStat);
 
         if (createdByAccountId.HasValue)
         {
@@ -137,7 +124,7 @@ public class BlogRepository : IBlogRepository
 
         if (onlyPublished)
         {
-            query = query.Where(x => x.Status == "Published");
+            query = query.Where(x => !x.IsDeleted && x.Status == "Published");
         }
 
         // Admin listing (no owner filter, not public search) only shows workflow states
@@ -150,15 +137,25 @@ public class BlogRepository : IBlogRepository
         if (!string.IsNullOrWhiteSpace(status))
         {
             var normalizedStatus = status.Trim().ToLowerInvariant();
-            query = query.Where(x => x.Status.ToLower() == normalizedStatus);
+            if (normalizedStatus == "hidden")
+            {
+                query = query.Where(x => x.Status == "Hidden");
+            }
+            else
+            {
+                query = query.Where(x => !x.IsDeleted && x.Status.ToLower() == normalizedStatus);
+            }
+        }
+
+        if (featuredOnly)
+        {
+            query = query.Where(x => x.IsFeatured);
         }
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
             var normalizedSearchTerm = searchTerm.Trim();
-            query = query.Where(x =>
-                x.BlogTitle.Contains(normalizedSearchTerm) ||
-                x.BlogContent.Contains(normalizedSearchTerm));
+            query = query.Where(x => x.BlogTitle.Contains(normalizedSearchTerm));
         }
 
         return query;
@@ -174,8 +171,20 @@ public class BlogRepository : IBlogRepository
             ("status", false) => query.OrderBy(x => x.Status),
             ("blogat", true) => query.OrderByDescending(x => x.BlogAt),
             ("blogat", false) => query.OrderBy(x => x.BlogAt),
+            ("featured", true) => query
+                .OrderByDescending(x => x.IsFeatured)
+                .ThenByDescending(x => x.CreatedAt),
+            ("featured", false) => query
+                .OrderBy(x => x.IsFeatured)
+                .ThenBy(x => x.CreatedAt),
             ("createdat", true) => query.OrderByDescending(x => x.CreatedAt),
             ("createdat", false) => query.OrderBy(x => x.CreatedAt),
+            ("interaction", true) => query
+                .OrderByDescending(x => (x.BlogPostStat != null ? x.BlogPostStat.LikeCount : 0) + (x.BlogPostStat != null ? x.BlogPostStat.CommentCount : 0))
+                .ThenByDescending(x => x.CreatedAt),
+            ("interaction", false) => query
+                .OrderBy(x => (x.BlogPostStat != null ? x.BlogPostStat.LikeCount : 0) + (x.BlogPostStat != null ? x.BlogPostStat.CommentCount : 0))
+                .ThenBy(x => x.CreatedAt),
             ("updatedat", true) => query.OrderByDescending(x => x.UpdatedAt),
             ("updatedat", false) => query.OrderBy(x => x.UpdatedAt),
             (_, true) => query.OrderByDescending(x => x.BlogPostId),

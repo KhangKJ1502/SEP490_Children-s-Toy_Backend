@@ -25,6 +25,15 @@ public class CurrentUserService : ICurrentUserService
         }
     }
 
+    public byte RoleId
+    {
+        get
+        {
+            var value = User?.Claims.FirstOrDefault(c => c.Type == "roleId")?.Value;
+            return byte.TryParse(value, out var id) ? id : (byte)0;
+        }
+    }
+
     public string Email => User?.Claims.FirstOrDefault(c =>
         c.Type == ClaimTypes.Email || c.Type == JwtRegisteredClaimNames.Email)?.Value ?? string.Empty;
 

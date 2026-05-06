@@ -25,6 +25,8 @@ public class AccountProfile : Profile
         CreateMap<Account, ProfileDto>()
             .ForMember(dest => dest.RoleName, opt => opt.MapFrom(src => src.Role.RoleName));
 
+        CreateMap<Account, CustomerProfileDto>();
+
         CreateMap<CreateAccountDto, Account>();
     }
 }

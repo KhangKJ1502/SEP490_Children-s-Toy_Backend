@@ -47,9 +47,13 @@ public class BlogsController : ControllerBase
         [FromQuery] bool sortDesc = false,
         [FromQuery] string? searchTerm = null,
         [FromQuery] string? status = null,
+        [FromQuery] bool featuredOnly = false,
+        [FromQuery] bool? isFeatured = null,
+        [FromQuery] bool? featured = null,
         CancellationToken cancellationToken = default)
     {
-        var result = await _blogService.GetBlogsForAdminAsync(pageNumber, pageSize, sortBy, sortDesc, searchTerm, status, cancellationToken);
+        featuredOnly = featuredOnly || isFeatured == true || featured == true;
+        var result = await _blogService.GetBlogsForAdminAsync(pageNumber, pageSize, sortBy, sortDesc, searchTerm, status, featuredOnly, cancellationToken);
         return result.ToActionResult();
     }
 
@@ -62,9 +66,13 @@ public class BlogsController : ControllerBase
         [FromQuery] bool sortDesc = false,
         [FromQuery] string? searchTerm = null,
         [FromQuery] string? status = null,
+        [FromQuery] bool featuredOnly = false,
+        [FromQuery] bool? isFeatured = null,
+        [FromQuery] bool? featured = null,
         CancellationToken cancellationToken = default)
     {
-        var result = await _blogService.GetBlogsForStaffAsync(pageNumber, pageSize, sortBy, sortDesc, searchTerm, status, cancellationToken);
+        featuredOnly = featuredOnly || isFeatured == true || featured == true;
+        var result = await _blogService.GetBlogsForStaffAsync(pageNumber, pageSize, sortBy, sortDesc, searchTerm, status, featuredOnly, cancellationToken);
         return result.ToActionResult();
     }
 
@@ -117,6 +125,37 @@ public class BlogsController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var result = await _blogService.ApproveBlogAsync(blogPostId, dto, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpPatch("{blogPostId:int}/publish-now")]
+    [Authorize(Roles = "Admin,Staff")]
+    public async Task<ActionResult<BlogDetailDto>> PublishNow(
+        [FromRoute] int blogPostId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _blogService.PublishNowAsync(blogPostId, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpPatch("{blogPostId:int}/hide")]
+    [Authorize(Roles = "Admin,Staff")]
+    public async Task<ActionResult<BlogDetailDto>> HideBlog(
+        [FromRoute] int blogPostId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _blogService.HideBlogAsync(blogPostId, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpPatch("{blogPostId:int}/featured")]
+    [Authorize(Roles = "Admin,Staff")]
+    public async Task<ActionResult<BlogDetailDto>> UpdateFeatured(
+        [FromRoute] int blogPostId,
+        [FromBody] UpdateBlogFeaturedDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _blogService.UpdateFeaturedAsync(blogPostId, dto, cancellationToken);
         return result.ToActionResult();
     }
 
