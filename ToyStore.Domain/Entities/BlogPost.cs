@@ -39,5 +39,7 @@ public partial class BlogPost
 
     public virtual BlogCategory BlogCategory { get; set; } = null!;
 
+    public virtual BlogPostStat? BlogPostStat { get; set; }
+
     public virtual ICollection<ReviewBlog> ReviewBlogs { get; set; } = new List<ReviewBlog>();
 }

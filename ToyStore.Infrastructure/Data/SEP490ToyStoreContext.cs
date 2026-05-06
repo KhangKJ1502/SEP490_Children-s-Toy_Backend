@@ -25,6 +25,7 @@ public partial class SEP490ToyStoreContext : DbContext
     public virtual DbSet<BlogCategory> BlogCategories { get; set; }
 
     public virtual DbSet<BlogPost> BlogPosts { get; set; }
+    public virtual DbSet<BlogPostStat> BlogPostStats { get; set; }
 
     public virtual DbSet<Brand> Brands { get; set; }
 
@@ -303,6 +304,12 @@ public partial class SEP490ToyStoreContext : DbContext
         {
             entity.HasKey(e => e.BlogPostId).HasName("PK__BlogPost__3217414947E21B0D");
 
+            entity.ToTable("BlogPosts", tb =>
+            {
+                tb.HasTrigger("trg_BlogPost_InitStats");
+                tb.HasTrigger("trg_BlogPosts_UpdateFeaturedByStatus");
+            });
+
             entity.HasIndex(e => e.BlogCategoryId, "IX_BlogPosts_Category");
 
             entity.HasIndex(e => new { e.Status, e.IsDeleted, e.BlogAt }, "IX_BlogPosts_Status_Date").IsDescending(false, false, true);
@@ -338,6 +345,28 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasForeignKey(d => d.BlogCategoryId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_BlogPosts_BlogCategories");
+        });
+
+        modelBuilder.Entity<BlogPostStat>(entity =>
+        {
+            entity.HasKey(e => e.BlogPostId).HasName("PK__BlogPost__32174149A2A95B6D");
+
+            entity.ToTable("BlogPostStats", tb =>
+            {
+                tb.HasTrigger("trg_BlogPostStats_UpdateFeatured");
+            });
+
+            entity.HasIndex(e => new { e.LikeCount, e.CommentCount }, "IX_BlogPostStats_Score").IsDescending(true, true);
+
+            entity.Property(e => e.BlogPostId).HasColumnName("BlogPostID");
+            entity.Property(e => e.CommentCount).HasDefaultValue(0);
+            entity.Property(e => e.LikeCount).HasDefaultValue(0);
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
+
+            entity.HasOne(d => d.BlogPost).WithOne(p => p.BlogPostStat)
+                .HasForeignKey<BlogPostStat>(d => d.BlogPostId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_BlogPostStats_BlogPosts");
         });
 
         modelBuilder.Entity<Brand>(entity =>

@@ -11,6 +11,7 @@ public interface IBlogRepository
         bool sortDesc = false,
         string? searchTerm = null,
         string? status = null,
+        bool featuredOnly = false,
         int? createdByAccountId = null,
         bool onlyPublished = false,
         CancellationToken cancellationToken = default);
@@ -18,6 +19,7 @@ public interface IBlogRepository
     Task<int> CountAsync(
         string? searchTerm = null,
         string? status = null,
+        bool featuredOnly = false,
         int? createdByAccountId = null,
         bool onlyPublished = false,
         CancellationToken cancellationToken = default);
@@ -30,7 +32,7 @@ public interface IBlogRepository
 
     Task<BlogPost> UpdateAsync(BlogPost entity, CancellationToken cancellationToken = default);
 
-    Task<int> DemoteOldestFeaturedAsync(CancellationToken cancellationToken = default);
-
     Task<int> PublishDueScheduledBlogsAsync(DateTime utcNow, CancellationToken cancellationToken = default);
+
+    Task<BlogPost> HideAsync(BlogPost entity, CancellationToken cancellationToken = default);
 }
