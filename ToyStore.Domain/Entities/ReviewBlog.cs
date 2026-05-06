@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ToyStore.Domain.Entities;
@@ -12,6 +12,8 @@ public partial class ReviewBlog
     public int AccountId { get; set; }
 
     public string? Comment { get; set; }
+
+    public bool IsFeatured { get; set; }
 
     public bool IsDeleted { get; set; }
 

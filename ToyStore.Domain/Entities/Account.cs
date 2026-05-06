@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ToyStore.Domain.Entities;
@@ -8,6 +8,10 @@ public partial class Account
     public int AccountId { get; set; }
 
     public byte RoleId { get; set; }
+
+    public byte? SexId { get; set; }
+
+    public DateTime? Dob { get; set; }
 
     public string? EmployeeCode { get; set; }
 
@@ -102,4 +106,10 @@ public partial class Account
     public virtual ICollection<WalletTransaction> WalletTransactions { get; set; } = new List<WalletTransaction>();
 
     public virtual ICollection<Wishlist> Wishlists { get; set; } = new List<Wishlist>();
+
+    public virtual Sex? Sex { get; set; }
+
+    public virtual ICollection<CustomerChild> CustomerChildren { get; set; } = new List<CustomerChild>();
+
+    public virtual UserPreference? UserPreference { get; set; }
 }
