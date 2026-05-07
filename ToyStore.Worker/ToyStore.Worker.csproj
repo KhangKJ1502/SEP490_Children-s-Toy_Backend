@@ -12,6 +12,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\ToyStore.Application\ToyStore.Application.csproj" />
     <ProjectReference Include="..\ToyStore.Infrastructure\ToyStore.Infrastructure.csproj" />
     <ProjectReference Include="..\ToyStore.Recommendation\ToyStore.Recommendation.csproj" />

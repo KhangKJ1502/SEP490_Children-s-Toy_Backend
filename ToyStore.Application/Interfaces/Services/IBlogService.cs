@@ -4,8 +4,14 @@ using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Interfaces.Services;
 
+/// <summary>
+/// Defines blog business operations for staff/admin workflows and public search.
+/// </summary>
 public interface IBlogService
 {
+    /// <summary>
+    /// Gets paginated blogs for admin view.
+    /// </summary>
     Task<Result<PaginatedResponse<BlogListDto>>> GetBlogsForAdminAsync(
         int pageNumber = 1,
         int pageSize = 10,
@@ -16,6 +22,9 @@ public interface IBlogService
         bool featuredOnly = false,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Gets paginated blogs created by current staff account.
+    /// </summary>
     Task<Result<PaginatedResponse<BlogListDto>>> GetBlogsForStaffAsync(
         int pageNumber = 1,
         int pageSize = 10,
@@ -26,6 +35,9 @@ public interface IBlogService
         bool featuredOnly = false,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Searches published blogs for public usage.
+    /// </summary>
     Task<Result<PaginatedResponse<BlogListDto>>> SearchPublishedBlogsAsync(
         int pageNumber = 1,
         int pageSize = 10,
@@ -34,19 +46,43 @@ public interface IBlogService
         string? searchTerm = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Gets blog details by id with access control.
+    /// </summary>
     Task<Result<BlogDetailDto>> GetBlogDetailsAsync(int blogPostId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Creates a new draft blog.
+    /// </summary>
     Task<Result<BlogDetailDto>> CreateBlogAsync(CreateBlogDto dto, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Updates an existing blog.
+    /// </summary>
     Task<Result<BlogDetailDto>> UpdateBlogAsync(int blogPostId, UpdateBlogDto dto, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Submits a draft blog to pending status.
+    /// </summary>
     Task<Result<BlogDetailDto>> SubmitBlogAsync(int blogPostId, SubmitBlogDto dto, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Approves or rejects a pending blog.
+    /// </summary>
     Task<Result<BlogDetailDto>> ApproveBlogAsync(int blogPostId, ApproveBlogDto dto, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Publishes a scheduled/approved blog immediately.
+    /// </summary>
     Task<Result<BlogDetailDto>> PublishNowAsync(int blogPostId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Updates featured flag for a blog.
+    /// </summary>
     Task<Result<BlogDetailDto>> UpdateFeaturedAsync(int blogPostId, UpdateBlogFeaturedDto dto, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Hides a blog from public visibility.
+    /// </summary>
     Task<Result<BlogDetailDto>> HideBlogAsync(int blogPostId, CancellationToken cancellationToken = default);
 }

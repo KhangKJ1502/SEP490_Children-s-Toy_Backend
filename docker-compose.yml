@@ -16,7 +16,7 @@ services:
     networks:
       - toystore-network
     healthcheck:
-      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "ToyStore@2024!" -Q "SELECT 1" || exit 1
+      test: /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "ToyStore@2024!" -Q "SELECT 1" || exit 1
       interval: 10s
       timeout: 5s
       retries: 10
@@ -31,7 +31,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://+:8080
-      - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=ToyStoreDB;User Id=sa;Password=ToyStore@2024!;TrustServerCertificate=True;
+      - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=SEP490_ToyStore;User Id=sa;Password=ToyStore@2024!;TrustServerCertificate=True;
     ports:
       - "5000:8080"
     depends_on:
@@ -49,7 +49,7 @@ services:
     container_name: toystore-worker
     environment:
       - DOTNET_ENVIRONMENT=Production
-      - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=ToyStoreDB;User Id=sa;Password=ToyStore@2024!;TrustServerCertificate=True;
+      - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=SEP490_ToyStore;User Id=sa;Password=ToyStore@2024!;TrustServerCertificate=True;
     depends_on:
       sqlserver:
         condition: service_healthy

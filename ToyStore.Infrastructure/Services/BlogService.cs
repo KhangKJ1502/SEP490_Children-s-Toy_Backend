@@ -22,6 +22,7 @@ public class BlogService : IBlogService
     {
         PendingStatus
     };
+    private static readonly TimeZoneInfo VietnamTimeZone = ResolveVietnamTimeZone();
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUserService _currentUserService;
@@ -123,7 +124,7 @@ public class BlogService : IBlogService
             BlogTitle = dto.BlogTitle.Trim(),
             BlogContent = dto.BlogContent.Trim(),
             BlogThumbnail = dto.BlogThumbnail?.Trim(),
-            BlogAt = dto.BlogAt,
+            BlogAt = NormalizeBlogAtUtc(dto.BlogAt),
             Status = DraftStatus,
             Reason = null,
             ApprovedBy = null,
@@ -178,11 +179,11 @@ public class BlogService : IBlogService
             return validateResult;
         }
 
-        blog.BlogCategoryId = dto.BlogCategoryId;
-        blog.BlogTitle = dto.BlogTitle.Trim();
-        blog.BlogContent = dto.BlogContent.Trim();
+        blog.BlogCategoryId = dto.BlogCategoryId!.Value;
+        blog.BlogTitle = dto.BlogTitle!.Trim();
+        blog.BlogContent = dto.BlogContent!.Trim();
         blog.BlogThumbnail = dto.BlogThumbnail?.Trim();
-        blog.BlogAt = dto.BlogAt;
+        blog.BlogAt = NormalizeBlogAtUtc(dto.BlogAt);
         blog.UpdatedAt = DateTime.UtcNow;
 
         blog.Status = DraftStatus;
@@ -344,7 +345,7 @@ public class BlogService : IBlogService
         return Result<BlogDetailDto>.Success(_mapper.Map<BlogDetailDto>(updated!));
     }
 
-    public async Task<Result<BlogDetailDto>> UpdateFeaturedAsync(
+    public Task<Result<BlogDetailDto>> UpdateFeaturedAsync(
         int blogPostId,
         UpdateBlogFeaturedDto dto,
         CancellationToken cancellationToken = default)
@@ -352,8 +353,8 @@ public class BlogService : IBlogService
         _ = blogPostId;
         _ = dto;
         _ = cancellationToken;
-        return Result<BlogDetailDto>.BusinessError(
-            "Featured status is managed automatically by database triggers based on blog interactions.");
+        return Task.FromResult(Result<BlogDetailDto>.BusinessError(
+            "Featured status is managed automatically by database triggers based on blog interactions."));
     }
 
     public async Task<Result<BlogDetailDto>> HideBlogAsync(int blogPostId, CancellationToken cancellationToken = default)
@@ -402,12 +403,13 @@ public class BlogService : IBlogService
             return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "BlogAt is required when blog is Approved.");
         }
 
-        if (dto.BlogAt.Value <= DateTime.UtcNow)
+        var normalizedBlogAtUtc = NormalizeToUtc(dto.BlogAt.Value);
+        if (normalizedBlogAtUtc <= DateTime.UtcNow)
         {
             return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "BlogAt must be in the future.");
         }
 
-        blog.BlogAt = dto.BlogAt.Value;
+        blog.BlogAt = normalizedBlogAtUtc;
         blog.Status = ScheduledStatus;
         blog.Reason = null;
         blog.UpdatedAt = DateTime.UtcNow;
@@ -457,12 +459,12 @@ public class BlogService : IBlogService
     }
 
     private async Task<Result<BlogDetailDto>?> ValidateWriteInputAsync(
-        short blogCategoryId,
-        string blogTitle,
-        string blogContent,
+        short? blogCategoryId,
+        string? blogTitle,
+        string? blogContent,
         CancellationToken cancellationToken)
     {
-        if (blogCategoryId <= 0)
+        if (!blogCategoryId.HasValue || blogCategoryId.Value <= 0)
         {
             return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "Blog category is required.");
         }
@@ -477,10 +479,10 @@ public class BlogService : IBlogService
             return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "Blog content is required.");
         }
 
-        var categoryExists = await _unitOfWork.Blogs.BlogCategoryExistsAsync(blogCategoryId, cancellationToken);
+        var categoryExists = await _unitOfWork.Blogs.BlogCategoryExistsAsync(blogCategoryId.Value, cancellationToken);
         if (!categoryExists)
         {
-            return Result<BlogDetailDto>.NotFound("Blog category", blogCategoryId);
+            return Result<BlogDetailDto>.NotFound("Blog category", blogCategoryId.Value);
         }
 
         return null;
@@ -522,5 +524,44 @@ public class BlogService : IBlogService
 
         var roleName = _currentUserService.RoleName;
         return string.Equals(roleName, "Admin", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static DateTime? NormalizeBlogAtUtc(DateTime? blogAt)
+    {
+        if (!blogAt.HasValue)
+        {
+            return null;
+        }
+
+        return NormalizeToUtc(blogAt.Value);
+    }
+
+    private static DateTime NormalizeToUtc(DateTime value)
+    {
+        return value.Kind switch
+        {
+            DateTimeKind.Utc => value,
+            DateTimeKind.Local => value.ToUniversalTime(),
+            _ => TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(value, DateTimeKind.Unspecified), VietnamTimeZone)
+        };
+    }
+
+    private static TimeZoneInfo ResolveVietnamTimeZone()
+    {
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh");
+            }
+            catch (TimeZoneNotFoundException)
+            {
+                return TimeZoneInfo.Utc;
+            }
+        }
     }
 }

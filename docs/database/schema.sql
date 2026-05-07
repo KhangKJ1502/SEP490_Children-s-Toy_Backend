@@ -1,35 +1,6 @@
 /* =================================================================
    E-COMMERCE DATABASE SCHEMA (OPTIMIZED FULL VERSION)
    Platform: SQL Server | Version: 3.0
-   
-   ✅ V2 FIXES (carried over):
-      Missing commas, duplicate indexes, IdempotencyKey filter,
-      BlogContent NVARCHAR(MAX), duplicate UQ_ProductImages
-
-   ✅ V3 FIXES — Manage Refund & Review Product:
-   
-   [MANAGE REFUND]
-   1. Thêm bảng RefundImages — hỗ trợ nhiều ảnh bằng chứng per refund
-      (thay vì 1 URL duy nhất trong ComplaintImageURL của OrderRefunds)
-   2. Thêm filtered unique index UQ_OrderRefunds_OneActivePerOrder
-      — ngăn tạo nhiều refund đang active cùng lúc cho 1 đơn hàng
-   3. Thêm CHECK constraint CK_OrderRefunds_AmountNotExceedOrder
-      (enforce ở DB layer qua computed column + trigger)
-   4. Thêm trigger TR_OrderRefunds_ValidateAmount
-      — validate ApprovedAmount <= Orders.TotalAmount khi INSERT/UPDATE
-   
-   [REVIEW PRODUCT]
-   5. Thêm bảng RefundReviewProductCheck (trigger-based validation)
-      — enforce ProductID phải tồn tại trong OrderDetails của OrderID đó
-   6. Thêm trigger TR_ReviewProducts_ValidateOrderDetail
-      — block insert nếu product không thuộc order
-   7. Thêm constraint CK_ReviewProductImages_MaxPerReview
-      — enforce tối đa 10 ảnh per review qua trigger
-   8. Thêm trigger TR_ReviewProductImages_MaxImages
-      — enforce giới hạn số ảnh
-   9. Thống nhất ReactionTypes: ReviewProductReactions dùng bảng
-      ReactionTypes dynamic thay vì hardcode enum
-      (cùng cơ chế với ReviewBlogReactions)
 ================================================================= */
 
 USE [master];
@@ -52,17 +23,17 @@ IF NOT EXISTS (SELECT * FROM sys.schemas WHERE name = 'System')         EXEC('CR
 GO
 
 CREATE TABLE [System].[DomainEventOutbox] (
-    [EventID]         UNIQUEIDENTIFIER PRIMARY KEY,
-    [AggregateType]   VARCHAR(100) NOT NULL,
-    [AggregateId]     VARCHAR(100) NOT NULL,
-    [EventType]       VARCHAR(100) NOT NULL,
-    [Payload]         NVARCHAR(1000) NOT NULL DEFAULT '{}',
-    [OccurredOn]      DATETIME2(0) NOT NULL,
+    [EventID]          UNIQUEIDENTIFIER PRIMARY KEY,
+    [AggregateType]    VARCHAR(100) NOT NULL,
+    [AggregateId]      VARCHAR(100) NOT NULL,
+    [EventType]        VARCHAR(100) NOT NULL,
+    [Payload]          NVARCHAR(1000) NOT NULL DEFAULT '{}',
+    [OccurredOn]       DATETIME2(0) NOT NULL,
     [ProcessingLockId] UNIQUEIDENTIFIER NULL,
-    [ProcessingAt]    DATETIME2(0) NULL,
-    [Attempts]        TINYINT NOT NULL DEFAULT 0,
-    [LastError]       NVARCHAR(MAX) NULL,
-    [ProcessedOn]     DATETIME2(0) NULL
+    [ProcessingAt]     DATETIME2(0) NULL,
+    [Attempts]         TINYINT NOT NULL DEFAULT 0,
+    [LastError]        NVARCHAR(MAX) NULL,
+    [ProcessedOn]      DATETIME2(0) NULL
 );
 GO
 
@@ -89,13 +60,22 @@ CREATE TABLE [Roles] (
 );
 GO
 
+CREATE TABLE [Sexes] (
+    [SexID]    TINYINT IDENTITY(1,1) PRIMARY KEY,
+    [SexName]  NVARCHAR(4) NOT NULL UNIQUE,
+    [CreatedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE()
+);
+GO
+
 CREATE TABLE [Accounts] (
     [AccountID]    INT IDENTITY(1,1) PRIMARY KEY,
     [RoleID]       TINYINT NOT NULL,
+    [SexID]        TINYINT NULL,
     [EmployeeCode] VARCHAR(20) NULL,
     [AccountName]  NVARCHAR(100) NOT NULL,
     [PhoneNumber]  VARCHAR(15) NULL,
     [Email]        VARCHAR(100) NOT NULL UNIQUE,
+    [DOB]          DATE NULL,
     [ImageURL]     VARCHAR(500) NULL,
     [PasswordHash] VARCHAR(255) NOT NULL,
     [IsActive]     BIT NOT NULL DEFAULT 1,
@@ -103,7 +83,9 @@ CREATE TABLE [Accounts] (
     [Provider]     VARCHAR(20) NULL,
     [CreatedAt]    DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [UpdatedAt]    DATETIME2(0) NULL,
-    CONSTRAINT [FK_Accounts_Roles] FOREIGN KEY ([RoleID]) REFERENCES [Roles]([RoleID])
+    CONSTRAINT [FK_Accounts_Roles]    FOREIGN KEY ([RoleID]) REFERENCES [Roles]([RoleID]),
+    CONSTRAINT [FK_Accounts_Sexes]    FOREIGN KEY ([SexID])     REFERENCES [dbo].[Sexes]([SexID]),
+    CONSTRAINT [CK_Accounts_DOB]      CHECK ([DOB] <= CAST(GETDATE() AS DATE))
 );
 GO
 
@@ -129,9 +111,9 @@ CREATE TABLE [UserBlockHistory] (
     [BlockedUntil]     DATETIME2(0) NOT NULL,
     [UnblockedAt]      DATETIME2(0) NULL,
     [UpdatedAt]        DATETIME2(0) NULL,
-    CONSTRAINT [FK_UserBlockHistory_Account]        FOREIGN KEY ([AccountID])      REFERENCES [Accounts]([AccountID]),
-    CONSTRAINT [FK_UserBlockHistory_BlockedBy]      FOREIGN KEY ([BlockedBy])      REFERENCES [Accounts]([AccountID]),
-    CONSTRAINT [FK_UserBlockHistory_UnblockedBy]    FOREIGN KEY ([UnblockedBy])    REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [FK_UserBlockHistory_Account]        FOREIGN KEY ([AccountID])        REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [FK_UserBlockHistory_BlockedBy]      FOREIGN KEY ([BlockedBy])        REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [FK_UserBlockHistory_UnblockedBy]    FOREIGN KEY ([UnblockedBy])      REFERENCES [Accounts]([AccountID]),
     CONSTRAINT [FK_UserBlockHistory_BlockReasons]   FOREIGN KEY ([BlockReasonID])  REFERENCES [BlockReasons]([BlockReasonID]),
     CONSTRAINT [FK_UserBlockHistory_BackgroundJobs] FOREIGN KEY ([UnblockedByJobID]) REFERENCES [System].[BackgroundJobs]([JobID]),
     CONSTRAINT [CK_UserBlockHistory_ValidPeriod]           CHECK ([BlockedUntil] > [BlockedAt]),
@@ -235,13 +217,6 @@ GO
 CREATE TABLE [Ages] (
     [AgeID]    TINYINT IDENTITY(1,1) PRIMARY KEY,
     [AgeRange] VARCHAR(50) NOT NULL UNIQUE,
-    [CreatedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE()
-);
-GO
-
-CREATE TABLE [Sexes] (
-    [SexID]    TINYINT IDENTITY(1,1) PRIMARY KEY,
-    [SexName]  NVARCHAR(4) NOT NULL UNIQUE,
     [CreatedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE()
 );
 GO
@@ -424,8 +399,8 @@ CREATE TABLE [Orders] (
     [DeliveredAt]           DATETIME2(0)  NULL,
     [CompletedAt]           DATETIME2(0)  NULL,
     [CancelledAt]           DATETIME2(0)  NULL,
-    [PaymentMethod]         VARCHAR(20)   NOT NULL DEFAULT 'BANK_TRANSFER'
-        CHECK ([PaymentMethod] IN ('BANK_TRANSFER', 'SHIP_CODE', 'SE_PAY', 'WALLET')),
+    [PaymentMethod] VARCHAR(20) NOT NULL DEFAULT 'SHIP_CODE' 
+             CHECK ([PaymentMethod] IN ('BANK_TRANSFER', 'SHIP_CODE', 'SE_PAY', 'WALLET')),
     [PaymentStatus]         VARCHAR(20)   NOT NULL DEFAULT 'PENDING'
         CHECK ([PaymentStatus] IN ('PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED')),
     [PaymentCode]           VARCHAR(50)   NULL UNIQUE,
@@ -635,6 +610,7 @@ CREATE TABLE [BlogPosts] (
      'Hidden'
     )),
     [Reason]         NVARCHAR(500) NULL,
+    [IsFeatured]     BIT NOT NULL DEFAULT 0,
     [BlogAt]         DATETIME2(0) NULL,
     [IsDeleted]      BIT NOT NULL DEFAULT 0,
     [CreatedAt]      DATETIME2(0) NOT NULL DEFAULT GETDATE(),
@@ -658,12 +634,7 @@ GO
 /* =============================================
    7. REVIEWS & REACTIONS
    
-   ✅ V3 FIX: Bỏ hardcode enum trong ReviewProductReactions,
-   thay bằng FK vào bảng ReactionTypes dynamic (nhất quán với Blog).
-   Seed data mặc định 'Like' và 'Dislike' được insert ở cuối file.
 ============================================= */
-
-/* -- ReactionTypes dùng chung cho cả Product và Blog reviews -- */
 CREATE TABLE [ReactionTypes] (
     [ReactionTypeID] INT IDENTITY(1,1) PRIMARY KEY,
     [Code]           NVARCHAR(20) NOT NULL UNIQUE,
@@ -689,11 +660,6 @@ CREATE TABLE [ReviewProducts] (
 );
 GO
 
-/*
-   ✅ V3 FIX #6: Trigger validate ProductID phải thuộc OrderDetails của OrderID đó.
-   DB không thể express FK cross-column constraint này nên dùng AFTER INSERT trigger.
-*/
-GO
 CREATE TRIGGER [TR_ReviewProducts_ValidateOrderDetail]
 ON [ReviewProducts]
 AFTER INSERT
@@ -713,7 +679,7 @@ BEGIN
     )
     BEGIN
         RAISERROR (
-            'Review không hợp lệ: ProductID không tồn tại trong OrderDetails của OrderID này.',
+            'Invalid review: This product was not found in the order details.',
             16, 1
         );
         ROLLBACK TRANSACTION;
@@ -734,9 +700,6 @@ CREATE TABLE [ReviewProductImages] (
 );
 GO
 
-/*
-   ✅ V3 FIX #8: Trigger giới hạn tối đa 10 ảnh per review (không tính ảnh đã soft-delete).
-*/
 CREATE TRIGGER [TR_ReviewProductImages_MaxImages]
 ON [ReviewProductImages]
 AFTER INSERT
@@ -756,7 +719,7 @@ BEGIN
     )
     BEGIN
         RAISERROR (
-            'Mỗi review chỉ được đính kèm tối đa 3 ảnh.',
+            'Each review allows a maximum of 3 photos.',
             16, 1
         );
         ROLLBACK TRANSACTION;
@@ -780,16 +743,11 @@ CREATE TABLE [StaffReviewProductReplies] (
 );
 GO
 
-/*
-   ✅ V3 FIX #9: ReviewProductReactions dùng FK vào ReactionTypes thay vì CHECK enum.
-   → Nhất quán với ReviewBlogReactions.
-   → Dễ mở rộng thêm loại reaction mới (Helpful, Love...) mà không alter table.
-*/
 CREATE TABLE [ReviewProductReactions] (
     [ReactionProductID] INT IDENTITY(1,1) PRIMARY KEY,
     [ReviewProductID]   INT NOT NULL,
     [AccountID]         INT NOT NULL,
-    [ReactionTypeID]    INT NOT NULL,                       -- ✅ V3: dùng FK thay vì hardcode enum
+    [ReactionTypeID]    INT NOT NULL,                       
     [IsDeleted]         BIT NOT NULL DEFAULT 0,
     [CreatedAt]         DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [UpdatedAt]         DATETIME2(0) NULL,
@@ -797,7 +755,7 @@ CREATE TABLE [ReviewProductReactions] (
         FOREIGN KEY ([ReviewProductID]) REFERENCES [ReviewProducts]([ReviewID]),
     CONSTRAINT [FK_ReviewProductReactions_Accounts]
         FOREIGN KEY ([AccountID]) REFERENCES [Accounts]([AccountID]),
-    CONSTRAINT [FK_ReviewProductReactions_ReactionTypes]   -- ✅ V3: FK mới
+    CONSTRAINT [FK_ReviewProductReactions_ReactionTypes]  
         FOREIGN KEY ([ReactionTypeID]) REFERENCES [ReactionTypes]([ReactionTypeID]),
     CONSTRAINT [UQ_ReviewProductReactions_AccountReview]
         UNIQUE ([AccountID], [ReviewProductID])
@@ -854,7 +812,6 @@ CREATE INDEX [IX_BlogPostStats_Score]
 ON [BlogPostStats]([LikeCount] DESC, [CommentCount] DESC);
 GO
 
--- Trigger cập nhật LikeCount khi có like/unlike
 CREATE TRIGGER [trg_BlogReaction_UpdateLikeCount]
 ON [ReviewBlogReactions] AFTER INSERT, UPDATE, DELETE
 AS
@@ -884,7 +841,6 @@ BEGIN
 END;
 GO
 
--- Trigger cập nhật CommentCount khi có comment mới/xóa
 CREATE TRIGGER [trg_BlogComment_UpdateCommentCount]
 ON [ReviewBlogs] AFTER INSERT, UPDATE, DELETE
 AS
@@ -910,7 +866,6 @@ BEGIN
 END;
 GO
 
--- Tự động tạo row BlogPostStats khi có BlogPost mới được tạo
 CREATE TRIGGER [trg_BlogPost_InitStats]
 ON [BlogPosts] AFTER INSERT
 AS
@@ -938,20 +893,20 @@ CREATE TABLE [Wallets] (
     CONSTRAINT [FK_Wallets_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [Accounts]([AccountID])
 );
 GO
-
+     
 CREATE TABLE [WalletTransactions] (
     [WalletTransactionID] INT IDENTITY(1,1) PRIMARY KEY,
     [WalletID]            INT NOT NULL,
     [AccountID]           INT NOT NULL,
     [RelatedOrderID]      INT NULL,
     [TxnType]             VARCHAR(20) NOT NULL CHECK ([TxnType] IN ('TopUp', 'Payment', 'Refund')),
-    [Direction]           CHAR(2) NOT NULL CHECK ([Direction] IN ('CR', 'DR')),
+    [Direction]           CHAR(2) NOT NULL CHECK ([Direction] IN ('CR', 'DR')), 
     [Amount]              DECIMAL(12,0) NOT NULL CHECK ([Amount] > 0),
     [BalanceBefore]       DECIMAL(12,0) NOT NULL,
     [BalanceAfter]        DECIMAL(12,0) NOT NULL,
-    [Method]              VARCHAR(10) NOT NULL CHECK ([Method] IN ('Bank', 'EWallet', 'Cash', 'Wallet')),
-    [ExternalRef]         VARCHAR(100) NULL,
-    [IdempotencyKey]      VARCHAR(100) NULL,
+    [Method]              VARCHAR(15) NOT NULL CHECK ([Method] IN ('BankTransfer', 'Internal')),
+    [ExternalRef]         VARCHAR(100) NULL, 
+    [IdempotencyKey]      VARCHAR(100) NULL, 
     [Status]              VARCHAR(15) NOT NULL DEFAULT 'Pending'
         CHECK ([Status] IN ('Pending', 'Completed', 'Failed', 'Cancelled')),
     [Reason]              NVARCHAR(255) NULL,
@@ -959,7 +914,7 @@ CREATE TABLE [WalletTransactions] (
     [CreatedAt]           DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [CompletedAt]         DATETIME2(0) NULL,
     CONSTRAINT [FK_WalletTransactions_Wallets]  FOREIGN KEY ([WalletID])       REFERENCES [Wallets]([WalletID]),
-    CONSTRAINT [FK_WalletTransactions_Orders]   FOREIGN KEY ([RelatedOrderID]) REFERENCES [Orders]([OrderID]),
+    CONSTRAINT [FK_WalletTransactions_Orders]    FOREIGN KEY ([RelatedOrderID]) REFERENCES [Orders]([OrderID]),
     CONSTRAINT [FK_WalletTransactions_Accounts] FOREIGN KEY ([AccountID])      REFERENCES [Accounts]([AccountID]),
     CONSTRAINT [CK_WalletTransactions_BalanceAfter] CHECK (
         ([Direction] = 'CR' AND [BalanceAfter] = [BalanceBefore] + [Amount]) OR
@@ -982,7 +937,7 @@ CREATE TABLE [PaymentHistory] (
     [PaymentStatus]       VARCHAR(20) NOT NULL
         CHECK ([PaymentStatus] IN ('PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED')),
     [PaymentMethod]       VARCHAR(20) NOT NULL
-        CHECK ([PaymentMethod] IN ('BANK_TRANSFER', 'SHIP_CODE', 'SE_PAY', 'WALLET')),
+        CHECK ([PaymentMethod] IN ('SE_PAY', 'WALLET', 'BANK_TRANSFER', 'SHIP_CODE')), 
     [TransactionCode]     VARCHAR(100) NULL,
     [Amount]              DECIMAL(12,0) NOT NULL CHECK ([Amount] >= 0),
     [CreatedAt]           DATETIME2(0) NOT NULL DEFAULT GETDATE(),
@@ -990,29 +945,28 @@ CREATE TABLE [PaymentHistory] (
     CONSTRAINT [FK_PaymentHistory_WalletTransactions]  FOREIGN KEY ([WalletTransactionID]) REFERENCES [WalletTransactions]([WalletTransactionID]),
     CONSTRAINT [FK_PaymentHistory_Accounts]            FOREIGN KEY ([AccountID])           REFERENCES [Accounts]([AccountID])
 );
-GO
 
 /* =============================================
    8.1. PAYMENT GATEWAY TRANSACTIONS
 ============================================= */
-CREATE TABLE [dbo].[PaymentGatewayTransactions] (
+CREATE TABLE [PaymentGatewayTransactions] (
     [PaymentGatewayTxnID] BIGINT        IDENTITY(1,1) NOT NULL,
     [OrderID]             INT           NOT NULL,
     [PaymentHistoryID]    INT           NULL,
-    [Provider]            VARCHAR(20)   NOT NULL,
+    [Provider]            VARCHAR(20)   NOT NULL CHECK ([Provider] IN ('SE_PAY')),
     [RequestID]           VARCHAR(100)  NULL UNIQUE,
     [TransactionNo]       VARCHAR(100)  NULL,
     [Amount]              DECIMAL(12,0) NOT NULL CHECK ([Amount] >= 0),
     [ResponseCode]        VARCHAR(10)   NULL,
     [ResponseMessage]     NVARCHAR(500) NULL,
-    [Status]              VARCHAR(20)   NOT NULL DEFAULT 'PENDING'
-        CONSTRAINT [CK_PayGwTxn_Status] CHECK ([Status] IN ('PENDING', 'PAID', 'FAILED', 'EXPIRED', 'CANCELLED')),
-    [RawCallback]         NVARCHAR(MAX) NULL,
+    [Status]              VARCHAR(20)   NOT NULL DEFAULT 'Pending'
+        CHECK ([Status] IN ('Pending', 'Paid', 'Failed', 'Expired', 'Cancelled')),
+    [RawCallback]         NVARCHAR(MAX) NULL, 
     [RetryCount]          INT           NOT NULL DEFAULT 0,
     [CreatedAt]           DATETIME2(0)  NOT NULL DEFAULT GETDATE(),
     [UpdatedAt]           DATETIME2(0)  NULL,
     CONSTRAINT [PK_PaymentGatewayTransactions] PRIMARY KEY ([PaymentGatewayTxnID]),
-    CONSTRAINT [FK_PayGwTxn_Orders]         FOREIGN KEY ([OrderID])          REFERENCES [Orders]([OrderID]),
+    CONSTRAINT [FK_PayGwTxn_Orders]          FOREIGN KEY ([OrderID])          REFERENCES [Orders]([OrderID]),
     CONSTRAINT [FK_PayGwTxn_PaymentHistory] FOREIGN KEY ([PaymentHistoryID]) REFERENCES [PaymentHistory]([PaymentHistoryID])
 );
 GO
@@ -1030,20 +984,6 @@ CREATE TABLE [OrderRefundReasons] (
 );
 GO
 
-/*
-   ✅ V3 FIX — Manage Refund:
-   
-   #1 ComplaintImageURL xoá khỏi OrderRefunds.
-      Thay bằng bảng RefundImages riêng (hỗ trợ nhiều ảnh).
-   
-   #2 Thêm filtered unique index UQ_OrderRefunds_OneActivePerOrder:
-      Mỗi order chỉ có 1 refund đang active (Requested/Approved)
-      tại một thời điểm. Rejected/Cancelled/Completed được phép nhiều.
-   
-   #3 Trường ApprovedAmount vẫn giữ CHECK >= 0.
-      Việc validate <= Orders.TotalAmount được thực thi bởi trigger
-      TR_OrderRefunds_ValidateAmount bên dưới.
-*/
 CREATE TABLE [OrderRefunds] (
     [RefundID]            INT IDENTITY(1,1) PRIMARY KEY,
     [OrderID]             INT NOT NULL,
@@ -1068,19 +1008,11 @@ CREATE TABLE [OrderRefunds] (
 );
 GO
 
-/*
-   ✅ V3 FIX #2: Filtered unique index — chỉ có 1 refund đang active per order.
-   Rejected / Cancelled / Completed không bị ràng buộc (partial refund workflow ok).
-*/
 CREATE UNIQUE NONCLUSTERED INDEX [UQ_OrderRefunds_OneActivePerOrder]
 ON [OrderRefunds] ([OrderID])
 WHERE [RefundStatus] IN ('Requested', 'Approved');
 GO
 
-/*
-   ✅ V3 FIX #3 + #4: Trigger validate ApprovedAmount <= Orders.TotalAmount.
-   CHECK constraint thuần không thể cross-table nên dùng AFTER INSERT, UPDATE.
-*/
 CREATE TRIGGER [TR_OrderRefunds_ValidateAmount]
 ON [OrderRefunds]
 AFTER INSERT, UPDATE
@@ -1096,7 +1028,7 @@ BEGIN
     )
     BEGIN
         RAISERROR (
-            'ApprovedAmount không được vượt quá TotalAmount của đơn hàng.',
+            'The approved amount must not exceed the total amount of the order.',
             16, 1
         );
         ROLLBACK TRANSACTION;
@@ -1105,11 +1037,6 @@ BEGIN
 END;
 GO
 
-/*
-   ✅ V3 FIX #1: Bảng RefundImages — thay thế ComplaintImageURL (1 URL) trong OrderRefunds.
-   Mỗi refund có thể đính kèm nhiều ảnh bằng chứng.
-   Giới hạn tối đa 5 ảnh per refund được enforce bởi trigger bên dưới.
-*/
 CREATE TABLE [RefundImages] (
     [RefundImageID] INT IDENTITY(1,1) PRIMARY KEY,
     [RefundID]      INT NOT NULL,
@@ -1125,7 +1052,6 @@ ON [RefundImages] ([RefundID])
 WHERE [IsDeleted] = 0;
 GO
 
-/* Trigger: giới hạn tối đa 5 ảnh bằng chứng per refund (không tính đã xoá) */
 CREATE TRIGGER [TR_RefundImages_MaxImages]
 ON [RefundImages]
 AFTER INSERT
@@ -1145,7 +1071,7 @@ BEGIN
     )
     BEGIN
         RAISERROR (
-            'Mỗi refund chỉ được đính kèm tối đa 5 ảnh bằng chứng.',
+            'Each refund allows a maximum of 5 evidence photos.',
             16, 1
         );
         ROLLBACK TRANSACTION;
@@ -1220,110 +1146,199 @@ GO
 /* =============================================
    9. NOTIFICATION & CHAT & INTERACTIONS
 ============================================= */
-CREATE TABLE [Notification].[Templates] (
-    [TemplateID]      SMALLINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    [TemplateCode]    VARCHAR(50) NOT NULL UNIQUE,
-    [TitleTemplate]   NVARCHAR(255) NOT NULL,
-    [MessageTemplate] NVARCHAR(500) NOT NULL,
-    [IsActive]        BIT NOT NULL DEFAULT 1,
-    [IsDeleted]       BIT NOT NULL DEFAULT 0,
-    [CreatedAt]       DATETIME2(0) NOT NULL DEFAULT GETDATE(),
-    [UpdatedAt]       DATETIME2(0) NULL
+CREATE TABLE [dbo].[CustomerChildren] (
+    [ChildID]   INT IDENTITY(1,1) PRIMARY KEY,
+    [AccountID] INT NOT NULL,
+    [SexID]     TINYINT NULL,
+    [FullName]  NVARCHAR(100) NOT NULL,
+    [NickName]  NVARCHAR(50) NULL,
+    [DOB]       DATE NOT NULL,
+    [IsDeleted] BIT NOT NULL DEFAULT 0,
+    [CreatedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    [UpdatedAt] DATETIME2(0) NULL,
+    CONSTRAINT [FK_CustomerChildren_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [dbo].[Accounts]([AccountID]),
+    CONSTRAINT [FK_CustomerChildren_Sexes]    FOREIGN KEY ([SexID])     REFERENCES [dbo].[Sexes]([SexID]),
+    CONSTRAINT [CK_CustomerChildren_DOB]      CHECK ([DOB] <= CAST(GETDATE() AS DATE))
 );
+GO
+
+CREATE NONCLUSTERED INDEX [IX_CustomerChildren_DOB] 
+ON [dbo].[CustomerChildren]([DOB]) 
+WHERE [IsDeleted] = 0;
+GO
+
+CREATE TABLE [Notification].[Templates] (
+    [TemplateID]      SMALLINT IDENTITY(1,1) NOT NULL,
+    [TemplateCode]    VARCHAR(50)            NOT NULL,
+    [UsageScope]      VARCHAR(10)            NOT NULL DEFAULT 'ADMIN',
+    [TitleTemplate]   NVARCHAR(255)          NOT NULL,
+    [MessageTemplate] NVARCHAR(500)          NOT NULL,
+    [IsActive]        BIT                    NOT NULL DEFAULT 1,
+    [IsDeleted]       BIT                    NOT NULL DEFAULT 0,
+    [CreatedAt]       DATETIME2(0)           NOT NULL DEFAULT GETDATE(),
+    [UpdatedAt]       DATETIME2(0)           NULL,
+    CONSTRAINT [PK_Templates]              PRIMARY KEY ([TemplateID]),
+    CONSTRAINT [UQ_Templates_TemplateCode] UNIQUE ([TemplateCode]),
+    CONSTRAINT [CK_Templates_UsageScope]   CHECK ([UsageScope] IN ('SYSTEM', 'ADMIN')),
+    CONSTRAINT [CK_Templates_SystemAlwaysActive] CHECK ([UsageScope] <> 'SYSTEM' OR [IsActive] = 1),
+    CONSTRAINT [CK_Templates_SystemNotDeleted]   CHECK ([UsageScope] <> 'SYSTEM' OR [IsDeleted] = 0)
+);
+GO
+
+CREATE TABLE [Notification].[UserPreferences] (
+    [PreferenceID] INT IDENTITY(1,1) PRIMARY KEY,
+    [AccountID]    INT NOT NULL UNIQUE,
+    [EmailOptIn]   BIT NOT NULL DEFAULT 1, 
+    [WebPushOptIn] BIT NOT NULL DEFAULT 0, 
+    [OrderUpdates] BIT NOT NULL DEFAULT 1, 
+    [Promotions]   BIT NOT NULL DEFAULT 1, 
+    [StockAlerts]  BIT NOT NULL DEFAULT 1, 
+    [BlogAlerts]   BIT NOT NULL DEFAULT 1,
+    [UpdatedAt]    DATETIME2(0) NULL,
+    CONSTRAINT [FK_UserPreferences_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [dbo].[Accounts]([AccountID])
+);
+GO
+
+CREATE TRIGGER [TR_Accounts_InitPreferences]
+ON [dbo].[Accounts]
+AFTER INSERT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    INSERT INTO [Notification].[UserPreferences] ([AccountID])
+    SELECT [AccountID] FROM inserted;
+END;
 GO
 
 CREATE TABLE [Notification].[Campaigns] (
-    [CampaignID]         INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    [CampaignName]       NVARCHAR(255) NOT NULL,
-    [TemplateCode]       VARCHAR(50) NULL,
-    [TitleOverride]      NVARCHAR(255) NULL,
-    [MessageOverride]    NVARCHAR(500) NULL,
-    [SourceType]         VARCHAR(10) NOT NULL DEFAULT 'ADMIN'
-        CONSTRAINT [CK_Campaigns_SourceType] CHECK ([SourceType] IN ('ADMIN', 'SYSTEM')),
-    [TargetType]         VARCHAR(10) NOT NULL DEFAULT 'ALL'
-        CONSTRAINT [CK_Campaigns_TargetType] CHECK ([TargetType] IN ('ALL', 'SEGMENT', 'INDIVIDUAL', 'ROLE')),
-    [Status]             VARCHAR(15) NOT NULL DEFAULT 'Draft'
-        CONSTRAINT [CK_Campaigns_Status] CHECK ([Status] IN ('Draft', 'Scheduled', 'Sending', 'Sent', 'Cancelled')),
-    [ScheduledAt]        DATETIME2(0) NULL,
-    [EventKey]           VARCHAR(100) NULL,
-    [ImageUrl]           NVARCHAR(500) NULL,
-    [ActionType]         NVARCHAR(20) NULL,
-    [ActionTarget]       NVARCHAR(500) NULL,
-    [IsDeleted]          BIT NOT NULL DEFAULT 0,
-    [CreatedByAccountID] INT NOT NULL,
-    [CreatedAt]          DATETIME2(0) NOT NULL DEFAULT GETDATE(),
-    [UpdatedAt]          DATETIME2(0) NULL,
+    [CampaignID]         INT IDENTITY(1,1) NOT NULL,
+    [CampaignName]       NVARCHAR(255)     NOT NULL,
+    [TemplateCode]       VARCHAR(50)       NULL,
+    [TitleOverride]      NVARCHAR(255)     NULL,
+    [MessageOverride]    NVARCHAR(500)     NULL,
+    [SourceType]         VARCHAR(10)       NOT NULL DEFAULT 'ADMIN',
+    [TargetType]         VARCHAR(10)       NOT NULL DEFAULT 'ALL',
+    [ReferenceType]      VARCHAR(20)       NULL,     
+    [ReferenceID]        INT               NULL,
+    [Status]             VARCHAR(15)       NOT NULL DEFAULT 'Draft',
+    [ScheduledAt]        DATETIME2(0)      NULL,
+    [EventKey]           VARCHAR(100)      NULL,
+    [ImageUrl]           NVARCHAR(500)     NULL,
+    [ActionType]         NVARCHAR(20)      NULL,
+    [ActionTarget]       NVARCHAR(500)     NULL,
+    [IsDeleted]          BIT               NOT NULL DEFAULT 0,
+    [CreatedByAccountID] INT               NULL,    
+    [CreatedAt]          DATETIME2(0)      NOT NULL DEFAULT GETDATE(),
+    [UpdatedAt]          DATETIME2(0)      NULL,
+    CONSTRAINT [PK_Campaigns] PRIMARY KEY ([CampaignID]),
+    CONSTRAINT [CK_Campaigns_SourceType] CHECK ([SourceType] IN ('ADMIN', 'SYSTEM')),
+    CONSTRAINT [CK_Campaigns_TargetType] CHECK ([TargetType] IN ('ALL', 'INDIVIDUAL', 'ROLE')),
+    CONSTRAINT [CK_Campaigns_ReferenceType] CHECK ([ReferenceType] IN ('VOUCHER', 'PRODUCT', 'BLOG', 'SALE', 'OTHER')),
+    CONSTRAINT [CK_Campaigns_Status] CHECK ([Status] IN ('Draft', 'Scheduled', 'Sending', 'Sent', 'Cancelled', 'Failed')),
+    CONSTRAINT [CK_Campaigns_AdminRequiresCreator] CHECK ([SourceType] = 'SYSTEM' OR [CreatedByAccountID] IS NOT NULL),
+    CONSTRAINT [CK_Campaigns_ScheduledRequiresTime] CHECK ([Status] <> 'Scheduled' OR [ScheduledAt] IS NOT NULL),
+    CONSTRAINT [CK_Campaigns_MustHaveContent] CHECK (
+        [TemplateCode] IS NOT NULL OR ([TitleOverride] IS NOT NULL AND [MessageOverride] IS NOT NULL)
+    ),
+    CONSTRAINT [CK_Campaigns_ReferenceConsistency] CHECK (
+        ([ReferenceType] IS NULL AND [ReferenceID] IS NULL) OR ([ReferenceType] IS NOT NULL AND [ReferenceID] IS NOT NULL)
+    ),
     CONSTRAINT [FK_Campaigns_Templates] FOREIGN KEY ([TemplateCode])       REFERENCES [Notification].[Templates]([TemplateCode]),
-    CONSTRAINT [FK_Campaigns_Accounts]  FOREIGN KEY ([CreatedByAccountID]) REFERENCES [Accounts]([AccountID])
+    CONSTRAINT [FK_Campaigns_Accounts]  FOREIGN KEY ([CreatedByAccountID]) REFERENCES [dbo].[Accounts]([AccountID])
 );
+GO
+ 
+CREATE UNIQUE INDEX [UQ_Campaigns_EventKey_Active] ON [Notification].[Campaigns] ([EventKey]) WHERE [EventKey] IS NOT NULL AND [IsDeleted] = 0;
+CREATE INDEX [IX_Campaigns_Status_ScheduledAt]     ON [Notification].[Campaigns] ([Status], [ScheduledAt]) WHERE [IsDeleted] = 0 AND [Status] IN ('Scheduled', 'Sending');
 GO
 
 CREATE TABLE [Notification].[CampaignStats] (
-    [StatID]       INT IDENTITY(1,1) PRIMARY KEY,
-    [CampaignID]   INT NOT NULL,
-    [TotalSent]    INT NOT NULL DEFAULT 0,
-    [TotalRead]    INT NOT NULL DEFAULT 0,
-    [TotalClicked] INT NOT NULL DEFAULT 0,
-    [ComputedAt]   DATETIME2(0) NOT NULL DEFAULT GETDATE(),
-    CONSTRAINT [FK_CampaignStats_Campaigns]  FOREIGN KEY ([CampaignID]) REFERENCES [Notification].[Campaigns]([CampaignID]),
-    CONSTRAINT [UQ_CampaignStats_CampaignID] UNIQUE ([CampaignID])
+    [StatID]       INT IDENTITY(1,1) NOT NULL,
+    [CampaignID]   INT               NOT NULL,
+    [TotalSent]    INT               NOT NULL DEFAULT 0,  
+    [TotalRead]    INT               NOT NULL DEFAULT 0, 
+    [TotalClicked] INT               NOT NULL DEFAULT 0,  
+    [ComputedAt]   DATETIME2(0)      NOT NULL DEFAULT GETDATE(),
+    CONSTRAINT [PK_CampaignStats]                 PRIMARY KEY ([StatID]),
+    CONSTRAINT [UQ_CampaignStats_CampaignID]      UNIQUE ([CampaignID]),
+    CONSTRAINT [FK_CampaignStats_Campaigns]       FOREIGN KEY ([CampaignID]) REFERENCES [Notification].[Campaigns]([CampaignID]),
+    CONSTRAINT [CK_CampaignStats_NonNegative]     CHECK ([TotalSent] >= 0 AND [TotalRead] >= 0 AND [TotalClicked] >= 0),
+    CONSTRAINT [CK_CampaignStats_ReadNotExceedSent] CHECK ([TotalRead] <= [TotalSent]),
+    CONSTRAINT [CK_CampaignStats_ClickedNotExceedSent] CHECK ([TotalClicked] <= [TotalSent])
 );
 GO
 
 CREATE TABLE [Notification].[CampaignTargets] (
-    [CampaignTargetID] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    [CampaignID]       INT NOT NULL,
-    [TargetType]       VARCHAR(20) NOT NULL DEFAULT 'ACCOUNT_ID'
-        CONSTRAINT [CK_CampaignTargets_TargetType]
-            CHECK ([TargetType] IN ('ACCOUNT_ID', 'ROLE_ID', 'SEGMENT')),
-    [TargetValue]      VARCHAR(200) NOT NULL,
-    CONSTRAINT [FK_CampaignTargets_Campaigns] FOREIGN KEY ([CampaignID]) REFERENCES [Notification].[Campaigns]([CampaignID])
+    [CampaignTargetID] INT IDENTITY(1,1) NOT NULL,
+    [CampaignID]       INT               NOT NULL,
+    [TargetType]       VARCHAR(20)       NOT NULL DEFAULT 'ACCOUNT_ID',
+    [TargetValue]      VARCHAR(200)      NOT NULL,
+    CONSTRAINT [PK_CampaignTargets]             PRIMARY KEY ([CampaignTargetID]),
+    CONSTRAINT [CK_CampaignTargets_TargetType]  CHECK ([TargetType] IN ('ACCOUNT_ID', 'ROLE_ID')),
+    CONSTRAINT [UQ_CampaignTargets_NoDuplicate] UNIQUE ([CampaignID], [TargetType], [TargetValue]),
+    CONSTRAINT [FK_CampaignTargets_Campaigns]   FOREIGN KEY ([CampaignID]) REFERENCES [Notification].[Campaigns]([CampaignID])
 );
 GO
 
 CREATE TABLE [Notification].[Deliveries] (
     [DeliveryID]       BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    [AccountID]        INT NOT NULL,
-    [CreatedByJobID]   INT NULL,
-    [CampaignID]       INT NULL,
-    [TemplateCode]     VARCHAR(50) NULL,
-    [RecipientType]    VARCHAR(15) NOT NULL DEFAULT 'CUSTOMER'
-        CONSTRAINT [CK_Deliveries_RecipientType]
-            CHECK ([RecipientType] IN ('CUSTOMER', 'ADMIN', 'STAFF', 'MERCHANDISE')),
-    [ImageUrl]         NVARCHAR(500) NULL,
-    [NotificationType] VARCHAR(20) NOT NULL DEFAULT 'SYSTEM'
-        CONSTRAINT [CK_Deliveries_NotificationType]
-            CHECK ([NotificationType] IN ('ORDER', 'PROMOTION', 'SYSTEM', 'BLOG', 'STOCK')),
-    [ActionType]       NVARCHAR(20) NULL,
-    [ActionTarget]     NVARCHAR(500) NULL,
-    [Title]            NVARCHAR(255) NOT NULL,
-    [Message]          NVARCHAR(500) NOT NULL,
-    [Payload]          NVARCHAR(1000) NOT NULL DEFAULT '{}',
-    [Status]           VARCHAR(10) NOT NULL DEFAULT 'Unread'
-        CONSTRAINT [CK_Deliveries_Status]
-            CHECK ([Status] IN ('Unread', 'Read', 'Archived', 'Deleted')),
-    [ReadAt]           DATETIME2(0) NULL,
-    [CreatedAt]        DATETIME2(0) NOT NULL DEFAULT GETDATE(),
-    [UpdatedAt]        DATETIME2(0) NULL,
-    CONSTRAINT [FK_Deliveries_Accounts]  FOREIGN KEY ([AccountID])      REFERENCES [Accounts]([AccountID]),
+    [AccountID]        INT                  NOT NULL,
+    [CreatedByJobID]   INT                  NULL,
+    [CampaignID]       INT                  NULL,
+    [TemplateCode]     VARCHAR(50)          NULL,
+    [RecipientType]    VARCHAR(15)          NOT NULL DEFAULT 'CUSTOMER'
+        CONSTRAINT [CK_Deliveries_RecipientType] CHECK ([RecipientType] IN ('CUSTOMER', 'ADMIN', 'STAFF')),
+    [Channel]          VARCHAR(20)          NOT NULL DEFAULT 'WEB_BELL'
+        CONSTRAINT [CK_Deliveries_Channel] CHECK ([Channel] IN ('WEB_BELL', 'WEB_PUSH', 'EMAIL')),
+    [ImageUrl]         NVARCHAR(500)        NULL,
+    [NotificationType] VARCHAR(20)          NOT NULL DEFAULT 'SYSTEM'
+        CONSTRAINT [CK_Deliveries_NotificationType] CHECK ([NotificationType] IN ('ORDER', 'PROMOTION', 'SYSTEM', 'BLOG', 'STOCK')),
+    [ActionType]       NVARCHAR(20)         NULL,
+    [ActionTarget]     NVARCHAR(500)        NULL,
+    [Title]            NVARCHAR(255)        NOT NULL,
+    [Message]          NVARCHAR(500)        NOT NULL,
+    [Payload]          NVARCHAR(2000)       NOT NULL DEFAULT '{}'
+        CONSTRAINT [CK_Deliveries_PayloadIsJson] CHECK (ISJSON([Payload]) = 1),
+    [Status]           VARCHAR(10)          NOT NULL DEFAULT 'Unread'
+        CONSTRAINT [CK_Deliveries_Status] CHECK ([Status] IN ('Unread', 'Read', 'Archived')),
+    [ReadAt]           DATETIME2(0)         NULL,
+    [EmailStatus]      VARCHAR(15)          NULL
+        CONSTRAINT [CK_Deliveries_EmailStatus] CHECK ([EmailStatus] IN ('Pending', 'Sent', 'Failed')),
+    [PushStatus]       VARCHAR(15)          NULL
+        CONSTRAINT [CK_Deliveries_PushStatus] CHECK ([PushStatus] IN ('Pending', 'Sent', 'Failed')),
+    [IsDeleted]        BIT                  NOT NULL DEFAULT 0,
+    [CreatedAt]        DATETIME2(0)         NOT NULL DEFAULT GETDATE(),
+    [UpdatedAt]        DATETIME2(0)         NULL,
+
+    CONSTRAINT [FK_Deliveries_Accounts]  FOREIGN KEY ([AccountID])      REFERENCES [dbo].[Accounts]([AccountID]),
     CONSTRAINT [FK_Deliveries_Templates] FOREIGN KEY ([TemplateCode])   REFERENCES [Notification].[Templates]([TemplateCode]),
     CONSTRAINT [FK_Deliveries_Campaigns] FOREIGN KEY ([CampaignID])     REFERENCES [Notification].[Campaigns]([CampaignID]),
-    CONSTRAINT [FK_Deliveries_Jobs]      FOREIGN KEY ([CreatedByJobID]) REFERENCES [System].[BackgroundJobs]([JobID])
+    CONSTRAINT [FK_Deliveries_Jobs]      FOREIGN KEY ([CreatedByJobID]) REFERENCES [System].[BackgroundJobs]([JobID]),
+
+    CONSTRAINT [CK_Deliveries_ReadAtConsistency] CHECK ([Status] <> 'Read' OR [ReadAt] IS NOT NULL)
 );
+GO
+ 
+CREATE INDEX [IX_Deliveries_AccountID_Status]    ON [Notification].[Deliveries] ([AccountID], [Status]) INCLUDE ([Title], [Message], [CreatedAt], [CampaignID], [NotificationType], [ImageUrl], [ActionType], [ActionTarget]) WHERE [IsDeleted] = 0;
+CREATE INDEX [IX_Deliveries_AccountID_CreatedAt] ON [Notification].[Deliveries] ([AccountID], [CreatedAt] DESC) WHERE [IsDeleted] = 0;
+CREATE INDEX [IX_Deliveries_PushStatus]          ON [Notification].[Deliveries] ([PushStatus], [CreatedAt]) WHERE [PushStatus] = 'Failed';
 GO
 
 CREATE TABLE [Notification].[DeliveryActions] (
     [ActionID]     BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    [DeliveryID]   BIGINT NOT NULL,
-    [AccountID]    INT NOT NULL,
-    [ActionType]   VARCHAR(10) NOT NULL
-        CONSTRAINT [CK_DeliveryActions_ActionType]
-            CHECK ([ActionType] IN ('Read', 'Click', 'Dismiss')),
-    [ActionTarget] NVARCHAR(500) NULL,
-    [OccurredAt]   DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    [DeliveryID]   BIGINT               NOT NULL,
+    [AccountID]    INT                  NOT NULL,
+    [ActionType]   VARCHAR(10)          NOT NULL
+        CONSTRAINT [CK_DeliveryActions_ActionType] CHECK ([ActionType] IN ('Read', 'Click', 'Dismiss')),
+    [ActionTarget] NVARCHAR(500)        NULL,
+    [OccurredAt]   DATETIME2(0)         NOT NULL DEFAULT GETDATE(),
     CONSTRAINT [FK_DeliveryActions_Deliveries] FOREIGN KEY ([DeliveryID]) REFERENCES [Notification].[Deliveries]([DeliveryID]),
-    CONSTRAINT [FK_DeliveryActions_Accounts]   FOREIGN KEY ([AccountID])  REFERENCES [Accounts]([AccountID])
+    CONSTRAINT [FK_DeliveryActions_Accounts]   FOREIGN KEY ([AccountID])  REFERENCES [dbo].[Accounts]([AccountID])
 );
+GO
+ 
+CREATE UNIQUE INDEX [UQ_DeliveryActions_OneReadPerDelivery] ON [Notification].[DeliveryActions] ([DeliveryID], [AccountID]) WHERE [ActionType] = 'Read';
+CREATE INDEX [IX_DeliveryActions_DeliveryID_OccurredAt]     ON [Notification].[DeliveryActions] ([DeliveryID], [OccurredAt] DESC);
 GO
 
 CREATE TABLE [ChatConversations] (
@@ -1608,7 +1623,6 @@ CREATE NONCLUSTERED INDEX [IX_ReviewBlogReactions_Stats]
 ON [ReviewBlogReactions]([ReviewBlogID], [ReactionTypeID]);
 GO
 
-/* ✅ V3: Index hỗ trợ query thống kê reaction theo loại cho Product reviews */
 CREATE NONCLUSTERED INDEX [IX_ReviewProductReactions_Stats]
 ON [ReviewProductReactions]([ReviewProductID], [ReactionTypeID])
 WHERE [IsDeleted] = 0;
@@ -1627,5 +1641,5 @@ GO
 CREATE NONCLUSTERED INDEX [IX_Deliveries_NotificationType]
 ON [Notification].[Deliveries]([AccountID], [NotificationType], [Status])
 INCLUDE ([Title], [CreatedAt])
-WHERE [Status] <> 'Deleted';
+WHERE [IsDeleted] = 0;
 GO
