@@ -39,6 +39,8 @@ public class ProductRepository : IProductRepository
             .Include(x => x.Brand)
             .Include(x => x.ProductDetail)
             .Include(x => x.ProductImage)
+            .Include(x => x.ProductPromotions)
+                .ThenInclude(pp => pp.Promotion)
             .AsQueryable();
 
         if (superCategoryId.HasValue)
@@ -263,6 +265,8 @@ public class ProductRepository : IProductRepository
             .Include(x => x.ProductDetail)
                 .ThenInclude(d => d!.Origin)
             .Include(x => x.ProductImage)
+            .Include(x => x.ProductPromotions)
+                .ThenInclude(pp => pp.Promotion)
             .Include(x => x.ReviewProducts)
             .Include(x => x.OrderDetails)
                 .ThenInclude(od => od.Order)
