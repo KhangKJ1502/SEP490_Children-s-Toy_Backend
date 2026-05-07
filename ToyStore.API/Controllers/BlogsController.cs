@@ -16,17 +16,18 @@ public class UploadThumbnailRequest
 [Route("api/[controller]")]
 public class BlogsController : ControllerBase
 {
+    private const string BlogThumbnailFolder = "SEP490_Blogs";
     private readonly IBlogService _blogService;
-    private readonly IWebHostEnvironment _environment;
+    private readonly IImageUploadService _imageUploadService;
     private readonly ILogger<BlogsController> _logger;
 
     public BlogsController(
         IBlogService blogService,
-        IWebHostEnvironment environment,
+        IImageUploadService imageUploadService,
         ILogger<BlogsController> logger)
     {
         _blogService = blogService;
-        _environment = environment;
+        _imageUploadService = imageUploadService;
         _logger = logger;
     }
 
@@ -190,19 +191,28 @@ public class BlogsController : ControllerBase
             return BadRequest(new { code = "VALIDATION_ERROR", message = "Only JPG, JPEG, PNG, WEBP, GIF are supported." });
         }
 
-        var uploadsFolder = Path.Combine(_environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot"), "uploads", "blogs");
-        Directory.CreateDirectory(uploadsFolder);
+        await using var stream = file.OpenReadStream();
+        var uploadResult = await _imageUploadService.UploadImageToFolderAsync(
+            stream,
+            file.FileName,
+            BlogThumbnailFolder,
+            cancellationToken);
 
-        var fileName = $"blog-thumb-{DateTime.UtcNow:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}{extension}";
-        var filePath = Path.Combine(uploadsFolder, fileName);
-
-        await using (var stream = new FileStream(filePath, FileMode.Create))
+        if (!uploadResult.IsSuccess)
         {
-            await file.CopyToAsync(stream, cancellationToken);
+            _logger.LogWarning(
+                "Upload thumbnail failed via Cloudinary. Code: {Code}, Message: {Message}",
+                uploadResult.ErrorCode,
+                uploadResult.ErrorMessage);
+
+            return BadRequest(new
+            {
+                code = uploadResult.ErrorCode ?? "UPLOAD_ERROR",
+                message = uploadResult.ErrorMessage ?? "Failed to upload thumbnail."
+            });
         }
 
-        var publicUrl = $"{Request.Scheme}://{Request.Host}/uploads/blogs/{fileName}";
-        _logger.LogInformation("Uploaded blog thumbnail to {Path}", publicUrl);
-        return Ok(new { url = publicUrl });
+        _logger.LogInformation("Uploaded blog thumbnail to Cloudinary: {Url}", uploadResult.Data);
+        return Ok(new { url = uploadResult.Data });
     }
 }

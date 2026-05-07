@@ -14,4 +14,13 @@ public interface IImageUploadService
     /// Uploads an image file and returns its URL.
     /// </summary>
     Task<Result<string>> UploadImageAsync(Stream fileStream, string fileName, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Uploads an image file to the provided folder and returns its URL.
+    /// </summary>
+    Task<Result<string>> UploadImageToFolderAsync(
+        Stream fileStream,
+        string fileName,
+        string folder,
+        CancellationToken cancellationToken = default);
 }
