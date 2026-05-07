@@ -1,6 +1,7 @@
+
 /* =================================================================
-   E-COMMERCE DATABASE SCHEMA (OPTIMIZED FULL VERSION)
-   Platform: SQL Server | Version: 3.0
+   E-COMMERCE DATABASE SCHEMA (OPTIMIZED FULL VERSION + AI MODERATION)
+   Platform: SQL Server | Version: 3.1
 ================================================================= */
 
 USE [master];
@@ -632,8 +633,7 @@ CREATE TABLE [BlogPostStats] (
 GO
 
 /* =============================================
-   7. REVIEWS & REACTIONS
-   
+   7. REVIEWS & REACTIONS (+ AI MODERATION)
 ============================================= */
 CREATE TABLE [ReactionTypes] (
     [ReactionTypeID] INT IDENTITY(1,1) PRIMARY KEY,
@@ -650,7 +650,14 @@ CREATE TABLE [ReviewProducts] (
     [OrderID]   INT NOT NULL,
     [Rating]    TINYINT NOT NULL CHECK ([Rating] BETWEEN 1 AND 5),
     [Comment]   NVARCHAR(500) NULL,
+    [ModerationStatus] VARCHAR(20) NOT NULL DEFAULT 'Pending'
+        CONSTRAINT [CK_ReviewProducts_ModerationStatus] CHECK (
+            [ModerationStatus] IN ('Pending', 'Approved', 'Rejected', 'ManualReview')
+        ),
+    [ModerationReason] NVARCHAR(500) NULL,
+    [ModeratedAt] DATETIME2(0) NULL,
     [IsDeleted] BIT NOT NULL DEFAULT 0,
+	[IsEdited]  BIT NOT NULL DEFAULT 0,
     [CreatedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [UpdatedAt] DATETIME2(0) NULL,
     CONSTRAINT [UQ_Review_Account_Order_Product] UNIQUE ([AccountID], [OrderID], [ProductID]),
@@ -679,7 +686,7 @@ BEGIN
     )
     BEGIN
         RAISERROR (
-            'Review khÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â´ng hÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£p lÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¡: ProductID khÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â´ng tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“n tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂºÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡i trong OrderDetails cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§a OrderID nÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â y.',
+            'Invalid review: This product was not found in the order details.',
             16, 1
         );
         ROLLBACK TRANSACTION;
@@ -692,6 +699,12 @@ CREATE TABLE [ReviewProductImages] (
     [ReviewProductImageID] INT IDENTITY(1,1) PRIMARY KEY,
     [ReviewProductID]      INT NOT NULL,
     [ImageURL]             VARCHAR(500) NOT NULL,
+    [ModerationStatus] VARCHAR(20) NOT NULL DEFAULT 'Pending'
+        CONSTRAINT [CK_ReviewProductImages_ModerationStatus] CHECK (
+            [ModerationStatus] IN ('Pending', 'Approved', 'Rejected', 'ManualReview')
+        ),
+	[ModerationReason] NVARCHAR(500) NULL,
+    [ModeratedAt] DATETIME2(0) NULL,
     [IsDeleted]            BIT NOT NULL DEFAULT 0,
     [CreatedAt]            DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [UpdatedAt]            DATETIME2(0) NULL,
@@ -719,13 +732,67 @@ BEGIN
     )
     BEGIN
         RAISERROR (
-            'MÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âi review chÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â° ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¹Ã…â€œÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£c ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¹Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­nh kÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨m tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¹Ã…â€œi ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¹Ã…â€œa 3 ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂºÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£nh.',
+            'Each review allows a maximum of 3 photos.',
             16, 1
         );
         ROLLBACK TRANSACTION;
         RETURN;
     END
 END;
+GO
+
+CREATE TABLE [dbo].[ReviewModerationLogs] (
+    [LogID]        INT IDENTITY(1,1) PRIMARY KEY,
+    [TargetType]   VARCHAR(10)    NOT NULL
+        CONSTRAINT [CK_ModerationLogs_TargetType]
+            CHECK ([TargetType] IN ('Text', 'Image')),
+    [ReviewID]     INT            NOT NULL
+        CONSTRAINT [FK_ModerationLogs_ReviewProducts]
+            REFERENCES [dbo].[ReviewProducts]([ReviewID]),
+    [ImageID]      INT            NULL
+        CONSTRAINT [FK_ModerationLogs_ReviewProductImages]
+            REFERENCES [dbo].[ReviewProductImages]([ReviewProductImageID]),
+    [ModeratorType] VARCHAR(10)   NOT NULL
+        CONSTRAINT [CK_ModerationLogs_ModeratorType]
+            CHECK ([ModeratorType] IN ('AI', 'Staff')),
+    [ModeratedBy]  INT            NULL
+        CONSTRAINT [FK_ModerationLogs_Accounts]
+            REFERENCES [dbo].[Accounts]([AccountID]),
+    [Action]       VARCHAR(20)    NOT NULL
+        CONSTRAINT [CK_ModerationLogs_Action]
+            CHECK ([Action] IN ('Approved', 'Rejected', 'ManualReview', 'Overridden')),
+    [AIModelVersion] VARCHAR(100) NULL,
+    [ModerationResult] NVARCHAR(MAX) NULL,
+    [Reason]       NVARCHAR(500)  NULL,
+    [CreatedAt]    DATETIME2(0)   NOT NULL DEFAULT GETDATE(),
+    
+    CONSTRAINT [CK_ModerationLogs_ImageConsistency]
+        CHECK (
+            ([TargetType] = 'Image' AND [ImageID] IS NOT NULL) OR
+            ([TargetType] = 'Text'  AND [ImageID] IS NULL)
+        ),
+    CONSTRAINT [CK_ModerationLogs_StaffConsistency]
+        CHECK (
+            ([ModeratorType] = 'Staff' AND [ModeratedBy] IS NOT NULL) OR
+            ([ModeratorType] = 'AI'    AND [ModeratedBy] IS NULL)
+        )
+);
+GO
+
+CREATE NONCLUSTERED INDEX [IX_ModerationLogs_Review]
+ON [dbo].[ReviewModerationLogs] ([ReviewID], [CreatedAt] DESC)
+INCLUDE ([TargetType], [Action], [ModeratorType]);
+GO
+
+CREATE NONCLUSTERED INDEX [IX_ModerationLogs_ManualReview]
+ON [dbo].[ReviewModerationLogs] ([Action], [CreatedAt] ASC)
+INCLUDE ([ReviewID], [ImageID], [TargetType])
+WHERE [Action] = 'ManualReview';
+GO
+
+CREATE NONCLUSTERED INDEX [IX_ModerationLogs_AIPerformance]
+ON [dbo].[ReviewModerationLogs] ([ModeratorType], [AIModelVersion], [Action])
+WHERE [ModeratorType] = 'AI';
 GO
 
 CREATE TABLE [StaffReviewProductReplies] (
@@ -812,7 +879,6 @@ CREATE INDEX [IX_BlogPostStats_Score]
 ON [BlogPostStats]([LikeCount] DESC, [CommentCount] DESC);
 GO
 
--- Trigger cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂºÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­p nhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂºÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­t LikeCount khi cÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³ like/unlike
 CREATE TRIGGER [trg_BlogReaction_UpdateLikeCount]
 ON [ReviewBlogReactions] AFTER INSERT, UPDATE, DELETE
 AS
@@ -842,7 +908,6 @@ BEGIN
 END;
 GO
 
--- Trigger cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂºÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­p nhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂºÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­t CommentCount khi cÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³ comment mÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Âºi/xÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³a
 CREATE TRIGGER [trg_BlogComment_UpdateCommentCount]
 ON [ReviewBlogs] AFTER INSERT, UPDATE, DELETE
 AS
@@ -868,7 +933,6 @@ BEGIN
 END;
 GO
 
--- TÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â± ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¹Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ng tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂºÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡o row BlogPostStats khi cÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³ BlogPost mÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Âºi ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¹Ã…â€œÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£c tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂºÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡o
 CREATE TRIGGER [trg_BlogPost_InitStats]
 ON [BlogPosts] AFTER INSERT
 AS
@@ -1031,7 +1095,7 @@ BEGIN
     )
     BEGIN
         RAISERROR (
-            'ApprovedAmount khÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â´ng ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¹Ã…â€œÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£c vÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£t quÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ TotalAmount cÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§a ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¹Ã…â€œÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡n hÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ng.',
+            'The approved amount must not exceed the total amount of the order.',
             16, 1
         );
         ROLLBACK TRANSACTION;
@@ -1074,7 +1138,7 @@ BEGIN
     )
     BEGIN
         RAISERROR (
-            'MÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âi refund chÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â° ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¹Ã…â€œÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£c ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¹Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­nh kÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨m tÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¹Ã…â€œi ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¹Ã…â€œa 5 ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂºÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â£nh bÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂºÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â±ng chÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©ng.',
+            'Each refund allows a maximum of 5 evidence photos.',
             16, 1
         );
         ROLLBACK TRANSACTION;
@@ -1152,10 +1216,10 @@ GO
 CREATE TABLE [dbo].[CustomerChildren] (
     [ChildID]   INT IDENTITY(1,1) PRIMARY KEY,
     [AccountID] INT NOT NULL,
+    [SexID]     TINYINT NULL,
     [FullName]  NVARCHAR(100) NOT NULL,
     [NickName]  NVARCHAR(50) NULL,
     [DOB]       DATE NOT NULL,
-    [SexID]     TINYINT NULL,
     [IsDeleted] BIT NOT NULL DEFAULT 0,
     [CreatedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [UpdatedAt] DATETIME2(0) NULL,
@@ -1595,6 +1659,27 @@ GO
 
 CREATE NONCLUSTERED INDEX [IX_Orders_StatusTracking]
 ON [Orders]([OrderCode], [PaymentStatus], [StatusID]);
+GO
+
+/* =============================================
+   10.1. AI MODERATION PERFORMANCE INDEXES
+============================================= */
+CREATE NONCLUSTERED INDEX [IX_ReviewProducts_ModerationPending]
+ON [dbo].[ReviewProducts] ([ModerationStatus], [CreatedAt] ASC)
+INCLUDE ([ReviewID], [AccountID], [ProductID], [Comment])
+WHERE [ModerationStatus] = 'Pending' AND [IsDeleted] = 0;
+GO
+
+CREATE NONCLUSTERED INDEX [IX_ReviewProducts_ManualReview]
+ON [dbo].[ReviewProducts] ([ModerationStatus], [CreatedAt] ASC)
+INCLUDE ([ReviewID], [AccountID], [ProductID])
+WHERE [ModerationStatus] = 'ManualReview' AND [IsDeleted] = 0;
+GO
+
+CREATE NONCLUSTERED INDEX [IX_ReviewProductImages_ModerationPending]
+ON [dbo].[ReviewProductImages] ([ModerationStatus], [CreatedAt] ASC)
+INCLUDE ([ReviewProductImageID], [ReviewProductID], [ImageURL])
+WHERE [ModerationStatus] = 'Pending' AND [IsDeleted] = 0;
 GO
 
 /* =============================================
