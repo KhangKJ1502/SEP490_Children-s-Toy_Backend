@@ -27,6 +27,7 @@ public class TemplatesController : ControllerBase
         [FromQuery] bool sortDesc = false,
         [FromQuery] string? searchTerm = null,
         [FromQuery] bool? isActive = null,
+        [FromQuery] string? usageScope = null,
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null,
         CancellationToken cancellationToken = default)
@@ -38,6 +39,7 @@ public class TemplatesController : ControllerBase
             sortDesc,
             searchTerm,
             isActive,
+            usageScope,
             startDate,
             endDate,
             cancellationToken);
