@@ -19,7 +19,7 @@ public class CampaignSenderWorker : BackgroundService
     public CampaignSenderWorker(IServiceProvider serviceProvider, ILogger<CampaignSenderWorker> logger)
     {
         _serviceProvider = serviceProvider;
-        _logger          = logger;
+        _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -47,9 +47,9 @@ public class CampaignSenderWorker : BackgroundService
     {
         using var scope = _serviceProvider.CreateScope();
 
-        var context         = scope.ServiceProvider.GetRequiredService<SEP490ToyStoreContext>();
+        var context = scope.ServiceProvider.GetRequiredService<SEP490ToyStoreContext>();
         var resolverFactory = scope.ServiceProvider.GetRequiredService<BusinessObjectResolverFactory>();
-        var renderer        = scope.ServiceProvider.GetRequiredService<ITemplateRenderer>();
+        var renderer = scope.ServiceProvider.GetRequiredService<ITemplateRenderer>();
 
         var now = DateTime.UtcNow;
 
@@ -89,7 +89,7 @@ public class CampaignSenderWorker : BackgroundService
             campaign.CampaignId, campaign.CampaignName);
 
         // Mark as Sending immediately to prevent double-processing
-        campaign.Status    = "Sending";
+        campaign.Status = "Sending";
         campaign.UpdatedAt = DateTime.UtcNow;
         await context.SaveChangesAsync(cancellationToken);
 
@@ -113,7 +113,7 @@ public class CampaignSenderWorker : BackgroundService
 
             // Render title and message — TitleOverride / MessageOverride take precedence over template
             var template = campaign.TemplateCodeNavigation;
-            var rawTitle   = !string.IsNullOrWhiteSpace(campaign.TitleOverride)
+            var rawTitle = !string.IsNullOrWhiteSpace(campaign.TitleOverride)
                 ? campaign.TitleOverride
                 : template?.TitleTemplate ?? campaign.CampaignName;
 
@@ -121,7 +121,7 @@ public class CampaignSenderWorker : BackgroundService
                 ? campaign.MessageOverride
                 : template?.MessageTemplate ?? string.Empty;
 
-            var renderedTitle   = renderer.Render(rawTitle,   placeholders);
+            var renderedTitle = renderer.Render(rawTitle, placeholders);
             var renderedMessage = renderer.Render(rawMessage, placeholders);
 
             // Resolve recipient account IDs
@@ -138,19 +138,19 @@ public class CampaignSenderWorker : BackgroundService
                 // Bulk-insert Delivery records
                 var deliveries = recipientIds.Select(accountId => new Delivery
                 {
-                    AccountId        = accountId,
-                    CampaignId       = campaign.CampaignId,
-                    TemplateCode     = campaign.TemplateCode,
-                    RecipientType    = "CUSTOMER",
+                    AccountId = accountId,
+                    CampaignId = campaign.CampaignId,
+                    TemplateCode = campaign.TemplateCode,
+                    RecipientType = "CUSTOMER",
                     NotificationType = "PROMOTION",
-                    ImageUrl         = campaign.ImageUrl,
-                    ActionType       = campaign.ActionType,
-                    ActionTarget     = resolvedActionTarget,
-                    Title            = renderedTitle,
-                    Message          = renderedMessage,
-                    Payload          = "{}",
-                    Status           = "Unread",
-                    CreatedAt        = DateTime.UtcNow
+                    ImageUrl = campaign.ImageUrl,
+                    ActionType = campaign.ActionType,
+                    ActionTarget = resolvedActionTarget,
+                    Title = renderedTitle,
+                    Message = renderedMessage,
+                    Payload = "{}",
+                    Status = "Unread",
+                    CreatedAt = DateTime.UtcNow
                 }).ToList();
 
                 await context.Deliveries.AddRangeAsync(deliveries, cancellationToken);
@@ -162,7 +162,7 @@ public class CampaignSenderWorker : BackgroundService
             }
 
             // Mark Sent and upsert CampaignStat
-            campaign.Status    = "Sent";
+            campaign.Status = "Sent";
             campaign.UpdatedAt = DateTime.UtcNow;
 
             var stat = await context.CampaignStats
@@ -173,11 +173,11 @@ public class CampaignSenderWorker : BackgroundService
             {
                 stat = new CampaignStat
                 {
-                    CampaignId   = campaign.CampaignId,
-                    TotalSent    = recipientIds.Count,
-                    TotalRead    = 0,
+                    CampaignId = campaign.CampaignId,
+                    TotalSent = recipientIds.Count,
+                    TotalRead = 0,
                     TotalClicked = 0,
-                    ComputedAt   = DateTime.UtcNow
+                    ComputedAt = DateTime.UtcNow
                 };
                 await context.CampaignStats.AddAsync(stat, cancellationToken);
             }
@@ -194,7 +194,7 @@ public class CampaignSenderWorker : BackgroundService
             _logger.LogError(ex, "Error sending campaign {CampaignId}", campaign.CampaignId);
 
             // Revert to Scheduled so the next tick can retry
-            campaign.Status    = "Scheduled";
+            campaign.Status = "Scheduled";
             campaign.UpdatedAt = DateTime.UtcNow;
             await context.SaveChangesAsync(cancellationToken);
         }
@@ -218,43 +218,42 @@ public class CampaignSenderWorker : BackgroundService
                     .ToListAsync(cancellationToken);
 
             case "ROLE":
-            {
-                var roleIds = campaign.CampaignTargets
-                    .Where(t => t.TargetType == "ROLE_ID")
-                    .Select(t => t.TargetValue)
-                    .ToHashSet();
+                {
+                    var roleIds = campaign.CampaignTargets
+                        .Where(t => t.TargetType == "ROLE_ID")
+                        .Select(t => t.TargetValue)
+                        .ToHashSet();
 
-                if (roleIds.Count == 0) return [];
+                    if (roleIds.Count == 0) return [];
 
-                return await context.Accounts
-                    .AsNoTracking()
-                    .Where(a => a.IsActive && !a.IsDeleted && roleIds.Contains(a.RoleId.ToString()))
-                    .Select(a => a.AccountId)
-                    .ToListAsync(cancellationToken);
-            }
+                    return await context.Accounts
+                        .AsNoTracking()
+                        .Where(a => a.IsActive && !a.IsDeleted && roleIds.Contains(a.RoleId.ToString()))
+                        .Select(a => a.AccountId)
+                        .ToListAsync(cancellationToken);
+                }
 
             case "INDIVIDUAL":
-            case "SEGMENT":
-            {
-                var accountIdStrings = campaign.CampaignTargets
-                    .Where(t => t.TargetType == "ACCOUNT_ID")
-                    .Select(t => t.TargetValue)
-                    .ToHashSet();
+                {
+                    var accountIdStrings = campaign.CampaignTargets
+                        .Where(t => t.TargetType == "ACCOUNT_ID")
+                        .Select(t => t.TargetValue)
+                        .ToHashSet();
 
-                if (accountIdStrings.Count == 0) return [];
+                    if (accountIdStrings.Count == 0) return [];
 
-                // Parse to int to do an efficient IN query
-                var accountIds = accountIdStrings
-                    .Select(v => int.TryParse(v, out var id) ? id : 0)
-                    .Where(id => id > 0)
-                    .ToList();
+                    // Parse to int to do an efficient IN query
+                    var accountIds = accountIdStrings
+                        .Select(v => int.TryParse(v, out var id) ? id : 0)
+                        .Where(id => id > 0)
+                        .ToList();
 
-                return await context.Accounts
-                    .AsNoTracking()
-                    .Where(a => a.IsActive && !a.IsDeleted && accountIds.Contains(a.AccountId))
-                    .Select(a => a.AccountId)
-                    .ToListAsync(cancellationToken);
-            }
+                    return await context.Accounts
+                        .AsNoTracking()
+                        .Where(a => a.IsActive && !a.IsDeleted && accountIds.Contains(a.AccountId))
+                        .Select(a => a.AccountId)
+                        .ToListAsync(cancellationToken);
+                }
 
             default:
                 return [];

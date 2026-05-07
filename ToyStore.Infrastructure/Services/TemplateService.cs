@@ -39,6 +39,7 @@ public class TemplateService : ITemplateService
         bool sortDesc = false,
         string? searchTerm = null,
         bool? isActive = null,
+        string? usageScope = null,
         DateTime? startDate = null,
         DateTime? endDate = null,
         CancellationToken cancellationToken = default)
@@ -53,6 +54,16 @@ public class TemplateService : ITemplateService
             return Result<PaginatedResponse<TemplateListDto>>.Failure("VALIDATION_ERROR", "Page size must be between 1 and 100.");
         }
 
+        if (!string.IsNullOrWhiteSpace(usageScope))
+        {
+            var normalizedScope = usageScope.Trim().ToUpperInvariant();
+            if (normalizedScope != "SYSTEM" && normalizedScope != "ADMIN")
+            {
+                return Result<PaginatedResponse<TemplateListDto>>.Failure("VALIDATION_ERROR", "Usage scope must be SYSTEM or ADMIN.");
+            }
+            usageScope = normalizedScope;
+        }
+
         var items = await _unitOfWork.Templates.GetPagedAsync(
             pageNumber,
             pageSize,
@@ -60,11 +71,12 @@ public class TemplateService : ITemplateService
             sortDesc,
             searchTerm,
             isActive,
+            usageScope,
             startDate,
             endDate,
             cancellationToken);
 
-        var totalCount = await _unitOfWork.Templates.CountAsync(searchTerm, isActive, startDate, endDate, cancellationToken);
+        var totalCount = await _unitOfWork.Templates.CountAsync(searchTerm, isActive, usageScope, startDate, endDate, cancellationToken);
         var mappedItems = _mapper.Map<List<TemplateListDto>>(items);
 
         var response = new PaginatedResponse<TemplateListDto>(mappedItems, totalCount, pageNumber, pageSize);
@@ -142,6 +154,14 @@ public class TemplateService : ITemplateService
         if (existing == null)
         {
             return Result<TemplateListDto>.NotFound("Template", templateId);
+        }
+
+        // SYSTEM templates are read-only — cannot be modified by admin
+        if (existing.UsageScope == "SYSTEM")
+        {
+            return Result<TemplateListDto>.Failure(
+                "BUSINESS_RULE_VIOLATION",
+                "System templates are read-only and cannot be modified.");
         }
 
         var isUsed = await _unitOfWork.Templates.IsUsedAsync(existing.TemplateCode, cancellationToken);

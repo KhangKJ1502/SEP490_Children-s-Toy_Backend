@@ -5,6 +5,7 @@ using ToyStore.Worker.Workers;
 var builder = Host.CreateApplicationBuilder(args);
 
 // Add Infrastructure layer
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddInfrastructure(builder.Configuration);
 
 // Add Recommendation layer

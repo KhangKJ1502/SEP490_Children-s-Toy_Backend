@@ -5,9 +5,9 @@ namespace ToyStore.Application.Validators.Campaigns;
 
 public class UpdateCampaignValidator : AbstractValidator<UpdateCampaignDto>
 {
-    private static readonly HashSet<string> ValidTargetTypes         = ["ALL", "SEGMENT", "INDIVIDUAL", "ROLE"];
-    private static readonly HashSet<string> ValidCampaignTargetTypes = ["ACCOUNT_ID", "ROLE_ID", "SEGMENT"];
-    private static readonly HashSet<string> ValidReferenceTypes      = ["VOUCHER", "PRODUCT", "BLOG", "SALE"];
+    private static readonly HashSet<string> ValidTargetTypes = ["ALL", "INDIVIDUAL", "ROLE"];
+    private static readonly HashSet<string> ValidCampaignTargetTypes = ["ACCOUNT_ID", "ROLE_ID"];
+    private static readonly HashSet<string> ValidReferenceTypes = ["VOUCHER", "PRODUCT", "BLOG", "SALE", "OTHER"];
 
     public UpdateCampaignValidator()
     {
@@ -46,6 +46,12 @@ public class UpdateCampaignValidator : AbstractValidator<UpdateCampaignDto>
             .MaximumLength(500).WithMessage("Message override must not exceed 500 characters.")
             .When(x => !string.IsNullOrEmpty(x.MessageOverride));
 
+        RuleFor(x => x)
+            .Must(x => !string.IsNullOrWhiteSpace(x.TemplateCode)
+                || (!string.IsNullOrWhiteSpace(x.TitleOverride)
+                    && !string.IsNullOrWhiteSpace(x.MessageOverride)))
+            .WithMessage("Template code is required unless both title and message overrides are provided.");
+
         RuleFor(x => x.ScheduledAt)
             .GreaterThanOrEqualTo(DateTime.UtcNow.AddMinutes(-1))
             .WithMessage("Scheduled time must not be in the past.")
@@ -67,8 +73,8 @@ public class UpdateCampaignValidator : AbstractValidator<UpdateCampaignDto>
 
         RuleFor(x => x.Targets)
             .Must(t => t != null && t.Count > 0)
-            .WithMessage("At least one target is required when target type is SEGMENT, INDIVIDUAL, or ROLE.")
-            .When(x => x.TargetType is "SEGMENT" or "INDIVIDUAL" or "ROLE");
+            .WithMessage("At least one target is required when target type is INDIVIDUAL or ROLE.")
+            .When(x => x.TargetType is "INDIVIDUAL" or "ROLE");
 
         RuleFor(x => x.Targets)
             .Must(t => t == null || t.Count <= 100)

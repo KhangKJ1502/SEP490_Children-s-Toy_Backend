@@ -83,6 +83,22 @@ public class CampaignsController : ControllerBase
     }
 
     /// <summary>
+    /// Lay danh sach nguoi nhan (Deliveries) cua mot Campaign.
+    /// </summary>
+    [HttpGet("{campaignId:int}/deliveries")]
+    public async Task<ActionResult<PaginatedResponse<CampaignDeliveryDto>>> GetCampaignDeliveries(
+        [FromRoute] int campaignId,
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? status = null,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _campaignService.GetCampaignDeliveriesAsync(
+            campaignId, pageNumber, pageSize, status, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
     /// Upload image for campaign content.
     /// </summary>
     [HttpPost("upload-image")]

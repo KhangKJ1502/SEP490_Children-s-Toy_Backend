@@ -24,6 +24,16 @@ public interface ICampaignService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Lay danh sach Delivery (nguoi nhan) theo CampaignID co phan trang.
+    /// </summary>
+    Task<Result<PaginatedResponse<CampaignDeliveryDto>>> GetCampaignDeliveriesAsync(
+        int campaignId,
+        int pageNumber,
+        int pageSize,
+        string? status,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Tao moi Campaign.
     /// </summary>
     Task<Result<CampaignDto>> CreateCampaignAsync(

@@ -6,6 +6,8 @@ public class TemplateListDto
 
     public string TemplateCode { get; set; } = string.Empty;
 
+    public string UsageScope { get; set; } = string.Empty;
+
     public string TitleTemplate { get; set; } = string.Empty;
 
     public string MessageTemplate { get; set; } = string.Empty;
