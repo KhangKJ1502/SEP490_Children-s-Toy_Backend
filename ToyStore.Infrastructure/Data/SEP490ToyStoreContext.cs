@@ -116,6 +116,8 @@ public partial class SEP490ToyStoreContext : DbContext
 
     public virtual DbSet<ReviewProductReaction> ReviewProductReactions { get; set; }
 
+    public virtual DbSet<ReviewModerationLog> ReviewModerationLogs { get; set; }
+
     public virtual DbSet<Role> Roles { get; set; }
 
     public virtual DbSet<Sex> Sexes { get; set; }
@@ -1605,12 +1607,25 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.HasIndex(e => new { e.AccountId, e.OrderId, e.ProductId }, "UQ_Review_Account_Order_Product").IsUnique();
 
+            entity.HasIndex(e => new { e.ModerationStatus, e.CreatedAt }, "IX_ReviewProducts_ModerationPending")
+                .HasFilter("([ModerationStatus]='Pending' AND [IsDeleted]=(0))");
+
+            entity.HasIndex(e => new { e.ModerationStatus, e.CreatedAt }, "IX_ReviewProducts_ManualReview")
+                .HasFilter("([ModerationStatus]='ManualReview' AND [IsDeleted]=(0))");
+
             entity.Property(e => e.ReviewId).HasColumnName("ReviewID");
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
             entity.Property(e => e.Comment).HasMaxLength(500);
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.ModeratedAt).HasPrecision(0);
+            entity.Property(e => e.IsEdited).HasDefaultValue(false);
+            entity.Property(e => e.ModerationReason).HasMaxLength(500);
+            entity.Property(e => e.ModerationStatus)
+                .HasMaxLength(20)
+                .IsUnicode(false)
+                .HasDefaultValue("Pending");
             entity.Property(e => e.OrderId).HasColumnName("OrderID");
             entity.Property(e => e.ProductId).HasColumnName("ProductID");
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
@@ -1637,6 +1652,9 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.HasKey(e => e.ReviewProductImageId).HasName("PK__ReviewPr__013E0F1E09405F43");
 
+            entity.HasIndex(e => new { e.ModerationStatus, e.CreatedAt }, "IX_ReviewProductImages_ModerationPending")
+                .HasFilter("([ModerationStatus]='Pending' AND [IsDeleted]=(0))");
+
             entity.Property(e => e.ReviewProductImageId).HasColumnName("ReviewProductImageID");
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
@@ -1645,6 +1663,12 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasMaxLength(500)
                 .IsUnicode(false)
                 .HasColumnName("ImageURL");
+            entity.Property(e => e.ModeratedAt).HasPrecision(0);
+            entity.Property(e => e.ModerationReason).HasMaxLength(500);
+            entity.Property(e => e.ModerationStatus)
+                .HasMaxLength(20)
+                .IsUnicode(false)
+                .HasDefaultValue("Pending");
             entity.Property(e => e.ReviewProductId).HasColumnName("ReviewProductID");
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
@@ -2257,6 +2281,53 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasForeignKey<UserPreference>(d => d.AccountId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_UserPreferences_Accounts");
+        });
+
+        modelBuilder.Entity<ReviewModerationLog>(entity =>
+        {
+            entity.HasKey(e => e.LogId).HasName("PK__ReviewMo__5E5499A8");
+
+            entity.HasIndex(e => new { e.ReviewId, e.CreatedAt }, "IX_ModerationLogs_Review").IsDescending(false, true);
+
+            entity.HasIndex(e => new { e.Action, e.CreatedAt }, "IX_ModerationLogs_ManualReview")
+                .HasFilter("([Action]='ManualReview')");
+
+            entity.HasIndex(e => new { e.ModeratorType, e.AiModelVersion, e.Action }, "IX_ModerationLogs_AIPerformance")
+                .HasFilter("([ModeratorType]='AI')");
+
+            entity.Property(e => e.LogId).HasColumnName("LogID");
+            entity.Property(e => e.Action)
+                .HasMaxLength(20)
+                .IsUnicode(false);
+            entity.Property(e => e.AiModelVersion)
+                .HasMaxLength(100)
+                .IsUnicode(false)
+                .HasColumnName("AIModelVersion");
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.ImageId).HasColumnName("ImageID");
+            entity.Property(e => e.ModeratorType)
+                .HasMaxLength(10)
+                .IsUnicode(false);
+            entity.Property(e => e.Reason).HasMaxLength(500);
+            entity.Property(e => e.ReviewId).HasColumnName("ReviewID");
+            entity.Property(e => e.TargetType)
+                .HasMaxLength(10)
+                .IsUnicode(false);
+
+            entity.HasOne(d => d.Image).WithMany(p => p.ReviewModerationLogs)
+                .HasForeignKey(d => d.ImageId)
+                .HasConstraintName("FK_ModerationLogs_ReviewProductImages");
+
+            entity.HasOne(d => d.ModeratedByNavigation).WithMany(p => p.ReviewModerationLogs)
+                .HasForeignKey(d => d.ModeratedBy)
+                .HasConstraintName("FK_ModerationLogs_Accounts");
+
+            entity.HasOne(d => d.Review).WithMany(p => p.ReviewModerationLogs)
+                .HasForeignKey(d => d.ReviewId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ModerationLogs_ReviewProducts");
         });
 
         OnModelCreatingPartial(modelBuilder);

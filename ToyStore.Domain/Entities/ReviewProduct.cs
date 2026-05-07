@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ToyStore.Domain.Entities;
@@ -17,7 +17,15 @@ public partial class ReviewProduct
 
     public string? Comment { get; set; }
 
+    public string ModerationStatus { get; set; } = null!;
+
+    public string? ModerationReason { get; set; }
+
+    public DateTime? ModeratedAt { get; set; }
+
     public bool IsDeleted { get; set; }
+
+    public bool IsEdited { get; set; }
 
     public DateTime CreatedAt { get; set; }
 
@@ -34,4 +42,6 @@ public partial class ReviewProduct
     public virtual ICollection<ReviewProductReaction> ReviewProductReactions { get; set; } = new List<ReviewProductReaction>();
 
     public virtual ICollection<StaffReviewProductReply> StaffReviewProductReplies { get; set; } = new List<StaffReviewProductReply>();
+
+    public virtual ICollection<ReviewModerationLog> ReviewModerationLogs { get; set; } = new List<ReviewModerationLog>();
 }

@@ -112,4 +112,6 @@ public partial class Account
     public virtual ICollection<CustomerChild> CustomerChildren { get; set; } = new List<CustomerChild>();
 
     public virtual UserPreference? UserPreference { get; set; }
+
+    public virtual ICollection<ReviewModerationLog> ReviewModerationLogs { get; set; } = new List<ReviewModerationLog>();
 }
