@@ -22,6 +22,7 @@ public class TemplateRepository : ITemplateRepository
         bool sortDesc = false,
         string? searchTerm = null,
         bool? isActive = null,
+        string? usageScope = null,
         DateTime? startDate = null,
         DateTime? endDate = null,
         CancellationToken cancellationToken = default)
@@ -41,6 +42,12 @@ public class TemplateRepository : ITemplateRepository
         if (isActive.HasValue)
         {
             query = query.Where(x => x.IsActive == isActive.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(usageScope))
+        {
+            var normalizedScope = usageScope.Trim().ToUpperInvariant();
+            query = query.Where(x => x.UsageScope == normalizedScope);
         }
 
         if (startDate.HasValue)
@@ -74,8 +81,9 @@ public class TemplateRepository : ITemplateRepository
     }
 
     public Task<int> CountAsync(
-        string? searchTerm = null, 
+        string? searchTerm = null,
         bool? isActive = null,
+        string? usageScope = null,
         DateTime? startDate = null,
         DateTime? endDate = null,
         CancellationToken cancellationToken = default)
@@ -95,6 +103,12 @@ public class TemplateRepository : ITemplateRepository
         if (isActive.HasValue)
         {
             query = query.Where(x => x.IsActive == isActive.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(usageScope))
+        {
+            var normalizedScope = usageScope.Trim().ToUpperInvariant();
+            query = query.Where(x => x.UsageScope == normalizedScope);
         }
 
         if (startDate.HasValue)

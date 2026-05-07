@@ -12,7 +12,7 @@ public class CampaignQueryDto
     public string? SearchTerm { get; set; }
 
     /// <summary>
-    /// Loc theo trang thai: Draft | Active | Completed.
+    /// Loc theo trang thai: Draft | Scheduled | Sending | Sent | Cancelled | Failed.
     /// </summary>
     public string? Status { get; set; }
 

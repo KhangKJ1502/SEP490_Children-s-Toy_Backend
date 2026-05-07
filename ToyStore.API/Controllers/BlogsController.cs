@@ -18,11 +18,16 @@ public class BlogsController : ControllerBase
 {
     private readonly IBlogService _blogService;
     private readonly IWebHostEnvironment _environment;
+    private readonly ILogger<BlogsController> _logger;
 
-    public BlogsController(IBlogService blogService, IWebHostEnvironment environment)
+    public BlogsController(
+        IBlogService blogService,
+        IWebHostEnvironment environment,
+        ILogger<BlogsController> logger)
     {
         _blogService = blogService;
         _environment = environment;
+        _logger = logger;
     }
 
     [HttpGet("search")]
@@ -169,6 +174,7 @@ public class BlogsController : ControllerBase
         var file = request.File;
         if (file == null || file.Length <= 0)
         {
+            _logger.LogWarning("Upload thumbnail failed: empty file.");
             return BadRequest(new { code = "VALIDATION_ERROR", message = "Thumbnail file is required." });
         }
 
@@ -180,6 +186,7 @@ public class BlogsController : ControllerBase
         var extension = Path.GetExtension(file.FileName);
         if (string.IsNullOrWhiteSpace(extension) || !allowedExtensions.Contains(extension))
         {
+            _logger.LogWarning("Upload thumbnail failed: unsupported extension {Extension}.", extension);
             return BadRequest(new { code = "VALIDATION_ERROR", message = "Only JPG, JPEG, PNG, WEBP, GIF are supported." });
         }
 
@@ -195,6 +202,7 @@ public class BlogsController : ControllerBase
         }
 
         var publicUrl = $"{Request.Scheme}://{Request.Host}/uploads/blogs/{fileName}";
+        _logger.LogInformation("Uploaded blog thumbnail to {Path}", publicUrl);
         return Ok(new { url = publicUrl });
     }
 }

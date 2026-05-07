@@ -50,6 +50,7 @@ public class BlogRepository : IBlogRepository
     public Task<BlogPost?> GetByIdAsync(int blogPostId, CancellationToken cancellationToken = default)
     {
         return _context.BlogPosts
+            .Where(x => !x.IsDeleted)
             .Include(x => x.Account)
             .Include(x => x.ApprovedByNavigation)
             .Include(x => x.BlogCategory)
@@ -112,6 +113,7 @@ public class BlogRepository : IBlogRepository
     {
         IQueryable<BlogPost> query = _context.BlogPosts
             .AsNoTracking()
+            .Where(x => !x.IsDeleted)
             .Include(x => x.Account)
             .Include(x => x.ApprovedByNavigation)
             .Include(x => x.BlogCategory)
@@ -124,7 +126,7 @@ public class BlogRepository : IBlogRepository
 
         if (onlyPublished)
         {
-            query = query.Where(x => !x.IsDeleted && x.Status == "Published");
+            query = query.Where(x => x.Status == "Published");
         }
 
         // Admin listing (no owner filter, not public search) only shows workflow states
@@ -143,7 +145,7 @@ public class BlogRepository : IBlogRepository
             }
             else
             {
-                query = query.Where(x => !x.IsDeleted && x.Status.ToLower() == normalizedStatus);
+                query = query.Where(x => x.Status.ToLower() == normalizedStatus);
             }
         }
 
