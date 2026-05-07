@@ -8,6 +8,7 @@ using ToyStore.Application.DTOs.Accounts;
 using ToyStore.Application.DTOs.Addresses;
 using ToyStore.Application.DTOs.Auth;
 using ToyStore.Application.DTOs.Brands;
+using ToyStore.Application.DTOs.Blogs;
 using ToyStore.Application.DTOs.Campaigns;
 using ToyStore.Application.DTOs.Profiles;
 using ToyStore.Application.DTOs.Templates;
@@ -18,6 +19,7 @@ using ToyStore.Application.Validators.Accounts;
 using ToyStore.Application.Validators.Addresses;
 using ToyStore.Application.Validators.Auth;
 using ToyStore.Application.Validators.Brands;
+using ToyStore.Application.Validators.Blogs;
 using ToyStore.Application.Validators.Campaigns;
 using ToyStore.Application.Validators.Profiles;
 using ToyStore.Application.Validators.Templates;
@@ -67,6 +69,11 @@ public static class DependencyInjection
 
         services.AddScoped<IValidator<CreateBrandDto>, CreateBrandValidator>();
         services.AddScoped<IValidator<UpdateBrandDto>, UpdateBrandValidator>();
+        services.AddScoped<IValidator<CreateBlogDto>, CreateBlogValidator>();
+        services.AddScoped<IValidator<UpdateBlogDto>, UpdateBlogValidator>();
+        services.AddScoped<IValidator<SubmitBlogDto>, SubmitBlogValidator>();
+        services.AddScoped<IValidator<ApproveBlogDto>, ApproveBlogValidator>();
+        services.AddScoped<IValidator<UpdateBlogFeaturedDto>, UpdateBlogFeaturedValidator>();
 
 
         services.AddScoped<IValidator<CreateAccountDto>, CreateAccountValidator>();
