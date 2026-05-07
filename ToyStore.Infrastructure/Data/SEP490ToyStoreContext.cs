@@ -14,6 +14,10 @@ public partial class SEP490ToyStoreContext : DbContext
 
     public virtual DbSet<Account> Accounts { get; set; }
 
+    public virtual DbSet<CustomerChild> CustomerChildren { get; set; }
+
+    public virtual DbSet<UserPreference> UserPreferences { get; set; }
+
     public virtual DbSet<Address> Addresses { get; set; }
 
     public virtual DbSet<Age> Ages { get; set; }
@@ -25,6 +29,7 @@ public partial class SEP490ToyStoreContext : DbContext
     public virtual DbSet<BlogCategory> BlogCategories { get; set; }
 
     public virtual DbSet<BlogPost> BlogPosts { get; set; }
+    
     public virtual DbSet<BlogPostStat> BlogPostStats { get; set; }
 
     public virtual DbSet<Brand> Brands { get; set; }
@@ -64,6 +69,8 @@ public partial class SEP490ToyStoreContext : DbContext
     public virtual DbSet<OrderDetail> OrderDetails { get; set; }
 
     public virtual DbSet<OrderRefund> OrderRefunds { get; set; }
+
+    public virtual DbSet<RefundImage> RefundImages { get; set; }
 
     public virtual DbSet<OrderRefundReason> OrderRefundReasons { get; set; }
 
@@ -149,6 +156,8 @@ public partial class SEP490ToyStoreContext : DbContext
     {
         modelBuilder.Entity<Account>(entity =>
         {
+            entity.ToTable("Accounts", tb => tb.HasTrigger("TR_Accounts_InitPreferences"));
+
             entity.HasKey(e => e.AccountId).HasName("PK__Accounts__349DA58684B564C1");
 
             entity.HasIndex(e => e.EmployeeCode, "IX_Accounts_EmployeeCode")
@@ -161,6 +170,8 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
             entity.Property(e => e.AccountName).HasMaxLength(100);
+            entity.Property(e => e.Dob).HasColumnName("DOB");
+            entity.Property(e => e.SexId).HasColumnName("SexID");
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
@@ -191,6 +202,10 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasForeignKey(d => d.RoleId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Accounts_Roles");
+
+            entity.HasOne(d => d.Sex).WithMany(p => p.Accounts)
+                .HasForeignKey(d => d.SexId)
+                .HasConstraintName("FK_Accounts_Sexes");
         });
 
         modelBuilder.Entity<Address>(entity =>
@@ -427,7 +442,6 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.HasOne(d => d.CreatedByAccount).WithMany(p => p.Campaigns)
                 .HasForeignKey(d => d.CreatedByAccountId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Campaigns_Accounts");
 
             entity.HasOne(d => d.TemplateCodeNavigation).WithMany(p => p.Campaigns)
@@ -627,8 +641,12 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasMaxLength(20)
                 .IsUnicode(false)
                 .HasDefaultValue("SYSTEM");
+            entity.Property(e => e.Channel)
+                .HasMaxLength(20)
+                .IsUnicode(false)
+                .HasDefaultValue("WEB_BELL");
             entity.Property(e => e.Payload)
-                .HasMaxLength(1000)
+                .HasMaxLength(2000)
                 .HasDefaultValue("{}");
             entity.Property(e => e.ReadAt).HasPrecision(0);
             entity.Property(e => e.RecipientType)
@@ -639,6 +657,12 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasMaxLength(10)
                 .IsUnicode(false)
                 .HasDefaultValue("Unread");
+            entity.Property(e => e.EmailStatus)
+                .HasMaxLength(15)
+                .IsUnicode(false);
+            entity.Property(e => e.PushStatus)
+                .HasMaxLength(15)
+                .IsUnicode(false);
             entity.Property(e => e.TemplateCode)
                 .HasMaxLength(50)
                 .IsUnicode(false);
@@ -875,7 +899,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.PaymentMethod)
                 .HasMaxLength(20)
                 .IsUnicode(false)
-                .HasDefaultValue("BANK_TRANSFER");
+                .HasDefaultValue("SHIP_CODE");
             entity.Property(e => e.PaymentStatus)
                 .HasMaxLength(20)
                 .IsUnicode(false)
@@ -958,16 +982,14 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<OrderRefund>(entity =>
         {
+            entity.ToTable("OrderRefunds", tb => tb.HasTrigger("TR_OrderRefunds_ValidateAmount"));
+
             entity.HasKey(e => e.RefundId).HasName("PK__OrderRef__725AB9001E9FBB52");
 
             entity.HasIndex(e => e.OrderId, "IX_OrderRefunds_Order");
 
             entity.Property(e => e.RefundId).HasColumnName("RefundID");
             entity.Property(e => e.ApprovedAmount).HasColumnType("decimal(12, 0)");
-            entity.Property(e => e.ComplaintImageUrl)
-                .HasMaxLength(500)
-                .IsUnicode(false)
-                .HasColumnName("ComplaintImageURL");
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
@@ -1007,6 +1029,30 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.HasOne(d => d.WalletTransaction).WithMany(p => p.OrderRefunds)
                 .HasForeignKey(d => d.WalletTransactionId)
                 .HasConstraintName("FK_OrderRefunds_WalletTransactions");
+        });
+
+        modelBuilder.Entity<RefundImage>(entity =>
+        {
+            entity.ToTable("RefundImages", tb => tb.HasTrigger("TR_RefundImages_MaxImages"));
+
+            entity.HasKey(e => e.RefundImageId).HasName("PK__RefundIm__1234567890ABCDEF");
+
+            entity.HasIndex(e => e.RefundId, "IX_RefundImages_RefundID").HasFilter("([IsDeleted]=(0))");
+
+            entity.Property(e => e.RefundImageId).HasColumnName("RefundImageID");
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.ImageUrl)
+                .HasMaxLength(500)
+                .IsUnicode(false)
+                .HasColumnName("ImageURL");
+            entity.Property(e => e.RefundId).HasColumnName("RefundID");
+
+            entity.HasOne(d => d.Refund).WithMany(p => p.RefundImages)
+                .HasForeignKey(d => d.RefundId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_RefundImages_OrderRefunds");
         });
 
         modelBuilder.Entity<OrderRefundReason>(entity =>
@@ -1452,6 +1498,8 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<ReviewBlog>(entity =>
         {
+            entity.ToTable("ReviewBlogs", tb => tb.HasTrigger("trg_BlogComment_UpdateCommentCount"));
+
             entity.HasKey(e => e.ReviewBlogId).HasName("PK__ReviewBl__A19536C07ECC639B");
 
             entity.HasIndex(e => new { e.BlogPostId, e.IsDeleted }, "IX_ReviewBlogs_BlogPost");
@@ -1463,6 +1511,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.IsFeatured).HasDefaultValue(false);
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
             entity.HasOne(d => d.Account).WithMany(p => p.ReviewBlogs)
@@ -1478,6 +1527,8 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<ReviewBlogReaction>(entity =>
         {
+            entity.ToTable("ReviewBlogReactions", tb => tb.HasTrigger("trg_BlogReaction_UpdateLikeCount"));
+
             entity.HasKey(e => e.ReactionBlogId).HasName("PK__ReviewBl__6A8A0D2701E53414");
 
             entity.HasIndex(e => new { e.ReviewBlogId, e.ReactionTypeId }, "IX_ReviewBlogReactions_Stats");
@@ -1546,6 +1597,8 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<ReviewProduct>(entity =>
         {
+            entity.ToTable("ReviewProducts", tb => tb.HasTrigger("TR_ReviewProducts_ValidateOrderDetail"));
+
             entity.HasKey(e => e.ReviewId).HasName("PK__ReviewPr__74BC79AE912C0FED");
 
             entity.HasIndex(e => new { e.ProductId, e.IsDeleted }, "IX_ReviewProducts_Product");
@@ -1580,6 +1633,8 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<ReviewProductImage>(entity =>
         {
+            entity.ToTable("ReviewProductImages", tb => tb.HasTrigger("TR_ReviewProductImages_MaxImages"));
+
             entity.HasKey(e => e.ReviewProductImageId).HasName("PK__ReviewPr__013E0F1E09405F43");
 
             entity.Property(e => e.ReviewProductImageId).HasColumnName("ReviewProductImageID");
@@ -1610,9 +1665,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
-            entity.Property(e => e.ReactionType)
-                .HasMaxLength(10)
-                .IsUnicode(false);
+            entity.Property(e => e.ReactionTypeId).HasColumnName("ReactionTypeID");
             entity.Property(e => e.ReviewProductId).HasColumnName("ReviewProductID");
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
@@ -1620,6 +1673,11 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasForeignKey(d => d.AccountId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_ReviewProductReactions_Accounts");
+
+            entity.HasOne(d => d.ReactionTypeNavigation).WithMany(p => p.ReviewProductReactions)
+                .HasForeignKey(d => d.ReactionTypeId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ReviewProductReactions_ReactionTypes");
 
             entity.HasOne(d => d.ReviewProduct).WithMany(p => p.ReviewProductReactions)
                 .HasForeignKey(d => d.ReviewProductId)
@@ -1800,6 +1858,10 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasDefaultValueSql("(getdate())");
             entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.Property(e => e.MessageTemplate).HasMaxLength(500);
+            entity.Property(e => e.UsageScope)
+                .HasMaxLength(10)
+                .IsUnicode(false)
+                .HasDefaultValue("ADMIN");
             entity.Property(e => e.TemplateCode)
                 .HasMaxLength(50)
                 .IsUnicode(false);
@@ -2144,6 +2206,57 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasForeignKey(d => d.ProductId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Wishlists_Products");
+        });
+
+        modelBuilder.Entity<CustomerChild>(entity =>
+        {
+            entity.HasKey(e => e.ChildId).HasName("PK__CustomerChildren__1234");
+
+            entity.HasIndex(e => e.Dob, "IX_CustomerChildren_DOB").HasFilter("([IsDeleted]=(0))");
+
+            entity.Property(e => e.ChildId).HasColumnName("ChildID");
+            entity.Property(e => e.AccountId).HasColumnName("AccountID");
+            entity.Property(e => e.SexId).HasColumnName("SexID");
+            entity.Property(e => e.Dob).HasColumnName("DOB");
+            entity.Property(e => e.FullName).HasMaxLength(100);
+            entity.Property(e => e.NickName).HasMaxLength(50);
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
+
+            entity.HasOne(d => d.Account).WithMany(p => p.CustomerChildren)
+                .HasForeignKey(d => d.AccountId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_CustomerChildren_Accounts");
+
+            entity.HasOne(d => d.Sex).WithMany(p => p.CustomerChildren)
+                .HasForeignKey(d => d.SexId)
+                .HasConstraintName("FK_CustomerChildren_Sexes");
+        });
+
+        modelBuilder.Entity<UserPreference>(entity =>
+        {
+            entity.HasKey(e => e.PreferenceId).HasName("PK__UserPreferences__1234");
+
+            entity.ToTable("UserPreferences", "Notification");
+
+            entity.HasIndex(e => e.AccountId, "UQ_UserPreferences_AccountID").IsUnique();
+
+            entity.Property(e => e.PreferenceId).HasColumnName("PreferenceID");
+            entity.Property(e => e.AccountId).HasColumnName("AccountID");
+            entity.Property(e => e.EmailOptIn).HasDefaultValue(true);
+            entity.Property(e => e.WebPushOptIn).HasDefaultValue(false);
+            entity.Property(e => e.OrderUpdates).HasDefaultValue(true);
+            entity.Property(e => e.Promotions).HasDefaultValue(true);
+            entity.Property(e => e.StockAlerts).HasDefaultValue(true);
+            entity.Property(e => e.BlogAlerts).HasDefaultValue(true);
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
+
+            entity.HasOne(d => d.Account).WithOne(p => p.UserPreference)
+                .HasForeignKey<UserPreference>(d => d.AccountId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_UserPreferences_Accounts");
         });
 
         OnModelCreatingPartial(modelBuilder);

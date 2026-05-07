@@ -17,6 +17,7 @@ public interface ITemplateRepository
         bool sortDesc = false,
         string? searchTerm = null,
         bool? isActive = null,
+        string? usageScope = null,
         DateTime? startDate = null,
         DateTime? endDate = null,
         CancellationToken cancellationToken = default);
@@ -27,6 +28,7 @@ public interface ITemplateRepository
     Task<int> CountAsync(
         string? searchTerm = null,
         bool? isActive = null,
+        string? usageScope = null,
         DateTime? startDate = null,
         DateTime? endDate = null,
         CancellationToken cancellationToken = default);

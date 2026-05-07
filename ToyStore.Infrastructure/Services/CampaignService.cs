@@ -1,11 +1,13 @@
 using AutoMapper;
 using FluentValidation;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Campaigns;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
+using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Services.Resolvers;
 
 namespace ToyStore.Infrastructure.Services;
@@ -13,14 +15,15 @@ namespace ToyStore.Infrastructure.Services;
 public class CampaignService : ICampaignService
 {
     private static readonly HashSet<string> ValidStatuses =
-        ["Draft", "Scheduled", "Sending", "Sent", "Cancelled"];
+        ["Draft", "Scheduled", "Sending", "Sent", "Cancelled", "Failed"];
 
-    private static readonly HashSet<string> ValidSourceTypes  = ["ADMIN", "SYSTEM"];
-    private static readonly HashSet<string> ValidSortFields   = ["createdat", "name", "status"];
-    private static readonly HashSet<string> EditableStatuses  = ["Draft", "Scheduled"];
-    private static readonly HashSet<string> ValidReferenceTypes = ["VOUCHER", "PRODUCT", "BLOG", "SALE"];
+    private static readonly HashSet<string> ValidSourceTypes = ["ADMIN", "SYSTEM"];
+    private static readonly HashSet<string> ValidSortFields = ["createdat", "name", "status"];
+    private static readonly HashSet<string> EditableStatuses = ["Draft", "Scheduled"];
+    private static readonly HashSet<string> ValidReferenceTypes = ["VOUCHER", "PRODUCT", "BLOG", "SALE", "OTHER"];
 
     private readonly IUnitOfWork _unitOfWork;
+    private readonly SEP490ToyStoreContext _context;
     private readonly ILogger<CampaignService> _logger;
     private readonly IMapper _mapper;
     private readonly IValidator<CreateCampaignDto> _createValidator;
@@ -29,15 +32,17 @@ public class CampaignService : ICampaignService
 
     public CampaignService(
         IUnitOfWork unitOfWork,
+        SEP490ToyStoreContext context,
         ILogger<CampaignService> logger,
         IMapper mapper,
         IValidator<CreateCampaignDto> createValidator,
         IValidator<UpdateCampaignDto> updateValidator,
         BusinessObjectResolverFactory resolverFactory)
     {
-        _unitOfWork      = unitOfWork;
-        _logger          = logger;
-        _mapper          = mapper;
+        _unitOfWork = unitOfWork;
+        _context = context;
+        _logger = logger;
+        _mapper = mapper;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
         _resolverFactory = resolverFactory;
@@ -78,10 +83,10 @@ public class CampaignService : ICampaignService
             return Result<PaginatedResponse<CampaignListDto>>.Failure(
                 "VALIDATION_ERROR", "StartDate must be less than or equal to EndDate.");
 
-        var items      = await _unitOfWork.Campaigns.GetPagedAsync(query, cancellationToken);
+        var items = await _unitOfWork.Campaigns.GetPagedAsync(query, cancellationToken);
         var totalCount = await _unitOfWork.Campaigns.CountAsync(query, cancellationToken);
-        var mapped     = _mapper.Map<List<CampaignListDto>>(items);
-        var response   = new PaginatedResponse<CampaignListDto>(mapped, totalCount, query.PageNumber, query.PageSize);
+        var mapped = _mapper.Map<List<CampaignListDto>>(items);
+        var response = new PaginatedResponse<CampaignListDto>(mapped, totalCount, query.PageNumber, query.PageSize);
 
         return Result<PaginatedResponse<CampaignListDto>>.Success(response);
     }
@@ -108,7 +113,68 @@ public class CampaignService : ICampaignService
                 campaign.ReferenceType, campaign.ReferenceId.Value, cancellationToken);
         }
 
+       var tmpl = campaign.TemplateCodeNavigation;
+        dto.ResolvedTitle   = !string.IsNullOrWhiteSpace(campaign.TitleOverride)
+            ? campaign.TitleOverride
+            : tmpl?.TitleTemplate;
+        dto.ResolvedMessage = !string.IsNullOrWhiteSpace(campaign.MessageOverride)
+            ? campaign.MessageOverride
+            : tmpl?.MessageTemplate;
+
         return Result<CampaignDto>.Success(dto);
+    }
+
+    public async Task<Result<PaginatedResponse<CampaignDeliveryDto>>> GetCampaignDeliveriesAsync(
+        int campaignId,
+        int pageNumber,
+        int pageSize,
+        string? status,
+        CancellationToken cancellationToken = default)
+    {
+        if (campaignId <= 0)
+            return Result<PaginatedResponse<CampaignDeliveryDto>>.Failure(
+                "VALIDATION_ERROR", "Campaign ID must be greater than 0.");
+
+        if (pageNumber < 1) pageNumber = 1;
+        if (pageSize < 1 || pageSize > 100) pageSize = 10;
+
+        // Verify campaign exists
+        var campaignExists = await _context.Campaigns
+            .AsNoTracking()
+            .AnyAsync(c => c.CampaignId == campaignId && !c.IsDeleted, cancellationToken);
+
+        if (!campaignExists)
+            return Result<PaginatedResponse<CampaignDeliveryDto>>.NotFound("Campaign", campaignId);
+
+        var query = _context.Deliveries
+            .AsNoTracking()
+            .Where(d => d.CampaignId == campaignId && !d.IsDeleted);
+
+        if (!string.IsNullOrWhiteSpace(status))
+            query = query.Where(d => d.Status == status);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+
+        var items = await query
+            .OrderByDescending(d => d.CreatedAt)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .Select(d => new CampaignDeliveryDto
+            {
+                DeliveryId  = d.DeliveryId,
+                AccountId   = d.AccountId,
+                AccountName = d.Account.AccountName,
+                Email       = d.Account.Email,
+                Status      = d.Status,
+                Title       = d.Title,
+                Message     = d.Message,
+                ReadAt      = d.ReadAt,
+                CreatedAt   = d.CreatedAt
+            })
+            .ToListAsync(cancellationToken);
+
+        var response = new PaginatedResponse<CampaignDeliveryDto>(items, totalCount, pageNumber, pageSize);
+        return Result<PaginatedResponse<CampaignDeliveryDto>>.Success(response);
     }
 
     // ── CREATE ────────────────────────────────────────────────────────────────
@@ -206,20 +272,22 @@ public class CampaignService : ICampaignService
         }
 
         // Apply fields
-        existing.CampaignName    = dto.CampaignName.Trim();
-        existing.TemplateCode    = string.IsNullOrWhiteSpace(dto.TemplateCode)    ? null : dto.TemplateCode.Trim();
-        existing.ReferenceType   = string.IsNullOrWhiteSpace(dto.ReferenceType)   ? null : dto.ReferenceType.Trim().ToUpper();
-        existing.ReferenceId     = dto.ReferenceId;
-        existing.TitleOverride   = string.IsNullOrWhiteSpace(dto.TitleOverride)   ? null : dto.TitleOverride.Trim();
-        existing.MessageOverride = string.IsNullOrWhiteSpace(dto.MessageOverride) ? null : dto.MessageOverride.Trim();
-        existing.TargetType      = dto.TargetType;
-        existing.ScheduledAt     = dto.ScheduledAt;
-        existing.ImageUrl        = string.IsNullOrWhiteSpace(dto.ImageUrl)        ? null : dto.ImageUrl.Trim();
-        existing.ActionType      = string.IsNullOrWhiteSpace(dto.ActionType)      ? null : dto.ActionType.Trim();
-        existing.ActionTarget    = string.IsNullOrWhiteSpace(dto.ActionTarget)    ? null : dto.ActionTarget.Trim();
+        existing.CampaignName = dto.CampaignName.Trim();
+        // Neu khong co ScheduledAt, gui ngay lap tuc: dat ScheduledAt = UtcNow de Worker xu ly
+        existing.ScheduledAt = dto.ScheduledAt ?? DateTime.UtcNow;
 
-        // Auto-transition status
-        existing.Status = dto.ScheduledAt.HasValue ? "Scheduled" : "Draft";
+        existing.TemplateCode = string.IsNullOrWhiteSpace(dto.TemplateCode) ? null : dto.TemplateCode.Trim();
+        existing.ReferenceType = string.IsNullOrWhiteSpace(dto.ReferenceType) ? null : dto.ReferenceType.Trim().ToUpper();
+        existing.ReferenceId = dto.ReferenceId;
+        existing.TitleOverride = string.IsNullOrWhiteSpace(dto.TitleOverride) ? null : dto.TitleOverride.Trim();
+        existing.MessageOverride = string.IsNullOrWhiteSpace(dto.MessageOverride) ? null : dto.MessageOverride.Trim();
+        existing.TargetType = dto.TargetType;
+        existing.ImageUrl = string.IsNullOrWhiteSpace(dto.ImageUrl) ? null : dto.ImageUrl.Trim();
+        existing.ActionType = string.IsNullOrWhiteSpace(dto.ActionType) ? null : dto.ActionType.Trim();
+        existing.ActionTarget = string.IsNullOrWhiteSpace(dto.ActionTarget) ? null : dto.ActionTarget.Trim();
+
+        // Auto-transition to Scheduled (luon Scheduled de Worker xu ly)
+        existing.Status = "Scheduled";
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
@@ -275,17 +343,28 @@ public class CampaignService : ICampaignService
             .Select(r => new ReferenceTypeDto
             {
                 ReferenceType = r.ReferenceType,
-                DisplayName   = r.ReferenceType switch
+                DisplayName = r.ReferenceType switch
                 {
                     "VOUCHER" => "Voucher giảm giá",
                     "PRODUCT" => "Sản phẩm mới",
-                    "BLOG"    => "Bài blog",
-                    "SALE"    => "Chương trình sale",
-                    _         => r.ReferenceType
+                    "BLOG" => "Bài blog",
+                    "SALE" => "Chương trình sale",
+                    "OTHER" => "Khác",
+                    _ => r.ReferenceType
                 },
                 Placeholders = r.AvailablePlaceholders.ToList()
             })
             .ToList();
+
+        if (list.All(x => x.ReferenceType != "OTHER"))
+        {
+            list.Add(new ReferenceTypeDto
+            {
+                ReferenceType = "OTHER",
+                DisplayName = "Khác",
+                Placeholders = new List<PlaceholderInfoDto>()
+            });
+        }
 
         return Task.FromResult(Result<List<ReferenceTypeDto>>.Success(list));
     }
@@ -311,6 +390,9 @@ public class CampaignService : ICampaignService
             return Result<CampaignDto>.Failure(
                 "VALIDATION_ERROR",
                 "ReferenceId is required and must be greater than 0 when ReferenceType is set.");
+
+        if (upper == "OTHER")
+            return null;
 
         var resolved = await _resolverFactory.ResolveAsync(upper, referenceId.Value, cancellationToken);
         if (resolved is null)

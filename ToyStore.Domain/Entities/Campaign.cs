@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ToyStore.Domain.Entities;
@@ -37,7 +37,7 @@ public partial class Campaign
 
     public bool IsDeleted { get; set; }
 
-    public int CreatedByAccountId { get; set; }
+    public int? CreatedByAccountId { get; set; }
 
     public DateTime CreatedAt { get; set; }
 
@@ -47,7 +47,7 @@ public partial class Campaign
 
     public virtual ICollection<CampaignTarget> CampaignTargets { get; set; } = new List<CampaignTarget>();
 
-    public virtual Account CreatedByAccount { get; set; } = null!;
+    public virtual Account? CreatedByAccount { get; set; }
 
     public virtual ICollection<Delivery> Deliveries { get; set; } = new List<Delivery>();
 

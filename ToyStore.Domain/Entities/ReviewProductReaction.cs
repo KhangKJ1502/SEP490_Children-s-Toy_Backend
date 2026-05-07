@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ToyStore.Domain.Entities;
@@ -11,7 +11,7 @@ public partial class ReviewProductReaction
 
     public int AccountId { get; set; }
 
-    public string ReactionType { get; set; } = null!;
+    public int ReactionTypeId { get; set; }
 
     public bool IsDeleted { get; set; }
 
@@ -22,4 +22,6 @@ public partial class ReviewProductReaction
     public virtual Account Account { get; set; } = null!;
 
     public virtual ReviewProduct ReviewProduct { get; set; } = null!;
+
+    public virtual ReactionType ReactionTypeNavigation { get; set; } = null!;
 }

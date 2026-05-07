@@ -38,8 +38,16 @@ public class ProductService : IProductService
         string? sortBy = null,
         bool sortDesc = false,
         string? searchTerm = null,
-        int? brandId = null,
+        short? superCategoryId = null,
         short? categoryId = null,
+        IReadOnlyCollection<short>? categoryIds = null,
+        IReadOnlyCollection<int>? brandIds = null,
+        IReadOnlyCollection<byte>? priceRangeIds = null,
+        IReadOnlyCollection<short>? materialIds = null,
+        IReadOnlyCollection<byte>? ageIds = null,
+        IReadOnlyCollection<byte>? sexIds = null,
+        IReadOnlyCollection<byte>? originIds = null,
+        int? rating = null,
         string? status = null,
         CancellationToken cancellationToken = default)
     {
@@ -59,12 +67,33 @@ public class ProductService : IProductService
             sortBy,
             sortDesc,
             searchTerm,
-            brandId,
+            superCategoryId,
             categoryId,
+            categoryIds,
+            brandIds,
+            priceRangeIds,
+            materialIds,
+            ageIds,
+            sexIds,
+            originIds,
+            rating,
             status,
             cancellationToken);
 
-        var totalCount = await _unitOfWork.Products.CountAsync(searchTerm, brandId, categoryId, status, cancellationToken);
+        var totalCount = await _unitOfWork.Products.CountAsync(
+            searchTerm,
+            superCategoryId,
+            categoryId,
+            categoryIds,
+            brandIds,
+            priceRangeIds,
+            materialIds,
+            ageIds,
+            sexIds,
+            originIds,
+            rating,
+            status,
+            cancellationToken);
 
         var mappedItems = _mapper.Map<List<ProductListDto>>(items);
         var response = new PaginatedResponse<ProductListDto>(mappedItems, totalCount, pageNumber, pageSize);

@@ -41,6 +41,7 @@ public class CampaignRepository : ICampaignRepository
             .AsNoTracking()
             .Include(x => x.CampaignStat)
             .Include(x => x.CampaignTargets)
+            .Include(x => x.TemplateCodeNavigation)
             .Where(x => x.CampaignId == campaignId && !x.IsDeleted)
             .FirstOrDefaultAsync(cancellationToken);
     }
@@ -61,6 +62,9 @@ public class CampaignRepository : ICampaignRepository
         CreateCampaignDto dto,
         CancellationToken cancellationToken = default)
     {
+        // Neu khong co ScheduledAt, gui ngay lap tuc: dat ScheduledAt = UtcNow de Worker xu ly
+        var scheduledAt = dto.ScheduledAt ?? DateTime.UtcNow;
+
         var campaign = new Campaign
         {
             CampaignName      = dto.CampaignName.Trim(),
@@ -71,8 +75,8 @@ public class CampaignRepository : ICampaignRepository
             MessageOverride   = string.IsNullOrWhiteSpace(dto.MessageOverride)   ? null : dto.MessageOverride.Trim(),
             SourceType        = dto.SourceType,
             TargetType        = dto.TargetType,
-            Status            = dto.ScheduledAt.HasValue ? "Scheduled" : "Draft",
-            ScheduledAt       = dto.ScheduledAt,
+            Status            = "Scheduled",
+            ScheduledAt       = scheduledAt,
             EventKey          = string.IsNullOrWhiteSpace(dto.EventKey)          ? null : dto.EventKey.Trim(),
             ImageUrl          = string.IsNullOrWhiteSpace(dto.ImageUrl)          ? null : dto.ImageUrl.Trim(),
             ActionType        = string.IsNullOrWhiteSpace(dto.ActionType)        ? null : dto.ActionType.Trim(),
