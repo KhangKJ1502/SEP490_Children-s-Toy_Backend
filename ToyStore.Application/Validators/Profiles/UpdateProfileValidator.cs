@@ -5,8 +5,14 @@ namespace ToyStore.Application.Validators.Profiles;
 
 public class UpdateProfileValidator : AbstractValidator<UpdateProfileDto>
 {
+    private static readonly byte[] AllowedSexIds = [1, 2, 3];
+
     public UpdateProfileValidator()
     {
+        RuleFor(x => x.AccountName)
+            .MaximumLength(100).WithMessage("Account name must not exceed 100 characters.")
+            .When(x => !string.IsNullOrWhiteSpace(x.AccountName));
+
         RuleFor(x => x.PhoneNumber)
             .Matches(@"^0\d{9}$").WithMessage("Phone number must start with 0 and contain exactly 10 digits.")
             .When(x => !string.IsNullOrWhiteSpace(x.PhoneNumber));
@@ -14,6 +20,14 @@ public class UpdateProfileValidator : AbstractValidator<UpdateProfileDto>
         RuleFor(x => x.ImageUrl)
             .Must(BeValidHttpUrl).WithMessage("Image URL must be a valid absolute http/https URL.")
             .When(x => !string.IsNullOrWhiteSpace(x.ImageUrl));
+
+        RuleFor(x => x.Dob)
+            .LessThanOrEqualTo(DateTime.UtcNow.Date).WithMessage("DOB cannot be in the future.")
+            .When(x => x.Dob.HasValue);
+
+        RuleFor(x => x.SexId)
+            .Must(sexId => sexId == null || AllowedSexIds.Contains(sexId.Value))
+            .WithMessage("Sex ID is invalid.");
     }
 
     private static bool BeValidHttpUrl(string? value)

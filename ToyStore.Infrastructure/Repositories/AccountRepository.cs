@@ -97,6 +97,7 @@ public class AccountRepository : IAccountRepository
         return _context.Accounts
             .AsNoTracking()
             .Include(x => x.Role)
+            .Include(x => x.Sex)
             .Where(x => x.AccountId == accountId && !x.IsDeleted)
             .FirstOrDefaultAsync(cancellationToken);
     }
@@ -210,29 +211,49 @@ public class AccountRepository : IAccountRepository
         await _context.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task UpdateProviderAsync(int accountId, string? provider, CancellationToken cancellationToken = default)
+    {
+        var entity = await _context.Accounts
+            .FirstAsync(x => x.AccountId == accountId && !x.IsDeleted, cancellationToken);
+
+        entity.Provider = provider;
+        entity.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
     public Task<Account?> GetByIdForProfileAsync(int accountId, CancellationToken cancellationToken = default)
     {
         return _context.Accounts
             .Include(x => x.Role)
+            .Include(x => x.Sex)
             .Where(x => x.AccountId == accountId && !x.IsDeleted)
             .FirstOrDefaultAsync(cancellationToken);
     }
 
     public async Task<Account> UpdateProfileAsync(
         int accountId,
+        string? accountName,
         string? imageUrl,
         string? phoneNumber,
+        DateTime? dob,
+        byte? sexId,
         CancellationToken cancellationToken = default)
     {
         var entity = await _context.Accounts
             .Include(x => x.Role)
+            .Include(x => x.Sex)
             .FirstAsync(x => x.AccountId == accountId && !x.IsDeleted, cancellationToken);
 
+        entity.AccountName = accountName ?? entity.AccountName;
         entity.ImageUrl = imageUrl;
         entity.PhoneNumber = phoneNumber;
+        entity.Dob = dob;
+        entity.SexId = sexId;
         entity.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);
+        await _context.Entry(entity).Reference(x => x.Sex).LoadAsync(cancellationToken);
         return entity;
     }
 
