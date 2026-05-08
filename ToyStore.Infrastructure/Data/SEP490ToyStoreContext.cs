@@ -100,6 +100,8 @@ public partial class SEP490ToyStoreContext : DbContext
 
     public virtual DbSet<PromotionTimeSlot> PromotionTimeSlots { get; set; }
 
+    public virtual DbSet<PromotionProductSlot> PromotionProductSlots { get; set; }
+
     public virtual DbSet<Province> Provinces { get; set; }
 
     public virtual DbSet<ReactionType> ReactionTypes { get; set; }
@@ -1403,7 +1405,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.HasOne(d => d.Promotion).WithMany(p => p.ProductPromotions)
                 .HasForeignKey(d => d.PromotionId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
+                .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("FK_ProductPromotions_Promotions");
         });
 
@@ -1443,19 +1445,26 @@ public partial class SEP490ToyStoreContext : DbContext
         {
             entity.HasKey(e => e.TimeSlotId).HasName("PK__Promotio__41CC1F52F08BECC5");
 
-            entity.HasIndex(e => new { e.SlotDate, e.Status, e.StartTime, e.EndTime }, "IX_PromotionTimeSlots_Active");
+            // Tìm slot đang active nhanh theo khoảng thời gian UTC
+            entity.HasIndex(e => new { e.Status, e.StartAt, e.EndAt }, "IX_PromotionTimeSlots_Active");
 
-            entity.HasIndex(e => new { e.SlotDate, e.Status }, "IX_PromotionTimeSlots_Main");
+            // Tra cứu theo promotion + status
+            entity.HasIndex(e => new { e.PromotionId, e.Status }, "IX_PromotionTimeSlots_Promotion");
 
-            entity.HasIndex(e => new { e.PromotionId, e.SlotDate, e.StartTime, e.EndTime }, "UQ_PromotionTimeSlots_UniqueSlot").IsUnique();
+            // Ràng buộc unique: mỗi promotion không có 2 slot trùng thời gian
+            entity.HasIndex(e => new { e.PromotionId, e.StartAt, e.EndAt }, "UQ_PromotionTimeSlots_UniqueSlot").IsUnique();
 
             entity.Property(e => e.TimeSlotId).HasColumnName("TimeSlotID");
+            entity.Property(e => e.PromotionId).HasColumnName("PromotionID");
+            entity.Property(e => e.StartAt)
+                .HasPrecision(0)
+                .HasColumnName("StartAt");
+            entity.Property(e => e.EndAt)
+                .HasPrecision(0)
+                .HasColumnName("EndAt");
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
-                .HasDefaultValueSql("(getdate())");
-            entity.Property(e => e.EndTime).HasPrecision(0);
-            entity.Property(e => e.PromotionId).HasColumnName("PromotionID");
-            entity.Property(e => e.StartTime).HasPrecision(0);
+                .HasDefaultValueSql("(getutcdate())");
             entity.Property(e => e.Status)
                 .HasMaxLength(20)
                 .IsUnicode(false)
@@ -1464,8 +1473,46 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.HasOne(d => d.Promotion).WithMany(p => p.PromotionTimeSlots)
                 .HasForeignKey(d => d.PromotionId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
+                .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("FK_PromotionTimeSlots_Promotions");
+        });
+
+        // PromotionProductSlots — chỉ dùng cho FLASH_SALE
+        // Gắn sản phẩm + giá/số lượng riêng cho từng time slot
+        modelBuilder.Entity<PromotionProductSlot>(entity =>
+        {
+            entity.HasKey(e => e.SlotProductId).HasName("PK_PromotionProductSlots");
+
+            entity.HasIndex(e => new { e.TimeSlotId, e.ProductId }, "UQ_PromotionProductSlots_SlotProduct").IsUnique();
+
+            // Tra cứu sản phẩm flash-sale đang active theo slot
+            entity.HasIndex(e => new { e.TimeSlotId, e.IsActive }, "IX_PromotionProductSlots_Slot_Active");
+
+            // Tra cứu ngược: sản phẩm đang tham gia slot nào
+            entity.HasIndex(e => new { e.ProductId, e.IsActive }, "IX_PromotionProductSlots_Product");
+
+            entity.Property(e => e.SlotProductId).HasColumnName("SlotProductID");
+            entity.Property(e => e.TimeSlotId).HasColumnName("TimeSlotID");
+            entity.Property(e => e.ProductId).HasColumnName("ProductID");
+            entity.Property(e => e.SalePrice).HasColumnType("decimal(12, 2)");
+            entity.Property(e => e.DiscountPercent).HasColumnType("decimal(5, 2)");
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.SoldQuantity).HasDefaultValue(0);
+            entity.Property(e => e.ReservedQuantity).HasDefaultValue(0);
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getutcdate())");
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
+
+            entity.HasOne(d => d.TimeSlot).WithMany(p => p.PromotionProductSlots)
+                .HasForeignKey(d => d.TimeSlotId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_PromotionProductSlots_TimeSlot");
+
+            entity.HasOne(d => d.Product).WithMany()
+                .HasForeignKey(d => d.ProductId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_PromotionProductSlots_Products");
         });
 
         modelBuilder.Entity<Province>(entity =>
