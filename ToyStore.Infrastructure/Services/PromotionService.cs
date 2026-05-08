@@ -21,19 +21,22 @@ public class PromotionService : IPromotionService
     private readonly ILogger<PromotionService> _logger;
     private readonly IValidator<CreatePromotionDto> _createValidator;
     private readonly IValidator<UpdatePromotionDto> _updateValidator;
+    private readonly ICurrentUserService _currentUserService;
 
     public PromotionService(
         IUnitOfWork unitOfWork,
         IMapper mapper,
         ILogger<PromotionService> logger,
         IValidator<CreatePromotionDto> createValidator,
-        IValidator<UpdatePromotionDto> updateValidator)
+        IValidator<UpdatePromotionDto> updateValidator,
+        ICurrentUserService currentUserService)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _logger = logger;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
+        _currentUserService = currentUserService;
     }
 
     public async Task<Result<PaginatedResponse<PromotionListDto>>> GetPromotionsAsync(
@@ -96,7 +99,7 @@ public class PromotionService : IPromotionService
         var promotion = await _unitOfWork.Promotions.GetByIdAsync(
             promotionId,
             cancellationToken,
-            includeProperties: "ProductPromotions,ProductPromotions.Product"
+            includeProperties: "ProductPromotions,ProductPromotions.Product,PromotionTimeSlots,PromotionTimeSlots.PromotionProductSlots,PromotionTimeSlots.PromotionProductSlots.Product"
         );
         
         if (promotion is null)
@@ -129,8 +132,8 @@ public class PromotionService : IPromotionService
         }
 
         var promotion = _mapper.Map<Promotion>(request);
-        // Will be updated by auth mechanism later, set to 1 for now or 0
-        promotion.CreatedBy = 0; 
+        // Set dynamically from current authenticated user
+        promotion.CreatedBy = _currentUserService.AccountId; 
         promotion.CreatedAt = DateTime.UtcNow;
         promotion.UpdatedAt = null;
         promotion.IsDeleted = false;
@@ -164,6 +167,16 @@ public class PromotionService : IPromotionService
             }
         }
 
+        if (request.PromotionTimeSlots != null && request.PromotionTimeSlots.Any())
+        {
+            foreach (var ts in request.PromotionTimeSlots)
+            {
+                var timeSlot = _mapper.Map<PromotionTimeSlot>(ts);
+                timeSlot.CreatedAt = DateTime.UtcNow;
+                promotion.PromotionTimeSlots.Add(timeSlot);
+            }
+        }
+
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -187,7 +200,7 @@ public class PromotionService : IPromotionService
         var createdPromotion = await _unitOfWork.Promotions.GetByIdAsync(
             promotion.PromotionId, 
             cancellationToken, 
-            includeProperties: "ProductPromotions,ProductPromotions.Product"
+            includeProperties: "ProductPromotions,ProductPromotions.Product,PromotionTimeSlots,PromotionTimeSlots.PromotionProductSlots,PromotionTimeSlots.PromotionProductSlots.Product"
         );
         var dto = _mapper.Map<PromotionDto>(createdPromotion ?? promotion);
 
@@ -214,7 +227,7 @@ public class PromotionService : IPromotionService
         var existingPromotion = await _unitOfWork.Promotions.GetByIdAsync(
             promotionId, 
             cancellationToken,
-            includeProperties: "ProductPromotions"
+            includeProperties: "ProductPromotions,PromotionTimeSlots,PromotionTimeSlots.PromotionProductSlots"
         );
         if (existingPromotion is null)
         {
@@ -317,6 +330,23 @@ public class PromotionService : IPromotionService
                     }
                 }
             }
+
+            if (request.PromotionTimeSlots != null)
+            {
+                var existingTimeSlots = existingPromotion.PromotionTimeSlots.ToList();
+                foreach (var item in existingTimeSlots)
+                {
+                    _unitOfWork.Promotions.RemovePromotionTimeSlot(item);
+                }
+
+                foreach (var incomingTs in request.PromotionTimeSlots)
+                {
+                    var newTs = _mapper.Map<PromotionTimeSlot>(incomingTs);
+                    newTs.PromotionId = promotionId;
+                    newTs.CreatedAt = DateTime.UtcNow;
+                    existingPromotion.PromotionTimeSlots.Add(newTs);
+                }
+            }
         }
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
@@ -335,7 +365,7 @@ public class PromotionService : IPromotionService
         var updatedPromotion = await _unitOfWork.Promotions.GetByIdAsync(
             promotionId, 
             cancellationToken,
-            includeProperties: "ProductPromotions,ProductPromotions.Product"
+            includeProperties: "ProductPromotions,ProductPromotions.Product,PromotionTimeSlots,PromotionTimeSlots.PromotionProductSlots,PromotionTimeSlots.PromotionProductSlots.Product"
         ) ?? existingPromotion;
 
         _logger.LogInformation(

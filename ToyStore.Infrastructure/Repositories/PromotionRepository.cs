@@ -110,4 +110,33 @@ public class PromotionRepository : IPromotionRepository
     {
         _context.ProductPromotions.Remove(productPromotion);
     }
+
+    public void RemovePromotionTimeSlot(PromotionTimeSlot promotionTimeSlot)
+    {
+        _context.Remove(promotionTimeSlot);
+    }
+
+    public async Task<bool> IsProductInActivePromotionAsync(int productId, CancellationToken cancellationToken = default)
+    {
+        // Check in DISCOUNT (ProductPromotions)
+        bool inDiscount = await _context.ProductPromotions
+            .Include(pp => pp.Promotion)
+            .AnyAsync(pp => pp.ProductId == productId 
+                && pp.IsActive 
+                && !pp.Promotion.IsDeleted 
+                && (pp.Promotion.Status == "Active" || pp.Promotion.Status == "Scheduled"), cancellationToken);
+
+        if (inDiscount) return true;
+
+        // Check in FLASH_SALE (PromotionProductSlots)
+        bool inFlashSale = await _context.PromotionProductSlots
+            .Include(pps => pps.TimeSlot)
+            .ThenInclude(ts => ts.Promotion)
+            .AnyAsync(pps => pps.ProductId == productId 
+                && pps.IsActive 
+                && !pps.TimeSlot.Promotion.IsDeleted
+                && (pps.TimeSlot.Promotion.Status == "Active" || pps.TimeSlot.Promotion.Status == "Scheduled"), cancellationToken);
+
+        return inFlashSale;
+    }
 }

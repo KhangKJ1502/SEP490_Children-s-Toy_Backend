@@ -19,4 +19,6 @@ public class UpdatePromotionDto
     public bool? IsDeleted { get; set; }
 
     public List<CreateProductPromotionDto>? ProductPromotions { get; set; }
+
+    public List<CreatePromotionTimeSlotDto>? PromotionTimeSlots { get; set; }
 }
