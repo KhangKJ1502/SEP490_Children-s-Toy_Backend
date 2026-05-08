@@ -25,6 +25,8 @@ public static class ResultToActionResultExtensions
             "FORBIDDEN" or "ACCOUNT_INACTIVE" => new ObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)) { StatusCode = 403 },
             "BUSINESS_RULE_VIOLATION" => new BadRequestObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)),
             "OTP_EXPIRED" or "OTP_INVALID" => new BadRequestObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)),
+            "UNPROCESSABLE_ENTITY" => new ObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)) { StatusCode = 422 },
+            "BAD_GATEWAY" => new ObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)) { StatusCode = 502 },
             _ => new BadRequestObjectResult(new ErrorResponse(result.ErrorCode ?? "ERROR", result.ErrorMessage!))
         };
     }
@@ -57,6 +59,8 @@ public static class ResultToActionResultExtensions
             "FORBIDDEN" or "ACCOUNT_INACTIVE" => new ObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)) { StatusCode = 403 },
             "BUSINESS_RULE_VIOLATION" => new BadRequestObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)),
             "OTP_EXPIRED" or "OTP_INVALID" => new BadRequestObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)),
+            "UNPROCESSABLE_ENTITY" => new ObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)) { StatusCode = 422 },
+            "BAD_GATEWAY" => new ObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)) { StatusCode = 502 },
             _ => new BadRequestObjectResult(new ErrorResponse(result.ErrorCode ?? "ERROR", result.ErrorMessage!))
         };
     }

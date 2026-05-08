@@ -18,10 +18,8 @@ public class CampaignDto
 
     public string? MessageOverride { get; set; }
 
-    /// <summary>Effective title: TitleOverride if set, otherwise from template.</summary>
     public string? ResolvedTitle { get; set; }
 
-    /// <summary>Effective message: MessageOverride if set, otherwise from template.</summary>
     public string? ResolvedMessage { get; set; }
 
     public string SourceType { get; set; } = string.Empty;

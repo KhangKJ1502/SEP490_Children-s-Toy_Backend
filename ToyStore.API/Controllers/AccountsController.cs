@@ -33,6 +33,7 @@ public class AccountsController : ControllerBase
         [FromQuery] string? sortBy = null,
         [FromQuery] bool sortDesc = false,
         [FromQuery] string? searchTerm = null,
+        [FromQuery] byte? roleId = null,
         CancellationToken cancellationToken = default)
     {
         _logger.LogDebug(
@@ -41,7 +42,8 @@ public class AccountsController : ControllerBase
             pageSize,
             sortBy,
             sortDesc,
-            !string.IsNullOrWhiteSpace(searchTerm));
+            !string.IsNullOrWhiteSpace(searchTerm),
+            roleId);
 
         var result = await _accountService.GetAccountsAsync(
             pageNumber,
@@ -49,6 +51,7 @@ public class AccountsController : ControllerBase
             sortBy,
             sortDesc,
             searchTerm,
+            roleId,
             cancellationToken);
 
         return result.ToActionResult();
