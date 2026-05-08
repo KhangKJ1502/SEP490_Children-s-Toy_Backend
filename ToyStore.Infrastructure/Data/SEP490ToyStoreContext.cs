@@ -1509,7 +1509,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("FK_PromotionProductSlots_TimeSlot");
 
-            entity.HasOne(d => d.Product).WithMany()
+            entity.HasOne(d => d.Product).WithMany(p => p.PromotionProductSlots)
                 .HasForeignKey(d => d.ProductId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_PromotionProductSlots_Products");
