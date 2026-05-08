@@ -62,4 +62,29 @@ public interface IBlogRepository
     /// Hides a blog record.
     /// </summary>
     Task<BlogPost> HideAsync(BlogPost entity, CancellationToken cancellationToken = default);
+
+    Task<List<ReviewBlog>> GetReviewsByBlogIdAsync(int blogPostId, bool includeHidden, CancellationToken cancellationToken = default);
+
+    Task<List<ReviewBlogReply>> GetRepliesByReviewIdsAsync(List<int> reviewIds, bool includeHidden, CancellationToken cancellationToken = default);
+
+    Task<ReviewBlog?> GetReviewByIdAsync(int reviewBlogId, CancellationToken cancellationToken = default);
+
+    Task<ReviewBlogReply?> GetReplyByIdAsync(int replyBlogId, CancellationToken cancellationToken = default);
+
+    Task<ReviewBlog> CreateReviewAsync(ReviewBlog entity, CancellationToken cancellationToken = default);
+
+    Task<ReviewBlogReply> CreateReplyAsync(ReviewBlogReply entity, CancellationToken cancellationToken = default);
+
+    Task UpdateReviewAsync(ReviewBlog entity, CancellationToken cancellationToken = default);
+
+    Task UpdateReplyAsync(ReviewBlogReply entity, CancellationToken cancellationToken = default);
+
+    Task<List<ReviewBlog>> GetPagedReviewsForManagementAsync(
+        int pageNumber,
+        int pageSize,
+        string? searchTerm,
+        string? status,
+        CancellationToken cancellationToken = default);
+
+    Task<int> CountReviewsForManagementAsync(string? searchTerm, string? status, CancellationToken cancellationToken = default);
 }

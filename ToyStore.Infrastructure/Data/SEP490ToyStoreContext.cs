@@ -1513,7 +1513,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
-            entity.Property(e => e.IsFeatured).HasDefaultValue(false);
+            entity.Ignore(e => e.IsFeatured);
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
             entity.HasOne(d => d.Account).WithMany(p => p.ReviewBlogs)
