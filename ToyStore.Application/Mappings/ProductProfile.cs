@@ -15,11 +15,15 @@ public class ProductProfile : Profile
             .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.CategoryName))
             .ForMember(dest => dest.BrandName, opt => opt.MapFrom(src => src.Brand != null ? src.Brand.BrandName : null))
             .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.IsDeleted ? "Inactive" : "Active"))
-            .ForMember(dest => dest.MainImageUrl, opt => opt.MapFrom(src => src.ProductImage != null ? src.ProductImage.ImageUrl : null));
+            .ForMember(dest => dest.MainImageUrl, opt => opt.MapFrom(src => src.ProductImage != null ? src.ProductImage.ImageUrl : null))
+            .ForMember(dest => dest.DiscountedPrice, opt => opt.MapFrom(src => GetDiscountedPrice(src)))
+            .ForMember(dest => dest.DiscountPercent, opt => opt.MapFrom(src => GetDiscountPercent(src)));
 
         CreateMap<Product, ProductDto>()
             .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.CategoryName))
             .ForMember(dest => dest.BrandName, opt => opt.MapFrom(src => src.Brand != null ? src.Brand.BrandName : null))
+            .ForMember(dest => dest.DiscountedPrice, opt => opt.MapFrom(src => GetDiscountedPrice(src)))
+            .ForMember(dest => dest.DiscountPercent, opt => opt.MapFrom(src => GetDiscountPercent(src)))
             .ForMember(dest => dest.PriceRangeMin, opt => opt.MapFrom(src => GetPriceRangeMin(src)))
             .ForMember(dest => dest.PriceRangeMax, opt => opt.MapFrom(src => GetPriceRangeMax(src)))
             .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.ProductDetail != null ? src.ProductDetail.Description : null))
@@ -129,5 +133,36 @@ public class ProductProfile : Profile
     private static decimal? GetPriceRangeMax(Product src)
     {
         return src.PriceRange?.PriceRangeMax;
+    }
+
+    private static ProductPromotion? GetActivePromotion(Product src)
+    {
+        if (src.ProductPromotions == null || !src.ProductPromotions.Any()) return null;
+        var now = DateTime.UtcNow;
+        return src.ProductPromotions.FirstOrDefault(pp =>
+            pp.IsActive &&
+            pp.Promotion != null &&
+            !pp.Promotion.IsDeleted &&
+            pp.Promotion.Status == "Active" &&
+            pp.Promotion.StartDate <= now &&
+            pp.Promotion.EndDate >= now);
+    }
+
+    private static decimal? GetDiscountedPrice(Product src)
+    {
+        return GetActivePromotion(src)?.SalePrice;
+    }
+
+    private static int? GetDiscountPercent(Product src)
+    {
+        var active = GetActivePromotion(src);
+        if (active == null || src.Price <= 0) return null;
+        
+        if (active.DiscountPercent.HasValue)
+        {
+            return (int)Math.Round(active.DiscountPercent.Value);
+        }
+        
+        return (int)Math.Round((1 - (active.SalePrice / src.Price)) * 100);
     }
 }

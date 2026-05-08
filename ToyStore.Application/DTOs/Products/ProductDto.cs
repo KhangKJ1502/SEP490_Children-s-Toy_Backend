@@ -8,6 +8,10 @@ public class ProductDto
 
     public decimal Price { get; set; }
 
+    public decimal? DiscountedPrice { get; set; }
+
+    public int? DiscountPercent { get; set; }
+
     public int Quantity { get; set; }
 
     public string ProductStatus { get; set; } = string.Empty;
