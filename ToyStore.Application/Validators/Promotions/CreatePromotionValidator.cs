@@ -35,5 +35,8 @@ public class CreatePromotionValidator : AbstractValidator<CreatePromotionDto>
 
         RuleForEach(x => x.ProductPromotions)
             .SetValidator(new CreateProductPromotionValidator());
+
+        RuleForEach(x => x.PromotionTimeSlots)
+            .SetValidator(new CreatePromotionTimeSlotValidator());
     }
 }

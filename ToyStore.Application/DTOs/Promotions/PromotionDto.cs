@@ -24,5 +24,9 @@ public class PromotionDto
 
     public DateTime? UpdatedAt { get; set; }
 
+    /// <summary>Sản phẩm tham gia promotion DISCOUNT (không phân theo slot).</summary>
     public List<ProductPromotionDto> ProductPromotions { get; set; } = new();
+
+    /// <summary>Các khung giờ flash-sale (chỉ cho FLASH_SALE). Mỗi slot chứa danh sách sản phẩm riêng.</summary>
+    public List<PromotionTimeSlotDto> PromotionTimeSlots { get; set; } = new();
 }

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ToyStore.API.Extensions;
 using ToyStore.Application.DTOs;
@@ -9,6 +10,7 @@ namespace ToyStore.API.Controllers;
 /// <summary>
 /// API quản lý promotion.
 /// </summary>
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class PromotionsController : ControllerBase

@@ -254,6 +254,15 @@ public class ProductService : IProductService
             return Result<ProductDto>.NotFound("Product", productId);
         }
 
+        if (dto.Price.HasValue && dto.Price.Value != existing.Price)
+        {
+            var isInPromotion = await _unitOfWork.Promotions.IsProductInActivePromotionAsync(productId, cancellationToken);
+            if (isInPromotion)
+            {
+                return Result<ProductDto>.Failure("VALIDATION_ERROR", "Cannot change product price while it is part of an active or scheduled promotion.");
+            }
+        }
+
         if (dto.CategoryId.HasValue)
         {
             var exists = await _unitOfWork.Products.CategoryExistsAsync(dto.CategoryId.Value, cancellationToken);

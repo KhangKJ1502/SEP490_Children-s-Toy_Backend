@@ -17,4 +17,6 @@ public class CreatePromotionDto
     public int Priority { get; set; }
 
     public List<CreateProductPromotionDto> ProductPromotions { get; set; } = new();
+
+    public List<CreatePromotionTimeSlotDto> PromotionTimeSlots { get; set; } = new();
 }

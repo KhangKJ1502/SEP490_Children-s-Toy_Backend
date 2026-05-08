@@ -48,4 +48,14 @@ public interface IPromotionRepository
     /// Xoá ProductPromotion khỏi context.
     /// </summary>
     void RemoveProductPromotion(ProductPromotion productPromotion);
+
+    /// <summary>
+    /// Xoá PromotionTimeSlot khỏi context.
+    /// </summary>
+    void RemovePromotionTimeSlot(PromotionTimeSlot promotionTimeSlot);
+
+    /// <summary>
+    /// Kiểm tra sản phẩm có đang trong Promotion (Active hoặc Scheduled) hay không.
+    /// </summary>
+    Task<bool> IsProductInActivePromotionAsync(int productId, CancellationToken cancellationToken = default);
 }

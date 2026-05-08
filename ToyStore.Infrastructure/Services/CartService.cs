@@ -440,7 +440,28 @@ public class CartService : ICartService
 
     private static decimal ResolveCurrentPrice(Product product, DateTime now)
     {
-        var bestPromotion = product.ProductPromotions
+        // 1. Ưu tiên Flash Sale (PromotionProductSlots)
+        var activeFlashSale = product.PromotionProductSlots
+            .Where(pps => pps.IsActive
+                         && pps.TimeSlot != null
+                         && string.Equals(pps.TimeSlot.Status, "Active", StringComparison.OrdinalIgnoreCase)
+                         && pps.TimeSlot.StartAt <= now
+                         && pps.TimeSlot.EndAt >= now
+                         && pps.TimeSlot.Promotion != null
+                         && !pps.TimeSlot.Promotion.IsDeleted
+                         && string.Equals(pps.TimeSlot.Promotion.Status, "Active", StringComparison.OrdinalIgnoreCase)
+                         && (pps.SoldQuantity + pps.ReservedQuantity < pps.SaleQuantity))
+            .OrderByDescending(pps => pps.TimeSlot.Promotion.Priority)
+            .ThenBy(pps => pps.SalePrice)
+            .FirstOrDefault();
+
+        if (activeFlashSale != null)
+        {
+            return activeFlashSale.SalePrice;
+        }
+
+        // 2. Nếu không có Flash Sale, tìm trong ProductPromotions (Discount thường)
+        var bestRegularPromotion = product.ProductPromotions
             .Where(pp => pp.IsActive
                          && pp.Promotion != null
                          && !pp.Promotion.IsDeleted
@@ -453,23 +474,22 @@ public class CartService : ICartService
             .ThenBy(pp => pp.SalePrice)
             .FirstOrDefault();
 
-        return bestPromotion?.SalePrice ?? product.Price;
+        return bestRegularPromotion?.SalePrice ?? product.Price;
     }
 
     private static bool IsPromotionSlotActive(Promotion promotion, DateTime now)
     {
+        // Nếu promotion không chia slot (ví dụ Discount thường chạy cả ngày) thì trả về true
         if (promotion.PromotionTimeSlots == null || promotion.PromotionTimeSlots.Count == 0)
         {
             return true;
         }
 
-        var nowDate = DateOnly.FromDateTime(now);
-        var nowTime = TimeOnly.FromDateTime(now);
+        // Kiểm tra xem có slot nào đang Active và bao phủ thời gian hiện tại không
         return promotion.PromotionTimeSlots.Any(slot =>
             string.Equals(slot.Status, "Active", StringComparison.OrdinalIgnoreCase)
-            && slot.SlotDate == nowDate
-            && slot.StartTime <= nowTime
-            && slot.EndTime >= nowTime);
+            && slot.StartAt <= now
+            && slot.EndAt >= now);
     }
 
     private static bool IsCartItemReadOnlyStatus(string? productStatus)

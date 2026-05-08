@@ -5,6 +5,52 @@
 
 ---
 
+## [2026-05-08] `v2.1 — Promotion Schema v2: StartAt/EndAt + PromotionProductSlots`
+
+### Thay đổi
+
+| Loại | Bảng | Chi tiết |
+|---|---|---|
+| 🗑️ Xoá cột | `PromotionTimeSlots.SlotDate` | Gộp vào StartAt/EndAt |
+| 🗑️ Xoá cột | `PromotionTimeSlots.StartTime` | Gộp vào StartAt |
+| 🗑️ Xoá cột | `PromotionTimeSlots.EndTime` | Gộp vào EndAt |
+| ➕ Thêm cột | `PromotionTimeSlots.StartAt` | `DATETIME2(0) NOT NULL` — UTC |
+| ➕ Thêm cột | `PromotionTimeSlots.EndAt` | `DATETIME2(0) NOT NULL` — UTC |
+| 🔧 Sửa constraint | `CK_PromotionTimeSlots_Range` | Thay `StartTime < EndTime` → `StartAt < EndAt` |
+| 🔧 Sửa index | `IX_PromotionTimeSlots_Active` | Dùng `(Status, StartAt, EndAt)` |
+| ➕ Thêm index | `IX_PromotionTimeSlots_Promotion` | `(PromotionID, Status)` |
+| 🔧 Sửa unique | `UQ_PromotionTimeSlots_UniqueSlot` | Dùng `(PromotionID, StartAt, EndAt)` |
+| 🔧 Sửa default | `PromotionTimeSlots.CreatedAt` | Đổi sang `GETUTCDATE()` |
+| ➕ Thêm bảng | `PromotionProductSlots` | Liên kết sản phẩm với slot Flash Sale |
+
+### Bảng PromotionProductSlots — cột mới
+
+| Cột | Kiểu | Mô tả |
+|---|---|---|
+| `SlotProductID` | `INT IDENTITY PK` | |
+| `TimeSlotID` | `INT FK` | → PromotionTimeSlots |
+| `ProductID` | `INT FK` | → Products |
+| `SalePrice` | `DECIMAL(12,2)` | Giá flash-sale của slot này |
+| `DiscountPercent` | `DECIMAL(5,2) NULL` | % giảm giá |
+| `SaleQuantity` | `INT NOT NULL` | Số lượng tối đa (bắt buộc) |
+| `SoldQuantity` | `INT DEFAULT 0` | Đã bán |
+| `ReservedQuantity` | `INT DEFAULT 0` | Đang giữ |
+| `IsActive` | `BIT DEFAULT 1` | |
+
+### Lý do
+
+> Flash Sale cần gán sản phẩm + giá + số lượng riêng cho từng time slot.
+> `ProductPromotions` chỉ giữ nguyên để dùng cho loại DISCOUNT (không phân slot).
+
+### Cách áp dụng
+
+```bash
+# Chạy file SQL change script trên SSMS hoặc sqlcmd:
+docs/database/changes/20260508_1200_PromotionTimeSlots_StartAt_EndAt.sql
+```
+
+---
+
 ## [2026-04-13] `v1.0 — InitialCreate`
 
 ### Thay đổi
