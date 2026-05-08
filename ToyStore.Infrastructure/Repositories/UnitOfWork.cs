@@ -27,7 +27,8 @@ public class UnitOfWork : IUnitOfWork
         ITemplateRepository templates,
         IAddressRepository addresses,
         ICartRepository carts,
-        IOrderRepository orders)
+        IOrderRepository orders,
+        ICustomerChildRepository customerChildren)
     {
         _context = context;
         Vouchers = vouchers;
@@ -44,6 +45,7 @@ public class UnitOfWork : IUnitOfWork
         Addresses = addresses;
         Carts = carts;
         Orders = orders;
+        CustomerChildren = customerChildren;
     }
 
     public IVoucherRepository Vouchers { get; }
@@ -69,6 +71,7 @@ public class UnitOfWork : IUnitOfWork
     public ICampaignRepository Campaigns { get; }
     public IAddressRepository Addresses { get; }
     public ICartRepository Carts { get; }
+    public ICustomerChildRepository CustomerChildren { get; }
 
     public IOrderRepository Orders { get; }
 

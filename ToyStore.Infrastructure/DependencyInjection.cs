@@ -13,6 +13,7 @@ using ToyStore.Application.DTOs.Campaigns;
 using ToyStore.Application.DTOs.Carts;
 using ToyStore.Application.DTOs.Orders;
 using ToyStore.Application.DTOs.Profiles;
+using ToyStore.Application.DTOs.CustomerChildren;
 using ToyStore.Application.DTOs.Templates;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
@@ -26,6 +27,7 @@ using ToyStore.Application.Validators.Campaigns;
 using ToyStore.Application.Validators.Carts;
 using ToyStore.Application.Validators.Orders;
 using ToyStore.Application.Validators.Profiles;
+using ToyStore.Application.Validators.CustomerChildren;
 using ToyStore.Application.Validators.Templates;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Options;
@@ -72,6 +74,7 @@ public static class DependencyInjection
             cfg.AddProfile<AddressProfile>();
             cfg.AddProfile<CartProfile>();
             cfg.AddProfile<OrdersProfile>();
+            cfg.AddProfile<CustomerChildProfile>();
         });
 
         services.AddScoped<IValidator<CreateBrandDto>, CreateBrandValidator>();
@@ -99,6 +102,8 @@ public static class DependencyInjection
         services.AddScoped<IValidator<GoogleRegisterDto>, GoogleRegisterValidator>();
         services.AddScoped<IValidator<CreateAddressDto>, CreateAddressValidator>();
         services.AddScoped<IValidator<UpdateAddressDto>, UpdateAddressValidator>();
+        services.AddScoped<IValidator<CreateChildDto>, CreateChildValidator>();
+        services.AddScoped<IValidator<UpdateChildDto>, UpdateChildValidator>();
         services.AddScoped<IValidator<AddToCartDto>, AddToCartValidator>();
         services.AddScoped<IValidator<UpdateCartItemQuantityDto>, UpdateCartItemQuantityValidator>();
 
@@ -126,6 +131,7 @@ public static class DependencyInjection
         services.AddScoped<ITemplateRepository, TemplateRepository>();
         services.AddScoped<ICampaignRepository, CampaignRepository>();
         services.AddScoped<IAddressRepository, AddressRepository>();
+        services.AddScoped<ICustomerChildRepository, CustomerChildRepository>();
         services.AddScoped<ICartRepository, CartRepository>();
         services.AddScoped<IOrderRepository, OrderRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -137,6 +143,7 @@ public static class DependencyInjection
         services.AddScoped<ITemplateService, TemplateService>();
         services.AddScoped<ICampaignService, CampaignService>();
         services.AddScoped<IAddressService, AddressService>();
+        services.AddScoped<ICustomerChildService, CustomerChildService>();
         services.AddScoped<ICartService, CartService>();
 
         // Resolver business object
