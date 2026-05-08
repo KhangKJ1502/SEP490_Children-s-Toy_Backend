@@ -42,6 +42,7 @@ public class AccountService : IAccountService
         string? sortBy = null,
         bool sortDesc = false,
         string? searchTerm = null,
+        byte? roleId = null,
         CancellationToken cancellationToken = default)
     {
         if (pageNumber < 1)
@@ -62,10 +63,12 @@ public class AccountService : IAccountService
             sortBy,
             sortDesc,
             normalizedSearchTerm,
+            roleId,
             cancellationToken);
 
         var totalCount = await _unitOfWork.Accounts.CountAsync(
             normalizedSearchTerm,
+            roleId,
             cancellationToken);
 
         var mappedItems = _mapper.Map<List<AccountListDto>>(items);
