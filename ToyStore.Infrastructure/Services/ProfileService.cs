@@ -57,6 +57,11 @@ public class ProfileService : IProfileService
             return Result<CustomerProfileDto>.NotFound("Account", _currentUserService.AccountId);
         }
 
+        if (account.RoleId != CustomerRoleId)
+        {
+            return Result<CustomerProfileDto>.Failure("FORBIDDEN", "Only customer can access this resource.");
+        }
+
         return Result<CustomerProfileDto>.Success(_mapper.Map<CustomerProfileDto>(account));
     }
 
@@ -90,15 +95,47 @@ public class ProfileService : IProfileService
             return Result.NotFound("Account", _currentUserService.AccountId);
         }
 
-        if (!VerifyPassword(dto.CurrentPassword, existing.PasswordHash))
+        var provider = existing.Provider?.Trim().ToLowerInvariant();
+        var isGoogleFirstPasswordChange = provider == "google";
+
+        if (!isGoogleFirstPasswordChange && !VerifyPassword(dto.CurrentPassword, existing.PasswordHash))
         {
             return Result.Failure("INVALID_CREDENTIALS", "Current password is incorrect. Please try again.");
         }
 
-        await _unitOfWork.Accounts.UpdatePasswordHashAsync(
-            _currentUserService.AccountId,
-            HashPassword(dto.NewPassword),
-            cancellationToken);
+        if (VerifyPassword(dto.NewPassword, existing.PasswordHash))
+        {
+            return Result.ValidationFailure(new Dictionary<string, string[]>
+            {
+                ["NewPassword"] = ["New password must be different from current password."]
+            });
+        }
+
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await _unitOfWork.Accounts.UpdatePasswordHashAsync(
+                _currentUserService.AccountId,
+                HashPassword(dto.NewPassword),
+                cancellationToken);
+
+            // Google first change is considered completed after first successful update.
+            if (isGoogleFirstPasswordChange)
+            {
+                await _unitOfWork.Accounts.UpdateProviderAsync(
+                    _currentUserService.AccountId,
+                    "Email",
+                    cancellationToken);
+            }
+
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Failed to change customer password for account {AccountId}.", _currentUserService.AccountId);
+            throw;
+        }
 
         _logger.LogInformation("Customer {AccountId} changed password.", _currentUserService.AccountId);
         return Result.Success();
@@ -153,6 +190,9 @@ public class ProfileService : IProfileService
         var normalizedPhoneNumber = dto.PhoneNumber != null
             ? NormalizeNullable(dto.PhoneNumber)
             : existing.PhoneNumber;
+        var normalizedAccountName = dto.AccountName != null
+            ? NormalizeNullable(dto.AccountName)
+            : existing.AccountName;
 
         if (dto.PhoneNumber != null && normalizedPhoneNumber != null)
         {
@@ -176,8 +216,11 @@ public class ProfileService : IProfileService
 
             var updated = await _unitOfWork.Accounts.UpdateProfileAsync(
                 accountId,
+                normalizedAccountName,
                 normalizedImageUrl,
                 normalizedPhoneNumber,
+                dto.Dob,
+                dto.SexId,
                 cancellationToken);
 
             await _unitOfWork.CommitTransactionAsync(cancellationToken);

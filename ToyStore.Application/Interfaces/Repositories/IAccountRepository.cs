@@ -83,6 +83,11 @@ public interface IAccountRepository
     Task UpdatePasswordHashAsync(int accountId, string passwordHash, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Cap nhat provider cua account.
+    /// </summary>
+    Task UpdateProviderAsync(int accountId, string? provider, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Lay thong tin Account theo ID cho nghiep vu Profile (bao gom PasswordHash).
     /// </summary>
     Task<Account?> GetByIdForProfileAsync(int accountId, CancellationToken cancellationToken = default);
@@ -92,8 +97,11 @@ public interface IAccountRepository
     /// </summary>
     Task<Account> UpdateProfileAsync(
         int accountId,
+        string? accountName,
         string? imageUrl,
         string? phoneNumber,
+        DateTime? dob,
+        byte? sexId,
         CancellationToken cancellationToken = default);
 
 }
