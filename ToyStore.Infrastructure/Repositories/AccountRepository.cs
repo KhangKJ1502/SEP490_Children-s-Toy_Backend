@@ -20,12 +20,18 @@ public class AccountRepository : IAccountRepository
         string? sortBy = null,
         bool sortDesc = false,
         string? searchTerm = null,
+        byte? roleId = null,
         CancellationToken cancellationToken = default)
     {
         IQueryable<Account> query = _context.Accounts
             .AsNoTracking()
             .Include(x => x.Role)
             .Where(x => !x.IsDeleted && x.Role.RoleName != "Admin");
+
+        if (roleId.HasValue)
+        {
+            query = query.Where(x => x.RoleId == roleId.Value);
+        }
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
@@ -62,11 +68,17 @@ public class AccountRepository : IAccountRepository
 
     public Task<int> CountAsync(
         string? searchTerm = null,
+        byte? roleId = null,
         CancellationToken cancellationToken = default)
     {
         IQueryable<Account> query = _context.Accounts
             .AsNoTracking()
             .Where(x => !x.IsDeleted && x.Role.RoleName != "Admin");
+
+        if (roleId.HasValue)
+        {
+            query = query.Where(x => x.RoleId == roleId.Value);
+        }
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {

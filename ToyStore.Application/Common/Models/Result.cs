@@ -81,6 +81,24 @@ public class Result<T>
     {
         return new Result<T>(false, default, "UNAUTHORIZED", message, null);
     }
+
+    /// <summary>
+    /// Creates a failure result for unprocessable entity (invalid state transition, business rule).
+    /// Maps to HTTP 422.
+    /// </summary>
+    public static Result<T> UnprocessableEntity(string message)
+    {
+        return new Result<T>(false, default, "UNPROCESSABLE_ENTITY", message, null);
+    }
+
+    /// <summary>
+    /// Creates a failure result for upstream/provider failures.
+    /// Maps to HTTP 502.
+    /// </summary>
+    public static Result<T> BadGateway(string message)
+    {
+        return new Result<T>(false, default, "BAD_GATEWAY", message, null);
+    }
     
     /// <summary>
     /// Converts to non-generic Result.
@@ -143,5 +161,23 @@ public class Result
     public static Result BusinessError(string message)
     {
         return new Result(false, "BUSINESS_RULE_VIOLATION", message, null);
+    }
+
+    /// <summary>
+    /// Creates a failure result for unprocessable entity (invalid state transition).
+    /// Maps to HTTP 422.
+    /// </summary>
+    public static Result UnprocessableEntity(string message)
+    {
+        return new Result(false, "UNPROCESSABLE_ENTITY", message, null);
+    }
+
+    /// <summary>
+    /// Creates a failure result for upstream/provider failures.
+    /// Maps to HTTP 502.
+    /// </summary>
+    public static Result BadGateway(string message)
+    {
+        return new Result(false, "BAD_GATEWAY", message, null);
     }
 }
