@@ -15,6 +15,7 @@ public class ProductService : IProductService
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<ProductService> _logger;
     private readonly IMapper _mapper;
+    private readonly ICartService _cartService;
     private readonly IValidator<CreateProductDto> _createProductValidator;
     private readonly IValidator<UpdateProductDto> _updateProductValidator;
 
@@ -22,12 +23,14 @@ public class ProductService : IProductService
         IUnitOfWork unitOfWork,
         ILogger<ProductService> logger,
         IMapper mapper,
+        ICartService cartService,
         IValidator<CreateProductDto> createProductValidator,
         IValidator<UpdateProductDto> updateProductValidator)
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
         _mapper = mapper;
+        _cartService = cartService;
         _createProductValidator = createProductValidator;
         _updateProductValidator = updateProductValidator;
     }
@@ -385,6 +388,11 @@ public class ProductService : IProductService
         }
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        var shouldNotifyCartRealtime = dto.Price.HasValue
+                                       || dto.Quantity.HasValue
+                                       || !string.IsNullOrWhiteSpace(dto.ProductStatus)
+                                       || !string.IsNullOrWhiteSpace(dto.ProductName)
+                                       || !string.IsNullOrWhiteSpace(dto.MainImageUrl);
         try
         {
             var updated = await _unitOfWork.Products.UpdateAsync(
@@ -394,6 +402,11 @@ public class ProductService : IProductService
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             _logger.LogInformation("Product {ProductId} updated successfully.", updated.ProductId);
+
+            if (shouldNotifyCartRealtime)
+            {
+                await _cartService.NotifyProductChangedAsync(updated.ProductId, cancellationToken);
+            }
 
             var mappedUpdated = _mapper.Map<ProductDto>(updated);
             mappedUpdated.AdditionalImageUrls = await _unitOfWork.Products.GetAdditionalImageUrlsAsync(

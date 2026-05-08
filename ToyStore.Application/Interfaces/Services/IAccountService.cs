@@ -18,6 +18,7 @@ public interface IAccountService
         string? sortBy = null,
         bool sortDesc = false,
         string? searchTerm = null,
+        byte? roleId = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

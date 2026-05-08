@@ -104,6 +104,103 @@ public class BlogRepository : IBlogRepository
         return entity;
     }
 
+    public Task<List<ReviewBlog>> GetReviewsByBlogIdAsync(int blogPostId, bool includeHidden, CancellationToken cancellationToken = default)
+    {
+        var query = _context.ReviewBlogs
+            .AsNoTracking()
+            .Include(x => x.Account)
+            .Include(x => x.BlogPost)
+            .Where(x => x.BlogPostId == blogPostId);
+
+        if (!includeHidden)
+        {
+            query = query.Where(x => !x.IsDeleted);
+        }
+
+        return query
+            .OrderByDescending(x => x.CreatedAt)
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<List<ReviewBlogReply>> GetRepliesByReviewIdsAsync(List<int> reviewIds, bool includeHidden, CancellationToken cancellationToken = default)
+    {
+        var query = _context.ReviewBlogReplies
+            .AsNoTracking()
+            .Include(x => x.Account)
+            .Include(x => x.ReplyToAccount)
+            .Where(x => reviewIds.Contains(x.ReviewBlogId));
+
+        if (!includeHidden)
+        {
+            query = query.Where(x => !x.IsDeleted);
+        }
+
+        return query
+            .OrderBy(x => x.CreatedAt)
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<ReviewBlog?> GetReviewByIdAsync(int reviewBlogId, CancellationToken cancellationToken = default)
+    {
+        return _context.ReviewBlogs
+            .Include(x => x.Account)
+            .Include(x => x.BlogPost)
+            .FirstOrDefaultAsync(x => x.ReviewBlogId == reviewBlogId, cancellationToken);
+    }
+
+    public Task<ReviewBlogReply?> GetReplyByIdAsync(int replyBlogId, CancellationToken cancellationToken = default)
+    {
+        return _context.ReviewBlogReplies
+            .Include(x => x.Account)
+            .Include(x => x.ReplyToAccount)
+            .FirstOrDefaultAsync(x => x.ReplyBlogId == replyBlogId, cancellationToken);
+    }
+
+    public async Task<ReviewBlog> CreateReviewAsync(ReviewBlog entity, CancellationToken cancellationToken = default)
+    {
+        await _context.ReviewBlogs.AddAsync(entity, cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
+        return entity;
+    }
+
+    public async Task<ReviewBlogReply> CreateReplyAsync(ReviewBlogReply entity, CancellationToken cancellationToken = default)
+    {
+        await _context.ReviewBlogReplies.AddAsync(entity, cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
+        return entity;
+    }
+
+    public async Task UpdateReviewAsync(ReviewBlog entity, CancellationToken cancellationToken = default)
+    {
+        _context.ReviewBlogs.Update(entity);
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task UpdateReplyAsync(ReviewBlogReply entity, CancellationToken cancellationToken = default)
+    {
+        _context.ReviewBlogReplies.Update(entity);
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public Task<List<ReviewBlog>> GetPagedReviewsForManagementAsync(
+        int pageNumber,
+        int pageSize,
+        string? searchTerm,
+        string? status,
+        CancellationToken cancellationToken = default)
+    {
+        var query = BuildReviewManagementQuery(searchTerm, status)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize);
+
+        return query.ToListAsync(cancellationToken);
+    }
+
+    public Task<int> CountReviewsForManagementAsync(string? searchTerm, string? status, CancellationToken cancellationToken = default)
+    {
+        return BuildReviewManagementQuery(searchTerm, status).CountAsync(cancellationToken);
+    }
+
     private IQueryable<BlogPost> BuildQuery(
         string? searchTerm,
         string? status,
@@ -192,5 +289,32 @@ public class BlogRepository : IBlogRepository
             (_, true) => query.OrderByDescending(x => x.BlogPostId),
             _ => query.OrderBy(x => x.BlogPostId)
         };
+    }
+
+    private IQueryable<ReviewBlog> BuildReviewManagementQuery(string? searchTerm, string? status)
+    {
+        var query = _context.ReviewBlogs
+            .AsNoTracking()
+            .Include(x => x.Account)
+            .Include(x => x.BlogPost)
+            .OrderByDescending(x => x.CreatedAt)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            var isHidden = string.Equals(status.Trim(), "Hidden", StringComparison.OrdinalIgnoreCase);
+            query = query.Where(x => x.IsDeleted == isHidden);
+        }
+
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var term = searchTerm.Trim();
+            query = query.Where(x =>
+                (x.Comment ?? string.Empty).Contains(term)
+                || x.Account.AccountName.Contains(term)
+                || x.BlogPost.BlogTitle.Contains(term));
+        }
+
+        return query;
     }
 }

@@ -9,6 +9,7 @@ namespace ToyStore.Infrastructure.Services;
 
 public class CloudinaryImageUploadService : IImageUploadService
 {
+    private const string DefaultUploadFolder = "SEP490_Products";
     private readonly Cloudinary _cloudinary;
     private readonly ILogger<CloudinaryImageUploadService> _logger;
 
@@ -31,6 +32,29 @@ public class CloudinaryImageUploadService : IImageUploadService
     }
 
     public async Task<Result<string>> UploadImageAsync(Stream fileStream, string fileName, CancellationToken cancellationToken = default)
+    {
+        return await UploadCoreAsync(fileStream, fileName, DefaultUploadFolder, cancellationToken);
+    }
+
+    public async Task<Result<string>> UploadImageToFolderAsync(
+        Stream fileStream,
+        string fileName,
+        string folder,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            folder = DefaultUploadFolder;
+        }
+
+        return await UploadCoreAsync(fileStream, fileName, folder, cancellationToken);
+    }
+
+    private async Task<Result<string>> UploadCoreAsync(
+        Stream fileStream,
+        string fileName,
+        string folder,
+        CancellationToken cancellationToken)
     {
         if (fileStream == null || fileStream.Length == 0)
         {
@@ -56,7 +80,7 @@ public class CloudinaryImageUploadService : IImageUploadService
             var uploadParams = new ImageUploadParams
             {
                 File = new FileDescription(fileName, fileStream),
-                Folder = "SEP490_Products", // You can configure this or make it dynamic
+                Folder = folder,
                 Transformation = new Transformation().Quality("auto").FetchFormat("auto")
             };
 

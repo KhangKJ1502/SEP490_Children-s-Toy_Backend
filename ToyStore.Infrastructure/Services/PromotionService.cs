@@ -19,6 +19,7 @@ public class PromotionService : IPromotionService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
     private readonly ILogger<PromotionService> _logger;
+    private readonly ICartService _cartService;
     private readonly IValidator<CreatePromotionDto> _createValidator;
     private readonly IValidator<UpdatePromotionDto> _updateValidator;
     private readonly ICurrentUserService _currentUserService;
@@ -27,6 +28,7 @@ public class PromotionService : IPromotionService
         IUnitOfWork unitOfWork,
         IMapper mapper,
         ILogger<PromotionService> logger,
+        ICartService cartService,
         IValidator<CreatePromotionDto> createValidator,
         IValidator<UpdatePromotionDto> updateValidator,
         ICurrentUserService currentUserService)
@@ -34,6 +36,7 @@ public class PromotionService : IPromotionService
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _logger = logger;
+        _cartService = cartService;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
         _currentUserService = currentUserService;
@@ -204,6 +207,15 @@ public class PromotionService : IPromotionService
         );
         var dto = _mapper.Map<PromotionDto>(createdPromotion ?? promotion);
 
+        var createdProductIds = (createdPromotion ?? promotion).ProductPromotions
+            .Select(x => x.ProductId)
+            .Distinct()
+            .ToList();
+        if (createdProductIds.Count > 0)
+        {
+            await _cartService.NotifyPromotionChangedAsync(createdProductIds, cancellationToken);
+        }
+
         return Result<PromotionDto>.Success(dto);
     }
 
@@ -372,6 +384,15 @@ public class PromotionService : IPromotionService
             "Updated promotion {PromotionId} with name {PromotionName}",
             promotionId,
             updatedPromotion.PromotionName);
+
+        var impactedProductIds = updatedPromotion.ProductPromotions
+            .Select(x => x.ProductId)
+            .Distinct()
+            .ToList();
+        if (impactedProductIds.Count > 0)
+        {
+            await _cartService.NotifyPromotionChangedAsync(impactedProductIds, cancellationToken);
+        }
 
         return Result<PromotionDto>.Success(_mapper.Map<PromotionDto>(updatedPromotion));
     }

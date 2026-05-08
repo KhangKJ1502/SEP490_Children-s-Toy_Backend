@@ -10,6 +10,8 @@ using ToyStore.Application.DTOs.Auth;
 using ToyStore.Application.DTOs.Brands;
 using ToyStore.Application.DTOs.Blogs;
 using ToyStore.Application.DTOs.Campaigns;
+using ToyStore.Application.DTOs.Carts;
+using ToyStore.Application.DTOs.Orders;
 using ToyStore.Application.DTOs.Profiles;
 using ToyStore.Application.DTOs.Templates;
 using ToyStore.Application.Interfaces.Repositories;
@@ -21,9 +23,12 @@ using ToyStore.Application.Validators.Auth;
 using ToyStore.Application.Validators.Brands;
 using ToyStore.Application.Validators.Blogs;
 using ToyStore.Application.Validators.Campaigns;
+using ToyStore.Application.Validators.Carts;
+using ToyStore.Application.Validators.Orders;
 using ToyStore.Application.Validators.Profiles;
 using ToyStore.Application.Validators.Templates;
 using ToyStore.Infrastructure.Data;
+using ToyStore.Infrastructure.Options;
 using ToyStore.Infrastructure.Repositories;
 using ToyStore.Infrastructure.Services;
 using ToyStore.Infrastructure.Services.Resolvers;
@@ -65,6 +70,8 @@ public static class DependencyInjection
             cfg.AddProfile<BlogProfile>();
             cfg.AddProfile<RoleProfile>();
             cfg.AddProfile<AddressProfile>();
+            cfg.AddProfile<CartProfile>();
+            cfg.AddProfile<OrdersProfile>();
         });
 
         services.AddScoped<IValidator<CreateBrandDto>, CreateBrandValidator>();
@@ -87,11 +94,21 @@ public static class DependencyInjection
         services.AddScoped<IValidator<ChangePasswordDto>, ChangePasswordValidator>();
         services.AddScoped<IValidator<UpdateCampaignDto>, UpdateCampaignValidator>();
 
-        // Google OAuth validators
+        // Validator Google OAuth
         services.AddScoped<IValidator<GoogleLoginDto>, GoogleLoginValidator>();
         services.AddScoped<IValidator<GoogleRegisterDto>, GoogleRegisterValidator>();
         services.AddScoped<IValidator<CreateAddressDto>, CreateAddressValidator>();
         services.AddScoped<IValidator<UpdateAddressDto>, UpdateAddressValidator>();
+        services.AddScoped<IValidator<AddToCartDto>, AddToCartValidator>();
+        services.AddScoped<IValidator<UpdateCartItemQuantityDto>, UpdateCartItemQuantityValidator>();
+
+        services.AddScoped<IValidator<ShipOrderRequestDto>, ShipOrderRequestValidator>();
+        services.AddScoped<IValidator<CancelOrderRequestDto>, CancelOrderRequestValidator>();
+        services.AddScoped<IValidator<AssignOrderRequestDto>, AssignOrderRequestValidator>();
+
+        services.AddScoped<IValidator<ShipOrderRequestDto>, ShipOrderRequestValidator>();
+        services.AddScoped<IValidator<CancelOrderRequestDto>, CancelOrderRequestValidator>();
+        services.AddScoped<IValidator<AssignOrderRequestDto>, AssignOrderRequestValidator>();
 
 
         services.AddScoped<IVoucherRepository, VoucherRepository>();
@@ -109,6 +126,8 @@ public static class DependencyInjection
         services.AddScoped<ITemplateRepository, TemplateRepository>();
         services.AddScoped<ICampaignRepository, CampaignRepository>();
         services.AddScoped<IAddressRepository, AddressRepository>();
+        services.AddScoped<ICartRepository, CartRepository>();
+        services.AddScoped<IOrderRepository, OrderRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ISuperCategoryService, SuperCategoryService>();
@@ -118,27 +137,56 @@ public static class DependencyInjection
         services.AddScoped<ITemplateService, TemplateService>();
         services.AddScoped<ICampaignService, CampaignService>();
         services.AddScoped<IAddressService, AddressService>();
+        services.AddScoped<ICartService, CartService>();
 
-        // Business-object resolvers
+        // Resolver business object
         services.AddScoped<IBusinessObjectResolver, VoucherResolver>();
         services.AddScoped<IBusinessObjectResolver, ProductResolver>();
         services.AddScoped<IBusinessObjectResolver, BlogPostResolver>();
         services.AddScoped<IBusinessObjectResolver, SaleResolver>();
         services.AddScoped<BusinessObjectResolverFactory>();
 
-        // Template renderer
+        // Renderer template
         services.AddScoped<ITemplateRenderer, TemplateRenderer>();
 
         services.AddScoped<IRedisService, RedisService>();
+        services.AddScoped<ICartRealtimeService, CartRealtimeService>();
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IProfileService, ProfileService>();
+        services.AddScoped<IHealthService, HealthService>();
+        services.AddScoped<IAdminOrderService, AdminOrderService>();
+        services.AddScoped<IShippingWebhookService, ShippingWebhookService>();
 
         services.AddScoped<IPromotionRepository, PromotionRepository>();
         services.AddScoped<IPromotionService, PromotionService>();
 
         services.AddScoped<IImageUploadService, CloudinaryImageUploadService>();
+
+        // --- GHN van chuyen ---
+        services.Configure<GhnOptions>(
+            configuration.GetSection(GhnOptions.SectionName));
+        services.Configure<ShopAddressOptions>(
+            configuration.GetSection(ShopAddressOptions.SectionName));
+
+        services.AddHttpClient("GHN", (sp, client) =>
+        {
+            var opts = configuration.GetSection(GhnOptions.SectionName).Get<GhnOptions>()
+                       ?? new GhnOptions();
+            if (!string.IsNullOrWhiteSpace(opts.ApiEndpoint))
+                client.BaseAddress = new Uri(opts.ApiEndpoint.TrimEnd('/') + "/");
+            if (!string.IsNullOrWhiteSpace(opts.ApiToken))
+                client.DefaultRequestHeaders.Add("Token", opts.ApiToken);
+            if (opts.ShopId > 0)
+                client.DefaultRequestHeaders.Add("ShopId", opts.ShopId.ToString());
+        });
+
+        services.AddScoped<IGhnClient, GhnClient>();
+
+        // Cau hinh webhook tokens
+        services.Configure<WebhookOptions>(
+            configuration.GetSection(WebhookOptions.SectionName));
 
         return services;
     }
