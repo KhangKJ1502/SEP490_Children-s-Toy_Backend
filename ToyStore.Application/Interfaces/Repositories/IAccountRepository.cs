@@ -16,6 +16,7 @@ public interface IAccountRepository
         string? sortBy = null,
         bool sortDesc = false,
         string? searchTerm = null,
+        byte? roleId = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -23,6 +24,7 @@ public interface IAccountRepository
     /// </summary>
     Task<int> CountAsync(
         string? searchTerm = null,
+        byte? roleId = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
