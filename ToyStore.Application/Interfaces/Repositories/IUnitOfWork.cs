@@ -25,6 +25,8 @@ public interface IUnitOfWork : IDisposable
 
     IBlogRepository Blogs { get; }
 
+    ICartRepository Carts { get; }
+
     IOrderRepository Orders { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

@@ -1,8 +1,10 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.IdentityModel.Tokens;
 using ToyStore.API.Middleware;
 using ToyStore.Infrastructure;
+using ToyStore.Infrastructure.Hubs;
 using ToyStore.Recommendation;
 using ToyStore.Chatbot;
 
@@ -46,6 +48,8 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddRecommendation();
 builder.Services.AddChatbot();
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<IUserIdProvider, AccountIdUserIdProvider>();
 
 var jwtSecretKey = builder.Configuration["Jwt:SecretKey"]!;
 var jwtIssuer = builder.Configuration["Jwt:Issuer"]!;
@@ -64,6 +68,20 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAudience = jwtAudience,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecretKey)),
             ClockSkew = TimeSpan.Zero
+        };
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                var path = context.HttpContext.Request.Path;
+                if (!string.IsNullOrWhiteSpace(accessToken) && path.StartsWithSegments("/hubs/cart"))
+                {
+                    context.Token = accessToken;
+                }
+
+                return Task.CompletedTask;
+            }
         };
     });
 
@@ -99,5 +117,6 @@ app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<CartHub>("/hubs/cart");
 
 app.Run();

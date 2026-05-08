@@ -106,6 +106,15 @@ public class VoucherRepository : IVoucherRepository
         _context.Update(voucher);
     }
 
+    public Task<int> CountUsageByAccountAsync(int voucherId, int accountId, CancellationToken cancellationToken = default)
+    {
+        return _context.VoucherUsageLogs
+            .AsNoTracking()
+            .CountAsync(
+                x => x.VoucherId == voucherId && x.AccountId == accountId,
+                cancellationToken);
+    }
+
     private static IQueryable<Voucher> ApplySorting(IQueryable<Voucher> query, string? sortBy, bool sortDesc)
     {
         var normalizedSortBy = sortBy?.Trim().ToLowerInvariant();
