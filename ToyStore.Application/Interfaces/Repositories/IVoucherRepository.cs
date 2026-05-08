@@ -48,4 +48,6 @@ public interface IVoucherRepository
     /// Cập nhật voucher vào context.
     /// </summary>
     void Update(Voucher voucher);
+
+    Task<int> CountUsageByAccountAsync(int voucherId, int accountId, CancellationToken cancellationToken = default);
 }
