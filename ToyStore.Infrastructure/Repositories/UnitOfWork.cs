@@ -28,7 +28,12 @@ public class UnitOfWork : IUnitOfWork
         IAddressRepository addresses,
         ICartRepository carts,
         IOrderRepository orders,
+<<<<<<< HEAD
         IWishlistRepository wishlists)
+=======
+        IReviewRepository reviews,
+        ICustomerChildRepository customerChildren)
+>>>>>>> 8e31d08c7157223382caaa2f1dbe38480be08287
     {
         _context = context;
         Vouchers = vouchers;
@@ -45,7 +50,12 @@ public class UnitOfWork : IUnitOfWork
         Addresses = addresses;
         Carts = carts;
         Orders = orders;
+<<<<<<< HEAD
         Wishlists = wishlists;
+=======
+        Reviews = reviews;
+        CustomerChildren = customerChildren;
+>>>>>>> 8e31d08c7157223382caaa2f1dbe38480be08287
     }
 
     public IVoucherRepository Vouchers { get; }
@@ -69,11 +79,17 @@ public class UnitOfWork : IUnitOfWork
     public IPromotionRepository Promotions { get; }
 
     public ICampaignRepository Campaigns { get; }
+
     public IAddressRepository Addresses { get; }
+
     public ICartRepository Carts { get; }
+    
+    public ICustomerChildRepository CustomerChildren { get; }
 
     public IOrderRepository Orders { get; }
     public IWishlistRepository Wishlists { get; }
+
+    public IReviewRepository Reviews { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

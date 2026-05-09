@@ -100,12 +100,12 @@ public class ProductRepository : IProductRepository
         {
             query = query.Where(x =>
                 _context.ReviewProducts
-                    .Where(r => r.ProductId == x.ProductId && !r.IsDeleted)
+                    .Where(r => r.ProductId == x.ProductId && !r.IsDeleted && r.ModerationStatus == "Approved")
                     .Select(r => (double?)r.Rating)
                     .Average() != null
                 && Math.Round(
                     _context.ReviewProducts
-                        .Where(r => r.ProductId == x.ProductId && !r.IsDeleted)
+                        .Where(r => r.ProductId == x.ProductId && !r.IsDeleted && r.ModerationStatus == "Approved")
                         .Select(r => (double?)r.Rating)
                         .Average()!.Value) == rating.Value);
         }
@@ -223,12 +223,12 @@ public class ProductRepository : IProductRepository
         {
             query = query.Where(x =>
                 _context.ReviewProducts
-                    .Where(r => r.ProductId == x.ProductId && !r.IsDeleted)
+                    .Where(r => r.ProductId == x.ProductId && !r.IsDeleted && r.ModerationStatus == "Approved")
                     .Select(r => (double?)r.Rating)
                     .Average() != null
                 && Math.Round(
                     _context.ReviewProducts
-                        .Where(r => r.ProductId == x.ProductId && !r.IsDeleted)
+                        .Where(r => r.ProductId == x.ProductId && !r.IsDeleted && r.ModerationStatus == "Approved")
                         .Select(r => (double?)r.Rating)
                         .Average()!.Value) == rating.Value);
         }

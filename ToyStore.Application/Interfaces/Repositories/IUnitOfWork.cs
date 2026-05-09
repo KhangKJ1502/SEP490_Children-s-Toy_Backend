@@ -23,13 +23,19 @@ public interface IUnitOfWork : IDisposable
     ICampaignRepository Campaigns { get; }
     IAddressRepository Addresses { get; }
 
+    ICustomerChildRepository CustomerChildren { get; }
+
     IBlogRepository Blogs { get; }
 
     ICartRepository Carts { get; }
 
     IOrderRepository Orders { get; }
 
+<<<<<<< HEAD
     IWishlistRepository Wishlists { get; }
+=======
+    IReviewRepository Reviews { get; }
+>>>>>>> 8e31d08c7157223382caaa2f1dbe38480be08287
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 
