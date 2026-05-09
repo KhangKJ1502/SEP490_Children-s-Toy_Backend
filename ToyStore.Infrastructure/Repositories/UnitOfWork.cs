@@ -54,6 +54,7 @@ public class UnitOfWork : IUnitOfWork
         CustomerChildren = customerChildren;
         Deliveries = deliveries;
         UserPreferences = userPreferences;
+
     }
 
     public IVoucherRepository Vouchers { get; }
