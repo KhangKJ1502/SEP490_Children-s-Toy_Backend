@@ -142,7 +142,11 @@ public static class DependencyInjection
         services.AddScoped<ICustomerChildRepository, CustomerChildRepository>();
         services.AddScoped<ICartRepository, CartRepository>();
         services.AddScoped<IOrderRepository, OrderRepository>();
+<<<<<<< HEAD
+        services.AddScoped<IWishlistRepository, WishlistRepository>();
+=======
         services.AddScoped<IReviewRepository, ReviewRepository>();
+>>>>>>> 8e31d08c7157223382caaa2f1dbe38480be08287
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ISuperCategoryService, SuperCategoryService>();
@@ -154,7 +158,11 @@ public static class DependencyInjection
         services.AddScoped<IAddressService, AddressService>();
         services.AddScoped<ICustomerChildService, CustomerChildService>();
         services.AddScoped<ICartService, CartService>();
+<<<<<<< HEAD
+        services.AddScoped<IWishlistService, WishlistService>();
+=======
         services.AddScoped<IReviewService, ReviewService>();
+>>>>>>> 8e31d08c7157223382caaa2f1dbe38480be08287
 
         // Resolver business object
         services.AddScoped<IBusinessObjectResolver, VoucherResolver>();
