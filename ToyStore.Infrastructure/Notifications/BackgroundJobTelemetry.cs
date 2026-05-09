@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ToyStore.Infrastructure.Data;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Infrastructure.Notifications;
 
@@ -16,17 +17,20 @@ public static class BackgroundJobTelemetry
     {
         try
         {
+            // Xóa state cũ để tránh trường hợp các Entity bị lỗi trước đó nổ exception lại 
+            db.ChangeTracker.Clear();
+
             var job = await db.BackgroundJobs
                 .FirstOrDefaultAsync(j => j.JobName == jobName, ct);
 
             if (job is null)
             {
-                job = new Models.BackgroundJob { JobName = jobName };
+                job = new BackgroundJob { JobName = jobName };
                 db.BackgroundJobs.Add(job);
             }
 
-            job.LastRunTime   = DateTime.UtcNow;
-            job.LastRunStatus  = success ? "Success" : "Failed";
+            job.LastRunTime = DateTime.UtcNow;
+            job.LastRunStatus = success ? "Success" : "Failed";
             job.LastRunMessage = message is not null && message.Length > 500
                 ? message[..500]
                 : message;

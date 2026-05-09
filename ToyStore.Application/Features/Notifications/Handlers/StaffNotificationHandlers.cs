@@ -14,7 +14,7 @@ public class RefundRequestHandler : IOutboxEventHandler
 
     public RefundRequestHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
     {
-        _unitOfWork = unitOfWork; 
+        _unitOfWork = unitOfWork;
         _dispatcher = dispatcher;
     }
 
@@ -23,9 +23,9 @@ public class RefundRequestHandler : IOutboxEventHandler
         using var doc = JsonDocument.Parse(ev.Payload);
         var root = doc.RootElement;
 
-        var refundId   = root.GetProperty("refundId").GetInt32();
-        var orderCode  = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() : "";
-        var customerName = root.TryGetProperty("customerName", out var cn) ? cn.GetString() : "";
+        var refundId     = root.GetProperty("refundId").GetInt32();
+        var orderCode    = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() : "";
+        var customerName = root.TryGetProperty("customerName", out var cn) ? cn.GetString() : "Customer";
 
         var staffs = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
 
@@ -37,8 +37,8 @@ public class RefundRequestHandler : IOutboxEventHandler
                 RecipientAccountId = staffId,
                 RecipientType      = RecipientTypes.Staff,
                 NotificationType   = NotificationTypes.Order,
-                Title              = "Yêu cầu hoàn tiền mới",
-                Message            = $"{customerName} yêu cầu hoàn tiền cho đơn {orderCode}",
+                Title              = "New refund request",
+                Message            = $"{customerName} has requested a refund for order {orderCode}.",
                 SendBell           = true,
                 SendEmail          = false,
                 TemplateCode       = NotificationTemplates.StaffRefundRequest,
@@ -57,7 +57,7 @@ public class ReviewNeedsModerationHandler : IOutboxEventHandler
 
     public ReviewNeedsModerationHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
     {
-        _unitOfWork = unitOfWork; 
+        _unitOfWork = unitOfWork;
         _dispatcher = dispatcher;
     }
 
@@ -77,8 +77,8 @@ public class ReviewNeedsModerationHandler : IOutboxEventHandler
                 RecipientAccountId = staffId,
                 RecipientType      = RecipientTypes.Staff,
                 NotificationType   = NotificationTypes.System,
-                Title              = "Review cần kiểm duyệt",
-                Message            = "Có đánh giá sản phẩm cần được kiểm duyệt thủ công",
+                Title              = "Review requires manual moderation",
+                Message            = "A product review has been flagged for manual moderation.",
                 SendBell           = true,
                 SendEmail          = false,
                 TemplateCode       = NotificationTemplates.StaffReviewModeration,
@@ -97,7 +97,7 @@ public class ReviewLowRatingHandler : IOutboxEventHandler
 
     public ReviewLowRatingHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
     {
-        _unitOfWork = unitOfWork; 
+        _unitOfWork = unitOfWork;
         _dispatcher = dispatcher;
     }
 
@@ -105,8 +105,9 @@ public class ReviewLowRatingHandler : IOutboxEventHandler
     {
         using var doc = JsonDocument.Parse(ev.Payload);
         var root = doc.RootElement;
-        var reviewId = root.GetProperty("reviewId").GetInt32();
-        var rating   = root.TryGetProperty("rating", out var r) ? r.GetInt32() : 0;
+        var reviewId  = root.GetProperty("reviewId").GetInt32();
+        var rating    = root.TryGetProperty("rating", out var r) ? r.GetInt32() : 0;
+        var productId = root.TryGetProperty("productId", out var p) ? p.GetInt32() : 0;
 
         var staffs = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
 
@@ -118,8 +119,8 @@ public class ReviewLowRatingHandler : IOutboxEventHandler
                 RecipientAccountId = staffId,
                 RecipientType      = RecipientTypes.Staff,
                 NotificationType   = NotificationTypes.System,
-                Title              = "Đánh giá thấp",
-                Message            = $"Khách hàng vừa để lại đánh giá {rating} sao",
+                Title              = "Low rating review",
+                Message            = $"A customer left a {rating}-star review for product #{productId}. Please check.",
                 SendBell           = true,
                 SendEmail          = false,
                 TemplateCode       = NotificationTemplates.StaffLowRating,
@@ -150,8 +151,8 @@ public class ReviewStaffRepliedHandler : IOutboxEventHandler
             RecipientAccountId = accountId,
             RecipientType      = RecipientTypes.Customer,
             NotificationType   = NotificationTypes.Blog,
-            Title              = "Shop đã phản hồi đánh giá của bạn",
-            Message            = "Shop vừa trả lời đánh giá của bạn. Xem ngay!",
+            Title              = "The store replied to your review",
+            Message            = "A staff member has replied to your product review. Check it out!",
             SendBell           = true,
             SendEmail          = false,
             TemplateCode       = NotificationTemplates.ReviewStaffReplied,
@@ -173,7 +174,7 @@ public class BlogCommentRepliedHandler : IOutboxEventHandler
         using var doc = JsonDocument.Parse(ev.Payload);
         var root = doc.RootElement;
 
-        var accountId  = root.GetProperty("accountId").GetInt32();
+        var accountId   = root.GetProperty("accountId").GetInt32();
         var replyBlogId = root.GetProperty("replyBlogId").GetInt32();
         var blogPostId  = root.TryGetProperty("blogPostId", out var b) ? b.GetInt32() : 0;
 
@@ -182,13 +183,94 @@ public class BlogCommentRepliedHandler : IOutboxEventHandler
             RecipientAccountId = accountId,
             RecipientType      = RecipientTypes.Customer,
             NotificationType   = NotificationTypes.Blog,
-            Title              = "Có người phản hồi bình luận của bạn",
-            Message            = "Ai đó vừa trả lời bình luận của bạn trên blog",
+            Title              = "Someone replied to your comment",
+            Message            = "Someone replied to your comment on the blog. Check it out!",
             SendBell           = true,
             SendEmail          = false,
             TemplateCode       = NotificationTemplates.BlogCommentReplied,
             ActionTarget       = $"/blog/{blogPostId}#reply-{replyBlogId}",
             IdempotencyKey     = $"{EventType}:{replyBlogId}:{accountId}",
+        }, ct);
+    }
+}
+
+/// <summary>
+/// Notifies staff when a customer requests order cancellation.
+/// </summary>
+public class StaffCancelRequestedHandler : IOutboxEventHandler
+{
+    public string EventType => NotificationEventTypes.StaffCancelRequested;
+
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly INotificationDispatcher _dispatcher;
+
+    public StaffCancelRequestedHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
+    {
+        _unitOfWork = unitOfWork;
+        _dispatcher = dispatcher;
+    }
+
+    public async Task HandleAsync(OutboxEventData ev, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(ev.Payload);
+        var root = doc.RootElement;
+
+        var orderId   = root.GetProperty("orderId").GetInt32();
+        var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() : $"#{orderId}";
+        var reason    = root.TryGetProperty("reason", out var r) ? r.GetString() : "";
+
+        var staffs = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
+
+        foreach (var staff in staffs)
+        {
+            await _dispatcher.DispatchAsync(new NotificationContext
+            {
+                RecipientAccountId = staff.AccountId,
+                RecipientType      = RecipientTypes.Staff,
+                NotificationType   = NotificationTypes.Order,
+                Title              = "Order cancellation",
+                Message            = $"Order {orderCode} has been cancelled. Reason: {reason}",
+                SendBell           = true,
+                SendEmail          = false,
+                ActionTarget       = $"/admin/orders/{orderId}",
+                IdempotencyKey     = $"{EventType}:{orderId}:{staff.AccountId}",
+            }, ct);
+        }
+    }
+}
+
+public class StaffOrderAssignedHandler : IOutboxEventHandler
+{
+    public string EventType => NotificationEventTypes.StaffOrderAssigned;
+
+    private readonly INotificationDispatcher _dispatcher;
+
+    public StaffOrderAssignedHandler(INotificationDispatcher dispatcher)
+    {
+        _dispatcher = dispatcher;
+    }
+
+    public async Task HandleAsync(OutboxEventData ev, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(ev.Payload);
+        var root = doc.RootElement;
+
+        var orderId        = root.GetProperty("orderId").GetInt32();
+        var orderCode      = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() : $"#{orderId}";
+        var targetAccountId = root.GetProperty("targetAccountId").GetInt32();
+
+        await _dispatcher.DispatchAsync(new NotificationContext
+        {
+            RecipientAccountId = targetAccountId,
+            RecipientType      = RecipientTypes.Staff,
+            NotificationType   = NotificationTypes.Order,
+            Title              = "New order assigned",
+            Message            = $"Order {orderCode} has been assigned to you by Admin.",
+            SendBell           = true,
+            SendEmail          = true,
+            TemplateCode       = NotificationTemplates.StaffOrderAssigned,
+            ActionTarget       = $"/admin/orders/{orderId}",
+            IdempotencyKey     = $"{EventType}:{orderId}:{targetAccountId}",
         }, ct);
     }
 }

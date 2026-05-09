@@ -14,7 +14,7 @@ public class PaymentGatewayErrorHandler : IOutboxEventHandler
 
     public PaymentGatewayErrorHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
     {
-        _unitOfWork = unitOfWork; 
+        _unitOfWork = unitOfWork;
         _dispatcher = dispatcher;
     }
 
@@ -25,8 +25,8 @@ public class PaymentGatewayErrorHandler : IOutboxEventHandler
         var txnId = root.TryGetProperty("txnId", out var t) ? t.GetString() : "";
 
         await NotifyAdminsAsync(
-            "Lỗi cổng thanh toán",
-            $"Giao dịch {txnId} thất bại tại cổng thanh toán",
+            "Payment gateway error",
+            $"Transaction {txnId} failed at the payment gateway. Please investigate.",
             EventType,
             NotificationTemplates.AdminPaymentError,
             ct);
@@ -34,21 +34,12 @@ public class PaymentGatewayErrorHandler : IOutboxEventHandler
 
     private async Task NotifyAdminsAsync(string title, string message, string eventKey, string templateCode, CancellationToken ct)
     {
-        var now = DateTime.UtcNow;
-        var admins = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 3 }, ct); // Assuming 3 is Admin
+        var now    = DateTime.UtcNow;
+        var admins = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 3 }, ct);
 
         foreach (var admin in admins)
         {
             var adminId = admin.AccountId;
-            
-            // Simplified throttle check for refactoring
-            var recentCount = await _unitOfWork.Deliveries.CountAsync(
-                adminId,
-                NotificationChannels.Email,
-                NotificationStatuses.Unread, ct);
-
-            if (recentCount > 10) continue; // Basic safeguard
-
             await _dispatcher.DispatchAsync(new NotificationContext
             {
                 RecipientAccountId = adminId,
@@ -73,7 +64,7 @@ public class BackgroundJobFailedHandler : IOutboxEventHandler
 
     public BackgroundJobFailedHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
     {
-        _unitOfWork = unitOfWork; 
+        _unitOfWork = unitOfWork;
         _dispatcher = dispatcher;
     }
 
@@ -83,7 +74,7 @@ public class BackgroundJobFailedHandler : IOutboxEventHandler
         var root = doc.RootElement;
         var jobName = root.TryGetProperty("jobName", out var j) ? j.GetString() : "Unknown";
 
-        var now = DateTime.UtcNow;
+        var now    = DateTime.UtcNow;
         var admins = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 3 }, ct);
 
         foreach (var admin in admins)
@@ -94,8 +85,8 @@ public class BackgroundJobFailedHandler : IOutboxEventHandler
                 RecipientAccountId = adminId,
                 RecipientType      = RecipientTypes.Admin,
                 NotificationType   = NotificationTypes.System,
-                Title              = "Background job lỗi",
-                Message            = $"Job '{jobName}' gặp lỗi và cần kiểm tra",
+                Title              = "Background job failed",
+                Message            = $"Job '{jobName}' encountered an error and requires attention.",
                 SendBell           = true,
                 SendEmail          = true,
                 TemplateCode       = NotificationTemplates.AdminJobFailed,
@@ -113,7 +104,7 @@ public class BlogPendingApprovalHandler : IOutboxEventHandler
 
     public BlogPendingApprovalHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
     {
-        _unitOfWork = unitOfWork; 
+        _unitOfWork = unitOfWork;
         _dispatcher = dispatcher;
     }
 
@@ -121,7 +112,10 @@ public class BlogPendingApprovalHandler : IOutboxEventHandler
     {
         using var doc = JsonDocument.Parse(ev.Payload);
         var root = doc.RootElement;
-        var blogPostId = root.GetProperty("blogPostId").GetInt32();
+
+        var blogId   = root.TryGetProperty("blogId", out var bid) ? bid.GetInt32()
+                     : root.TryGetProperty("blogPostId", out var bpid) ? bpid.GetInt32() : 0;
+        var authorId = root.TryGetProperty("authorId", out var aid) ? aid.GetInt32() : 0;
 
         var admins = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 3 }, ct);
 
@@ -132,13 +126,13 @@ public class BlogPendingApprovalHandler : IOutboxEventHandler
                 RecipientAccountId = admin.AccountId,
                 RecipientType      = RecipientTypes.Admin,
                 NotificationType   = NotificationTypes.Blog,
-                Title              = "Bài viết chờ duyệt",
-                Message            = "Có bài viết mới cần được phê duyệt",
+                Title              = "Blog post pending approval",
+                Message            = "A new blog post is waiting for your approval.",
                 SendBell           = true,
                 SendEmail          = false,
                 TemplateCode       = NotificationTemplates.AdminBlogPending,
-                ActionTarget       = $"/admin/blogs/{blogPostId}",
-                IdempotencyKey     = $"{EventType}:{blogPostId}:{admin.AccountId}",
+                ActionTarget       = $"/admin/blogs/{blogId}",
+                IdempotencyKey     = $"{EventType}:{blogId}:{admin.AccountId}",
             }, ct);
         }
     }

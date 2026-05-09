@@ -135,6 +135,35 @@ public sealed class GhnClient : IGhnClient
                 "ShopAddress configuration is incomplete. Check appsettings 'ShopAddress' section.");
         }
 
+        int resolvedServiceId = request.ServiceId;
+        int? resolvedServiceTypeId = null;
+
+        if (resolvedServiceId <= 0)
+        {
+            // 1. Resolve tu preferred type hoac mac dinh cua route
+            int? preferredTypeId = _ghnOptions.FeeServiceTypeId > 0 ? _ghnOptions.FeeServiceTypeId : null;
+            var resolveResult = await ResolveServiceIdAsync(request.ToDistrictId, preferredTypeId, cancellationToken);
+            
+            if (resolveResult.IsSuccess)
+            {
+                resolvedServiceId = resolveResult.Data;
+                resolvedServiceTypeId = preferredTypeId;
+            }
+            else if (_ghnOptions.DefaultServiceId > 0)
+            {
+                // 2. Fallback ve default hardcoded neu resolve loi
+                _logger.LogWarning("GHN dynamic service resolution failed: {Error}. Falling back to DefaultServiceId={DefaultId}", 
+                    resolveResult.ErrorMessage, _ghnOptions.DefaultServiceId);
+                resolvedServiceId = _ghnOptions.DefaultServiceId;
+                resolvedServiceTypeId = _ghnOptions.FeeServiceTypeId > 0 ? _ghnOptions.FeeServiceTypeId : null;
+            }
+            else
+            {
+                // 3. That bai hoan toan
+                return MapFailure<ShippingOrderCreateResponseDto, int>(resolveResult);
+            }
+        }
+
         var payload = new
         {
             payment_type_id = 2,
@@ -157,7 +186,8 @@ public sealed class GhnClient : IGhnClient
             width = request.Width,
             height = request.Height,
             insurance_value = RoundToInt(request.InsuranceValue),
-            service_id = request.ServiceId,
+            service_id = resolvedServiceId,
+            service_type_id = resolvedServiceTypeId,
             client_order_code = request.ClientOrderCode,
             items = request.Items.Select(x => new
             {
@@ -184,7 +214,8 @@ public sealed class GhnClient : IGhnClient
         return Result<ShippingOrderCreateResponseDto>.Success(new ShippingOrderCreateResponseDto
         {
             OrderCode = createResult.Data.OrderCode,
-            SortCode = createResult.Data.SortCode
+            SortCode = createResult.Data.SortCode,
+            ServiceId = resolvedServiceId
         });
     }
 
@@ -209,7 +240,11 @@ public sealed class GhnClient : IGhnClient
         if (!servicesResult.IsSuccess)
             return MapFailure<int, List<GhnAvailableServiceData>>(servicesResult);
 
-        var selected = servicesResult.Data!
+        var services = servicesResult.Data ?? [];
+        _logger.LogInformation("GHN available services for district {ToDistrictId}: {Services}", 
+            toDistrictId, string.Join(", ", services.Select(s => $"{s.ShortName}(id={s.ServiceId}, type={s.ServiceTypeId})")));
+
+        var selected = services
             .Where(s => s.ServiceId > 0)
             .Where(s => !preferredServiceTypeId.HasValue || s.ServiceTypeId == preferredServiceTypeId.Value)
             .OrderBy(s => s.ServiceId)

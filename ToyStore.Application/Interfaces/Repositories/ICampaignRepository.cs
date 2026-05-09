@@ -28,6 +28,16 @@ public interface ICampaignRepository
     Task<Campaign?> GetByIdAsync(int campaignId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Tim Campaign theo ID voi day du thong tin (bao gom Template, Targets, Stat).
+    /// </summary>
+    Task<Campaign?> GetByIdWithDetailsAsync(int campaignId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Tim SYSTEM Campaign theo EventKey.
+    /// </summary>
+    Task<Campaign?> GetByEventKeyAsync(string eventKey, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Kiem tra ten Campaign da ton tai chua (case-insensitive, chi trong ban ghi chua xoa).
     /// Truyen excludeId de bo qua chinh no khi update.
     /// </summary>

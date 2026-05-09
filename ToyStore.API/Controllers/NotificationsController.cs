@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ToyStore.Application.Constants;
+using ToyStore.Application.DTOs;
+using ToyStore.Application.DTOs.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Domain.Entities;
 
@@ -20,8 +22,11 @@ public class NotificationsController : ControllerBase
         _logger     = logger;
     }
 
+    /// <summary>
+    /// Get paginated bell notifications for the current user.
+    /// </summary>
     [HttpGet]
-    public async Task<IActionResult> GetNotifications(
+    public async Task<ActionResult<ApiResponse<PaginatedResponse<NotificationListDto>>>> GetNotifications(
         [FromQuery] string? status,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
@@ -30,39 +35,49 @@ public class NotificationsController : ControllerBase
         var accountId = GetAccountId();
         if (accountId is null) return Unauthorized();
 
-        var total = await _unitOfWork.Deliveries.CountBellNotificationsAsync(accountId.Value, status, ct);
-        var items = await _unitOfWork.Deliveries.GetBellNotificationsAsync(accountId.Value, status, page, pageSize, ct);
+        page     = Math.Max(1, page);
+        pageSize = Math.Min(50, Math.Max(1, pageSize));
 
-        var resultItems = items.Select(d => new
+        var total       = await _unitOfWork.Deliveries.CountBellNotificationsAsync(accountId.Value, status, ct);
+        var deliveries  = await _unitOfWork.Deliveries.GetBellNotificationsAsync(accountId.Value, status, page, pageSize, ct);
+        var unreadCount = await _unitOfWork.Deliveries.GetUnreadCountAsync(accountId.Value, ct);
+
+        var dtos = deliveries.Select(d => new NotificationListDto
         {
-            d.DeliveryId,
-            d.NotificationType,
-            d.Title,
-            d.Message,
-            d.Status,
-            d.ImageUrl,
-            d.ActionType,
-            d.ActionTarget,
-            d.CreatedAt,
-            d.ReadAt,
-        });
+            DeliveryId       = d.DeliveryId,
+            NotificationType = d.NotificationType,
+            Title            = d.Title,
+            Message          = d.Message,
+            Status           = d.Status,
+            ImageUrl         = d.ImageUrl,
+            ActionType       = d.ActionType,
+            ActionTarget     = d.ActionTarget,
+            CreatedAt        = d.CreatedAt,
+            ReadAt           = d.ReadAt,
+        }).ToList();
 
-        var unreadCount = await _unitOfWork.Deliveries.CountAsync(accountId.Value, NotificationChannels.WebBell, NotificationStatuses.Unread, ct);
+        var paginated = new PaginatedResponse<NotificationListDto>(dtos, total, page, pageSize);
 
-        return Ok(new { total, unreadCount, page, pageSize, items = resultItems });
+        return Ok(ApiResponse<PaginatedResponse<NotificationListDto>>.Ok(paginated,
+            $"{total} notifications found. Unread: {unreadCount}"));
     }
 
+    /// <summary>
+    /// Get unread notification count.
+    /// </summary>
     [HttpGet("unread-count")]
-    public async Task<IActionResult> GetUnreadCount(CancellationToken ct = default)
+    public async Task<ActionResult<ApiResponse<int>>> GetUnreadCount(CancellationToken ct = default)
     {
         var accountId = GetAccountId();
         if (accountId is null) return Unauthorized();
 
-        var count = await _unitOfWork.Deliveries.CountAsync(accountId.Value, NotificationChannels.WebBell, NotificationStatuses.Unread, ct);
-
-        return Ok(new { count });
+        var count = await _unitOfWork.Deliveries.GetUnreadCountAsync(accountId.Value, ct);
+        return Ok(ApiResponse<int>.Ok(count));
     }
 
+    /// <summary>
+    /// Mark a specific notification as read.
+    /// </summary>
     [HttpPatch("{deliveryId:long}/read")]
     public async Task<IActionResult> MarkRead(long deliveryId, CancellationToken ct = default)
     {
@@ -70,7 +85,6 @@ public class NotificationsController : ControllerBase
         if (accountId is null) return Unauthorized();
 
         var delivery = await _unitOfWork.Deliveries.GetByIdAsync(deliveryId, ct);
-
         if (delivery is null || delivery.AccountId != accountId.Value) return NotFound();
 
         if (delivery.Status == NotificationStatuses.Unread)
@@ -84,6 +98,9 @@ public class NotificationsController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// Mark all bell notifications as read.
+    /// </summary>
     [HttpPatch("mark-all-read")]
     public async Task<IActionResult> MarkAllRead(CancellationToken ct = default)
     {
@@ -91,10 +108,12 @@ public class NotificationsController : ControllerBase
         if (accountId is null) return Unauthorized();
 
         await _unitOfWork.Deliveries.MarkAllReadAsync(accountId.Value, ct);
-
         return NoContent();
     }
 
+    /// <summary>
+    /// Archive a notification (soft-hide from bell list).
+    /// </summary>
     [HttpPatch("{deliveryId:long}/archive")]
     public async Task<IActionResult> Archive(long deliveryId, CancellationToken ct = default)
     {
@@ -102,7 +121,6 @@ public class NotificationsController : ControllerBase
         if (accountId is null) return Unauthorized();
 
         var delivery = await _unitOfWork.Deliveries.GetByIdAsync(deliveryId, ct);
-
         if (delivery is null || delivery.AccountId != accountId.Value) return NotFound();
 
         delivery.Status    = NotificationStatuses.Archived;
@@ -112,6 +130,9 @@ public class NotificationsController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// Record a click action on a notification (for campaign analytics).
+    /// </summary>
     [HttpPost("{deliveryId:long}/click")]
     public async Task<IActionResult> RecordClick(long deliveryId, CancellationToken ct = default)
     {
@@ -119,19 +140,17 @@ public class NotificationsController : ControllerBase
         if (accountId is null) return Unauthorized();
 
         var delivery = await _unitOfWork.Deliveries.GetByIdAsync(deliveryId, ct);
-
         if (delivery is null || delivery.AccountId != accountId.Value) return NotFound();
 
         _unitOfWork.Deliveries.AddAction(new DeliveryAction
         {
-            DeliveryId  = deliveryId,
-            AccountId   = accountId.Value,
-            ActionType  = "Click",
+            DeliveryId   = deliveryId,
+            AccountId    = accountId.Value,
+            ActionType   = "Click",
             ActionTarget = delivery.ActionTarget,
-            OccurredAt  = DateTime.UtcNow,
+            OccurredAt   = DateTime.UtcNow,
         });
 
-        // Update campaign stats if applicable
         if (delivery.CampaignId.HasValue)
         {
             var campaign = await _unitOfWork.Campaigns.GetByIdAsync(delivery.CampaignId.Value, ct);

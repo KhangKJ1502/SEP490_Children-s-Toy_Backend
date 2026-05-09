@@ -38,6 +38,11 @@ public interface IOrderRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Lay don hang theo ID (lightweight, AsNoTracking). Dung cho notification handlers.
+    /// </summary>
+    Task<Order?> GetByIdAsync(int orderId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Lay chi tiet don hang day du (OrderDetails, Status, AssignedToStaff, Account).
     /// Tra ve null neu khong tim thay hoac da bi xoa mem.
     /// </summary>

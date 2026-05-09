@@ -14,7 +14,7 @@ public class PaymentSuccessHandler : IOutboxEventHandler
 
     public PaymentSuccessHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
     {
-        _unitOfWork = unitOfWork; 
+        _unitOfWork = unitOfWork;
         _dispatcher = dispatcher;
     }
 
@@ -23,8 +23,8 @@ public class PaymentSuccessHandler : IOutboxEventHandler
         using var doc = JsonDocument.Parse(ev.Payload);
         var root = doc.RootElement;
 
-        var accountId      = root.GetProperty("accountId").GetInt32();
-        var orderId        = root.GetProperty("orderId").GetInt32();
+        var accountId       = root.GetProperty("accountId").GetInt32();
+        var orderId         = root.GetProperty("orderId").GetInt32();
         var transactionCode = root.TryGetProperty("transactionCode", out var tc) ? tc.GetString() : "";
         var amount          = root.TryGetProperty("amount", out var amt) ? amt.GetDecimal() : 0;
 
@@ -33,8 +33,8 @@ public class PaymentSuccessHandler : IOutboxEventHandler
             RecipientAccountId = accountId,
             RecipientType      = RecipientTypes.Customer,
             NotificationType   = NotificationTypes.Order,
-            Title              = "Thanh toán thành công",
-            Message            = $"Đã thanh toán {amount:N0}₫ cho đơn hàng. Mã GD: {transactionCode}",
+            Title              = "Payment successful",
+            Message            = $"Payment of {amount:N0}₫ for your order was successful. Txn: {transactionCode}",
             SendBell           = true,
             SendEmail          = true,
             TemplateCode       = NotificationTemplates.PaymentSuccess,
@@ -52,7 +52,7 @@ public class PaymentFailedHandler : IOutboxEventHandler
 
     public PaymentFailedHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
     {
-        _unitOfWork = unitOfWork; 
+        _unitOfWork = unitOfWork;
         _dispatcher = dispatcher;
     }
 
@@ -69,8 +69,8 @@ public class PaymentFailedHandler : IOutboxEventHandler
             RecipientAccountId = accountId,
             RecipientType      = RecipientTypes.Customer,
             NotificationType   = NotificationTypes.Order,
-            Title              = "Thanh toán thất bại",
-            Message            = "Giao dịch không thành công. Vui lòng thử lại.",
+            Title              = "Payment failed",
+            Message            = "Your payment was not successful. Please try again.",
             SendBell           = true,
             SendEmail          = true,
             TemplateCode       = NotificationTemplates.PaymentFailed,
@@ -102,8 +102,8 @@ public class WalletTopupHandler : IOutboxEventHandler
             RecipientAccountId = accountId,
             RecipientType      = RecipientTypes.Customer,
             NotificationType   = NotificationTypes.Order,
-            Title              = "Nạp ví thành công",
-            Message            = $"Ví đã được nạp {amount:N0}₫. Số dư: {balanceAfter:N0}₫",
+            Title              = "Wallet top-up successful",
+            Message            = $"Your wallet has been topped up with {amount:N0}₫. New balance: {balanceAfter:N0}₫",
             SendBell           = true,
             SendEmail          = true,
             TemplateCode       = NotificationTemplates.WalletTopup,
@@ -125,18 +125,17 @@ public class WalletRefundHandler : IOutboxEventHandler
         using var doc = JsonDocument.Parse(ev.Payload);
         var root = doc.RootElement;
 
-        var accountId      = root.GetProperty("accountId").GetInt32();
-        var amount         = root.TryGetProperty("amount", out var a) ? a.GetDecimal() : 0;
-        var refundId       = root.TryGetProperty("refundId", out var r) ? r.GetInt32() : 0;
-        var walletTxnId    = root.TryGetProperty("walletTransactionId", out var t) ? t.GetInt32() : 0;
+        var accountId   = root.GetProperty("accountId").GetInt32();
+        var amount      = root.TryGetProperty("amount", out var a) ? a.GetDecimal() : 0;
+        var walletTxnId = root.TryGetProperty("walletTransactionId", out var t) ? t.GetInt32() : 0;
 
         await _dispatcher.DispatchAsync(new NotificationContext
         {
             RecipientAccountId = accountId,
             RecipientType      = RecipientTypes.Customer,
             NotificationType   = NotificationTypes.Order,
-            Title              = "Hoàn tiền thành công",
-            Message            = $"{amount:N0}₫ đã được hoàn vào ví của bạn",
+            Title              = "Refund processed",
+            Message            = $"{amount:N0}₫ has been refunded to your wallet.",
             SendBell           = true,
             SendEmail          = true,
             TemplateCode       = NotificationTemplates.WalletRefund,

@@ -38,4 +38,5 @@ public static class NotificationTemplates
     public const string AdminShippingError   = "ADMIN_SHIPPING_ERROR";
     public const string AdminDamageLost      = "ADMIN_DAMAGE_LOST";
     public const string AdminBlogPending     = "ADMIN_BLOG_PENDING";
+    public const string StaffOrderAssigned    = "ORDER_ASSIGNED";
 }

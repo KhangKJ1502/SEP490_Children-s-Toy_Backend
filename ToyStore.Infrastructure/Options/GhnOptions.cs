@@ -18,6 +18,8 @@ public sealed class GhnOptions
     public string FromWardCode { get; set; } = string.Empty;
 
     public int FeeServiceTypeId { get; set; }
+    
+    public int DefaultServiceId { get; set; }
 
     public int RetryCount { get; set; } = 3;
 

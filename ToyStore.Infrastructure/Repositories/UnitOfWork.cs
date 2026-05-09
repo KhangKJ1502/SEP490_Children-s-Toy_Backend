@@ -30,7 +30,9 @@ public class UnitOfWork : IUnitOfWork
         IOrderRepository orders,
         IWishlistRepository wishlists,
         IReviewRepository reviews,
-        ICustomerChildRepository customerChildren)
+        ICustomerChildRepository customerChildren,
+        IDeliveryRepository deliveries,
+        IUserPreferenceRepository userPreferences)
     {
         _context = context;
         Vouchers = vouchers;
@@ -50,6 +52,8 @@ public class UnitOfWork : IUnitOfWork
         Wishlists = wishlists;
         Reviews = reviews;
         CustomerChildren = customerChildren;
+        Deliveries = deliveries;
+        UserPreferences = userPreferences;
     }
 
     public IVoucherRepository Vouchers { get; }
@@ -84,6 +88,10 @@ public class UnitOfWork : IUnitOfWork
     public IWishlistRepository Wishlists { get; }
 
     public IReviewRepository Reviews { get; }
+
+    public IDeliveryRepository Deliveries { get; }
+
+    public IUserPreferenceRepository UserPreferences { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

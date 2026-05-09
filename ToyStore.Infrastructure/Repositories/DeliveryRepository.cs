@@ -54,6 +54,25 @@ public class DeliveryRepository : IDeliveryRepository
         return await query.CountAsync(ct);
     }
 
+    public async Task MarkReadAsync(long deliveryId, int accountId, CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        await _db.Deliveries
+            .Where(d => d.DeliveryId == deliveryId && d.AccountId == accountId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(d => d.Status, NotificationStatuses.Read)
+                .SetProperty(d => d.ReadAt, now)
+                .SetProperty(d => d.UpdatedAt, now), ct);
+    }
+
+    public async Task<int> GetUnreadCountAsync(int accountId, CancellationToken ct = default)
+    {
+        return await _db.Deliveries
+            .CountAsync(d => d.AccountId == accountId
+                          && d.Channel   == NotificationChannels.WebBell
+                          && d.Status    == NotificationStatuses.Unread, ct);
+    }
+
     public async Task MarkAllReadAsync(int accountId, CancellationToken ct = default)
     {
         var now = DateTime.UtcNow;
@@ -81,5 +100,10 @@ public class DeliveryRepository : IDeliveryRepository
     {
         _db.Deliveries.Update(delivery);
         await Task.CompletedTask;
+    }
+
+    public async Task<bool> ExistsByIdempotencyKeyAsync(string idempotencyKey, CancellationToken ct = default)
+    {
+        return await _db.Deliveries.AnyAsync(d => d.IdempotencyKey == idempotencyKey, ct);
     }
 }

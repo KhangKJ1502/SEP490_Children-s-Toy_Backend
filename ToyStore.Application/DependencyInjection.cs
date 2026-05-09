@@ -30,6 +30,25 @@ public static class DependencyInjection
         services.AddScoped<IOutboxEventHandler, ReviewLowRatingHandler>();
         services.AddScoped<IOutboxEventHandler, ReviewStaffRepliedHandler>();
         services.AddScoped<IOutboxEventHandler, BlogCommentRepliedHandler>();
+        services.AddScoped<IOutboxEventHandler, StaffCancelRequestedHandler>();
+        services.AddScoped<IOutboxEventHandler, StaffOrderAssignedHandler>();
+
+        // Merch / order status handlers
+        services.AddScoped<IOutboxEventHandler, MerchReadyToPackHandler>();
+        services.AddScoped<IOutboxEventHandler, OrderConfirmedHandler>();
+        services.AddScoped<IOutboxEventHandler, OrderPackingHandler>();
+        services.AddScoped<IOutboxEventHandler, OrderShippedHandler>();
+        services.AddScoped<IOutboxEventHandler, OrderCancelledHandler>();
+
+        // Shipping webhook granular handlers
+        services.AddScoped<IOutboxEventHandler, OrderDeliveringHandler>();
+        services.AddScoped<IOutboxEventHandler, OrderDeliveredHandler>();
+        services.AddScoped<IOutboxEventHandler, MerchPickedUpHandler>();
+        services.AddScoped<IOutboxEventHandler, MerchReturnedHandler>();
+
+        // Wishlist and voucher handlers
+        services.AddScoped<IOutboxEventHandler, WishlistPriceDropHandler>();
+        services.AddScoped<IOutboxEventHandler, VoucherNewHandler>();
 
         return services;
     }

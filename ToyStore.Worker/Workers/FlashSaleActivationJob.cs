@@ -41,18 +41,15 @@ public class FlashSaleActivationJob : BackgroundService
         var dispatcher     = scope.ServiceProvider.GetRequiredService<INotificationDispatcher>();
         var prefChecker    = scope.ServiceProvider.GetRequiredService<IUserPreferenceChecker>();
 
-        var nowLocal  = DateTime.UtcNow.AddHours(7);
-        var today     = DateOnly.FromDateTime(nowLocal);
-        var nowTime   = TimeOnly.FromDateTime(nowLocal);
-        var oneMinAgo = nowTime.AddMinutes(-1);
+        var nowUtc    = DateTime.UtcNow;
+        var oneMinAgo = nowUtc.AddMinutes(-1);
 
-        // Time slots with status Active that started within the last 1 minute (today)
+        // Time slots whose StartAt is within the last 1 minute (just became active)
         var activeSlots = await db.PromotionTimeSlots
             .Include(s => s.Promotion)
-            .Where(s => s.Status   == "Active"
-                     && s.SlotDate == today
-                     && s.StartTime >= oneMinAgo
-                     && s.StartTime <= nowTime)
+            .Where(s => s.Status  == "Active"
+                     && s.StartAt >= oneMinAgo
+                     && s.StartAt <= nowUtc)
             .ToListAsync(ct);
 
         if (activeSlots.Count == 0) return;
@@ -76,8 +73,8 @@ public class FlashSaleActivationJob : BackgroundService
                     RecipientAccountId = accountId,
                     RecipientType      = RecipientTypes.Customer,
                     NotificationType   = NotificationTypes.Promotion,
-                    Title              = "Flash Sale đã bắt đầu!",
-                    Message            = $"{slot.Promotion.PromotionName} đang diễn ra ngay bây giờ!",
+                    Title              = "Flash Sale has started!",
+                    Message            = $"{slot.Promotion.PromotionName} is happening right now!",
                     SendBell           = true,
                     SendEmail          = false,
                     TemplateCode       = NotificationTemplates.FlashSaleStarted,

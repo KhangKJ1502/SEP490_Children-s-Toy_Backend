@@ -12,16 +12,13 @@ public class OrderPlacedHandler : IOutboxEventHandler
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly INotificationDispatcher _dispatcher;
-    private readonly IUserPreferenceChecker _prefChecker;
 
     public OrderPlacedHandler(
         IUnitOfWork unitOfWork,
-        INotificationDispatcher dispatcher,
-        IUserPreferenceChecker prefChecker)
+        INotificationDispatcher dispatcher)
     {
-        _unitOfWork  = unitOfWork;
-        _dispatcher  = dispatcher;
-        _prefChecker = prefChecker;
+        _unitOfWork = unitOfWork;
+        _dispatcher = dispatcher;
     }
 
     public async Task HandleAsync(OutboxEventData ev, CancellationToken ct)
@@ -29,39 +26,36 @@ public class OrderPlacedHandler : IOutboxEventHandler
         using var doc = JsonDocument.Parse(ev.Payload);
         var root = doc.RootElement;
 
-        var orderId    = root.GetProperty("orderId").GetInt32();
-        var orderCode  = root.GetProperty("orderCode").GetString() ?? "";
+        var orderId     = root.GetProperty("orderId").GetInt32();
+        var orderCode   = root.GetProperty("orderCode").GetString() ?? "";
         var totalAmount = root.TryGetProperty("totalAmount", out var ta) ? ta.GetDecimal() : 0;
 
         var order = await _unitOfWork.Orders.GetByIdAsync(orderId, ct);
         if (order is null) return;
 
-        // Customer bell + email
-        if (await _prefChecker.CanSendAsync(order.AccountId, PreferenceKeys.OrderUpdates, ct))
+        // Customer bell + email — ORDER notifications bypass preference check (spec §8 rule 6)
+        await _dispatcher.DispatchAsync(new NotificationContext
         {
-            await _dispatcher.DispatchAsync(new NotificationContext
+            RecipientAccountId = order.AccountId,
+            RecipientType      = RecipientTypes.Customer,
+            NotificationType   = NotificationTypes.Order,
+            Title              = "Order placed successfully",
+            Message            = $"Your order {orderCode} ({totalAmount:N0}₫) has been placed. We will process it shortly.",
+            SendBell           = true,
+            SendEmail          = true,
+            TemplateCode       = NotificationTemplates.OrderPlaced,
+            ActionTarget       = $"/orders/{orderId}",
+            IdempotencyKey     = $"{EventType}:{orderId}:{order.AccountId}",
+            Payload            = new Dictionary<string, object>
             {
-                RecipientAccountId = order.AccountId,
-                RecipientType      = RecipientTypes.Customer,
-                NotificationType   = NotificationTypes.Order,
-                Title              = "Đặt hàng thành công",
-                Message            = $"Đơn hàng {orderCode} ({totalAmount:N0}₫) đã được đặt thành công",
-                SendBell           = true,
-                SendEmail          = true,
-                TemplateCode       = NotificationTemplates.OrderPlaced,
-                ActionTarget       = $"/orders/{orderId}",
-                IdempotencyKey     = $"{EventType}:{orderId}:{order.AccountId}",
-                Payload            = new Dictionary<string, object>
-                {
-                    ["orderId"]    = orderId,
-                    ["orderCode"]  = orderCode,
-                    ["totalAmount"] = totalAmount,
-                },
-            }, ct);
-        }
+                ["orderId"]     = orderId,
+                ["orderCode"]   = orderCode,
+                ["totalAmount"] = totalAmount,
+            },
+        }, ct);
 
         // Staff bell — new pending order
-        var staffAccounts = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct); // Assuming RoleId 2 is Staff
+        var staffAccounts = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
 
         foreach (var staff in staffAccounts)
         {
@@ -70,8 +64,8 @@ public class OrderPlacedHandler : IOutboxEventHandler
                 RecipientAccountId = staff.AccountId,
                 RecipientType      = RecipientTypes.Staff,
                 NotificationType   = NotificationTypes.Order,
-                Title              = "Đơn hàng mới",
-                Message            = $"Đơn {orderCode} vừa được đặt",
+                Title              = "New order received",
+                Message            = $"Order {orderCode} has just been placed and is waiting for confirmation.",
                 SendBell           = true,
                 SendEmail          = false,
                 TemplateCode       = NotificationTemplates.StaffNewOrder,

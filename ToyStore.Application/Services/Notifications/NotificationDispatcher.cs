@@ -45,6 +45,12 @@ public class NotificationDispatcher : INotificationDispatcher
             ? $"{context.IdempotencyKey}:{NotificationChannels.WebBell}"
             : null;
 
+        if (bellKey is not null && await _unitOfWork.Deliveries.ExistsByIdempotencyKeyAsync(bellKey, ct))
+        {
+            _logger.LogInformation("Bell notification already dispatched. IdempotencyKey={Key}", bellKey);
+            return;
+        }
+
         var delivery = new Delivery
         {
             AccountId        = context.RecipientAccountId,
@@ -106,6 +112,12 @@ public class NotificationDispatcher : INotificationDispatcher
         var emailKey = context.IdempotencyKey is not null
             ? $"{context.IdempotencyKey}:{NotificationChannels.Email}"
             : null;
+
+        if (emailKey is not null && await _unitOfWork.Deliveries.ExistsByIdempotencyKeyAsync(emailKey, ct))
+        {
+            _logger.LogInformation("Email notification already queued. IdempotencyKey={Key}", emailKey);
+            return;
+        }
 
         var emailDelivery = new Delivery
         {

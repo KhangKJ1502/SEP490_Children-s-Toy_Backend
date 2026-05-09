@@ -1,7 +1,10 @@
 using AutoMapper;
 using Microsoft.Extensions.Logging;
+using ToyStore.Application.Common.Models;
+using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Blogs;
+using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
@@ -27,17 +30,20 @@ public class BlogService : IBlogService
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IDomainEventPublisher _eventPublisher;
     private readonly IMapper _mapper;
     private readonly ILogger<BlogService> _logger;
 
     public BlogService(
         IUnitOfWork unitOfWork,
         ICurrentUserService currentUserService,
+        IDomainEventPublisher eventPublisher,
         IMapper mapper,
         ILogger<BlogService> logger)
     {
         _unitOfWork = unitOfWork;
         _currentUserService = currentUserService;
+        _eventPublisher = eventPublisher;
         _mapper = mapper;
         _logger = logger;
     }
@@ -255,6 +261,10 @@ public class BlogService : IBlogService
 
         blog.UpdatedAt = DateTime.UtcNow;
         await _unitOfWork.Blogs.UpdateAsync(blog, cancellationToken);
+
+        // Notify admins that a blog is pending approval
+        _ = _eventPublisher.PublishAsync("Blog", blogPostId.ToString(), NotificationEventTypes.ContentBlogPendingApproval,
+            new { blogId = blogPostId, authorId = blog.AccountId }, CancellationToken.None);
 
         var updated = await _unitOfWork.Blogs.GetByIdAsync(blogPostId, cancellationToken);
         return Result<BlogDetailDto>.Success(_mapper.Map<BlogDetailDto>(updated!));

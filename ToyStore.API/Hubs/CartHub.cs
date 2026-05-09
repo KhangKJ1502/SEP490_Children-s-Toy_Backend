@@ -1,8 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 
 namespace ToyStore.API.Hubs;
 
@@ -20,9 +18,7 @@ public class CartHub : Hub
 
     public override async Task OnConnectedAsync()
     {
-        var accountIdClaim = Context.User?.Claims.FirstOrDefault(x => x.Type == "AccountID" || x.Type == "accountId")?.Value
-                             ?? Context.User?.Claims.FirstOrDefault(x => x.Type == ClaimTypes.NameIdentifier)?.Value
-                             ?? Context.User?.Claims.FirstOrDefault(x => x.Type == JwtRegisteredClaimNames.Sub)?.Value;
+        var accountIdClaim = Context.UserIdentifier;
 
         if (int.TryParse(accountIdClaim, out var accountId) && accountId > 0)
         {
@@ -31,7 +27,7 @@ public class CartHub : Hub
         }
         else
         {
-            _logger.LogWarning("CartHub connected without valid accountId claim. ConnectionId={ConnectionId}", Context.ConnectionId);
+            _logger.LogWarning("CartHub connected without valid AccountID. ConnectionId={ConnectionId}", Context.ConnectionId);
         }
 
         await base.OnConnectedAsync();

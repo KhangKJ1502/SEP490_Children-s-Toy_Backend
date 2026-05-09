@@ -43,6 +43,7 @@ public static class NotificationEventTypes
     public const string RefundNewRequest      = "refund.new_request";
     public const string ReviewNeedsModeration = "review.needs_moderation";
     public const string ReviewLowRating       = "review.low_rating";
+    public const string StaffOrderAssigned    = "order.assigned";
 
     // Merchandise
     public const string MerchReadyToPack  = "order.ready_to_pack";

@@ -106,4 +106,14 @@ public interface IAccountRepository
         byte? sexId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Get all active non-deleted accounts belonging to any of the specified role IDs.
+    /// Used by notification handlers to fan out to staff/admin/merchandise roles.
+    /// </summary>
+    Task<List<Account>> GetByRoleIdsAsync(byte[] roleIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get all active, non-deleted customer accounts.
+    /// </summary>
+    Task<List<Account>> GetActiveCustomersAsync(CancellationToken cancellationToken = default);
 }

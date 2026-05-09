@@ -7,8 +7,9 @@ using ToyStore.Application.Interfaces.Repositories;
 namespace ToyStore.Application.Features.Notifications.Handlers;
 
 /// <summary>
-/// Handles manual staff-triggered order status transitions:
-/// confirmed, packing, shipped, cancelled.
+/// Handles per-status order events published by AdminOrderService.
+/// Each event type dispatches a targeted notification to the customer.
+/// ORDER notifications bypass user preference checks (spec §8 rule 6).
 /// </summary>
 public class OrderStatusChangedHandler : IOutboxEventHandler
 {
@@ -16,16 +17,13 @@ public class OrderStatusChangedHandler : IOutboxEventHandler
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly INotificationDispatcher _dispatcher;
-    private readonly IUserPreferenceChecker _prefChecker;
 
     public OrderStatusChangedHandler(
         IUnitOfWork unitOfWork,
-        INotificationDispatcher dispatcher,
-        IUserPreferenceChecker prefChecker)
+        INotificationDispatcher dispatcher)
     {
-        _unitOfWork  = unitOfWork;
-        _dispatcher  = dispatcher;
-        _prefChecker = prefChecker;
+        _unitOfWork = unitOfWork;
+        _dispatcher = dispatcher;
     }
 
     public async Task HandleAsync(OutboxEventData ev, CancellationToken ct)
@@ -39,15 +37,13 @@ public class OrderStatusChangedHandler : IOutboxEventHandler
         var order = await _unitOfWork.Orders.GetByIdAsync(orderId, ct);
         if (order is null) return;
 
-        if (!await _prefChecker.CanSendAsync(order.AccountId, PreferenceKeys.OrderUpdates, ct))
-            return;
-
+        // No preference gating for ORDER type — always send
         var (title, message, templateCode, eventType, sendEmail) = newStatus switch
         {
-            2 => ("Đơn hàng đã xác nhận",   $"Đơn {order.OrderCode} đã được xác nhận",      NotificationTemplates.OrderConfirmed, NotificationEventTypes.OrderConfirmed, false),
-            3 => ("Đang đóng gói",           $"Đơn {order.OrderCode} đang được đóng gói",    NotificationTemplates.OrderPacking,   NotificationEventTypes.OrderPacking,   false),
-            4 => ("Đã bàn giao vận chuyển",  $"Đơn {order.OrderCode} đã được chuyển đi",    NotificationTemplates.OrderShipping,  NotificationEventTypes.OrderShipped,   false),
-            8 => ("Đơn hàng đã huỷ",         $"Đơn {order.OrderCode} đã bị huỷ. Lý do: {order.CancelReason}", NotificationTemplates.OrderCancelled, NotificationEventTypes.OrderCancelled, true),
+            2 => ("Order confirmed",          $"Your order {order.OrderCode} has been confirmed and is being prepared.", NotificationTemplates.OrderConfirmed, NotificationEventTypes.OrderConfirmed, false),
+            3 => ("Order is being packed",    $"Your order {order.OrderCode} is being packed and will be shipped soon.", NotificationTemplates.OrderPacking,   NotificationEventTypes.OrderPacking,   false),
+            4 => ("Order shipped",            $"Your order {order.OrderCode} has been handed to the carrier.",           NotificationTemplates.OrderShipping,  NotificationEventTypes.OrderShipped,   false),
+            8 => ("Order cancelled",          $"Your order {order.OrderCode} has been cancelled. Reason: {order.CancelReason}", NotificationTemplates.OrderCancelled, NotificationEventTypes.OrderCancelled, true),
             _ => (null, null, null, null, false),
         };
 

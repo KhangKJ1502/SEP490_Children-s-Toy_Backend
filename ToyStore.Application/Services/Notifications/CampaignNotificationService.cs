@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.Constants;
+using ToyStore.Application.DTOs.Notifications;
 using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Domain.Entities;
@@ -105,7 +106,7 @@ public class CampaignNotificationService : ICampaignNotificationService
                 ActionType         = campaign.ActionType,
                 ActionTarget       = campaign.ActionTarget,
                 CampaignId         = campaign.CampaignId,
-                IdempotencyKey     = $"{idempotencyBase}:WEB_BELL",
+                IdempotencyKey     = idempotencyBase,
             };
 
             await _dispatcher.DispatchAsync(ctx, ct);
@@ -178,7 +179,7 @@ public class CampaignNotificationService : ICampaignNotificationService
             .Where(t => t.TargetType == "ROLE_ID")
             .Select(t => byte.TryParse(t.TargetValue, out var r) ? r : (byte)0)
             .Where(r => r > 0)
-            .ToList();
+            .ToArray();
 
         var accounts = await _unitOfWork.Accounts.GetByRoleIdsAsync(roleIds, ct);
         return accounts.Select(a => a.AccountId).ToList();

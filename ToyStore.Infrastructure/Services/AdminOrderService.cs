@@ -3,9 +3,11 @@ using FluentValidation;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ToyStore.Application.Common.Models;
+using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Checkouts;
 using ToyStore.Application.DTOs.Orders;
+using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
@@ -29,6 +31,7 @@ public class AdminOrderService : IAdminOrderService
     private readonly IValidator<ShipOrderRequestDto> _shipValidator;
     private readonly IValidator<CancelOrderRequestDto> _cancelValidator;
     private readonly IValidator<AssignOrderRequestDto> _assignValidator;
+    private readonly IDomainEventPublisher _eventPublisher;
     private readonly ILogger<AdminOrderService> _logger;
 
     // Role names khop voi ClaimTypes.Role trong JWT
@@ -46,18 +49,20 @@ public class AdminOrderService : IAdminOrderService
         IValidator<ShipOrderRequestDto> shipValidator,
         IValidator<CancelOrderRequestDto> cancelValidator,
         IValidator<AssignOrderRequestDto> assignValidator,
+        IDomainEventPublisher eventPublisher,
         ILogger<AdminOrderService> logger)
     {
-        _unitOfWork    = unitOfWork;
-        _currentUser   = currentUser;
-        _mapper        = mapper;
-        _ghnClient     = ghnClient;
-        _ghnOptions    = ghnOptions.Value;
-        _shopAddress   = shopAddress.Value;
-        _shipValidator = shipValidator;
+        _unitOfWork      = unitOfWork;
+        _currentUser     = currentUser;
+        _mapper          = mapper;
+        _ghnClient       = ghnClient;
+        _ghnOptions      = ghnOptions.Value;
+        _shopAddress     = shopAddress.Value;
+        _shipValidator   = shipValidator;
         _cancelValidator = cancelValidator;
         _assignValidator = assignValidator;
-        _logger        = logger;
+        _eventPublisher  = eventPublisher;
+        _logger          = logger;
     }
 
     // ── UC1: Danh sach don hang ───────────────────────────────────────────────
@@ -162,6 +167,11 @@ public class AdminOrderService : IAdminOrderService
             _logger.LogInformation("Order {OrderId} confirmed by account {AccountId}",
                 orderId, _currentUser.AccountId);
 
+            // Publish: customer notification + merchandise ready-to-pack
+            var orderPayload = new { orderId = order.OrderId, orderCode = order.OrderCode };
+            _ = _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderConfirmed, orderPayload, CancellationToken.None);
+            _ = _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.MerchReadyToPack, orderPayload, CancellationToken.None);
+
             return Result<ConfirmOrderResponseDto>.Success(new ConfirmOrderResponseDto
             {
                 OrderId     = order.OrderId,
@@ -224,6 +234,9 @@ public class AdminOrderService : IAdminOrderService
 
             _logger.LogInformation("Order {OrderId} moved to Processing by account {AccountId}",
                 orderId, _currentUser.AccountId);
+
+            _ = _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderPacking,
+                new { orderId = order.OrderId, orderCode = order.OrderCode }, CancellationToken.None);
 
             return Result<ProcessOrderResponseDto>.Success(new ProcessOrderResponseDto
             {
@@ -318,10 +331,11 @@ public class AdminOrderService : IAdminOrderService
         }
 
         var ghnData = ghnResult.Data!;
+        var resolvedServiceId = ghnData.ServiceId;
 
         // Lay leadtime (khong bat buoc, neu loi thi bo qua)
         DateTime? estimatedDelivery = null;
-        if (serviceId > 0)
+        if (resolvedServiceId > 0)
         {
             var leadtimeResult = await _ghnClient.GetLeadtimeAsync(new LeadtimeRequestDTO
             {
@@ -329,7 +343,7 @@ public class AdminOrderService : IAdminOrderService
                 FromWardCode   = _ghnOptions.FromWardCode,
                 ToDistrictId   = order.ShippingDistrictId,
                 ToWardCode     = order.ShippingWardCode,
-                ServiceId      = serviceId
+                ServiceId      = resolvedServiceId
             }, cancellationToken);
 
             if (leadtimeResult.IsSuccess)
@@ -338,7 +352,7 @@ public class AdminOrderService : IAdminOrderService
 
         // Lay phi van chuyen thuc te
         decimal actualFee = 0m;
-        if (serviceId > 0)
+        if (resolvedServiceId > 0)
         {
             var feeResult = await _ghnClient.GetFeeAsync(new FeeRequestDTO
             {
@@ -352,7 +366,7 @@ public class AdminOrderService : IAdminOrderService
                 Length         = 30,
                 Width          = 30,
                 Height         = 10,
-                ServiceId      = serviceId
+                ServiceId      = resolvedServiceId
             }, cancellationToken);
 
             if (feeResult.IsSuccess)
@@ -402,6 +416,9 @@ public class AdminOrderService : IAdminOrderService
             _logger.LogInformation(
                 "Order {OrderId} shipped via {Provider}, tracking={Tracking}",
                 orderId, request.Provider, ghnData.OrderCode);
+
+            _ = _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderShipped,
+                new { orderId = order.OrderId, orderCode = order.OrderCode, trackingNumber = ghnData.OrderCode }, CancellationToken.None);
 
             return Result<ShipOrderResponseDto>.Success(new ShipOrderResponseDto
             {
@@ -472,6 +489,10 @@ public class AdminOrderService : IAdminOrderService
 
             _logger.LogInformation("Order {OrderId} cancelled by account {AccountId}",
                 orderId, _currentUser.AccountId);
+
+            var cancelPayload = new { orderId = order.OrderId, orderCode = order.OrderCode, reason = request.Reason };
+            _ = _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderCancelled, cancelPayload, CancellationToken.None);
+            _ = _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.StaffCancelRequested, cancelPayload, CancellationToken.None);
 
             return Result<CancelOrderResponseDto>.Success(new CancelOrderResponseDto
             {
@@ -547,6 +568,9 @@ public class AdminOrderService : IAdminOrderService
             _logger.LogInformation(
                 "Order {OrderId} reassigned to account {TargetId} by Admin {AdminId}",
                 orderId, request.TargetAccountId, _currentUser.AccountId);
+
+            _ = _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.StaffOrderAssigned,
+                new { orderId = order.OrderId, orderCode = order.OrderCode, targetAccountId = request.TargetAccountId }, CancellationToken.None);
 
             return Result.Success();
         }

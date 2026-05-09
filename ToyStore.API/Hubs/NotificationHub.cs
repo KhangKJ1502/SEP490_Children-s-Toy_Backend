@@ -1,21 +1,20 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
-using ToyStore.Application.Constants;
-using ToyStore.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using ToyStore.Application.Interfaces.Notifications;
 
 namespace ToyStore.API.Hubs;
 
 [Authorize]
 public class NotificationHub : Hub
 {
-    private readonly SEP490ToyStoreContext _db;
+    private readonly INotificationReadService _readService;
     private readonly ILogger<NotificationHub> _logger;
 
-    public NotificationHub(SEP490ToyStoreContext db, ILogger<NotificationHub> logger)
+    public NotificationHub(INotificationReadService readService, ILogger<NotificationHub> logger)
     {
-        _db     = db;
-        _logger = logger;
+        _readService = readService;
+        _logger      = logger;
     }
 
     public override async Task OnConnectedAsync()
@@ -31,7 +30,7 @@ public class NotificationHub : Hub
         // User-specific group
         await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{accountId}");
 
-        // Role-based group (for broadcast to all staff/admin/merch)
+        // Role-based group (broadcast to all staff/admin/merch)
         var roleName = Context.User?.FindFirst("RoleName")?.Value;
         if (!string.IsNullOrEmpty(roleName))
             await Groups.AddToGroupAsync(Context.ConnectionId, $"role_{roleName}");
@@ -56,7 +55,7 @@ public class NotificationHub : Hub
     }
 
     /// <summary>
-    /// Client calls this to mark a delivery as read; hub syncs all other tabs of the same user.
+    /// Client gọi để mark 1 notification là đã đọc; hub sync tất cả tab của cùng user.
     /// </summary>
     public async Task MarkAsRead(long deliveryId)
     {
@@ -65,27 +64,21 @@ public class NotificationHub : Hub
 
         if (!int.TryParse(accountId, out var accountIdInt)) return;
 
-        var delivery = await _db.Deliveries
-            .FirstOrDefaultAsync(d => d.DeliveryId == deliveryId && d.AccountId == accountIdInt);
-
-        if (delivery is not null)
+        try
         {
-            delivery.Status    = NotificationStatuses.Read;
-            delivery.ReadAt    = DateTime.UtcNow;
-            delivery.UpdatedAt = DateTime.UtcNow;
-            await _db.SaveChangesAsync();
+            await _readService.MarkReadAsync(deliveryId, accountIdInt);
+
+            var unreadCount = await _readService.GetUnreadCountAsync(accountIdInt);
+
+            await Clients.Group($"user_{accountId}")
+                         .SendAsync("NotificationRead", deliveryId);
+
+            await Clients.Group($"user_{accountId}")
+                         .SendAsync("UnreadCountUpdated", unreadCount);
         }
-
-        var unreadCount = await _db.Deliveries
-            .CountAsync(d => d.AccountId == accountIdInt
-                          && d.Channel   == NotificationChannels.WebBell
-                          && d.Status    == NotificationStatuses.Unread);
-
-        // Notify all other tabs of the same user
-        await Clients.Group($"user_{accountId}")
-                     .SendAsync("NotificationRead", deliveryId);
-
-        await Clients.Group($"user_{accountId}")
-                     .SendAsync("UnreadCountUpdated", unreadCount);
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Lỗi khi xử lý MarkAsRead cho DeliveryId {DeliveryId}, AccountId {AccountId}", deliveryId, accountIdInt);
+        }
     }
 }
