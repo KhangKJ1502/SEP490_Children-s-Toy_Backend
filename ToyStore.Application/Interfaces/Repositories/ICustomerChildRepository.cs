@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Interfaces.Repositories;
@@ -18,4 +19,9 @@ public interface ICustomerChildRepository
     /// Thêm bé mới.
     /// </summary>
     Task AddAsync(CustomerChild child, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Đếm số lượng bé theo điều kiện.
+    /// </summary>
+    Task<int> CountAsync(Expression<Func<CustomerChild, bool>> predicate, CancellationToken cancellationToken = default);
 }
