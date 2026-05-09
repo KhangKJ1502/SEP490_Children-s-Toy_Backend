@@ -7,14 +7,14 @@ using StackExchange.Redis;
 using ToyStore.Application.DTOs.Accounts;
 using ToyStore.Application.DTOs.Addresses;
 using ToyStore.Application.DTOs.Auth;
-using ToyStore.Application.DTOs.Brands;
 using ToyStore.Application.DTOs.Blogs;
+using ToyStore.Application.DTOs.Brands;
 using ToyStore.Application.DTOs.Campaigns;
 using ToyStore.Application.DTOs.Carts;
+using ToyStore.Application.DTOs.CustomerChildren;
 using ToyStore.Application.DTOs.Orders;
 using ToyStore.Application.DTOs.Profiles;
 using ToyStore.Application.DTOs.Reviews;
-using ToyStore.Application.DTOs.CustomerChildren;
 using ToyStore.Application.DTOs.Templates;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
@@ -22,14 +22,14 @@ using ToyStore.Application.Mappings;
 using ToyStore.Application.Validators.Accounts;
 using ToyStore.Application.Validators.Addresses;
 using ToyStore.Application.Validators.Auth;
-using ToyStore.Application.Validators.Brands;
 using ToyStore.Application.Validators.Blogs;
+using ToyStore.Application.Validators.Brands;
 using ToyStore.Application.Validators.Campaigns;
 using ToyStore.Application.Validators.Carts;
+using ToyStore.Application.Validators.CustomerChildren;
 using ToyStore.Application.Validators.Orders;
 using ToyStore.Application.Validators.Profiles;
 using ToyStore.Application.Validators.Reviews;
-using ToyStore.Application.Validators.CustomerChildren;
 using ToyStore.Application.Validators.Templates;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Options;
@@ -142,11 +142,8 @@ public static class DependencyInjection
         services.AddScoped<ICustomerChildRepository, CustomerChildRepository>();
         services.AddScoped<ICartRepository, CartRepository>();
         services.AddScoped<IOrderRepository, OrderRepository>();
-<<<<<<< HEAD
         services.AddScoped<IWishlistRepository, WishlistRepository>();
-=======
         services.AddScoped<IReviewRepository, ReviewRepository>();
->>>>>>> 8e31d08c7157223382caaa2f1dbe38480be08287
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ISuperCategoryService, SuperCategoryService>();
@@ -158,11 +155,8 @@ public static class DependencyInjection
         services.AddScoped<IAddressService, AddressService>();
         services.AddScoped<ICustomerChildService, CustomerChildService>();
         services.AddScoped<ICartService, CartService>();
-<<<<<<< HEAD
         services.AddScoped<IWishlistService, WishlistService>();
-=======
         services.AddScoped<IReviewService, ReviewService>();
->>>>>>> 8e31d08c7157223382caaa2f1dbe38480be08287
 
         // Resolver business object
         services.AddScoped<IBusinessObjectResolver, VoucherResolver>();
