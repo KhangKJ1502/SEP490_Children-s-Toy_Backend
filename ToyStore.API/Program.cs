@@ -2,9 +2,10 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.IdentityModel.Tokens;
+using ToyStore.API.Hubs;
 using ToyStore.API.Middleware;
+using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Infrastructure;
-using ToyStore.Infrastructure.Hubs;
 using ToyStore.Recommendation;
 using ToyStore.Chatbot;
 
@@ -49,7 +50,11 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddRecommendation();
 builder.Services.AddChatbot();
 builder.Services.AddSignalR();
-builder.Services.AddSingleton<IUserIdProvider, AccountIdUserIdProvider>();
+builder.Services.AddSingleton<Microsoft.AspNetCore.SignalR.IUserIdProvider, AccountIdProvider>();
+
+// Override NoOp hub service (registered by Infrastructure) with real SignalR implementation
+builder.Services.AddScoped<INotificationHubService, NotificationHubService>();
+builder.Services.AddScoped<ToyStore.Application.Interfaces.Services.ICartRealtimeService, CartRealtimeService>();
 
 var jwtSecretKey = builder.Configuration["Jwt:SecretKey"]!;
 var jwtIssuer = builder.Configuration["Jwt:Issuer"]!;
@@ -71,11 +76,19 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
         options.Events = new JwtBearerEvents
         {
+            OnAuthenticationFailed = context =>
+            {
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+                logger.LogWarning("Authentication failed for {Path}: {Message}", 
+                    context.HttpContext.Request.Path, context.Exception.Message);
+                return Task.CompletedTask;
+            },
             OnMessageReceived = context =>
             {
                 var accessToken = context.Request.Query["access_token"];
                 var path = context.HttpContext.Request.Path;
-                if (!string.IsNullOrWhiteSpace(accessToken) && path.StartsWithSegments("/hubs/cart"))
+                if (!string.IsNullOrWhiteSpace(accessToken) &&
+                    (path.StartsWithSegments("/hubs/cart") || path.StartsWithSegments("/hubs/notifications")))
                 {
                     context.Token = accessToken;
                 }
@@ -91,9 +104,10 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
     {
-        policy.AllowAnyOrigin()
+        policy.SetIsOriginAllowed(_ => true)
               .AllowAnyMethod()
-              .AllowAnyHeader();
+              .AllowAnyHeader()
+              .AllowCredentials();
     });
 });
 
@@ -118,5 +132,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<CartHub>("/hubs/cart");
+app.MapHub<NotificationHub>("/hubs/notifications");
 
 app.Run();

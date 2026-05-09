@@ -257,4 +257,21 @@ public class AccountRepository : IAccountRepository
         return entity;
     }
 
+    public Task<List<Account>> GetByRoleIdsAsync(byte[] roleIds, CancellationToken cancellationToken = default)
+    {
+        return _context.Accounts
+            .AsNoTracking()
+            .Where(a => a.IsActive && !a.IsDeleted && roleIds.Contains(a.RoleId))
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<List<Account>> GetActiveCustomersAsync(CancellationToken cancellationToken = default)
+    {
+        // Customer role is assumed to be RoleId 1; adjust if schema differs
+        return _context.Accounts
+            .AsNoTracking()
+            .Where(a => a.IsActive && !a.IsDeleted && a.RoleId == 1)
+            .ToListAsync(cancellationToken);
+    }
+
 }

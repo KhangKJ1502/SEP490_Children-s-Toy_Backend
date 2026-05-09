@@ -1,7 +1,7 @@
 # Entity Relationship Diagram — ToyStore (SEP490)
 
-> **Cập nhật lần cuối:** 2026-04-13
-> **Schema version:** v1.0 — InitialCreate
+> **Cập nhật lần cuối:** 2026-05-09
+> **Schema version:** v3.2 — Notification BirthdayNotifiedYear on CustomerChildren
 > **SQL script đầy đủ:** [`docs/database/schema.sql`](./schema.sql)
 
 ---
@@ -36,6 +36,19 @@ erDiagram
         varchar20   Provider         "nullable — Google/Facebook"
         datetime2   CreatedAt
         datetime2   UpdatedAt        "nullable"
+    }
+
+    CustomerChildren {
+        int      ChildID              PK
+        int      AccountID            FK
+        tinyint  SexID                FK  "nullable"
+        nvarchar100 FullName
+        nvarchar50  NickName              "nullable"
+        date     DOB
+        smallint BirthdayNotifiedYear     "nullable — năm gửi thông báo sinh nhật gần nhất"
+        bit      IsDeleted
+        datetime2 CreatedAt
+        datetime2 UpdatedAt               "nullable"
     }
 
     BlockReasons {
@@ -488,15 +501,22 @@ erDiagram
     }
 
     NotificationDeliveries {
-        bigint       DeliveryID     PK
-        int          AccountID      FK
-        int          CreatedByJobID FK  "nullable"
-        varchar100   TemplateCode   FK
+        bigint       DeliveryID      PK
+        int          AccountID       FK
+        int          CreatedByJobID  FK   "nullable"
+        int          CampaignID      FK   "nullable"
+        varchar100   TemplateCode    FK   "nullable"
+        varchar15    RecipientType        "CUSTOMER|ADMIN|STAFF"
+        varchar20    Channel              "WEB_BELL|EMAIL|WEB_PUSH"
+        varchar20    NotificationType     "ORDER|PROMOTION|SYSTEM|BLOG|STOCK"
         nvarchar255  Title
-        nvarchar1000 Message
-        nvarcharMAX  Payload            "JSON"
-        varchar10    Status             "Unread|Read"
+        nvarchar500  Message
+        nvarchar2000 Payload              "JSON"
+        varchar10    Status               "Unread|Read|Archived"
+        varchar15    EmailStatus          "Pending|Sent|Failed — nullable"
+        varchar200   IdempotencyKey   UK  "nullable"
         datetime2    CreatedAt
+        datetime2    UpdatedAt            "nullable"
     }
 
     ChatConversations {

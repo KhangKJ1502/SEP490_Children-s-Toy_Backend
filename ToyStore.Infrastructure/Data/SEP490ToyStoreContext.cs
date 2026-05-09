@@ -672,6 +672,12 @@ public partial class SEP490ToyStoreContext : DbContext
                 .IsUnicode(false);
             entity.Property(e => e.Title).HasMaxLength(255);
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
+            entity.Property(e => e.IdempotencyKey)
+                .HasMaxLength(200)
+                .IsUnicode(false);
+            entity.HasIndex(e => e.IdempotencyKey, "UQ_Deliveries_IdempotencyKey")
+                .IsUnique()
+                .HasFilter("([IdempotencyKey] IS NOT NULL)");
 
             entity.HasOne(d => d.Account).WithMany(p => p.Deliveries)
                 .HasForeignKey(d => d.AccountId)
@@ -2289,6 +2295,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.Dob).HasColumnName("DOB");
             entity.Property(e => e.FullName).HasMaxLength(100);
             entity.Property(e => e.NickName).HasMaxLength(50);
+            entity.Property(e => e.BirthdayNotifiedYear).HasColumnName("BirthdayNotifiedYear");
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");

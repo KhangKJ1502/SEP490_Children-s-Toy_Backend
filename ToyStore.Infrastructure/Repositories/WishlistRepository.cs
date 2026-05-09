@@ -33,6 +33,14 @@ public class WishlistRepository : IWishlistRepository
             .ToListAsync(cancellationToken);
     }
 
+    public Task<List<Wishlist>> GetByProductIdAsync(int productId, CancellationToken cancellationToken = default)
+    {
+        return _context.Wishlists
+            .AsNoTracking()
+            .Where(x => x.ProductId == productId)
+            .ToListAsync(cancellationToken);
+    }
+
     public Task AddAsync(Wishlist wishlist, CancellationToken cancellationToken = default)
     {
         return _context.Wishlists.AddAsync(wishlist, cancellationToken).AsTask();

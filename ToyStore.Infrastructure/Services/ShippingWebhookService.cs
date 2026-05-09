@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using ToyStore.Application.Constants;
+using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
@@ -14,14 +16,28 @@ namespace ToyStore.Infrastructure.Services;
 public class ShippingWebhookService : IShippingWebhookService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IDomainEventPublisher _eventPublisher;
     private readonly ILogger<ShippingWebhookService> _logger;
+
+    // Map GHN status → notification event type
+    private static readonly Dictionary<string, string?> WebhookEventMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["picked_up"]          = NotificationEventTypes.MerchPickedUp,
+        ["delivering"]         = NotificationEventTypes.OrderDelivering,
+        ["delivered"]          = NotificationEventTypes.OrderDelivered,
+        ["delivery_failed"]    = NotificationEventTypes.OrderDeliveryFailed,
+        ["return"]             = NotificationEventTypes.OrderReturning,
+        ["returned"]           = NotificationEventTypes.MerchReturned,
+    };
 
     public ShippingWebhookService(
         IUnitOfWork unitOfWork,
+        IDomainEventPublisher eventPublisher,
         ILogger<ShippingWebhookService> logger)
     {
-        _unitOfWork = unitOfWork;
-        _logger     = logger;
+        _unitOfWork     = unitOfWork;
+        _eventPublisher = eventPublisher;
+        _logger         = logger;
     }
 
     public async Task HandleAsync(
@@ -96,6 +112,13 @@ public class ShippingWebhookService : IShippingWebhookService
                 _logger.LogInformation(
                     "Shipping webhook processed: provider={Provider}, code={Code}, status={Status}",
                     provider, providerOrderCode, newStatus);
+
+                // Publish notification event for webhook status (fire-and-forget)
+                if (WebhookEventMap.TryGetValue(newStatus, out var notifEventType) && notifEventType is not null)
+                {
+                    _ = _eventPublisher.PublishAsync("Order", tx.OrderId.ToString(), notifEventType,
+                        new { orderId = tx.OrderId, providerStatus = newStatus, providerOrderCode }, CancellationToken.None);
+                }
             }
             catch
             {
