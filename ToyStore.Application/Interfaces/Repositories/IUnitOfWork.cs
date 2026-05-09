@@ -29,6 +29,8 @@ public interface IUnitOfWork : IDisposable
 
     IOrderRepository Orders { get; }
 
+    IWishlistRepository Wishlists { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 
     Task BeginTransactionAsync(CancellationToken cancellationToken = default);

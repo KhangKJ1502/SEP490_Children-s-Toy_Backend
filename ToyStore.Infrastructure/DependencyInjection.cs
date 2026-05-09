@@ -128,6 +128,7 @@ public static class DependencyInjection
         services.AddScoped<IAddressRepository, AddressRepository>();
         services.AddScoped<ICartRepository, CartRepository>();
         services.AddScoped<IOrderRepository, OrderRepository>();
+        services.AddScoped<IWishlistRepository, WishlistRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ISuperCategoryService, SuperCategoryService>();
@@ -138,6 +139,7 @@ public static class DependencyInjection
         services.AddScoped<ICampaignService, CampaignService>();
         services.AddScoped<IAddressService, AddressService>();
         services.AddScoped<ICartService, CartService>();
+        services.AddScoped<IWishlistService, WishlistService>();
 
         // Resolver business object
         services.AddScoped<IBusinessObjectResolver, VoucherResolver>();
