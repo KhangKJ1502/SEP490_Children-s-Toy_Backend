@@ -28,6 +28,7 @@ public class UnitOfWork : IUnitOfWork
         IAddressRepository addresses,
         ICartRepository carts,
         IOrderRepository orders,
+        IReviewRepository reviews,
         ICustomerChildRepository customerChildren)
     {
         _context = context;
@@ -45,6 +46,7 @@ public class UnitOfWork : IUnitOfWork
         Addresses = addresses;
         Carts = carts;
         Orders = orders;
+        Reviews = reviews;
         CustomerChildren = customerChildren;
     }
 
@@ -69,11 +71,16 @@ public class UnitOfWork : IUnitOfWork
     public IPromotionRepository Promotions { get; }
 
     public ICampaignRepository Campaigns { get; }
+
     public IAddressRepository Addresses { get; }
+
     public ICartRepository Carts { get; }
+    
     public ICustomerChildRepository CustomerChildren { get; }
 
     public IOrderRepository Orders { get; }
+
+    public IReviewRepository Reviews { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

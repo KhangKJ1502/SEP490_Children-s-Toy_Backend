@@ -38,11 +38,11 @@ public class ProductProfile : Profile
             .ForMember(dest => dest.MainImageUrl, opt => opt.MapFrom(src => src.ProductImage != null ? src.ProductImage.ImageUrl : null))
             .ForMember(dest => dest.AverageRating, opt => opt.MapFrom(src =>
                 src.ReviewProducts
-                    .Where(r => !r.IsDeleted)
+                    .Where(r => !r.IsDeleted && r.ModerationStatus == "Approved")
                     .Select(r => (double?)r.Rating)
                     .Average()))
             .ForMember(dest => dest.ReviewCount, opt => opt.MapFrom(src =>
-                src.ReviewProducts.Count(r => !r.IsDeleted)))
+                src.ReviewProducts.Count(r => !r.IsDeleted && r.ModerationStatus == "Approved")))
             .ForMember(dest => dest.SoldQuantity, opt => opt.MapFrom(src =>
                 src.OrderDetails
                     .Where(od => !od.Order.IsDeleted && od.Order.CancelledAt == null)

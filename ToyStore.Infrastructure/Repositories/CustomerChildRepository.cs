@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using System.Linq.Expressions;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Domain.Entities;
 using ToyStore.Infrastructure.Data;
@@ -34,5 +35,10 @@ public class CustomerChildRepository : ICustomerChildRepository
     public Task AddAsync(CustomerChild child, CancellationToken cancellationToken = default)
     {
         return _context.CustomerChildren.AddAsync(child, cancellationToken).AsTask();
+    }
+
+    public Task<int> CountAsync(Expression<Func<CustomerChild, bool>> predicate, CancellationToken cancellationToken = default)
+    {
+        return _context.CustomerChildren.CountAsync(predicate, cancellationToken);
     }
 }

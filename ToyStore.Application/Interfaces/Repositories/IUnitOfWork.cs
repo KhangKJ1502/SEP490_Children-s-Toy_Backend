@@ -22,6 +22,7 @@ public interface IUnitOfWork : IDisposable
 
     ICampaignRepository Campaigns { get; }
     IAddressRepository Addresses { get; }
+
     ICustomerChildRepository CustomerChildren { get; }
 
     IBlogRepository Blogs { get; }
@@ -29,6 +30,8 @@ public interface IUnitOfWork : IDisposable
     ICartRepository Carts { get; }
 
     IOrderRepository Orders { get; }
+
+    IReviewRepository Reviews { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 
