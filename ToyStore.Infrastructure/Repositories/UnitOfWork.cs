@@ -27,7 +27,8 @@ public class UnitOfWork : IUnitOfWork
         ITemplateRepository templates,
         IAddressRepository addresses,
         ICartRepository carts,
-        IOrderRepository orders)
+        IOrderRepository orders,
+        IReviewRepository reviews)
     {
         _context = context;
         Vouchers = vouchers;
@@ -44,6 +45,7 @@ public class UnitOfWork : IUnitOfWork
         Addresses = addresses;
         Carts = carts;
         Orders = orders;
+        Reviews = reviews;
     }
 
     public IVoucherRepository Vouchers { get; }
@@ -71,6 +73,8 @@ public class UnitOfWork : IUnitOfWork
     public ICartRepository Carts { get; }
 
     public IOrderRepository Orders { get; }
+
+    public IReviewRepository Reviews { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
