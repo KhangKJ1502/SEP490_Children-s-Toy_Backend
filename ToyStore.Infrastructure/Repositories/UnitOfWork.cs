@@ -26,6 +26,7 @@ public class UnitOfWork : IUnitOfWork
         IProductRepository products,
         ITemplateRepository templates,
         IAddressRepository addresses,
+        ICartRepository carts,
         IOrderRepository orders)
     {
         _context = context;
@@ -41,6 +42,7 @@ public class UnitOfWork : IUnitOfWork
         Promotions = promotions;
         Campaigns = campaigns;
         Addresses = addresses;
+        Carts = carts;
         Orders = orders;
     }
 
@@ -66,6 +68,7 @@ public class UnitOfWork : IUnitOfWork
 
     public ICampaignRepository Campaigns { get; }
     public IAddressRepository Addresses { get; }
+    public ICartRepository Carts { get; }
 
     public IOrderRepository Orders { get; }
 

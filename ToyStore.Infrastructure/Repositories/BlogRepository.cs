@@ -312,7 +312,11 @@ public class BlogRepository : IBlogRepository
             query = query.Where(x =>
                 (x.Comment ?? string.Empty).Contains(term)
                 || x.Account.AccountName.Contains(term)
-                || x.BlogPost.BlogTitle.Contains(term));
+                || x.BlogPost.BlogTitle.Contains(term)
+                || x.ReviewBlogReplies.Any(r =>
+                    (r.Comment ?? string.Empty).Contains(term)
+                    || r.Account.AccountName.Contains(term)
+                    || (r.ReplyToAccount != null && r.ReplyToAccount.AccountName.Contains(term))));
         }
 
         return query;
