@@ -28,7 +28,8 @@ public class UnitOfWork : IUnitOfWork
         IAddressRepository addresses,
         ICartRepository carts,
         IOrderRepository orders,
-        IReviewRepository reviews)
+        IReviewRepository reviews,
+        ICustomerChildRepository customerChildren)
     {
         _context = context;
         Vouchers = vouchers;
@@ -46,6 +47,7 @@ public class UnitOfWork : IUnitOfWork
         Carts = carts;
         Orders = orders;
         Reviews = reviews;
+        CustomerChildren = customerChildren;
     }
 
     public IVoucherRepository Vouchers { get; }
@@ -69,8 +71,12 @@ public class UnitOfWork : IUnitOfWork
     public IPromotionRepository Promotions { get; }
 
     public ICampaignRepository Campaigns { get; }
+
     public IAddressRepository Addresses { get; }
+
     public ICartRepository Carts { get; }
+    
+    public ICustomerChildRepository CustomerChildren { get; }
 
     public IOrderRepository Orders { get; }
 

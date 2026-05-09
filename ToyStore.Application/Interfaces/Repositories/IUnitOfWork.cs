@@ -23,6 +23,8 @@ public interface IUnitOfWork : IDisposable
     ICampaignRepository Campaigns { get; }
     IAddressRepository Addresses { get; }
 
+    ICustomerChildRepository CustomerChildren { get; }
+
     IBlogRepository Blogs { get; }
 
     ICartRepository Carts { get; }
