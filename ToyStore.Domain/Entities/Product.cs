@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ToyStore.Domain.Entities;
@@ -62,6 +62,8 @@ public partial class Product
     public virtual ICollection<TrendingProduct> TrendingProducts { get; set; } = new List<TrendingProduct>();
 
     public virtual ICollection<UserProductScore> UserProductScores { get; set; } = new List<UserProductScore>();
+
+    public virtual ICollection<PromotionProductSlot> PromotionProductSlots { get; set; } = new List<PromotionProductSlot>();
 
     public virtual ICollection<Wishlist> Wishlists { get; set; } = new List<Wishlist>();
 }

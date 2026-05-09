@@ -26,6 +26,7 @@ public class PromotionProfile : Profile
 
         CreateMap<UpdatePromotionDto, Promotion>()
             .ForMember(dest => dest.ProductPromotions, opt => opt.Ignore())
+            .ForMember(dest => dest.PromotionTimeSlots, opt => opt.Ignore())
             .ForAllMembers(opt =>
                 opt.Condition((_, _, srcMember) => srcMember is not null));
 
@@ -44,5 +45,31 @@ public class PromotionProfile : Profile
             .ForMember(dest => dest.Promotion, opt => opt.Ignore());
 
         CreateMap<ProductPromotion, CreateProductPromotionDto>();
+
+        CreateMap<PromotionTimeSlot, PromotionTimeSlotDto>();
+        CreateMap<PromotionTimeSlot, CreatePromotionTimeSlotDto>();
+
+        CreateMap<CreatePromotionTimeSlotDto, PromotionTimeSlot>()
+            .ForMember(dest => dest.TimeSlotId, opt => opt.Ignore())
+            .ForMember(dest => dest.PromotionId, opt => opt.Ignore())
+            .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
+            .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
+            .ForMember(dest => dest.Promotion, opt => opt.Ignore());
+
+        CreateMap<PromotionProductSlot, PromotionProductSlotDto>()
+            .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.ProductName : string.Empty))
+            .ForMember(dest => dest.OriginalPrice, opt => opt.MapFrom(src => src.Product != null ? src.Product.Price : 0));
+
+        CreateMap<CreatePromotionProductSlotDto, PromotionProductSlot>()
+            .ForMember(dest => dest.SlotProductId, opt => opt.Ignore())
+            .ForMember(dest => dest.TimeSlotId, opt => opt.Ignore())
+            .ForMember(dest => dest.SoldQuantity, opt => opt.MapFrom(_ => 0))
+            .ForMember(dest => dest.ReservedQuantity, opt => opt.MapFrom(_ => 0))
+            .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
+            .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
+            .ForMember(dest => dest.Product, opt => opt.Ignore())
+            .ForMember(dest => dest.TimeSlot, opt => opt.Ignore());
+
+        CreateMap<PromotionProductSlot, CreatePromotionProductSlotDto>();
     }
 }

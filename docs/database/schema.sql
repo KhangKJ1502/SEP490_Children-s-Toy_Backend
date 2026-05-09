@@ -252,7 +252,7 @@ CREATE TABLE [Promotions] (
     [CreatedBy]     INT NOT NULL,
     [PromotionName] NVARCHAR(200) NOT NULL,
     [PromotionType] VARCHAR(20) NOT NULL
-        CONSTRAINT [CK_Promotions_Type] CHECK ([PromotionType] IN ('FLASH_SALE', 'SEASONAL', 'CLEARANCE', 'BUNDLE')),
+        CONSTRAINT [CK_Promotions_Type] CHECK ([PromotionType] IN ('FLASH_SALE', 'DISCOUNT')),
     [Description]   NVARCHAR(MAX) NULL,
     [StartDate]     DATETIME2(0) NOT NULL,
     [EndDate]       DATETIME2(0) NOT NULL,
@@ -294,24 +294,39 @@ CREATE TABLE [Products] (
 );
 GO
 
+/* -------------------------------------------------------
+   PromotionTimeSlots  – chỉ dùng cho FLASH_SALE
+   StartAt / EndAt lưu theo UTC (DATETIME2(0))
+------------------------------------------------------- */
 CREATE TABLE [PromotionTimeSlots] (
     [TimeSlotID]  INT IDENTITY(1,1) PRIMARY KEY,
     [PromotionID] INT NOT NULL,
-    [SlotDate]    DATE NOT NULL,
-    [StartTime]   TIME(0) NOT NULL,
-    [EndTime]     TIME(0) NOT NULL,
+    [StartAt]     DATETIME2(0) NOT NULL,   -- thời điểm bắt đầu slot (UTC)
+    [EndAt]       DATETIME2(0) NOT NULL,   -- thời điểm kết thúc slot (UTC)
     [Status]      VARCHAR(20) NOT NULL DEFAULT 'Scheduled'
         CONSTRAINT [CK_PromotionTimeSlots_Status] CHECK ([Status] IN ('Scheduled', 'Active', 'Expired', 'Inactive')),
-    [CreatedAt]   DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    [CreatedAt]   DATETIME2(0) NOT NULL DEFAULT GETUTCDATE(),
     [UpdatedAt]   DATETIME2(0) NULL,
-    CONSTRAINT [FK_PromotionTimeSlots_Promotions]  FOREIGN KEY ([PromotionID]) REFERENCES [Promotions]([PromotionID]),
-    CONSTRAINT [CK_PromotionTimeSlots_Time_Valid]  CHECK ([StartTime] < [EndTime]),
-    CONSTRAINT [UQ_PromotionTimeSlots_UniqueSlot]  UNIQUE ([PromotionID], [SlotDate], [StartTime], [EndTime])
+    CONSTRAINT [FK_PromotionTimeSlots_Promotions] FOREIGN KEY ([PromotionID]) REFERENCES [Promotions]([PromotionID]),
+    CONSTRAINT [CK_PromotionTimeSlots_Range]      CHECK ([StartAt] < [EndAt]),
+    CONSTRAINT [UQ_PromotionTimeSlots_UniqueSlot] UNIQUE ([PromotionID], [StartAt], [EndAt])
 );
 GO
 
-CREATE INDEX [IX_PromotionTimeSlots_Active] ON [PromotionTimeSlots] ([SlotDate], [Status], [StartTime], [EndTime]) INCLUDE ([PromotionID]);
+/* Tìm slot đang active nhanh theo khoảng thời gian UTC */
+CREATE INDEX [IX_PromotionTimeSlots_Active]
+    ON [PromotionTimeSlots] ([Status], [StartAt], [EndAt])
+    INCLUDE ([PromotionID]);
+CREATE INDEX [IX_PromotionTimeSlots_Promotion]
+    ON [PromotionTimeSlots] ([PromotionID], [Status])
+    INCLUDE ([StartAt], [EndAt]);
+GO
 
+/* -------------------------------------------------------
+   ProductPromotions  – chỉ dùng cho DISCOUNT
+   Gắn sản phẩm với promotion DISCOUNT, lưu giá sale
+   và số lượng ở cấp promotion (không phân slot)
+------------------------------------------------------- */
 CREATE TABLE [ProductPromotions] (
     [ProductID]        INT           NOT NULL,
     [PromotionID]      INT           NOT NULL,
@@ -321,18 +336,55 @@ CREATE TABLE [ProductPromotions] (
     [SoldQuantity]     INT           NOT NULL DEFAULT 0,
     [ReservedQuantity] INT           NOT NULL DEFAULT 0,
     [IsActive]         BIT           NOT NULL DEFAULT 1,
-    [CreatedAt]        DATETIME2(0)  NOT NULL DEFAULT GETDATE(),
+    [CreatedAt]        DATETIME2(0)  NOT NULL DEFAULT GETUTCDATE(),
     [UpdatedAt]        DATETIME2(0)  NULL,
-    CONSTRAINT [PK_ProductPromotions]               PRIMARY KEY ([ProductID], [PromotionID]),
-    CONSTRAINT [FK_ProductPromotions_Products]       FOREIGN KEY ([ProductID])   REFERENCES [Products]([ProductID]),
-    CONSTRAINT [FK_ProductPromotions_Promotions]     FOREIGN KEY ([PromotionID]) REFERENCES [Promotions]([PromotionID]),
-    CONSTRAINT [CK_ProductPromotions_Inventory]      CHECK ([SaleQuantity] IS NULL OR ([SoldQuantity] + [ReservedQuantity] <= [SaleQuantity]))
+    CONSTRAINT [PK_ProductPromotions]           PRIMARY KEY ([ProductID], [PromotionID]),
+    CONSTRAINT [FK_ProductPromotions_Products]   FOREIGN KEY ([ProductID])   REFERENCES [Products]([ProductID]),
+    CONSTRAINT [FK_ProductPromotions_Promotions] FOREIGN KEY ([PromotionID]) REFERENCES [Promotions]([PromotionID]),
+    CONSTRAINT [CK_ProductPromotions_Inventory]  CHECK ([SaleQuantity] IS NULL OR ([SoldQuantity] + [ReservedQuantity] <= [SaleQuantity]))
 );
 GO
 
-CREATE INDEX [IX_ProductPromotions_ProductID_Active] ON [ProductPromotions] ([ProductID], [IsActive]) INCLUDE ([SalePrice], [PromotionID]);
-CREATE INDEX [IX_PromotionTimeSlots_Main]             ON [PromotionTimeSlots] ([SlotDate], [Status]) INCLUDE ([StartTime], [EndTime], [PromotionID]);
-CREATE INDEX [IX_ProductPromotions_PromotionID]       ON [ProductPromotions] ([PromotionID]) INCLUDE ([ProductID], [SalePrice], [IsActive]);
+CREATE INDEX [IX_ProductPromotions_ProductID_Active]
+    ON [ProductPromotions] ([ProductID], [IsActive])
+    INCLUDE ([SalePrice], [PromotionID]);
+CREATE INDEX [IX_ProductPromotions_PromotionID]
+    ON [ProductPromotions] ([PromotionID])
+    INCLUDE ([ProductID], [SalePrice], [IsActive]);
+GO
+
+/* -------------------------------------------------------
+   PromotionProductSlots  – chỉ dùng cho FLASH_SALE
+   Liên kết một slot cụ thể với từng sản phẩm tham gia.
+   Mỗi dòng quy định giá sale và số lượng riêng cho slot đó.
+------------------------------------------------------- */
+CREATE TABLE [PromotionProductSlots] (
+    [SlotProductID]    INT           IDENTITY(1,1) PRIMARY KEY,
+    [TimeSlotID]       INT           NOT NULL,
+    [ProductID]        INT           NOT NULL,
+    [SalePrice]        DECIMAL(12,2) NOT NULL CHECK ([SalePrice] > 0),
+    [DiscountPercent]  DECIMAL(5,2)  NULL CHECK ([DiscountPercent] BETWEEN 0 AND 100),
+    [SaleQuantity]     INT           NOT NULL CHECK ([SaleQuantity] > 0),
+    [SoldQuantity]     INT           NOT NULL DEFAULT 0,
+    [ReservedQuantity] INT           NOT NULL DEFAULT 0,
+    [IsActive]         BIT           NOT NULL DEFAULT 1,
+    [CreatedAt]        DATETIME2(0)  NOT NULL DEFAULT GETUTCDATE(),
+    [UpdatedAt]        DATETIME2(0)  NULL,
+    CONSTRAINT [UQ_PromotionProductSlots_SlotProduct]   UNIQUE ([TimeSlotID], [ProductID]),
+    CONSTRAINT [FK_PromotionProductSlots_TimeSlot]      FOREIGN KEY ([TimeSlotID])  REFERENCES [PromotionTimeSlots]([TimeSlotID]),
+    CONSTRAINT [FK_PromotionProductSlots_Products]      FOREIGN KEY ([ProductID])   REFERENCES [Products]([ProductID]),
+    CONSTRAINT [CK_PromotionProductSlots_Inventory]     CHECK ([SoldQuantity] + [ReservedQuantity] <= [SaleQuantity])
+);
+GO
+
+/* Truy vấn sản phẩm flash-sale đang active theo slot */
+CREATE INDEX [IX_PromotionProductSlots_Slot_Active]
+    ON [PromotionProductSlots] ([TimeSlotID], [IsActive])
+    INCLUDE ([ProductID], [SalePrice], [SaleQuantity], [SoldQuantity]);
+/* Truy vấn ngược: sản phẩm đang tham gia slot nào */
+CREATE INDEX [IX_PromotionProductSlots_Product]
+    ON [PromotionProductSlots] ([ProductID], [IsActive])
+    INCLUDE ([TimeSlotID], [SalePrice]);
 GO
 
 CREATE TABLE [ProductDetails] (
@@ -400,8 +452,8 @@ CREATE TABLE [Orders] (
     [DeliveredAt]           DATETIME2(0)  NULL,
     [CompletedAt]           DATETIME2(0)  NULL,
     [CancelledAt]           DATETIME2(0)  NULL,
-    [PaymentMethod] VARCHAR(20) NOT NULL DEFAULT 'SHIP_CODE' 
-             CHECK ([PaymentMethod] IN ('BANK_TRANSFER', 'SHIP_CODE', 'SE_PAY', 'WALLET')),
+    [PaymentMethod] VARCHAR(20) NOT NULL DEFAULT 'SHIP_COD' 
+             CHECK ([PaymentMethod] IN ('BANK_TRANSFER', 'SHIP_COD', 'SE_PAY', 'WALLET')),
     [PaymentStatus]         VARCHAR(20)   NOT NULL DEFAULT 'PENDING'
         CHECK ([PaymentStatus] IN ('PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED')),
     [PaymentCode]           VARCHAR(50)   NULL UNIQUE,
@@ -654,8 +706,6 @@ CREATE TABLE [ReviewProducts] (
         CONSTRAINT [CK_ReviewProducts_ModerationStatus] CHECK (
             [ModerationStatus] IN ('Pending', 'Approved', 'Rejected', 'ManualReview')
         ),
-    [ModerationReason] NVARCHAR(500) NULL,
-    [ModeratedAt] DATETIME2(0) NULL,
     [IsDeleted] BIT NOT NULL DEFAULT 0,
 	[IsEdited]  BIT NOT NULL DEFAULT 0,
     [CreatedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE(),
@@ -703,8 +753,6 @@ CREATE TABLE [ReviewProductImages] (
         CONSTRAINT [CK_ReviewProductImages_ModerationStatus] CHECK (
             [ModerationStatus] IN ('Pending', 'Approved', 'Rejected', 'ManualReview')
         ),
-	[ModerationReason] NVARCHAR(500) NULL,
-    [ModeratedAt] DATETIME2(0) NULL,
     [IsDeleted]            BIT NOT NULL DEFAULT 0,
     [CreatedAt]            DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [UpdatedAt]            DATETIME2(0) NULL,

@@ -42,5 +42,9 @@ public class UpdatePromotionValidator : AbstractValidator<UpdatePromotionDto>
         RuleForEach(x => x.ProductPromotions)
             .SetValidator(new CreateProductPromotionValidator())
             .When(x => x.ProductPromotions != null);
+
+        RuleForEach(x => x.PromotionTimeSlots)
+            .SetValidator(new CreatePromotionTimeSlotValidator())
+            .When(x => x.PromotionTimeSlots != null);
     }
 }
