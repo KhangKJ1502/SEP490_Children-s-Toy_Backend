@@ -706,8 +706,6 @@ CREATE TABLE [ReviewProducts] (
         CONSTRAINT [CK_ReviewProducts_ModerationStatus] CHECK (
             [ModerationStatus] IN ('Pending', 'Approved', 'Rejected', 'ManualReview')
         ),
-    [ModerationReason] NVARCHAR(500) NULL,
-    [ModeratedAt] DATETIME2(0) NULL,
     [IsDeleted] BIT NOT NULL DEFAULT 0,
 	[IsEdited]  BIT NOT NULL DEFAULT 0,
     [CreatedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE(),
@@ -755,8 +753,6 @@ CREATE TABLE [ReviewProductImages] (
         CONSTRAINT [CK_ReviewProductImages_ModerationStatus] CHECK (
             [ModerationStatus] IN ('Pending', 'Approved', 'Rejected', 'ManualReview')
         ),
-	[ModerationReason] NVARCHAR(500) NULL,
-    [ModeratedAt] DATETIME2(0) NULL,
     [IsDeleted]            BIT NOT NULL DEFAULT 0,
     [CreatedAt]            DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [UpdatedAt]            DATETIME2(0) NULL,
