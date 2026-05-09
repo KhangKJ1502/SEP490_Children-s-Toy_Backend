@@ -1,5 +1,7 @@
 /* =================================================================
-   DataSeed FINAL – SEP490_ToyStore v3.2
+   DataSeed FINAL – SEP490_ToyStore v3.2 FIXED
+   Fix 1: CHOOSE() overflow → dùng CASE WHEN cho PaymentMethod
+   Fix 2: WalletTransaction BalanceAfter âm → tăng Balance lên 10.000.000
    Áp dụng trên schema v3.1 (đã tạo sẵn database + schema)
    Chạy 1 lần duy nhất, idempotent (IF NOT EXISTS guard mọi nơi)
 ================================================================= */
@@ -295,63 +297,48 @@ GO
 IF NOT EXISTS (SELECT 1 FROM [dbo].[ProductImages] WHERE ProductID = 1 AND IsMain = 1)
     INSERT INTO [dbo].[ProductImages] (ProductID, ImageUrl, IsMain, CreatedAt)
     VALUES
-    -- Product 1
     ( 1,'https://picsum.photos/seed/lego-city-1/400/400',      1,'2024-02-01 08:00:00'),
     ( 1,'https://picsum.photos/seed/lego-city-2/400/400',      0,'2024-02-01 08:00:00'),
     ( 1,'https://picsum.photos/seed/lego-city-3/400/400',      0,'2024-02-01 08:00:00'),
-    -- Product 2
     ( 2,'https://picsum.photos/seed/wooden-block-1/400/400',   1,'2024-02-05 08:00:00'),
     ( 2,'https://picsum.photos/seed/wooden-block-2/400/400',   0,'2024-02-05 08:00:00'),
     ( 2,'https://picsum.photos/seed/wooden-block-3/400/400',   0,'2024-02-05 08:00:00'),
-    -- Product 3
     ( 3,'https://picsum.photos/seed/flashcard-1/400/400',      1,'2024-02-10 08:00:00'),
     ( 3,'https://picsum.photos/seed/flashcard-2/400/400',      0,'2024-02-10 08:00:00'),
     ( 3,'https://picsum.photos/seed/flashcard-3/400/400',      0,'2024-02-10 08:00:00'),
-    -- Product 4
     ( 4,'https://picsum.photos/seed/microscope-1/400/400',     1,'2024-03-01 08:00:00'),
     ( 4,'https://picsum.photos/seed/microscope-2/400/400',     0,'2024-03-01 08:00:00'),
     ( 4,'https://picsum.photos/seed/microscope-3/400/400',     0,'2024-03-01 08:00:00'),
-    -- Product 5
     ( 5,'https://picsum.photos/seed/duck-car-1/400/400',       1,'2024-03-10 08:00:00'),
     ( 5,'https://picsum.photos/seed/duck-car-2/400/400',       0,'2024-03-10 08:00:00'),
     ( 5,'https://picsum.photos/seed/duck-car-3/400/400',       0,'2024-03-10 08:00:00'),
-    -- Product 6
     ( 6,'https://picsum.photos/seed/ball-boho-1/400/400',      1,'2024-03-15 08:00:00'),
     ( 6,'https://picsum.photos/seed/ball-boho-2/400/400',      0,'2024-03-15 08:00:00'),
     ( 6,'https://picsum.photos/seed/ball-boho-3/400/400',      0,'2024-03-15 08:00:00'),
-    -- Product 7
     ( 7,'https://picsum.photos/seed/eagle-kite-1/400/400',     1,'2024-03-20 08:00:00'),
     ( 7,'https://picsum.photos/seed/eagle-kite-2/400/400',     0,'2024-03-20 08:00:00'),
     ( 7,'https://picsum.photos/seed/eagle-kite-3/400/400',     0,'2024-03-20 08:00:00'),
-    -- Product 8
     ( 8,'https://picsum.photos/seed/trex-plush-1/400/400',     1,'2024-04-01 08:00:00'),
     ( 8,'https://picsum.photos/seed/trex-plush-2/400/400',     0,'2024-04-01 08:00:00'),
     ( 8,'https://picsum.photos/seed/trex-plush-3/400/400',     0,'2024-04-01 08:00:00'),
-    -- Product 9
     ( 9,'https://picsum.photos/seed/barbie-mermaid-1/400/400', 1,'2024-04-05 08:00:00'),
     ( 9,'https://picsum.photos/seed/barbie-mermaid-2/400/400', 0,'2024-04-05 08:00:00'),
     ( 9,'https://picsum.photos/seed/barbie-mermaid-3/400/400', 0,'2024-04-05 08:00:00'),
-    -- Product 10
     (10,'https://picsum.photos/seed/sentai-red-1/400/400',     1,'2024-04-10 08:00:00'),
     (10,'https://picsum.photos/seed/sentai-red-2/400/400',     0,'2024-04-10 08:00:00'),
     (10,'https://picsum.photos/seed/sentai-red-3/400/400',     0,'2024-04-10 08:00:00'),
-    -- Product 11
     (11,'https://picsum.photos/seed/trex-metal-1/400/400',     1,'2024-04-15 08:00:00'),
     (11,'https://picsum.photos/seed/trex-metal-2/400/400',     0,'2024-04-15 08:00:00'),
     (11,'https://picsum.photos/seed/trex-metal-3/400/400',     0,'2024-04-15 08:00:00'),
-    -- Product 12
     (12,'https://picsum.photos/seed/rc-traxxas-1/400/400',     1,'2024-05-01 08:00:00'),
     (12,'https://picsum.photos/seed/rc-traxxas-2/400/400',     0,'2024-05-01 08:00:00'),
     (12,'https://picsum.photos/seed/rc-traxxas-3/400/400',     0,'2024-05-01 08:00:00'),
-    -- Product 13
     (13,'https://picsum.photos/seed/helicopter-rc-1/400/400',  1,'2024-05-10 08:00:00'),
     (13,'https://picsum.photos/seed/helicopter-rc-2/400/400',  0,'2024-05-10 08:00:00'),
     (13,'https://picsum.photos/seed/helicopter-rc-3/400/400',  0,'2024-05-10 08:00:00'),
-    -- Product 14
     (14,'https://picsum.photos/seed/playdoh-24-1/400/400',     1,'2024-05-15 08:00:00'),
     (14,'https://picsum.photos/seed/playdoh-24-2/400/400',     0,'2024-05-15 08:00:00'),
     (14,'https://picsum.photos/seed/playdoh-24-3/400/400',     0,'2024-05-15 08:00:00'),
-    -- Product 15
     (15,'https://picsum.photos/seed/lcd-board-1/400/400',      1,'2024-05-20 08:00:00'),
     (15,'https://picsum.photos/seed/lcd-board-2/400/400',      0,'2024-05-20 08:00:00'),
     (15,'https://picsum.photos/seed/lcd-board-3/400/400',      0,'2024-05-20 08:00:00');
@@ -360,10 +347,6 @@ GO
 
 /* ══════════════════════════════════════════
    9. PRODUCT PROMOTIONS & TIME SLOTS
-   - ProductPromotions  → chỉ dùng cho DISCOUNT
-   - PromotionTimeSlots → chỉ dùng cho FLASH_SALE
-   - PromotionProductSlots → chỉ dùng cho FLASH_SALE
-     (gắn sản phẩm và giá/số lượng riêng theo từng slot)
 ══════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[ProductPromotions]
                WHERE ProductID=1
@@ -373,39 +356,28 @@ BEGIN
     DECLARE @pSale   INT = (SELECT TOP 1 PromotionID FROM Promotions WHERE PromotionName=N'Sale Hè Rực Rỡ 2026');
     DECLARE @pFlash  INT = (SELECT TOP 1 PromotionID FROM Promotions WHERE PromotionName=N'Siêu Flash Sale 5.5 – Chỉ 48 Tiếng');
 
-    /* --- ProductPromotions: chỉ cho DISCOUNT --- */
     INSERT INTO [dbo].[ProductPromotions]
         (ProductID, PromotionID, SalePrice, DiscountPercent, SaleQuantity, SoldQuantity, IsActive, CreatedAt)
     VALUES
-    ( 1, @pSale,  1099000, 14.88,  30, 8, 1,'2026-03-20 02:00:00'),  -- UTC (= 09:00 ICT)
+    ( 1, @pSale,  1099000, 14.88,  30, 8, 1,'2026-03-20 02:00:00'),
     (12, @pSale,   850000, 10.05, NULL, 3, 1,'2026-03-20 02:00:00');
 
-    /* --- PromotionTimeSlots: 2 khung giờ Flash Sale 5.5 (lưu UTC) --- */
-    -- Slot 1: 04/05/2026 09:00–12:00 ICT  = 02:00–05:00 UTC
-    -- Slot 2: 04/05/2026 20:00–22:00 ICT  = 13:00–15:00 UTC
     INSERT INTO [dbo].[PromotionTimeSlots]
         (PromotionID, StartAt, EndAt, Status, CreatedAt)
     VALUES
     (@pFlash, '2026-05-04T02:00:00', '2026-05-04T05:00:00', 'Scheduled', '2026-04-15T03:00:00'),
     (@pFlash, '2026-05-04T13:00:00', '2026-05-04T15:00:00', 'Scheduled', '2026-04-15T03:00:00');
 
-    /* --- PromotionProductSlots: sản phẩm + giá/sốlượng riêng cho từng slot --- */
     DECLARE @slot1 INT = (SELECT TOP 1 TimeSlotID FROM PromotionTimeSlots
                           WHERE PromotionID=@pFlash AND StartAt='2026-05-04T02:00:00');
     DECLARE @slot2 INT = (SELECT TOP 1 TimeSlotID FROM PromotionTimeSlots
                           WHERE PromotionID=@pFlash AND StartAt='2026-05-04T13:00:00');
 
-    -- Slot 1 (sáng): SP11 (T-Rex) và SP12 (RC Traxxas)
     INSERT INTO [dbo].[PromotionProductSlots]
         (TimeSlotID, ProductID, SalePrice, DiscountPercent, SaleQuantity, SoldQuantity, IsActive, CreatedAt)
     VALUES
     (@slot1, 11, 197000, 50.13, 10, 0, 1, '2026-04-15T03:00:00'),
-    (@slot1, 12, 700000, 25.93, 15, 0, 1, '2026-04-15T03:00:00');
-
-    -- Slot 2 (đêm): SP10 (Siêu Nhân) và SP13 (Trực thăng RC)
-    INSERT INTO [dbo].[PromotionProductSlots]
-        (TimeSlotID, ProductID, SalePrice, DiscountPercent, SaleQuantity, SoldQuantity, IsActive, CreatedAt)
-    VALUES
+    (@slot1, 12, 700000, 25.93, 15, 0, 1, '2026-04-15T03:00:00'),
     (@slot2, 10, 297000, 50.08, 20, 0, 1, '2026-04-15T03:00:00'),
     (@slot2, 13, 990000, 33.56, 8,  0, 1, '2026-04-15T03:00:00');
 END
@@ -431,7 +403,7 @@ GO
 
 
 /* ══════════════════════════════════════════
-   11. PRODUCT FOLLOWERS (5 khách theo dõi SP sắp hết hàng)
+   11. PRODUCT FOLLOWERS
 ══════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[ProductFollowers])
     INSERT INTO [dbo].[ProductFollowers] (ProductID, AccountID, CreatedAt)
@@ -445,22 +417,12 @@ GO
 
 
 /* ══════════════════════════════════════════
-   12. ĐỊA CHỈ GIAO HÀNG (helper vars cho Orders)
-   Lấy WardCode / DistrictId / ProvinceId đầu tiên tồn tại
-══════════════════════════════════════════ */
-GO
--- Các đơn hàng dùng DECLARE cục bộ trong từng batch nên không cần global vars
-
-/* ══════════════════════════════════════════
-   13. ORDERS MẪU (10 đơn, mỗi đơn 1 GO riêng để SCOPE_IDENTITY đúng)
-   StatusID mapping:
-     1=Pending 2=Confirmed 3=Processing 4=Shipped
-     5=Delivering 6=Delivered 7=Completed 8=Cancelled
+   13. ORDERS MẪU (10 đơn)
+   StatusID: 1=Pending 2=Confirmed 3=Processing 4=Shipped
+             5=Delivering 6=Delivered 7=Completed 8=Cancelled
 ══════════════════════════════════════════ */
 
--- ────────────────────────────────────────
 -- ĐƠN 1: Phạm Thị Lan Anh – Completed – WALLET
--- ────────────────────────────────────────
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Orders] WHERE OrderCode='ORD-2026-00001')
 BEGIN
     DECLARE @w1 VARCHAR(20) = ISNULL((SELECT TOP 1 WardCode   FROM Wards     WHERE IsActive=1 ORDER BY NEWID()),'W01');
@@ -498,9 +460,7 @@ BEGIN
 END
 GO
 
--- ────────────────────────────────────────
 -- ĐƠN 2: Nguyễn Văn Hùng – Shipped – SE_PAY
--- ────────────────────────────────────────
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Orders] WHERE OrderCode='ORD-2026-00002')
 BEGIN
     DECLARE @w2 VARCHAR(20) = ISNULL((SELECT TOP 1 WardCode   FROM Wards    WHERE IsActive=1 ORDER BY NEWID()),'W01');
@@ -536,9 +496,7 @@ BEGIN
 END
 GO
 
--- ────────────────────────────────────────
 -- ĐƠN 3: Vũ Thị Bảo Châu – Cancelled – BANK_TRANSFER
--- ────────────────────────────────────────
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Orders] WHERE OrderCode='ORD-2026-00003')
 BEGIN
     DECLARE @w3 VARCHAR(20) = ISNULL((SELECT TOP 1 WardCode   FROM Wards    WHERE IsActive=1 ORDER BY NEWID()),'W01');
@@ -573,9 +531,7 @@ BEGIN
 END
 GO
 
--- ────────────────────────────────────────
 -- ĐƠN 4: Đỗ Minh Tuấn – Confirmed – COD (đa sản phẩm)
--- ────────────────────────────────────────
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Orders] WHERE OrderCode='ORD-2026-00004')
 BEGIN
     DECLARE @w4 VARCHAR(20) = ISNULL((SELECT TOP 1 WardCode   FROM Wards    WHERE IsActive=1 ORDER BY NEWID()),'W01');
@@ -613,9 +569,7 @@ BEGIN
 END
 GO
 
--- ────────────────────────────────────────
 -- ĐƠN 5: Hoàng Thị Thu Hà – Delivered – WALLET
--- ────────────────────────────────────────
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Orders] WHERE OrderCode='ORD-2026-00005')
 BEGIN
     DECLARE @w5 VARCHAR(20) = ISNULL((SELECT TOP 1 WardCode   FROM Wards    WHERE IsActive=1 ORDER BY NEWID()),'W01');
@@ -653,9 +607,7 @@ BEGIN
 END
 GO
 
--- ────────────────────────────────────────
 -- ĐƠN 6: Lê Văn Phúc – Pending – SE_PAY
--- ────────────────────────────────────────
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Orders] WHERE OrderCode='ORD-2026-00006')
 BEGIN
     DECLARE @w6 VARCHAR(20) = ISNULL((SELECT TOP 1 WardCode   FROM Wards    WHERE IsActive=1 ORDER BY NEWID()),'W01');
@@ -689,9 +641,7 @@ BEGIN
 END
 GO
 
--- ────────────────────────────────────────
 -- ĐƠN 7: Trần Ngọc Diệp – Completed – WALLET
--- ────────────────────────────────────────
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Orders] WHERE OrderCode='ORD-2026-00007')
 BEGIN
     DECLARE @w7 VARCHAR(20) = ISNULL((SELECT TOP 1 WardCode   FROM Wards    WHERE IsActive=1 ORDER BY NEWID()),'W01');
@@ -732,9 +682,7 @@ BEGIN
 END
 GO
 
--- ────────────────────────────────────────
 -- ĐƠN 8: Bùi Thị Mỹ Linh – Processing – SE_PAY
--- ────────────────────────────────────────
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Orders] WHERE OrderCode='ORD-2026-00008')
 BEGIN
     DECLARE @w8 VARCHAR(20) = ISNULL((SELECT TOP 1 WardCode   FROM Wards    WHERE IsActive=1 ORDER BY NEWID()),'W01');
@@ -770,9 +718,7 @@ BEGIN
 END
 GO
 
--- ────────────────────────────────────────
 -- ĐƠN 9: Phan Quốc Khánh – Confirmed – COD
--- ────────────────────────────────────────
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Orders] WHERE OrderCode='ORD-2026-00009')
 BEGIN
     DECLARE @w9 VARCHAR(20) = ISNULL((SELECT TOP 1 WardCode   FROM Wards    WHERE IsActive=1 ORDER BY NEWID()),'W01');
@@ -808,9 +754,7 @@ BEGIN
 END
 GO
 
--- ────────────────────────────────────────
 -- ĐƠN 10: Ngô Thị Thanh Tuyền – Completed – WALLET + Voucher VIP200K
--- ────────────────────────────────────────
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Orders] WHERE OrderCode='ORD-2026-00010')
 BEGIN
     DECLARE @w10 VARCHAR(20) = ISNULL((SELECT TOP 1 WardCode   FROM Wards    WHERE IsActive=1 ORDER BY NEWID()),'W01');
@@ -861,6 +805,7 @@ GO
 
 /* ══════════════════════════════════════════
    14. 30 ĐƠN HÀNG NGẪU NHIÊN (ĐƠN 11–40)
+   FIX: Dùng CASE WHEN thay CHOOSE() để tránh overflow INT_MIN → NULL
 ══════════════════════════════════════════ */
 DECLARE @wAuto  VARCHAR(20) = ISNULL((SELECT TOP 1 WardCode   FROM Wards    WHERE IsActive=1),'W01');
 DECLARE @dAuto  INT         = ISNULL((SELECT TOP 1 DistrictId FROM Districts WHERE IsActive=1),1);
@@ -882,7 +827,15 @@ BEGIN
             FROM Products WHERE IsDeleted=0 AND ProductStatus='Active' ORDER BY NEWID();
 
             DECLARE @oCode   VARCHAR(30)  = 'ORD-2026-000'+CAST(@loop AS VARCHAR);
-            DECLARE @pmeth   VARCHAR(20)  = CHOOSE((ABS(CHECKSUM(NEWID()))%3)+1,'SE_PAY','WALLET','BANK_TRANSFER');
+
+            /* ── FIX 1: CASE WHEN thay CHOOSE để tránh overflow ABS(INT_MIN) → NULL ── */
+            DECLARE @pmeth   VARCHAR(20)  =
+                CASE (ABS(CHECKSUM(NEWID()) % 3))
+                    WHEN 0 THEN 'SE_PAY'
+                    WHEN 1 THEN 'WALLET'
+                    ELSE        'BANK_TRANSFER'
+                END;
+
             DECLARE @scen    INT          = (ABS(CHECKSUM(NEWID()))%6)+1;
 
             DECLARE @tOrder    DATETIME2(0) = DATEADD(DAY,-(ABS(CHECKSUM(NEWID()))%60),GETDATE());
@@ -983,7 +936,7 @@ GO
 
 
 /* ══════════════════════════════════════════
-   15. SHIPPING HISTORY (cho đơn mẫu đã giao)
+   15. SHIPPING HISTORY (đơn mẫu đã giao)
 ══════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[ShippingStatusHistories])
 BEGIN
@@ -1018,7 +971,7 @@ GO
 
 
 /* ══════════════════════════════════════════
-   16. PAYMENT HISTORY (PAID orders chưa có bản ghi)
+   16. PAYMENT HISTORY (PAID orders)
 ══════════════════════════════════════════ */
 INSERT INTO [dbo].[PaymentHistory]
     (AccountID, OrderID, PaymentStatus, PaymentMethod, TransactionCode, Amount, CreatedAt)
@@ -1044,9 +997,11 @@ GO
 
 /* ══════════════════════════════════════════
    18. WALLETS & TRANSACTIONS
+   FIX: Balance seed = 10.000.000 để tránh BalanceAfter âm
+        với các đơn WALLET lớn từ vòng lặp ngẫu nhiên
 ══════════════════════════════════════════ */
 INSERT INTO [dbo].[Wallets] (AccountID, Currency, Balance, Status, CreatedAt)
-SELECT AccountID, 'VND', 3000000, 'Active', GETDATE()
+SELECT AccountID, 'VND', 10000000, 'Active', GETDATE()
 FROM   Accounts
 WHERE  RoleID = 1
   AND  NOT EXISTS (SELECT 1 FROM Wallets w WHERE w.AccountID = Accounts.AccountID);
@@ -1054,23 +1009,59 @@ WHERE  RoleID = 1
 INSERT INTO [dbo].[WalletTransactions]
     (WalletID, AccountID, TxnType, Direction, Amount,
      BalanceBefore, BalanceAfter, Method, Status, Reason, CreatedAt)
-SELECT w.WalletID, w.AccountID, 'TopUp','CR',3000000,
-       0, 3000000, 'BankTransfer','Completed',N'Nạp tiền ban đầu', GETDATE()
+SELECT w.WalletID, w.AccountID, 'TopUp','CR', 10000000,
+       0, 10000000, 'BankTransfer','Completed',N'Nạp tiền ban đầu', GETDATE()
 FROM   Wallets w
 WHERE  NOT EXISTS (SELECT 1 FROM WalletTransactions wt WHERE wt.WalletID=w.WalletID AND wt.TxnType='TopUp');
 
+/* Tính tổng đã thanh toán để xác định BalanceBefore chính xác từng đơn */
 INSERT INTO [dbo].[WalletTransactions]
     (WalletID, AccountID, RelatedOrderID, TxnType, Direction, Amount,
      BalanceBefore, BalanceAfter, Method, Status, Reason, CreatedAt)
-SELECT w.WalletID, o.AccountID, o.OrderID, 'Payment','DR',
-       o.TotalAmount,
-       3000000,
-       3000000 - o.TotalAmount,
-       'Internal','Completed', N'Thanh toán đơn '+o.OrderCode, GETDATE()
-FROM   Orders o
-JOIN   Wallets w ON o.AccountID = w.AccountID
-WHERE  o.PaymentMethod='WALLET' AND o.PaymentStatus='PAID'
-  AND  NOT EXISTS (SELECT 1 FROM WalletTransactions wt WHERE wt.RelatedOrderID=o.OrderID AND wt.TxnType='Payment');
+SELECT
+    w.WalletID,
+    o.AccountID,
+    o.OrderID,
+    'Payment',
+    'DR',
+    o.TotalAmount,
+    10000000 - ISNULL((
+        SELECT SUM(o2.TotalAmount)
+        FROM Orders o2
+        WHERE o2.AccountID     = o.AccountID
+          AND o2.PaymentMethod = 'WALLET'
+          AND o2.PaymentStatus = 'PAID'
+          AND o2.OrderID       < o.OrderID
+    ), 0),
+    10000000 - ISNULL((
+        SELECT SUM(o2.TotalAmount)
+        FROM Orders o2
+        WHERE o2.AccountID     = o.AccountID
+          AND o2.PaymentMethod = 'WALLET'
+          AND o2.PaymentStatus = 'PAID'
+          AND o2.OrderID       < o.OrderID
+    ), 0) - o.TotalAmount,
+    'Internal',
+    'Completed',
+    N'Thanh toán đơn ' + o.OrderCode,
+    GETDATE()
+FROM Orders o
+JOIN Wallets w ON o.AccountID = w.AccountID
+WHERE o.PaymentMethod = 'WALLET'
+  AND o.PaymentStatus = 'PAID'
+  AND NOT EXISTS (
+      SELECT 1 FROM WalletTransactions wt
+      WHERE wt.RelatedOrderID = o.OrderID AND wt.TxnType = 'Payment'
+  )
+  /* Bảo vệ: chỉ insert nếu số dư tích lũy không âm */
+  AND 10000000 - ISNULL((
+        SELECT SUM(o2.TotalAmount)
+        FROM Orders o2
+        WHERE o2.AccountID     = o.AccountID
+          AND o2.PaymentMethod = 'WALLET'
+          AND o2.PaymentStatus = 'PAID'
+          AND o2.OrderID       < o.OrderID
+      ), 0) - o.TotalAmount >= 0;
 GO
 
 
@@ -1152,8 +1143,7 @@ BEGIN
     ((SELECT TOP 1 AccountID FROM Accounts WHERE Email='thuha.hoang@gmail.com'),    '2026-04-23 14:00:00');
 
     INSERT INTO [dbo].[CartItems] (CartID, ProductID, Quantity, PriceAtThatTime, CurrentPrice, AddedAt)
-    SELECT c.CartID,
-           v.ProductID, v.Qty, v.Pr, v.Pr, v.AddedAt
+    SELECT c.CartID, v.ProductID, v.Qty, v.Pr, v.Pr, v.AddedAt
     FROM Cart c
     JOIN Accounts a ON c.AccountID = a.AccountID
     JOIN (VALUES
@@ -1245,7 +1235,7 @@ GO
 
 
 /* ══════════════════════════════════════════
-   25. REVIEWS (chỉ cho đơn Completed, product phải có trong OrderDetails)
+   25. REVIEWS
 ══════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[ReviewProducts])
 BEGIN
@@ -1372,7 +1362,7 @@ GO
 
 
 /* ══════════════════════════════════════════
-   28. USER PREFERENCES (backfill nếu trigger chưa chạy kịp)
+   28. USER PREFERENCES (backfill)
 ══════════════════════════════════════════ */
 INSERT INTO [Notification].[UserPreferences] (AccountID)
 SELECT a.AccountID FROM Accounts a
@@ -1551,7 +1541,7 @@ GO
 ═══════════════════════════════════════════════════════════════ */
 PRINT N'';
 PRINT N'══════════════════════════════════════════════════════════';
-PRINT N'✅  DataSeed v3.2 hoàn tất!';
+PRINT N'✅  DataSeed v3.2 FIXED hoàn tất!';
 PRINT N'';
 PRINT N'  Dữ liệu đã seed:';
 PRINT N'  • 4 Roles, 3 nhân viên, 20 khách hàng';
@@ -1559,12 +1549,11 @@ PRINT N'  • 6 SuperCategories, 13 Categories, 5 Materials/Ages/Origins';
 PRINT N'  • 6 Brands, 5 PriceRanges, 8 StatusOrders, 3 ReactionTypes';
 PRINT N'  • 2 Promotions + time slots, 3 Vouchers';
 PRINT N'  • 15 Products + ProductDetails + 45 ProductImages';
-PRINT N'  • 10 đơn hàng mẫu (đầy đủ edge case: COD, WALLET, SE_PAY,';
-PRINT N'    voucher, cancel, multi-item, delivered, completed)';
-PRINT N'  • 30 đơn hàng ngẫu nhiên (ĐƠN 11–40)';
+PRINT N'  • 10 đơn hàng mẫu (COD, WALLET, SE_PAY, voucher, cancel, multi-item)';
+PRINT N'  • 30 đơn hàng ngẫu nhiên (ĐƠN 11–40, không còn lỗi PaymentMethod NULL)';
 PRINT N'  • Shipping transactions + status histories';
 PRINT N'  • Payment history + Gateway transactions (SE_PAY)';
-PRINT N'  • Wallets + WalletTransactions (TopUp + Payment)';
+PRINT N'  • Wallets (10M) + WalletTransactions (TopUp + Payment, không âm)';
 PRINT N'  • 1 OrderRefund + RefundImages';
 PRINT N'  • 10 Addresses, 4 CustomerChildren';
 PRINT N'  • Cart + CartItems, Wishlists';

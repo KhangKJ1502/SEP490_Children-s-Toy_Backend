@@ -1666,9 +1666,8 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
-            entity.Property(e => e.ModeratedAt).HasPrecision(0);
             entity.Property(e => e.IsEdited).HasDefaultValue(false);
-            entity.Property(e => e.ModerationReason).HasMaxLength(500);
+
             entity.Property(e => e.ModerationStatus)
                 .HasMaxLength(20)
                 .IsUnicode(false)
@@ -1710,8 +1709,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasMaxLength(500)
                 .IsUnicode(false)
                 .HasColumnName("ImageURL");
-            entity.Property(e => e.ModeratedAt).HasPrecision(0);
-            entity.Property(e => e.ModerationReason).HasMaxLength(500);
+
             entity.Property(e => e.ModerationStatus)
                 .HasMaxLength(20)
                 .IsUnicode(false)

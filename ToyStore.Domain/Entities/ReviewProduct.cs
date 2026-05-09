@@ -19,9 +19,6 @@ public partial class ReviewProduct
 
     public string ModerationStatus { get; set; } = null!;
 
-    public string? ModerationReason { get; set; }
-
-    public DateTime? ModeratedAt { get; set; }
 
     public bool IsDeleted { get; set; }
 
