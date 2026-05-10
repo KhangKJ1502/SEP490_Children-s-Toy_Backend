@@ -22,6 +22,12 @@ public interface IPromotionService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Lấy danh sách promotion FLASH_SALE đang active hoặc scheduled (public, không cần auth).
+    /// </summary>
+    Task<Result<List<PromotionDto>>> GetFlashSalePromotionsAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Lấy thông tin promotion theo ID.
     /// </summary>
     Task<Result<PromotionDto>> GetPromotionByIdAsync(

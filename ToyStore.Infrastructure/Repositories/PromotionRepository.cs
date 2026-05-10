@@ -139,4 +139,21 @@ public class PromotionRepository : IPromotionRepository
 
         return inFlashSale;
     }
+
+    public async Task<List<Promotion>> GetFlashSalePromotionsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        return await _context.Promotions
+            .Where(p => !p.IsDeleted
+                && p.PromotionType == "FLASH_SALE"
+                && (p.Status == "Active" || p.Status == "Scheduled")
+                && p.EndDate >= now)
+            .Include(p => p.PromotionTimeSlots)
+                .ThenInclude(ts => ts.PromotionProductSlots)
+                    .ThenInclude(pps => pps.Product)
+                        .ThenInclude(prod => prod.ProductImage)
+            .OrderBy(p => p.Priority)
+            .ToListAsync(cancellationToken);
+    }
 }
