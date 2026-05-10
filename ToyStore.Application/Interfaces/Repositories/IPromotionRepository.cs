@@ -58,4 +58,9 @@ public interface IPromotionRepository
     /// Kiểm tra sản phẩm có đang trong Promotion (Active hoặc Scheduled) hay không.
     /// </summary>
     Task<bool> IsProductInActivePromotionAsync(int productId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lấy danh sách promotion FLASH_SALE đang Active hoặc Scheduled, bao gồm đầy đủ time slots và sản phẩm.
+    /// </summary>
+    Task<List<Promotion>> GetFlashSalePromotionsAsync(CancellationToken cancellationToken = default);
 }

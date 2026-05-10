@@ -22,7 +22,9 @@ public class PromotionProfile : Profile
             .ForMember(dest => dest.CreatedBy, opt => opt.Ignore())
             .ForMember(dest => dest.IsDeleted, opt => opt.MapFrom(_ => false))
             .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
-            .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore());
+            .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
+            .ForMember(dest => dest.ProductPromotions, opt => opt.Ignore())
+            .ForMember(dest => dest.PromotionTimeSlots, opt => opt.Ignore());
 
         CreateMap<UpdatePromotionDto, Promotion>()
             .ForMember(dest => dest.ProductPromotions, opt => opt.Ignore())
@@ -58,7 +60,8 @@ public class PromotionProfile : Profile
 
         CreateMap<PromotionProductSlot, PromotionProductSlotDto>()
             .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product != null ? src.Product.ProductName : string.Empty))
-            .ForMember(dest => dest.OriginalPrice, opt => opt.MapFrom(src => src.Product != null ? src.Product.Price : 0));
+            .ForMember(dest => dest.OriginalPrice, opt => opt.MapFrom(src => src.Product != null ? src.Product.Price : 0))
+            .ForMember(dest => dest.MainImageUrl, opt => opt.MapFrom(src => src.Product != null && src.Product.ProductImage != null ? src.Product.ProductImage.ImageUrl : null));
 
         CreateMap<CreatePromotionProductSlotDto, PromotionProductSlot>()
             .ForMember(dest => dest.SlotProductId, opt => opt.Ignore())

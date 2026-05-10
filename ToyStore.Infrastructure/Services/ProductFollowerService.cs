@@ -1,5 +1,3 @@
-using Microsoft.EntityFrameworkCore;
-using ToyStore.Application.DTOs;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;

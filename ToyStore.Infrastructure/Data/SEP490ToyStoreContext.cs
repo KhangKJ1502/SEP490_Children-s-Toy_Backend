@@ -2072,6 +2072,10 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.Status)
                 .HasMaxLength(15)
                 .IsUnicode(false);
+            entity.Property(e => e.ImageUrl)
+                .HasMaxLength(500)
+                .IsUnicode(false)
+                .HasColumnName("ImageURL");
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
             entity.Property(e => e.VoucherCode)
                 .HasMaxLength(30)

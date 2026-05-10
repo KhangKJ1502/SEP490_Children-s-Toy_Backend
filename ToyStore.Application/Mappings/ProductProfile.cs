@@ -17,13 +17,17 @@ public class ProductProfile : Profile
             .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.IsDeleted ? "Inactive" : "Active"))
             .ForMember(dest => dest.MainImageUrl, opt => opt.MapFrom(src => src.ProductImage != null ? src.ProductImage.ImageUrl : null))
             .ForMember(dest => dest.DiscountedPrice, opt => opt.MapFrom(src => GetDiscountedPrice(src)))
-            .ForMember(dest => dest.DiscountPercent, opt => opt.MapFrom(src => GetDiscountPercent(src)));
+            .ForMember(dest => dest.DiscountPercent, opt => opt.MapFrom(src => GetDiscountPercent(src)))
+            .ForMember(dest => dest.PromotionType, opt => opt.MapFrom(src => GetPromotionType(src)));
 
         CreateMap<Product, ProductDto>()
             .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.CategoryName))
             .ForMember(dest => dest.BrandName, opt => opt.MapFrom(src => src.Brand != null ? src.Brand.BrandName : null))
             .ForMember(dest => dest.DiscountedPrice, opt => opt.MapFrom(src => GetDiscountedPrice(src)))
             .ForMember(dest => dest.DiscountPercent, opt => opt.MapFrom(src => GetDiscountPercent(src)))
+            .ForMember(dest => dest.PromotionType, opt => opt.MapFrom(src => GetPromotionType(src)))
+            .ForMember(dest => dest.PromotionSoldQuantity, opt => opt.MapFrom(src => GetPromotionSoldQuantity(src)))
+            .ForMember(dest => dest.PromotionSaleQuantity, opt => opt.MapFrom(src => GetPromotionSaleQuantity(src)))
             .ForMember(dest => dest.PriceRangeMin, opt => opt.MapFrom(src => GetPriceRangeMin(src)))
             .ForMember(dest => dest.PriceRangeMax, opt => opt.MapFrom(src => GetPriceRangeMax(src)))
             .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.ProductDetail != null ? src.ProductDetail.Description : null))
@@ -135,34 +139,82 @@ public class ProductProfile : Profile
         return src.PriceRange?.PriceRangeMax;
     }
 
-    private static ProductPromotion? GetActivePromotion(Product src)
+    private static (decimal SalePrice, string PromotionType, int? SoldQuantity, int? SaleQuantity)? GetActivePromotionData(Product src)
     {
-        if (src.ProductPromotions == null || !src.ProductPromotions.Any()) return null;
         var now = DateTime.UtcNow;
-        return src.ProductPromotions.FirstOrDefault(pp =>
-            pp.IsActive &&
-            pp.Promotion != null &&
-            !pp.Promotion.IsDeleted &&
-            pp.Promotion.Status == "Active" &&
-            pp.Promotion.StartDate <= now &&
-            pp.Promotion.EndDate >= now);
+
+        // 1. Flash Sale (Ưu tiên hàng đầu)
+        var activeFlashSale = src.PromotionProductSlots
+            .Where(pps => pps.IsActive
+                         && pps.TimeSlot != null
+                         && string.Equals(pps.TimeSlot.Status, "Active", StringComparison.OrdinalIgnoreCase)
+                         && pps.TimeSlot.StartAt <= now
+                         && pps.TimeSlot.EndAt >= now
+                         && pps.TimeSlot.Promotion != null
+                         && !pps.TimeSlot.Promotion.IsDeleted
+                         && (string.Equals(pps.TimeSlot.Promotion.Status, "Active", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(pps.TimeSlot.Promotion.Status, "Scheduled", StringComparison.OrdinalIgnoreCase))
+                         && (pps.SoldQuantity + pps.ReservedQuantity < pps.SaleQuantity))
+            .OrderByDescending(pps => pps.TimeSlot.Promotion.Priority)
+            .ThenBy(pps => pps.SalePrice)
+            .FirstOrDefault();
+
+        if (activeFlashSale != null)
+        {
+            return (activeFlashSale.SalePrice, activeFlashSale.TimeSlot!.Promotion.PromotionType, activeFlashSale.SoldQuantity, activeFlashSale.SaleQuantity);
+        }
+
+        // 2. Regular Promotion
+        var bestRegularPromotion = src.ProductPromotions
+            .Where(pp => pp.IsActive
+                         && pp.Promotion != null
+                         && !pp.Promotion.IsDeleted
+                         && (string.Equals(pp.Promotion.Status, "Active", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(pp.Promotion.Status, "Scheduled", StringComparison.OrdinalIgnoreCase))
+                         && pp.Promotion.StartDate <= now
+                         && pp.Promotion.EndDate >= now
+                         && (!pp.SaleQuantity.HasValue || pp.SoldQuantity + pp.ReservedQuantity < pp.SaleQuantity.Value)
+                         && (pp.Promotion.PromotionTimeSlots == null || pp.Promotion.PromotionTimeSlots.Count == 0 || pp.Promotion.PromotionTimeSlots.Any(slot =>
+                                string.Equals(slot.Status, "Active", StringComparison.OrdinalIgnoreCase)
+                                && slot.StartAt <= now
+                                && slot.EndAt >= now)))
+            .OrderByDescending(pp => pp.Promotion.Priority)
+            .ThenBy(pp => pp.SalePrice)
+            .FirstOrDefault();
+
+        if (bestRegularPromotion != null)
+        {
+            return (bestRegularPromotion.SalePrice, bestRegularPromotion.Promotion.PromotionType, bestRegularPromotion.SoldQuantity, bestRegularPromotion.SaleQuantity);
+        }
+
+        return null;
     }
 
     private static decimal? GetDiscountedPrice(Product src)
     {
-        return GetActivePromotion(src)?.SalePrice;
+        return GetActivePromotionData(src)?.SalePrice;
     }
 
     private static int? GetDiscountPercent(Product src)
     {
-        var active = GetActivePromotion(src);
+        var active = GetActivePromotionData(src);
         if (active == null || src.Price <= 0) return null;
         
-        if (active.DiscountPercent.HasValue)
-        {
-            return (int)Math.Round(active.DiscountPercent.Value);
-        }
-        
-        return (int)Math.Round((1 - (active.SalePrice / src.Price)) * 100);
+        return (int)Math.Round((1 - (active.Value.SalePrice / src.Price)) * 100);
+    }
+
+    private static string? GetPromotionType(Product src)
+    {
+        return GetActivePromotionData(src)?.PromotionType;
+    }
+
+    private static int? GetPromotionSoldQuantity(Product src)
+    {
+        return GetActivePromotionData(src)?.SoldQuantity;
+    }
+
+    private static int? GetPromotionSaleQuantity(Product src)
+    {
+        return GetActivePromotionData(src)?.SaleQuantity;
     }
 }

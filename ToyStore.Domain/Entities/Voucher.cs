@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ToyStore.Domain.Entities;
@@ -36,7 +36,7 @@ public partial class Voucher
     public DateTime EndDate { get; set; }
 
     public string Status { get; set; } = null!;
-
+    public string? ImageUrl { get; set; }
     public bool IsDeleted { get; set; }
 
     public DateTime CreatedAt { get; set; }

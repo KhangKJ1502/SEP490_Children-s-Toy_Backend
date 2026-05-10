@@ -449,7 +449,8 @@ public class CartService : ICartService
                          && pps.TimeSlot.EndAt >= now
                          && pps.TimeSlot.Promotion != null
                          && !pps.TimeSlot.Promotion.IsDeleted
-                         && string.Equals(pps.TimeSlot.Promotion.Status, "Active", StringComparison.OrdinalIgnoreCase)
+                         && (string.Equals(pps.TimeSlot.Promotion.Status, "Active", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(pps.TimeSlot.Promotion.Status, "Scheduled", StringComparison.OrdinalIgnoreCase))
                          && (pps.SoldQuantity + pps.ReservedQuantity < pps.SaleQuantity))
             .OrderByDescending(pps => pps.TimeSlot.Promotion.Priority)
             .ThenBy(pps => pps.SalePrice)
@@ -465,7 +466,8 @@ public class CartService : ICartService
             .Where(pp => pp.IsActive
                          && pp.Promotion != null
                          && !pp.Promotion.IsDeleted
-                         && string.Equals(pp.Promotion.Status, "Active", StringComparison.OrdinalIgnoreCase)
+                         && (string.Equals(pp.Promotion.Status, "Active", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(pp.Promotion.Status, "Scheduled", StringComparison.OrdinalIgnoreCase))
                          && pp.Promotion.StartDate <= now
                          && pp.Promotion.EndDate >= now
                          && (!pp.SaleQuantity.HasValue || pp.SoldQuantity + pp.ReservedQuantity < pp.SaleQuantity.Value)

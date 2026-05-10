@@ -32,10 +32,12 @@ public interface IUnitOfWork : IDisposable
     IOrderRepository Orders { get; }
 
     IWishlistRepository Wishlists { get; }
+
     IReviewRepository Reviews { get; }
     IDeliveryRepository Deliveries { get; }
     IUserPreferenceRepository UserPreferences { get; }
     IProductFollowerRepository ProductFollowers { get; }
+
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 

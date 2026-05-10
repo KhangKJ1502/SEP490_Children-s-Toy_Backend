@@ -13,6 +13,9 @@ public class PromotionProductSlotDto
 
     public string ProductName { get; set; } = string.Empty;
 
+    /// <summary>URL ảnh chính của sản phẩm (để hiển thị trong Flash Sale grid).</summary>
+    public string? MainImageUrl { get; set; }
+
     public decimal OriginalPrice { get; set; }
 
     /// <summary>Giá bán flash-sale trong slot này.</summary>
