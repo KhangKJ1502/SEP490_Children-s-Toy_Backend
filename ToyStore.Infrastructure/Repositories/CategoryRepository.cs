@@ -171,4 +171,13 @@ public class CategoryRepository : ICategoryRepository
                     .SetProperty(x => x.UpdatedAt, _ => now),
                 cancellationToken);
     }
+
+    public Task<List<Category>> GetAllAsync(CancellationToken cancellationToken = default)
+    {
+        return _context.Categories
+            .AsNoTracking()
+            .Include(x => x.SuperCategory)
+            .Where(x => !x.IsDeleted)
+            .ToListAsync(cancellationToken);
+    }
 }

@@ -447,6 +447,115 @@ public class ProductService : IProductService
             cancellationToken: cancellationToken);
     }
 
+    public async Task<Result<ProductLookupsDto>> GetProductLookupsAsync(CancellationToken cancellationToken = default)
+    {
+        // Lay danh sach SuperCategories
+        var superCategories = await _unitOfWork.SuperCategories.GetAllAsync(cancellationToken);
+        var superCategoryDtos = superCategories
+            .OrderBy(x => x.SuperCategoryName)
+            .Select(x => new SuperCategoryLookupDto
+            {
+                Id = x.SuperCategoryId,
+                Label = x.SuperCategoryName
+            })
+            .ToList();
+
+        // Lay danh sach Categories
+        var categories = await _unitOfWork.Categories.GetAllAsync(cancellationToken);
+        var categoryDtos = categories
+            .OrderBy(x => x.CategoryName)
+            .Select(x => new CategoryLookupDto
+            {
+                Id = x.CategoryId,
+                Label = x.CategoryName,
+                SuperCategoryId = x.SuperCategoryId,
+                SuperCategoryName = x.SuperCategory?.SuperCategoryName ?? string.Empty
+            })
+            .ToList();
+
+        // Lay danh sach Brands
+        var brands = await _unitOfWork.Brands.GetAllAsync(cancellationToken);
+        var brandDtos = brands
+            .OrderBy(x => x.BrandName)
+            .Select(x => new BrandLookupDto
+            {
+                Id = x.BrandId,
+                Label = x.BrandName
+            })
+            .ToList();
+
+        // Lay danh sach PriceRanges
+        var priceRanges = await _unitOfWork.Products.GetPriceRangesAsync(cancellationToken);
+        var priceRangeDtos = priceRanges
+            .OrderBy(x => x.PriceRangeMin)
+            .Select(x => new PriceRangeLookupDto
+            {
+                Id = x.PriceRangeId,
+                Label = $"{x.PriceRangeMin:N0} - {x.PriceRangeMax:N0} VND",
+                Min = x.PriceRangeMin,
+                Max = x.PriceRangeMax
+            })
+            .ToList();
+
+        // Lay danh sach Materials
+        var materials = await _unitOfWork.Products.GetMaterialsAsync(cancellationToken);
+        var materialDtos = materials
+            .OrderBy(x => x.MaterialName)
+            .Select(x => new MaterialLookupDto
+            {
+                Id = x.MaterialId,
+                Label = x.MaterialName
+            })
+            .ToList();
+
+        // Lay danh sach Ages
+        var ages = await _unitOfWork.Products.GetAgesAsync(cancellationToken);
+        var ageDtos = ages
+            .OrderBy(x => x.AgeRange)
+            .Select(x => new AgeLookupDto
+            {
+                Id = x.AgeId,
+                Label = x.AgeRange
+            })
+            .ToList();
+
+        // Lay danh sach Sexes
+        var sexes = await _unitOfWork.Products.GetSexesAsync(cancellationToken);
+        var sexDtos = sexes
+            .OrderBy(x => x.SexName)
+            .Select(x => new SexLookupDto
+            {
+                Id = x.SexId,
+                Label = x.SexName
+            })
+            .ToList();
+
+        // Lay danh sach Origins
+        var origins = await _unitOfWork.Products.GetOriginsAsync(cancellationToken);
+        var originDtos = origins
+            .OrderBy(x => x.OriginName)
+            .Select(x => new OriginLookupDto
+            {
+                Id = x.OriginId,
+                Label = x.OriginName
+            })
+            .ToList();
+
+        var result = new ProductLookupsDto
+        {
+            SuperCategories = superCategoryDtos,
+            Categories = categoryDtos,
+            Brands = brandDtos,
+            PriceRanges = priceRangeDtos,
+            Materials = materialDtos,
+            Ages = ageDtos,
+            Sexes = sexDtos,
+            Origins = originDtos
+        };
+
+        return Result<ProductLookupsDto>.Success(result);
+    }
+
     private static bool HasAnyUpdate(UpdateProductDto dto)
     {
         return dto.CategoryId.HasValue

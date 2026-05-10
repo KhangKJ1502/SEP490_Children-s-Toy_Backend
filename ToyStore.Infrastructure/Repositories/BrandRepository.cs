@@ -129,4 +129,12 @@ public class BrandRepository : IBrandRepository
 
         return entity;
     }
+
+    public Task<List<Brand>> GetAllAsync(CancellationToken cancellationToken = default)
+    {
+        return _context.Brands
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted)
+            .ToListAsync(cancellationToken);
+    }
 }

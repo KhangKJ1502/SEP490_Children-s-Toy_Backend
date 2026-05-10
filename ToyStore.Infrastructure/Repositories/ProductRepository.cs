@@ -479,4 +479,45 @@ public class ProductRepository : IProductRepository
             .Where(x => productIds.Contains(x.ProductId) && !x.IsDeleted)
             .ToListAsync(cancellationToken);
     }
+
+    public Task<List<PriceRange>> GetPriceRangesAsync(CancellationToken cancellationToken = default)
+    {
+        return _context.PriceRanges
+            .AsNoTracking()
+            .OrderBy(x => x.PriceRangeMin)
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<List<Material>> GetMaterialsAsync(CancellationToken cancellationToken = default)
+    {
+        return _context.Materials
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted)
+            .OrderBy(x => x.MaterialName)
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<List<Age>> GetAgesAsync(CancellationToken cancellationToken = default)
+    {
+        return _context.Ages
+            .AsNoTracking()
+            .OrderBy(x => x.AgeRange)
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<List<Sex>> GetSexesAsync(CancellationToken cancellationToken = default)
+    {
+        return _context.Sexes
+            .AsNoTracking()
+            .OrderBy(x => x.SexName)
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<List<Origin>> GetOriginsAsync(CancellationToken cancellationToken = default)
+    {
+        return _context.Origins
+            .AsNoTracking()
+            .OrderBy(x => x.OriginName)
+            .ToListAsync(cancellationToken);
+    }
 }

@@ -21,6 +21,13 @@ public interface ISuperCategoryService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Lay thong tin chi tiet SuperCategory theo ID.
+    /// </summary>
+    Task<Result<SuperCategoryListDto>> GetSuperCategoryByIdAsync(
+        short superCategoryId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Tao moi SuperCategory.
     /// </summary>
     Task<Result<SuperCategoryListDto>> CreateSuperCategoryAsync(

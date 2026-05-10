@@ -65,6 +65,20 @@ public class CategoryService : ICategoryService
         return Result<PaginatedResponse<CategoryListDto>>.Success(response);
     }
 
+    public async Task<Result<CategoryListDto>> GetCategoryByIdAsync(
+        short categoryId,
+        CancellationToken cancellationToken = default)
+    {
+        var category = await _unitOfWork.Categories.GetByIdAsync(categoryId, cancellationToken);
+        if (category == null)
+        {
+            return Result<CategoryListDto>.Failure("NOT_FOUND", $"Category with ID {categoryId} not found.");
+        }
+
+        var dto = _mapper.Map<CategoryListDto>(category);
+        return Result<CategoryListDto>.Success(dto);
+    }
+
     public async Task<Result<CategoryListDto>> CreateCategoryAsync(
         CreateCategoryDto dto,
         CancellationToken cancellationToken = default)

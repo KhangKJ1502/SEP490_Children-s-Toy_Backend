@@ -56,4 +56,9 @@ public interface IProductService
         string? sortBy = null,
         bool sortDesc = false,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lay cac lookup data cho Product (SuperCategories, Categories, Brands, PriceRanges, Materials, Ages, Sexes, Origins).
+    /// </summary>
+    Task<Result<ProductLookupsDto>> GetProductLookupsAsync(CancellationToken cancellationToken = default);
 }

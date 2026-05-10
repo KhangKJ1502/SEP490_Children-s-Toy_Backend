@@ -30,6 +30,7 @@ public class UpdateProductValidator : AbstractValidator<UpdateProductDto>
 
         RuleFor(x => x.ProductName)
             .NotEmpty().WithMessage("Product name must not be empty.")
+            .MinimumLength(3).WithMessage("Product name must be at least 3 characters.")
             .MaximumLength(255).WithMessage("Product name must not exceed 255 characters.")
             .When(x => !string.IsNullOrWhiteSpace(x.ProductName));
 
@@ -63,6 +64,7 @@ public class UpdateProductValidator : AbstractValidator<UpdateProductDto>
             .When(x => x.StockThreshold.HasValue);
 
         RuleFor(x => x.Description)
+            .MinimumLength(10).WithMessage("Description must be at least 10 characters.")
             .MaximumLength(1500).WithMessage("Description must not exceed 1500 characters.")
             .When(x => !string.IsNullOrWhiteSpace(x.Description));
 

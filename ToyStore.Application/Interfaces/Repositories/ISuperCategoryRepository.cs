@@ -62,4 +62,9 @@ public interface ISuperCategoryRepository
         short superCategoryId,
         bool isDeleted,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lấy tất cả SuperCategory (không phân trang).
+    /// </summary>
+    Task<List<SuperCategory>> GetAllAsync(CancellationToken cancellationToken = default);
 }
