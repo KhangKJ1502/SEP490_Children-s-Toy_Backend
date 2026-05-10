@@ -65,6 +65,20 @@ public class SuperCategoryService : ISuperCategoryService
         return Result<PaginatedResponse<SuperCategoryListDto>>.Success(response);
     }
 
+    public async Task<Result<SuperCategoryListDto>> GetSuperCategoryByIdAsync(
+        short superCategoryId,
+        CancellationToken cancellationToken = default)
+    {
+        var superCategory = await _unitOfWork.SuperCategories.GetByIdAsync(superCategoryId, cancellationToken);
+        if (superCategory == null)
+        {
+            return Result<SuperCategoryListDto>.Failure("NOT_FOUND", $"Super category with ID {superCategoryId} not found.");
+        }
+
+        var dto = _mapper.Map<SuperCategoryListDto>(superCategory);
+        return Result<SuperCategoryListDto>.Success(dto);
+    }
+
     public async Task<Result<SuperCategoryListDto>> CreateSuperCategoryAsync(
         CreateSuperCategoryDto dto,
         CancellationToken cancellationToken = default)

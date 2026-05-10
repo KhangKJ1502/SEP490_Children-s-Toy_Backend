@@ -66,4 +66,9 @@ public interface ICategoryRepository
         short categoryId,
         bool isDeleted,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lấy tất cả Category (không phân trang).
+    /// </summary>
+    Task<List<Category>> GetAllAsync(CancellationToken cancellationToken = default);
 }

@@ -152,4 +152,12 @@ public class SuperCategoryRepository : ISuperCategoryRepository
                     .SetProperty(x => x.UpdatedAt, _ => now),
                 cancellationToken);
     }
+
+    public Task<List<SuperCategory>> GetAllAsync(CancellationToken cancellationToken = default)
+    {
+        return _context.SuperCategories
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted)
+            .ToListAsync(cancellationToken);
+    }
 }
