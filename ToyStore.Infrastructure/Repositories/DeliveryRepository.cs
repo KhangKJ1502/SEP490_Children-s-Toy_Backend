@@ -56,13 +56,26 @@ public class DeliveryRepository : IDeliveryRepository
 
     public async Task MarkReadAsync(long deliveryId, int accountId, CancellationToken ct = default)
     {
-        var now = DateTime.UtcNow;
+        var delivery = await _db.Deliveries.AsNoTracking().FirstOrDefaultAsync(d => d.DeliveryId == deliveryId && d.AccountId == accountId, ct);
+        if (delivery == null || delivery.Status != NotificationStatuses.Unread) return;
+
+        var now = DateTime.Now;
+
         await _db.Deliveries
-            .Where(d => d.DeliveryId == deliveryId && d.AccountId == accountId)
+            .Where(d => d.DeliveryId == deliveryId)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(d => d.Status, NotificationStatuses.Read)
                 .SetProperty(d => d.ReadAt, now)
                 .SetProperty(d => d.UpdatedAt, now), ct);
+
+        if (delivery.CampaignId.HasValue)
+        {
+            await _db.CampaignStats
+                .Where(s => s.CampaignId == delivery.CampaignId.Value)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.TotalRead, x => x.TotalRead + 1)
+                    .SetProperty(x => x.ComputedAt, now), ct);
+        }
     }
 
     public async Task<int> GetUnreadCountAsync(int accountId, CancellationToken ct = default)
@@ -75,7 +88,15 @@ public class DeliveryRepository : IDeliveryRepository
 
     public async Task MarkAllReadAsync(int accountId, CancellationToken ct = default)
     {
-        var now = DateTime.UtcNow;
+        var now = DateTime.Now;
+
+        var unreadCampaignDeliveries = await _db.Deliveries
+            .AsNoTracking()
+            .Where(d => d.AccountId == accountId && d.Channel == NotificationChannels.WebBell && d.Status == NotificationStatuses.Unread && d.CampaignId != null)
+            .GroupBy(d => d.CampaignId!.Value)
+            .Select(g => new { CampaignId = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
         await _db.Deliveries
             .Where(d => d.AccountId == accountId 
                      && d.Channel == NotificationChannels.WebBell 
@@ -84,6 +105,15 @@ public class DeliveryRepository : IDeliveryRepository
                 .SetProperty(d => d.Status, NotificationStatuses.Read)
                 .SetProperty(d => d.ReadAt, now)
                 .SetProperty(d => d.UpdatedAt, now), ct);
+
+        foreach (var stat in unreadCampaignDeliveries)
+        {
+            await _db.CampaignStats
+                .Where(s => s.CampaignId == stat.CampaignId)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.TotalRead, x => x.TotalRead + stat.Count)
+                    .SetProperty(x => x.ComputedAt, now), ct);
+        }
     }
 
     public void Add(Delivery delivery)
@@ -105,5 +135,22 @@ public class DeliveryRepository : IDeliveryRepository
     public async Task<bool> ExistsByIdempotencyKeyAsync(string idempotencyKey, CancellationToken ct = default)
     {
         return await _db.Deliveries.AnyAsync(d => d.IdempotencyKey == idempotencyKey, ct);
+    }
+
+    public async Task IncrementCampaignClickAsync(int campaignId, CancellationToken ct = default)
+    {
+        await _db.CampaignStats
+            .Where(s => s.CampaignId == campaignId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.TotalClicked, x => x.TotalClicked + 1)
+                .SetProperty(x => x.ComputedAt, DateTime.Now), ct);
+    }
+
+    public async Task<bool> HasUserClickedAsync(long deliveryId, int accountId, CancellationToken ct = default)
+    {
+        return await _db.DeliveryActions.AnyAsync(a => 
+            a.DeliveryId == deliveryId && 
+            a.AccountId == accountId && 
+            a.ActionType == "Click", ct);
     }
 }

@@ -84,16 +84,7 @@ public class NotificationsController : ControllerBase
         var accountId = GetAccountId();
         if (accountId is null) return Unauthorized();
 
-        var delivery = await _unitOfWork.Deliveries.GetByIdAsync(deliveryId, ct);
-        if (delivery is null || delivery.AccountId != accountId.Value) return NotFound();
-
-        if (delivery.Status == NotificationStatuses.Unread)
-        {
-            delivery.Status    = NotificationStatuses.Read;
-            delivery.ReadAt    = DateTime.UtcNow;
-            delivery.UpdatedAt = DateTime.UtcNow;
-            await _unitOfWork.SaveChangesAsync(ct);
-        }
+        await _unitOfWork.Deliveries.MarkReadAsync(deliveryId, accountId.Value, ct);
 
         return NoContent();
     }
@@ -124,7 +115,7 @@ public class NotificationsController : ControllerBase
         if (delivery is null || delivery.AccountId != accountId.Value) return NotFound();
 
         delivery.Status    = NotificationStatuses.Archived;
-        delivery.UpdatedAt = DateTime.UtcNow;
+        delivery.UpdatedAt = DateTime.Now;
         await _unitOfWork.SaveChangesAsync(ct);
 
         return NoContent();
@@ -142,23 +133,32 @@ public class NotificationsController : ControllerBase
         var delivery = await _unitOfWork.Deliveries.GetByIdAsync(deliveryId, ct);
         if (delivery is null || delivery.AccountId != accountId.Value) return NotFound();
 
+        // Check for existing click to prevent double counting
+        bool alreadyClicked = await _unitOfWork.Deliveries.HasUserClickedAsync(deliveryId, accountId.Value, ct);
+
+        // Auto-mark as read if not already read (clicking implies reading)
+        if (delivery.Status == NotificationStatuses.Unread)
+        {
+            await _unitOfWork.Deliveries.MarkReadAsync(deliveryId, accountId.Value, ct);
+        }
+
+        if (alreadyClicked)
+        {
+            return NoContent();
+        }
+
         _unitOfWork.Deliveries.AddAction(new DeliveryAction
         {
             DeliveryId   = deliveryId,
             AccountId    = accountId.Value,
             ActionType   = "Click",
             ActionTarget = delivery.ActionTarget,
-            OccurredAt   = DateTime.UtcNow,
+            OccurredAt   = DateTime.Now,
         });
 
         if (delivery.CampaignId.HasValue)
         {
-            var campaign = await _unitOfWork.Campaigns.GetByIdAsync(delivery.CampaignId.Value, ct);
-            if (campaign?.CampaignStat is not null)
-            {
-                campaign.CampaignStat.TotalClicked++;
-                campaign.CampaignStat.ComputedAt = DateTime.UtcNow;
-            }
+            await _unitOfWork.Deliveries.IncrementCampaignClickAsync(delivery.CampaignId.Value, ct);
         }
 
         await _unitOfWork.SaveChangesAsync(ct);

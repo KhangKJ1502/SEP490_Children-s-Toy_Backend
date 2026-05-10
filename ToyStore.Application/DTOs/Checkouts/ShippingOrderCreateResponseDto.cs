@@ -10,4 +10,6 @@ public class ShippingOrderCreateResponseDto
     public string? SortCode { get; set; }
 
     public int ServiceId { get; set; }
+    
+    public DateTime? ExpectedDeliveryTime { get; set; }
 }

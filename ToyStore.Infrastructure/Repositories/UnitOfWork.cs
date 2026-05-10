@@ -32,7 +32,8 @@ public class UnitOfWork : IUnitOfWork
         IReviewRepository reviews,
         ICustomerChildRepository customerChildren,
         IDeliveryRepository deliveries,
-        IUserPreferenceRepository userPreferences)
+        IUserPreferenceRepository userPreferences,
+        IProductFollowerRepository productFollowers)
     {
         _context = context;
         Vouchers = vouchers;
@@ -54,6 +55,7 @@ public class UnitOfWork : IUnitOfWork
         CustomerChildren = customerChildren;
         Deliveries = deliveries;
         UserPreferences = userPreferences;
+        ProductFollowers = productFollowers;
 
     }
 
@@ -93,6 +95,7 @@ public class UnitOfWork : IUnitOfWork
     public IDeliveryRepository Deliveries { get; }
 
     public IUserPreferenceRepository UserPreferences { get; }
+    public IProductFollowerRepository ProductFollowers { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

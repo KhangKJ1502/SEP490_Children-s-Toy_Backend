@@ -33,5 +33,7 @@ public class ShippingOrderCreateRequestDto
 
     public string? Note { get; set; }
 
+    public string RequiredNote { get; set; } = "KHONGCHOXEMHANG";
+
     public List<ShippingOrderCreateItemDto> Items { get; set; } = [];
 }

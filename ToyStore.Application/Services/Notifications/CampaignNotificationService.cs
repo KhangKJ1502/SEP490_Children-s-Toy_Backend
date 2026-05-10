@@ -65,10 +65,11 @@ public class CampaignNotificationService : ICampaignNotificationService
         }
 
         campaign.Status    = "Sending";
-        campaign.UpdatedAt = DateTime.UtcNow;
+        campaign.UpdatedAt = DateTime.Now;
         await _unitOfWork.SaveChangesAsync(ct);
 
-        await DispatchCampaignAsync(campaign, new Dictionary<string, string>(), ct);
+        var vars = await ResolveCampaignVariablesAsync(campaign, ct);
+        await DispatchCampaignAsync(campaign, vars, ct);
     }
 
     private async Task DispatchCampaignAsync(
@@ -113,25 +114,18 @@ public class CampaignNotificationService : ICampaignNotificationService
             sent++;
         }
 
-        campaign.Status    = "Sent";
-        campaign.UpdatedAt = DateTime.UtcNow;
-
-        var stat = campaign.CampaignStat;
-        if (stat is null)
+        try
         {
-            stat = new CampaignStat { CampaignId = campaign.CampaignId };
-            // Note: We need a way to add stats via unit of work if it's not tracked
-            // For now assuming the campaign include handled it
+            await _unitOfWork.Campaigns.MarkSentAsync(campaign.CampaignId, sent, ct);
+            
+            _logger.LogInformation(
+                "Campaign {Id} dispatched. Sent={Sent}",
+                campaign.CampaignId, sent);
         }
-
-        stat.TotalSent  += sent;
-        stat.ComputedAt  = DateTime.UtcNow;
-
-        await _unitOfWork.SaveChangesAsync(ct);
-
-        _logger.LogInformation(
-            "Campaign {Id} dispatched. Sent={Sent}",
-            campaign.CampaignId, sent);
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Campaign {Id} dispatch save failed.", campaign.CampaignId);
+        }
     }
 
     private (string title, string message) ResolveContent(Campaign campaign, Dictionary<string, string> vars)
@@ -151,8 +145,71 @@ public class CampaignNotificationService : ICampaignNotificationService
     {
         if (template is null) return null;
         foreach (var (key, value) in vars)
-            template = template.Replace($"{{{key}}}", value);
+        {
+            template = template.Replace("{{" + key + "}}", value);
+            template = template.Replace("{" + key + "}", value);
+        }
         return template;
+    }
+
+    private async Task<Dictionary<string, string>> ResolveCampaignVariablesAsync(Campaign campaign, CancellationToken ct)
+    {
+        var vars = new Dictionary<string, string>();
+
+        if (!campaign.ReferenceId.HasValue || string.IsNullOrEmpty(campaign.ReferenceType))
+            return vars;
+
+        try
+        {
+            switch (campaign.ReferenceType)
+            {
+                case "VOUCHER":
+                    var voucher = await _unitOfWork.Vouchers.GetByIdAsync(campaign.ReferenceId.Value, ct);
+                    if (voucher != null)
+                    {
+                        vars["VoucherCode"] = voucher.VoucherCode;
+                        vars["VoucherName"] = voucher.VoucherName;
+                        vars["DiscountValue"] = voucher.DiscountType == "PERCENTAGE" 
+                            ? $"{voucher.DiscountValue:0.##}%" 
+                            : $"{voucher.DiscountValue:N0}đ";
+                        vars["DiscountType"] = voucher.DiscountType == "PERCENTAGE" ? "giảm theo phần trăm" : "giảm thẳng";
+                        vars["MinOrderAmount"] = voucher.MinOrderAmount.HasValue ? $"{voucher.MinOrderAmount.Value:N0}đ" : "0đ";
+                        vars["MaxDiscountCap"] = voucher.MaxDiscountCap.HasValue ? $"{voucher.MaxDiscountCap.Value:N0}đ" : "Không giới hạn";
+                    }
+                    break;
+
+                case "PRODUCT":
+                    var product = await _unitOfWork.Products.GetByIdAsync(campaign.ReferenceId.Value, ct);
+                    if (product != null)
+                    {
+                        vars["ProductName"] = product.ProductName;
+                        vars["Price"] = $"{product.Price:N0}đ";
+                    }
+                    break;
+
+                case "SALE":
+                    var promo = await _unitOfWork.Promotions.GetByIdAsync(campaign.ReferenceId.Value, ct);
+                    if (promo != null)
+                    {
+                        vars["PromotionName"] = promo.PromotionName;
+                    }
+                    break;
+                    
+                case "BLOG":
+                    var blog = await _unitOfWork.Blogs.GetByIdAsync(campaign.ReferenceId.Value, ct);
+                    if (blog != null)
+                    {
+                        vars["BlogTitle"] = blog.BlogTitle;
+                    }
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to resolve campaign variables for ReferenceType={Type}, ReferenceId={Id}", campaign.ReferenceType, campaign.ReferenceId);
+        }
+
+        return vars;
     }
 
     private async Task<List<int>> ResolveTargetAccountsAsync(Campaign campaign, CancellationToken ct)
@@ -169,7 +226,7 @@ public class CampaignNotificationService : ICampaignNotificationService
     private async Task<List<int>> ResolveAllCustomersAsync(CancellationToken ct)
     {
         var customers = await _unitOfWork.Accounts.GetActiveCustomersAsync(ct);
-        return customers.Select(a => a.AccountId).ToList();
+        return customers.Select(a => a.AccountId).Distinct().ToList();
     }
 
     private async Task<List<int>> ResolveByRoleAsync(
@@ -182,7 +239,7 @@ public class CampaignNotificationService : ICampaignNotificationService
             .ToArray();
 
         var accounts = await _unitOfWork.Accounts.GetByRoleIdsAsync(roleIds, ct);
-        return accounts.Select(a => a.AccountId).ToList();
+        return accounts.Select(a => a.AccountId).Distinct().ToList();
     }
 
     private static List<int> ResolveIndividual(ICollection<CampaignTarget> targets)
@@ -190,6 +247,7 @@ public class CampaignNotificationService : ICampaignNotificationService
             .Where(t => t.TargetType == "ACCOUNT_ID")
             .Select(t => int.TryParse(t.TargetValue, out var id) ? id : 0)
             .Where(id => id > 0)
+            .Distinct()
             .ToList();
 
     private static string ResolveNotificationType(string? templateCode)

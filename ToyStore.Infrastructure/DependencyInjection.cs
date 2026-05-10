@@ -52,7 +52,8 @@ public static class DependencyInjection
     {
         services.AddDbContext<SEP490ToyStoreContext>(options =>
             options.UseSqlServer(
-                configuration.GetConnectionString("DefaultConnection")));
+                configuration.GetConnectionString("DefaultConnection"),
+                o => o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
 
         var redisConnectionString = configuration["Redis:ConnectionString"] ?? "localhost:6379";
         var redisOptions = ConfigurationOptions.Parse(redisConnectionString);
@@ -150,6 +151,7 @@ public static class DependencyInjection
         services.AddScoped<IReviewRepository, ReviewRepository>();
         services.AddScoped<IDeliveryRepository, DeliveryRepository>();
         services.AddScoped<IUserPreferenceRepository, UserPreferenceRepository>();
+        services.AddScoped<IProductFollowerRepository, ProductFollowerRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ISuperCategoryService, SuperCategoryService>();
@@ -162,6 +164,7 @@ public static class DependencyInjection
         services.AddScoped<ICustomerChildService, CustomerChildService>();
         services.AddScoped<ICartService, CartService>();
         services.AddScoped<IWishlistService, WishlistService>();
+        services.AddScoped<IProductFollowerService, ProductFollowerService>();
         services.AddScoped<IReviewService, ReviewService>();
 
         // Resolver business object
