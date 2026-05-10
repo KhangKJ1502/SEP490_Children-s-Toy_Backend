@@ -25,6 +25,18 @@ public class PromotionsController : ControllerBase
     }
 
     /// <summary>
+    /// Lấy danh sách Flash Sale đang active/scheduled (public, không cần đăng nhập).
+    /// </summary>
+    [AllowAnonymous]
+    [HttpGet("flash-sale")]
+    public async Task<ActionResult<List<PromotionDto>>> GetFlashSalePromotions(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _promotionService.GetFlashSalePromotionsAsync(cancellationToken);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
     /// Lấy danh sách promotion có phân trang, tìm kiếm và sắp xếp.
     /// </summary>
     [HttpGet]

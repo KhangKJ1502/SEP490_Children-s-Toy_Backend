@@ -90,6 +90,19 @@ public class PromotionService : IPromotionService
         return Result<PaginatedResponse<PromotionListDto>>.Success(response);
     }
 
+    public async Task<Result<List<PromotionDto>>> GetFlashSalePromotionsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var promotions = await _unitOfWork.Promotions.GetFlashSalePromotionsAsync(cancellationToken);
+        var dtos = _mapper.Map<List<PromotionDto>>(promotions);
+
+        _logger.LogInformation(
+            "Retrieved {Count} FLASH_SALE promotions for public display",
+            dtos.Count);
+
+        return Result<List<PromotionDto>>.Success(dtos);
+    }
+
     public async Task<Result<PromotionDto>> GetPromotionByIdAsync(
         int promotionId,
         CancellationToken cancellationToken = default)

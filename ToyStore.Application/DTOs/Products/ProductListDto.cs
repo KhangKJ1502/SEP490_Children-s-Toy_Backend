@@ -11,6 +11,8 @@ public class ProductListDto
     public decimal? DiscountedPrice { get; set; }
 
     public int? DiscountPercent { get; set; }
+    
+    public string? PromotionType { get; set; }
 
     public int Quantity { get; set; }
 
