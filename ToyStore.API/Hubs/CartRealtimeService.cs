@@ -2,9 +2,8 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.DTOs.Carts;
 using ToyStore.Application.Interfaces.Services;
-using ToyStore.Infrastructure.Hubs;
 
-namespace ToyStore.Infrastructure.Services;
+namespace ToyStore.API.Hubs;
 
 public class CartRealtimeService : ICartRealtimeService
 {

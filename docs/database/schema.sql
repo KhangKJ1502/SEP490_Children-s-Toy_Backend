@@ -1263,15 +1263,16 @@ GO
    9. NOTIFICATION & CHAT & INTERACTIONS
 ============================================= */
 CREATE TABLE [dbo].[CustomerChildren] (
-    [ChildID]   INT IDENTITY(1,1) PRIMARY KEY,
-    [AccountID] INT NOT NULL,
-    [SexID]     TINYINT NULL,
-    [FullName]  NVARCHAR(100) NOT NULL,
-    [NickName]  NVARCHAR(50) NULL,
-    [DOB]       DATE NOT NULL,
-    [IsDeleted] BIT NOT NULL DEFAULT 0,
-    [CreatedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE(),
-    [UpdatedAt] DATETIME2(0) NULL,
+    [ChildID]               INT IDENTITY(1,1) PRIMARY KEY,
+    [AccountID]             INT NOT NULL,
+    [SexID]                 TINYINT NULL,
+    [FullName]              NVARCHAR(100) NOT NULL,
+    [NickName]              NVARCHAR(50) NULL,
+    [DOB]                   DATE NOT NULL,
+    [BirthdayNotifiedYear]  SMALLINT NULL,
+    [IsDeleted]             BIT NOT NULL DEFAULT 0,
+    [CreatedAt]             DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    [UpdatedAt]             DATETIME2(0) NULL,
     CONSTRAINT [FK_CustomerChildren_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [dbo].[Accounts]([AccountID]),
     CONSTRAINT [FK_CustomerChildren_Sexes]    FOREIGN KEY ([SexID])     REFERENCES [dbo].[Sexes]([SexID]),
     CONSTRAINT [CK_CustomerChildren_DOB]      CHECK ([DOB] <= CAST(GETDATE() AS DATE))
@@ -1425,6 +1426,7 @@ CREATE TABLE [Notification].[Deliveries] (
     [IsDeleted]        BIT                  NOT NULL DEFAULT 0,
     [CreatedAt]        DATETIME2(0)         NOT NULL DEFAULT GETDATE(),
     [UpdatedAt]        DATETIME2(0)         NULL,
+    [IdempotencyKey]   VARCHAR(200)         NULL,
 
     CONSTRAINT [FK_Deliveries_Accounts]  FOREIGN KEY ([AccountID])      REFERENCES [dbo].[Accounts]([AccountID]),
     CONSTRAINT [FK_Deliveries_Templates] FOREIGN KEY ([TemplateCode])   REFERENCES [Notification].[Templates]([TemplateCode]),
@@ -1438,6 +1440,7 @@ GO
 CREATE INDEX [IX_Deliveries_AccountID_Status]    ON [Notification].[Deliveries] ([AccountID], [Status]) INCLUDE ([Title], [Message], [CreatedAt], [CampaignID], [NotificationType], [ImageUrl], [ActionType], [ActionTarget]) WHERE [IsDeleted] = 0;
 CREATE INDEX [IX_Deliveries_AccountID_CreatedAt] ON [Notification].[Deliveries] ([AccountID], [CreatedAt] DESC) WHERE [IsDeleted] = 0;
 CREATE INDEX [IX_Deliveries_PushStatus]          ON [Notification].[Deliveries] ([PushStatus], [CreatedAt]) WHERE [PushStatus] = 'Failed';
+CREATE UNIQUE NONCLUSTERED INDEX [UQ_Deliveries_IdempotencyKey] ON [Notification].[Deliveries]([IdempotencyKey]) WHERE [IdempotencyKey] IS NOT NULL;
 GO
 
 CREATE TABLE [Notification].[DeliveryActions] (

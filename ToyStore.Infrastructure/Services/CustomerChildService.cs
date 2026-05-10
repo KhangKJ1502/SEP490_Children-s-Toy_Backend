@@ -1,9 +1,9 @@
 using AutoMapper;
+using Microsoft.Extensions.Logging;
 using ToyStore.Application.DTOs.CustomerChildren;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
-using Microsoft.Extensions.Logging;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -64,8 +64,9 @@ public class CustomerChildService : ICustomerChildService
             });
 
         var count = await _unitOfWork.CustomerChildren.CountAsync(x => x.AccountId == accountId && !x.IsDeleted);
+
         if (count >= 4)
-            return Result<CustomerChildDto>.BusinessError("You can only have a maximum of 4 children profiles.");
+            return Result<CustomerChildDto>.BusinessError($"You can only have a maximum of {MaxChildrenPerUser} children profiles.");
 
         var child = new CustomerChild
         {

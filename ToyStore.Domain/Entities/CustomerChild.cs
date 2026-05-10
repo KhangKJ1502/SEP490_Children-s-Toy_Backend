@@ -17,7 +17,10 @@ public partial class CustomerChild
 
     public byte? SexId { get; set; }
 
+    public short? BirthdayNotifiedYear { get; set; }
+
     public bool IsDeleted { get; set; }
+    
 
     public DateTime CreatedAt { get; set; }
 

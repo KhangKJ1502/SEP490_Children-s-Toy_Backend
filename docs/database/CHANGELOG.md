@@ -5,6 +5,39 @@
 
 ---
 
+## [2026-05-09] `v3.2 — Notification: BirthdayNotifiedYear trên CustomerChildren`
+
+### Thay đổi
+
+| Loại | Bảng | Chi tiết |
+|---|---|---|
+| ➕ Thêm cột | `dbo.CustomerChildren.BirthdayNotifiedYear` | `SMALLINT NULL` — năm gần nhất đã gửi thông báo sinh nhật cho bé |
+
+### Lý do
+
+`BirthdayNotificationJob` cần biết đã gửi thông báo sinh nhật cho bé trong năm hiện tại chưa. Cột này lưu `YEAR(GETDATE())` sau khi gửi thành công. Job chỉ gửi khi `BirthdayNotifiedYear IS NULL OR BirthdayNotifiedYear < YEAR(GETDATE())`.
+
+---
+
+## [2026-05-09] `v3.1 — Notification: IdempotencyKey trên Deliveries`
+
+### Thay đổi
+
+| Loại | Bảng | Chi tiết |
+|---|---|---|
+| ➕ Thêm cột | `Notification.Deliveries.IdempotencyKey` | `VARCHAR(200) NULL` — key chống gửi trùng khi Job retry |
+| ➕ Thêm index | `UQ_Deliveries_IdempotencyKey` | Unique filtered index (`WHERE IdempotencyKey IS NOT NULL`) |
+
+### Lý do
+
+Hệ thống Outbox + background job có thể retry khi lỗi transient. Cột `IdempotencyKey` + unique index đảm bảo mỗi sự kiện chỉ INSERT 1 delivery row duy nhất dù job chạy lại nhiều lần. Format key: `{EventType}:{AggregateId}:{AccountId}:{Channel}`.
+
+### Script
+
+`docs/database/changes/20260509_1400_AddIdempotencyKey_Deliveries.sql`
+
+---
+
 ## [2026-05-08] `v2.1 — Promotion Schema v2: StartAt/EndAt + PromotionProductSlots`
 
 ### Thay đổi

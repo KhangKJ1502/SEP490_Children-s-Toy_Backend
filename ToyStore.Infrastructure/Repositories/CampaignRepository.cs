@@ -46,6 +46,20 @@ public class CampaignRepository : ICampaignRepository
             .FirstOrDefaultAsync(cancellationToken);
     }
 
+    public Task<Campaign?> GetByIdWithDetailsAsync(int campaignId, CancellationToken cancellationToken = default)
+        => GetByIdAsync(campaignId, cancellationToken);
+
+    public Task<Campaign?> GetByEventKeyAsync(string eventKey, CancellationToken cancellationToken = default)
+    {
+        return _context.Campaigns
+            .AsNoTracking()
+            .Include(x => x.CampaignStat)
+            .Include(x => x.CampaignTargets)
+            .Include(x => x.TemplateCodeNavigation)
+            .Where(x => !x.IsDeleted && x.EventKey == eventKey && x.SourceType == "SYSTEM")
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
     public Task<bool> ExistsByNameAsync(
         string campaignName,
         int excludeId = 0,

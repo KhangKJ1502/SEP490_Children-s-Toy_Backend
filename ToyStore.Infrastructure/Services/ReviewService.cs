@@ -1,12 +1,14 @@
 using AutoMapper;
+using FluentValidation;
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.Common.Models;
+using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Reviews;
+using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
-using FluentValidation;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -18,6 +20,7 @@ public class ReviewService : IReviewService
     private readonly IImageUploadService _imageUploadService;
     private readonly ILogger<ReviewService> _logger;
 
+    private readonly IDomainEventPublisher _eventPublisher;
     private readonly IValidator<CreateReviewProductDto> _createValidator;
     private readonly IValidator<UpdateReviewProductDto> _updateValidator;
     private readonly IValidator<UpdateModerationStatusDto> _updateStatusValidator;
@@ -29,6 +32,7 @@ public class ReviewService : IReviewService
         IMapper mapper,
         ICurrentUserService currentUser,
         IImageUploadService imageUploadService,
+        IDomainEventPublisher eventPublisher,
         ILogger<ReviewService> logger,
         IValidator<CreateReviewProductDto> createValidator,
         IValidator<UpdateReviewProductDto> updateValidator,
@@ -40,6 +44,7 @@ public class ReviewService : IReviewService
         _mapper = mapper;
         _currentUser = currentUser;
         _imageUploadService = imageUploadService;
+        _eventPublisher = eventPublisher;
         _logger = logger;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
@@ -180,6 +185,13 @@ public class ReviewService : IReviewService
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             _logger.LogInformation("User {UserId} created review {ReviewId} for product {ProductId}", accountId, review.ReviewId, dto.ProductId);
+
+            // Publish notification events (fire-and-forget)
+            if (review.Rating <= 2)
+            {
+                _ = _eventPublisher.PublishAsync("Review", review.ReviewId.ToString(), NotificationEventTypes.ReviewLowRating,
+                    new { reviewId = review.ReviewId, rating = review.Rating, productId = dto.ProductId }, CancellationToken.None);
+            }
 
             // Fetch the fully populated review to map and return
             var completeReview = await _unitOfWork.Reviews.GetByIdPublicAsync(review.ReviewId, cancellationToken);
@@ -439,6 +451,13 @@ public class ReviewService : IReviewService
 
             _logger.LogInformation("Staff {StaffId} overridden moderation status for review {ReviewId} to {Status}", staffId, reviewId, dto.ModerationStatus);
 
+            // Publish when set to ManualReview
+            if (dto.ModerationStatus == "ManualReview")
+            {
+                _ = _eventPublisher.PublishAsync("Review", reviewId.ToString(), NotificationEventTypes.ReviewNeedsModeration,
+                    new { reviewId, moderatedBy = staffId }, CancellationToken.None);
+            }
+
             var completeReview = await _unitOfWork.Reviews.GetByIdForAdminAsync(reviewId, cancellationToken);
             return Result<AdminReviewDetailDto>.Success(_mapper.Map<AdminReviewDetailDto>(completeReview));
         }
@@ -477,6 +496,10 @@ public class ReviewService : IReviewService
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Staff {StaffId} replied to review {ReviewId}", staffId, reviewId);
+
+        // Notify customer that staff replied to their review
+        _ = _eventPublisher.PublishAsync("Review", reviewId.ToString(), NotificationEventTypes.ReviewStaffReplied,
+            new { reviewId, accountId = review.AccountId, productId = review.ProductId }, CancellationToken.None);
 
         var savedReply = await _unitOfWork.Reviews.GetReplyByIdAsync(reply.ReplyProductId, cancellationToken);
         var staffDto = _mapper.Map<StaffReplyDto>(savedReply);

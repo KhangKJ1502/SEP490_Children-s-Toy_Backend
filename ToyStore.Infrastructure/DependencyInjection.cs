@@ -31,7 +31,11 @@ using ToyStore.Application.Validators.Orders;
 using ToyStore.Application.Validators.Profiles;
 using ToyStore.Application.Validators.Reviews;
 using ToyStore.Application.Validators.Templates;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using ToyStore.Application;
+using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Infrastructure.Data;
+using ToyStore.Infrastructure.Notifications;
 using ToyStore.Infrastructure.Options;
 using ToyStore.Infrastructure.Repositories;
 using ToyStore.Infrastructure.Services;
@@ -144,6 +148,8 @@ public static class DependencyInjection
         services.AddScoped<IOrderRepository, OrderRepository>();
         services.AddScoped<IWishlistRepository, WishlistRepository>();
         services.AddScoped<IReviewRepository, ReviewRepository>();
+        services.AddScoped<IDeliveryRepository, DeliveryRepository>();
+        services.AddScoped<IUserPreferenceRepository, UserPreferenceRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ISuperCategoryService, SuperCategoryService>();
@@ -169,7 +175,7 @@ public static class DependencyInjection
         services.AddScoped<ITemplateRenderer, TemplateRenderer>();
 
         services.AddScoped<IRedisService, RedisService>();
-        services.AddScoped<ICartRealtimeService, CartRealtimeService>();
+        services.TryAddScoped<ICartRealtimeService, NoOpCartRealtimeService>();
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -206,6 +212,22 @@ public static class DependencyInjection
         // Cau hinh webhook tokens
         services.Configure<WebhookOptions>(
             configuration.GetSection(WebhookOptions.SectionName));
+
+        // ── Notification system ──────────────────────────────────────────────
+        // Application layer: dispatcher, handlers, preference checker
+        services.AddApplication();
+
+        // Email sender (SendGrid)
+        services.AddScoped<IEmailSender, SendGridEmailSender>();
+
+        // Hub read service (Hub injects this instead of DbContext directly)
+        services.AddScoped<INotificationReadService, NotificationReadService>();
+
+        // Outbox event publisher
+        services.AddScoped<IDomainEventPublisher, DomainEventPublisher>();
+
+        // Hub push service — default to NoOp; API project overrides with real impl
+        services.TryAddScoped<INotificationHubService, NoOpNotificationHubService>();
 
         return services;
     }

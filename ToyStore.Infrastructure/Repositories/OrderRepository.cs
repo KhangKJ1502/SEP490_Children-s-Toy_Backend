@@ -59,6 +59,14 @@ public class OrderRepository : IOrderRepository
         return await query.CountAsync(cancellationToken);
     }
 
+    public async Task<Order?> GetByIdAsync(int orderId, CancellationToken cancellationToken = default)
+    {
+        return await _context.Orders
+            .AsNoTracking()
+            .Include(o => o.Status)
+            .FirstOrDefaultAsync(o => o.OrderId == orderId && !o.IsDeleted, cancellationToken);
+    }
+
     public async Task<Order?> GetByIdForAdminAsync(int orderId, CancellationToken cancellationToken = default)
     {
         return await _context.Orders

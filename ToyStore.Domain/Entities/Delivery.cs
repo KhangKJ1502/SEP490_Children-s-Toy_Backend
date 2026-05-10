@@ -47,6 +47,8 @@ public partial class Delivery
 
     public DateTime? UpdatedAt { get; set; }
 
+    public string? IdempotencyKey { get; set; }
+
     public virtual Account Account { get; set; } = null!;
 
     public virtual Campaign? Campaign { get; set; }

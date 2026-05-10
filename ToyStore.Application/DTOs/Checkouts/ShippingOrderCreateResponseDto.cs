@@ -8,4 +8,6 @@ public class ShippingOrderCreateResponseDto
     public string OrderCode { get; set; } = string.Empty;
 
     public string? SortCode { get; set; }
+
+    public int ServiceId { get; set; }
 }
