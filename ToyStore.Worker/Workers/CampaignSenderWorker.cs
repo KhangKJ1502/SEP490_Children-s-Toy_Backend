@@ -48,7 +48,7 @@ public class CampaignSenderWorker : BackgroundService
         var context         = scope.ServiceProvider.GetRequiredService<SEP490ToyStoreContext>();
         var campaignService = scope.ServiceProvider.GetRequiredService<ICampaignNotificationService>();
 
-        var now = DateTime.UtcNow;
+        var now = DateTime.Now;
 
         var dueCampaignIds = await context.Campaigns
             .AsNoTracking()

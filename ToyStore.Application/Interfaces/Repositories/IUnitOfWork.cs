@@ -32,14 +32,10 @@ public interface IUnitOfWork : IDisposable
     IOrderRepository Orders { get; }
 
     IWishlistRepository Wishlists { get; }
-<<<<<<< HEAD
     IReviewRepository Reviews { get; }
     IDeliveryRepository Deliveries { get; }
     IUserPreferenceRepository UserPreferences { get; }
-=======
-
-    IReviewRepository Reviews { get; }
->>>>>>> d279089d95d89a4dbfe5dc587dda0b1841179b95
+    IProductFollowerRepository ProductFollowers { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 

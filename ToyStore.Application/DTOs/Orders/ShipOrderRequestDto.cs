@@ -8,6 +8,7 @@ public class ShipOrderRequestDto
     public string Provider { get; set; } = string.Empty;
     public string? ServiceType { get; set; }
     public string? Note { get; set; }
+    public string? RequiredNote { get; set; }
 }
 
 /// <summary>

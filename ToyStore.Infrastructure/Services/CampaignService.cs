@@ -273,8 +273,8 @@ public class CampaignService : ICampaignService
 
         // Apply fields
         existing.CampaignName = dto.CampaignName.Trim();
-        // Neu khong co ScheduledAt, gui ngay lap tuc: dat ScheduledAt = UtcNow de Worker xu ly
-        existing.ScheduledAt = dto.ScheduledAt ?? DateTime.UtcNow;
+        // Neu khong co ScheduledAt, gui ngay lap tuc: dat ScheduledAt = Now de Worker xu ly
+        existing.ScheduledAt = dto.ScheduledAt ?? DateTime.Now;
 
         existing.TemplateCode = string.IsNullOrWhiteSpace(dto.TemplateCode) ? null : dto.TemplateCode.Trim();
         existing.ReferenceType = string.IsNullOrWhiteSpace(dto.ReferenceType) ? null : dto.ReferenceType.Trim().ToUpper();

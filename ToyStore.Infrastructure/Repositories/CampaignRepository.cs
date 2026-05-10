@@ -76,8 +76,7 @@ public class CampaignRepository : ICampaignRepository
         CreateCampaignDto dto,
         CancellationToken cancellationToken = default)
     {
-        // Neu khong co ScheduledAt, gui ngay lap tuc: dat ScheduledAt = UtcNow de Worker xu ly
-        var scheduledAt = dto.ScheduledAt ?? DateTime.UtcNow;
+        var scheduledAt = dto.ScheduledAt ?? DateTime.Now;
 
         var campaign = new Campaign
         {
@@ -97,7 +96,7 @@ public class CampaignRepository : ICampaignRepository
             ActionTarget      = string.IsNullOrWhiteSpace(dto.ActionTarget)      ? null : dto.ActionTarget.Trim(),
             CreatedByAccountId = dto.CreatedByAccountId,
             IsDeleted         = false,
-            CreatedAt         = DateTime.UtcNow
+            CreatedAt         = DateTime.Now
         };
 
         await _context.Campaigns.AddAsync(campaign, cancellationToken);
@@ -125,7 +124,7 @@ public class CampaignRepository : ICampaignRepository
         List<CreateCampaignTargetDto> newTargets,
         CancellationToken cancellationToken = default)
     {
-        campaign.UpdatedAt = DateTime.UtcNow;
+        campaign.UpdatedAt = DateTime.Now;
         _context.Campaigns.Update(campaign);
 
         // Replace targets: delete old, insert new
@@ -162,14 +161,14 @@ public class CampaignRepository : ICampaignRepository
         if (campaign is null) return false;
 
         campaign.Status    = "Cancelled";
-        campaign.UpdatedAt = DateTime.UtcNow;
+        campaign.UpdatedAt = DateTime.Now;
         await _context.SaveChangesAsync(cancellationToken);
         return true;
     }
 
     public async Task<List<Campaign>> GetDueCampaignsAsync(CancellationToken cancellationToken = default)
     {
-        var now = DateTime.UtcNow;
+        var now = DateTime.Now;
         return await _context.Campaigns
             .Include(c => c.CampaignTargets)
             .Include(c => c.TemplateCodeNavigation)
@@ -189,7 +188,7 @@ public class CampaignRepository : ICampaignRepository
         if (campaign is null) return;
 
         campaign.Status    = "Sending";
-        campaign.UpdatedAt = DateTime.UtcNow;
+        campaign.UpdatedAt = DateTime.Now;
         await _context.SaveChangesAsync(cancellationToken);
     }
 
@@ -202,7 +201,7 @@ public class CampaignRepository : ICampaignRepository
         if (campaign is null) return;
 
         campaign.Status    = "Sent";
-        campaign.UpdatedAt = DateTime.UtcNow;
+        campaign.UpdatedAt = DateTime.Now;
 
         // Upsert CampaignStat
         var stat = await _context.CampaignStats
@@ -217,14 +216,14 @@ public class CampaignRepository : ICampaignRepository
                 TotalSent   = totalSent,
                 TotalRead   = 0,
                 TotalClicked = 0,
-                ComputedAt  = DateTime.UtcNow
+                ComputedAt  = DateTime.Now
             };
             await _context.CampaignStats.AddAsync(stat, cancellationToken);
         }
         else
         {
             stat.TotalSent  += totalSent;
-            stat.ComputedAt  = DateTime.UtcNow;
+            stat.ComputedAt  = DateTime.Now;
         }
 
         await _context.SaveChangesAsync(cancellationToken);

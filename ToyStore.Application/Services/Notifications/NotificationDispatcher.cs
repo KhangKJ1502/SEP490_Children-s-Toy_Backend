@@ -69,7 +69,7 @@ public class NotificationDispatcher : INotificationDispatcher
             ActionTarget     = context.ActionTarget,
             IdempotencyKey   = bellKey,
             CampaignId       = context.CampaignId,
-            CreatedAt        = DateTime.UtcNow,
+            CreatedAt        = DateTime.Now,
         };
 
         try
@@ -138,7 +138,7 @@ public class NotificationDispatcher : INotificationDispatcher
             ActionTarget     = context.ActionTarget,
             IdempotencyKey   = emailKey,
             CampaignId       = context.CampaignId,
-            CreatedAt        = DateTime.UtcNow,
+            CreatedAt        = DateTime.Now,
         };
 
         try
