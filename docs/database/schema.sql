@@ -605,6 +605,7 @@ CREATE TABLE [Vouchers] (
     [StartDate]          DATETIME2(0) NOT NULL,
     [EndDate]            DATETIME2(0) NOT NULL,
     [Status]             VARCHAR(15) NOT NULL CHECK ([Status] IN ('Scheduled', 'Active', 'Inactive', 'Expired')),
+    [ImageURL]           VARCHAR(500) NULL,
     [IsDeleted]          BIT NOT NULL DEFAULT 0,
     [CreatedAt]          DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [UpdatedAt]          DATETIME2(0) NULL,
