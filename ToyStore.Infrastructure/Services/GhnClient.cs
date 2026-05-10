@@ -23,9 +23,10 @@ public sealed class GhnClient : IGhnClient
     private const string HttpClientName = "GHN";
     private const int ResponseTruncateLength = 300;
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
 
@@ -167,8 +168,8 @@ public sealed class GhnClient : IGhnClient
         var payload = new
         {
             payment_type_id = 2,
-            note = request.Note,
-            required_note = "KHONGCHOXEMHANG",
+            note = request.Note ?? string.Empty,
+            required_note = request.RequiredNote,
             from_name = _shopAddressOptions.Name,
             from_phone = _shopAddressOptions.Phone,
             from_address = _shopAddressOptions.AddressLine,
@@ -185,7 +186,7 @@ public sealed class GhnClient : IGhnClient
             length = request.Length,
             width = request.Width,
             height = request.Height,
-            insurance_value = RoundToInt(request.InsuranceValue),
+            insurance_value = Math.Min(RoundToInt(request.InsuranceValue), 5000000),
             service_id = resolvedServiceId,
             service_type_id = resolvedServiceTypeId,
             client_order_code = request.ClientOrderCode,
@@ -215,7 +216,8 @@ public sealed class GhnClient : IGhnClient
         {
             OrderCode = createResult.Data.OrderCode,
             SortCode = createResult.Data.SortCode,
-            ServiceId = resolvedServiceId
+            ServiceId = resolvedServiceId,
+            ExpectedDeliveryTime = createResult.Data.ExpectedDeliveryTime
         });
     }
 
@@ -282,7 +284,7 @@ public sealed class GhnClient : IGhnClient
                 timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
                 using var client = _httpClientFactory.CreateClient(HttpClientName);
-                using var response = await client.PostAsJsonAsync(path, payload, timeoutCts.Token);
+                using var response = await client.PostAsJsonAsync(path, payload, JsonOptions, timeoutCts.Token);
                 var responseText = await response.Content.ReadAsStringAsync(timeoutCts.Token);
 
                 // ── HTTP khong thanh cong (non-2xx) ─────────────────────────
@@ -414,5 +416,6 @@ public sealed class GhnClient : IGhnClient
     {
         [JsonPropertyName("order_code")] public string OrderCode { get; set; } = string.Empty;
         [JsonPropertyName("sort_code")] public string? SortCode { get; set; }
+        [JsonPropertyName("expected_delivery_time")] public DateTime? ExpectedDeliveryTime { get; set; }
     }
 }

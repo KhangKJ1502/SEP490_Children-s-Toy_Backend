@@ -15,4 +15,6 @@ public interface IDeliveryRepository
     void AddAction(DeliveryAction action);
     Task UpdateAsync(Delivery delivery, CancellationToken ct = default);
     Task<bool> ExistsByIdempotencyKeyAsync(string idempotencyKey, CancellationToken ct = default);
+    Task IncrementCampaignClickAsync(int campaignId, CancellationToken ct = default);
+    Task<bool> HasUserClickedAsync(long deliveryId, int accountId, CancellationToken ct = default);
 }

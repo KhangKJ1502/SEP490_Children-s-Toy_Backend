@@ -43,7 +43,7 @@ public class CampaignSchedulerJob : BackgroundService
 
         try
         {
-            var now = DateTime.UtcNow;
+            var now = DateTime.Now;
 
             var due = await db.Campaigns
                 .Where(c => c.Status     == "Scheduled"

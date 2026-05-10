@@ -34,10 +34,10 @@ public interface IUnitOfWork : IDisposable
     IWishlistRepository Wishlists { get; }
 
     IReviewRepository Reviews { get; }
-
     IDeliveryRepository Deliveries { get; }
-
     IUserPreferenceRepository UserPreferences { get; }
+    IProductFollowerRepository ProductFollowers { get; }
+
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 

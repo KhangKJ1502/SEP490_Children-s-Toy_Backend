@@ -169,8 +169,8 @@ public class AdminOrderService : IAdminOrderService
 
             // Publish: customer notification + merchandise ready-to-pack
             var orderPayload = new { orderId = order.OrderId, orderCode = order.OrderCode };
-            _ = _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderConfirmed, orderPayload, CancellationToken.None);
-            _ = _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.MerchReadyToPack, orderPayload, CancellationToken.None);
+            await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderConfirmed, orderPayload, CancellationToken.None);
+            await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.MerchReadyToPack, orderPayload, CancellationToken.None);
 
             return Result<ConfirmOrderResponseDto>.Success(new ConfirmOrderResponseDto
             {
@@ -235,7 +235,7 @@ public class AdminOrderService : IAdminOrderService
             _logger.LogInformation("Order {OrderId} moved to Processing by account {AccountId}",
                 orderId, _currentUser.AccountId);
 
-            _ = _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderPacking,
+            await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderPacking,
                 new { orderId = order.OrderId, orderCode = order.OrderCode }, CancellationToken.None);
 
             return Result<ProcessOrderResponseDto>.Success(new ProcessOrderResponseDto
@@ -311,6 +311,7 @@ public class AdminOrderService : IAdminOrderService
             Width           = 30,
             Height          = 10,
             Note            = request.Note,
+            RequiredNote    = !string.IsNullOrWhiteSpace(request.RequiredNote) ? request.RequiredNote : "KHONGCHOXEMHANG",
             Items           = order.OrderDetails.Select(d => new ShippingOrderCreateItemDto
             {
                 Name     = d.ProductName,
@@ -334,8 +335,8 @@ public class AdminOrderService : IAdminOrderService
         var resolvedServiceId = ghnData.ServiceId;
 
         // Lay leadtime (khong bat buoc, neu loi thi bo qua)
-        DateTime? estimatedDelivery = null;
-        if (resolvedServiceId > 0)
+        DateTime? estimatedDelivery = ghnData.ExpectedDeliveryTime;
+        if (estimatedDelivery is null && resolvedServiceId > 0)
         {
             var leadtimeResult = await _ghnClient.GetLeadtimeAsync(new LeadtimeRequestDTO
             {
@@ -346,7 +347,7 @@ public class AdminOrderService : IAdminOrderService
                 ServiceId      = resolvedServiceId
             }, cancellationToken);
 
-            if (leadtimeResult.IsSuccess)
+            if (leadtimeResult.IsSuccess && leadtimeResult.Data!.LeadtimeUnix > 0)
                 estimatedDelivery = leadtimeResult.Data!.EstimatedDeliveryTime;
         }
 
@@ -417,7 +418,7 @@ public class AdminOrderService : IAdminOrderService
                 "Order {OrderId} shipped via {Provider}, tracking={Tracking}",
                 orderId, request.Provider, ghnData.OrderCode);
 
-            _ = _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderShipped,
+            await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderShipped,
                 new { orderId = order.OrderId, orderCode = order.OrderCode, trackingNumber = ghnData.OrderCode }, CancellationToken.None);
 
             return Result<ShipOrderResponseDto>.Success(new ShipOrderResponseDto
@@ -491,8 +492,8 @@ public class AdminOrderService : IAdminOrderService
                 orderId, _currentUser.AccountId);
 
             var cancelPayload = new { orderId = order.OrderId, orderCode = order.OrderCode, reason = request.Reason };
-            _ = _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderCancelled, cancelPayload, CancellationToken.None);
-            _ = _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.StaffCancelRequested, cancelPayload, CancellationToken.None);
+            await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderCancelled, cancelPayload, CancellationToken.None);
+            await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.StaffCancelRequested, cancelPayload, CancellationToken.None);
 
             return Result<CancelOrderResponseDto>.Success(new CancelOrderResponseDto
             {
@@ -569,7 +570,7 @@ public class AdminOrderService : IAdminOrderService
                 "Order {OrderId} reassigned to account {TargetId} by Admin {AdminId}",
                 orderId, request.TargetAccountId, _currentUser.AccountId);
 
-            _ = _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.StaffOrderAssigned,
+            await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.StaffOrderAssigned,
                 new { orderId = order.OrderId, orderCode = order.OrderCode, targetAccountId = request.TargetAccountId }, CancellationToken.None);
 
             return Result.Success();
