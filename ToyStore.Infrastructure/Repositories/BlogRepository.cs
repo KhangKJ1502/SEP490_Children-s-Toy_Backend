@@ -201,6 +201,252 @@ public class BlogRepository : IBlogRepository
         return BuildReviewManagementQuery(searchTerm, status).CountAsync(cancellationToken);
     }
 
+    public Task<ReactionType?> GetReactionTypeByCodeAsync(string reactionCode, CancellationToken cancellationToken = default)
+    {
+        var normalizedCode = reactionCode.Trim().ToLowerInvariant();
+        return _context.ReactionTypes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Code.ToLower() == normalizedCode, cancellationToken);
+    }
+
+    public Task<BlogPostReaction?> GetBlogReactionAsync(int blogPostId, int accountId, CancellationToken cancellationToken = default)
+    {
+        return _context.BlogPostReactions
+            .Include(x => x.ReactionType)
+            .FirstOrDefaultAsync(x => x.BlogPostId == blogPostId && x.AccountId == accountId, cancellationToken);
+    }
+
+    public Task<ReviewBlogReaction?> GetReviewReactionAsync(int reviewBlogId, int accountId, CancellationToken cancellationToken = default)
+    {
+        return _context.ReviewBlogReactions
+            .Include(x => x.ReactionType)
+            .FirstOrDefaultAsync(x => x.ReviewBlogId == reviewBlogId && x.AccountId == accountId, cancellationToken);
+    }
+
+    public Task<ReviewBlogReplyReaction?> GetReplyReactionAsync(int replyBlogId, int accountId, CancellationToken cancellationToken = default)
+    {
+        return _context.ReviewBlogReplyReactions
+            .Include(x => x.ReactionType)
+            .FirstOrDefaultAsync(x => x.ReplyBlogId == replyBlogId && x.AccountId == accountId, cancellationToken);
+    }
+
+    public async Task UpsertBlogReactionAsync(int blogPostId, int accountId, int reactionTypeId, CancellationToken cancellationToken = default)
+    {
+        var existing = await _context.BlogPostReactions
+            .FirstOrDefaultAsync(x => x.BlogPostId == blogPostId && x.AccountId == accountId, cancellationToken);
+
+        if (existing == null)
+        {
+            await _context.BlogPostReactions.AddAsync(new BlogPostReaction
+            {
+                BlogPostId = blogPostId,
+                AccountId = accountId,
+                ReactionTypeId = reactionTypeId,
+                CreatedAt = DateTime.UtcNow
+            }, cancellationToken);
+        }
+        else
+        {
+            existing.ReactionTypeId = reactionTypeId;
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task UpsertReviewReactionAsync(int reviewBlogId, int accountId, int reactionTypeId, CancellationToken cancellationToken = default)
+    {
+        var existing = await _context.ReviewBlogReactions
+            .FirstOrDefaultAsync(x => x.ReviewBlogId == reviewBlogId && x.AccountId == accountId, cancellationToken);
+
+        if (existing == null)
+        {
+            await _context.ReviewBlogReactions.AddAsync(new ReviewBlogReaction
+            {
+                ReviewBlogId = reviewBlogId,
+                AccountId = accountId,
+                ReactionTypeId = reactionTypeId,
+                CreatedAt = DateTime.UtcNow
+            }, cancellationToken);
+        }
+        else
+        {
+            existing.ReactionTypeId = reactionTypeId;
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task UpsertReplyReactionAsync(int replyBlogId, int accountId, int reactionTypeId, CancellationToken cancellationToken = default)
+    {
+        var existing = await _context.ReviewBlogReplyReactions
+            .FirstOrDefaultAsync(x => x.ReplyBlogId == replyBlogId && x.AccountId == accountId, cancellationToken);
+
+        if (existing == null)
+        {
+            await _context.ReviewBlogReplyReactions.AddAsync(new ReviewBlogReplyReaction
+            {
+                ReplyBlogId = replyBlogId,
+                AccountId = accountId,
+                ReactionTypeId = reactionTypeId,
+                CreatedAt = DateTime.UtcNow
+            }, cancellationToken);
+        }
+        else
+        {
+            existing.ReactionTypeId = reactionTypeId;
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<bool> RemoveBlogReactionAsync(int blogPostId, int accountId, CancellationToken cancellationToken = default)
+    {
+        var deletedCount = await _context.BlogPostReactions
+            .Where(x => x.BlogPostId == blogPostId && x.AccountId == accountId)
+            .ExecuteDeleteAsync(cancellationToken);
+        return deletedCount > 0;
+    }
+
+    public async Task<bool> RemoveReviewReactionAsync(int reviewBlogId, int accountId, CancellationToken cancellationToken = default)
+    {
+        var deletedCount = await _context.ReviewBlogReactions
+            .Where(x => x.ReviewBlogId == reviewBlogId && x.AccountId == accountId)
+            .ExecuteDeleteAsync(cancellationToken);
+        return deletedCount > 0;
+    }
+
+    public async Task<bool> RemoveReplyReactionAsync(int replyBlogId, int accountId, CancellationToken cancellationToken = default)
+    {
+        var deletedCount = await _context.ReviewBlogReplyReactions
+            .Where(x => x.ReplyBlogId == replyBlogId && x.AccountId == accountId)
+            .ExecuteDeleteAsync(cancellationToken);
+        return deletedCount > 0;
+    }
+
+    public async Task<Dictionary<string, int>> GetBlogReactionCountsAsync(int blogPostId, CancellationToken cancellationToken = default)
+    {
+        var counts = await _context.BlogPostReactions
+            .AsNoTracking()
+            .Where(x => x.BlogPostId == blogPostId)
+            .GroupBy(x => x.ReactionType.Code)
+            .Select(x => new { x.Key, Count = x.Count() })
+            .ToListAsync(cancellationToken);
+
+        return counts.ToDictionary(x => x.Key.ToLowerInvariant(), x => x.Count);
+    }
+
+    public async Task<Dictionary<string, int>> GetReviewReactionCountsAsync(int reviewBlogId, CancellationToken cancellationToken = default)
+    {
+        var counts = await _context.ReviewBlogReactions
+            .AsNoTracking()
+            .Where(x => x.ReviewBlogId == reviewBlogId)
+            .GroupBy(x => x.ReactionType.Code)
+            .Select(x => new { x.Key, Count = x.Count() })
+            .ToListAsync(cancellationToken);
+
+        return counts.ToDictionary(x => x.Key.ToLowerInvariant(), x => x.Count);
+    }
+
+    public async Task<Dictionary<string, int>> GetReplyReactionCountsAsync(int replyBlogId, CancellationToken cancellationToken = default)
+    {
+        var counts = await _context.ReviewBlogReplyReactions
+            .AsNoTracking()
+            .Where(x => x.ReplyBlogId == replyBlogId)
+            .GroupBy(x => x.ReactionType.Code)
+            .Select(x => new { x.Key, Count = x.Count() })
+            .ToListAsync(cancellationToken);
+
+        return counts.ToDictionary(x => x.Key.ToLowerInvariant(), x => x.Count);
+    }
+
+    public async Task<Dictionary<int, Dictionary<string, int>>> GetReviewReactionCountsByIdsAsync(
+        List<int> reviewBlogIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (reviewBlogIds.Count == 0)
+        {
+            return new Dictionary<int, Dictionary<string, int>>();
+        }
+
+        var raw = await _context.ReviewBlogReactions
+            .AsNoTracking()
+            .Where(x => reviewBlogIds.Contains(x.ReviewBlogId))
+            .GroupBy(x => new { x.ReviewBlogId, Code = x.ReactionType.Code })
+            .Select(x => new { x.Key.ReviewBlogId, x.Key.Code, Count = x.Count() })
+            .ToListAsync(cancellationToken);
+
+        return raw
+            .GroupBy(x => x.ReviewBlogId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.ToDictionary(
+                    x => x.Code.ToLowerInvariant(),
+                    x => x.Count));
+    }
+
+    public async Task<Dictionary<int, Dictionary<string, int>>> GetReplyReactionCountsByIdsAsync(
+        List<int> replyBlogIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (replyBlogIds.Count == 0)
+        {
+            return new Dictionary<int, Dictionary<string, int>>();
+        }
+
+        var raw = await _context.ReviewBlogReplyReactions
+            .AsNoTracking()
+            .Where(x => replyBlogIds.Contains(x.ReplyBlogId))
+            .GroupBy(x => new { x.ReplyBlogId, Code = x.ReactionType.Code })
+            .Select(x => new { x.Key.ReplyBlogId, x.Key.Code, Count = x.Count() })
+            .ToListAsync(cancellationToken);
+
+        return raw
+            .GroupBy(x => x.ReplyBlogId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.ToDictionary(
+                    x => x.Code.ToLowerInvariant(),
+                    x => x.Count));
+    }
+
+    public async Task<Dictionary<int, string>> GetMyReviewReactionsByIdsAsync(
+        List<int> reviewBlogIds,
+        int accountId,
+        CancellationToken cancellationToken = default)
+    {
+        if (reviewBlogIds.Count == 0)
+        {
+            return new Dictionary<int, string>();
+        }
+
+        var raw = await _context.ReviewBlogReactions
+            .AsNoTracking()
+            .Where(x => x.AccountId == accountId && reviewBlogIds.Contains(x.ReviewBlogId))
+            .Select(x => new { x.ReviewBlogId, x.ReactionType.Code })
+            .ToListAsync(cancellationToken);
+
+        return raw.ToDictionary(x => x.ReviewBlogId, x => x.Code);
+    }
+
+    public async Task<Dictionary<int, string>> GetMyReplyReactionsByIdsAsync(
+        List<int> replyBlogIds,
+        int accountId,
+        CancellationToken cancellationToken = default)
+    {
+        if (replyBlogIds.Count == 0)
+        {
+            return new Dictionary<int, string>();
+        }
+
+        var raw = await _context.ReviewBlogReplyReactions
+            .AsNoTracking()
+            .Where(x => x.AccountId == accountId && replyBlogIds.Contains(x.ReplyBlogId))
+            .Select(x => new { x.ReplyBlogId, x.ReactionType.Code })
+            .ToListAsync(cancellationToken);
+
+        return raw.ToDictionary(x => x.ReplyBlogId, x => x.Code);
+    }
+
     private IQueryable<BlogPost> BuildQuery(
         string? searchTerm,
         string? status,

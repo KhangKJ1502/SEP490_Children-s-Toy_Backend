@@ -43,6 +43,8 @@ public partial class Account
 
     public virtual ICollection<Campaign> Campaigns { get; set; } = new List<Campaign>();
 
+    public virtual ICollection<BlogPostReaction> BlogPostReactions { get; set; } = new List<BlogPostReaction>();
+
     public virtual Cart? Cart { get; set; }
 
     public virtual ICollection<ChatConversation> ChatConversations { get; set; } = new List<ChatConversation>();
@@ -74,6 +76,8 @@ public partial class Account
     public virtual ICollection<Promotion> Promotions { get; set; } = new List<Promotion>();
 
     public virtual ICollection<ReviewBlogReaction> ReviewBlogReactions { get; set; } = new List<ReviewBlogReaction>();
+
+    public virtual ICollection<ReviewBlogReplyReaction> ReviewBlogReplyReactions { get; set; } = new List<ReviewBlogReplyReaction>();
 
     public virtual ICollection<ReviewBlogReply> ReviewBlogReplyAccounts { get; set; } = new List<ReviewBlogReply>();
 
