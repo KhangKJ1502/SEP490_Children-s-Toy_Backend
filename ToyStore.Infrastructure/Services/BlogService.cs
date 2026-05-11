@@ -14,6 +14,9 @@ namespace ToyStore.Infrastructure.Services;
 public class BlogService : IBlogService
 {
     private const int MaxReviewCommentLength = 500;
+    private const string ReactionLike = "like";
+    private const string ReactionLove = "love";
+    private const string ReactionHaha = "haha";
     private const string DraftStatus = "Draft";
     private const string PendingStatus = "Pending";
     private const string ApprovedStatus = "Approved";
@@ -108,7 +111,14 @@ public class BlogService : IBlogService
             return Result<BlogDetailDto>.Unauthorized("You are not allowed to view this blog.");
         }
 
-        return Result<BlogDetailDto>.Success(_mapper.Map<BlogDetailDto>(blog));
+        var dto = _mapper.Map<BlogDetailDto>(blog);
+        var summary = await BuildBlogSummaryAsync(blogPostId, cancellationToken);
+        dto.LikeCount = summary.LikeCount;
+        dto.LoveCount = summary.LoveCount;
+        dto.HahaCount = summary.HahaCount;
+        dto.CurrentUserReaction = summary.CurrentUserReaction;
+
+        return Result<BlogDetailDto>.Success(dto);
     }
 
     public async Task<Result<BlogDetailDto>> CreateBlogAsync(CreateBlogDto dto, CancellationToken cancellationToken = default)
@@ -263,7 +273,7 @@ public class BlogService : IBlogService
         await _unitOfWork.Blogs.UpdateAsync(blog, cancellationToken);
 
         // Notify admins that a blog is pending approval
-        _ = _eventPublisher.PublishAsync("Blog", blogPostId.ToString(), NotificationEventTypes.ContentBlogPendingApproval,
+        await _eventPublisher.PublishAsync("Blog", blogPostId.ToString(), NotificationEventTypes.ContentBlogPendingApproval,
             new { blogId = blogPostId, authorId = blog.AccountId }, CancellationToken.None);
 
         var updated = await _unitOfWork.Blogs.GetByIdAsync(blogPostId, cancellationToken);
@@ -424,7 +434,19 @@ public class BlogService : IBlogService
             ? new List<ReviewBlogReply>()
             : await _unitOfWork.Blogs.GetRepliesByReviewIdsAsync(reviewIds, includeHidden, cancellationToken);
 
-        var data = MapReviewThreads(reviews, replies, includeHidden);
+        var reviewCounts = await _unitOfWork.Blogs.GetReviewReactionCountsByIdsAsync(reviewIds, cancellationToken);
+        var replyIds = replies.Select(x => x.ReplyBlogId).ToList();
+        var replyCounts = await _unitOfWork.Blogs.GetReplyReactionCountsByIdsAsync(replyIds, cancellationToken);
+
+        Dictionary<int, string> myReviewReactions = new();
+        Dictionary<int, string> myReplyReactions = new();
+        if (_currentUserService.AccountId > 0)
+        {
+            myReviewReactions = await _unitOfWork.Blogs.GetMyReviewReactionsByIdsAsync(reviewIds, _currentUserService.AccountId, cancellationToken);
+            myReplyReactions = await _unitOfWork.Blogs.GetMyReplyReactionsByIdsAsync(replyIds, _currentUserService.AccountId, cancellationToken);
+        }
+
+        var data = MapReviewThreads(reviews, replies, includeHidden, reviewCounts, replyCounts, myReviewReactions, myReplyReactions);
         return Result<List<BlogReviewDto>>.Success(data);
     }
 
@@ -572,7 +594,17 @@ public class BlogService : IBlogService
         var replies = reviewIds.Count == 0
             ? new List<ReviewBlogReply>()
             : await _unitOfWork.Blogs.GetRepliesByReviewIdsAsync(reviewIds, includeHidden: true, cancellationToken);
-        var mapped = MapReviewThreads(reviews, replies, includeHidden: true);
+        var reviewCounts = await _unitOfWork.Blogs.GetReviewReactionCountsByIdsAsync(reviewIds, cancellationToken);
+        var replyIds = replies.Select(x => x.ReplyBlogId).ToList();
+        var replyCounts = await _unitOfWork.Blogs.GetReplyReactionCountsByIdsAsync(replyIds, cancellationToken);
+        var mapped = MapReviewThreads(
+            reviews,
+            replies,
+            includeHidden: true,
+            reviewCounts,
+            replyCounts,
+            new Dictionary<int, string>(),
+            new Dictionary<int, string>());
         var totalCount = await _unitOfWork.Blogs.CountReviewsForManagementAsync(searchTerm, status, cancellationToken);
         return Result<PaginatedResponse<BlogReviewDto>>.Success(new PaginatedResponse<BlogReviewDto>(mapped, totalCount, pageNumber, pageSize));
     }
@@ -627,6 +659,231 @@ public class BlogService : IBlogService
         await _unitOfWork.Blogs.UpdateReplyAsync(reply, cancellationToken);
         var updated = await _unitOfWork.Blogs.GetReplyByIdAsync(replyBlogId, cancellationToken);
         return Result<BlogReviewReplyDto>.Success(MapReply(updated!));
+    }
+
+    public async Task<Result<ReactionSummaryDto>> ReactToBlogAsync(int blogPostId, UpsertReactionDto dto, CancellationToken cancellationToken = default)
+    {
+        if (_currentUserService.AccountId <= 0)
+        {
+            return Result<ReactionSummaryDto>.Unauthorized();
+        }
+
+        var blog = await _unitOfWork.Blogs.GetByIdAsync(blogPostId, cancellationToken);
+        if (blog == null)
+        {
+            return Result<ReactionSummaryDto>.NotFound("Blog", blogPostId);
+        }
+
+        var reactionType = await ResolveReactionTypeAsync(dto.ReactionCode, cancellationToken);
+        if (reactionType == null)
+        {
+            return Result<ReactionSummaryDto>.Failure("VALIDATION_ERROR", "Invalid reaction code.");
+        }
+
+        var existing = await _unitOfWork.Blogs.GetBlogReactionAsync(blogPostId, _currentUserService.AccountId, cancellationToken);
+        if (existing != null && existing.ReactionTypeId == reactionType.ReactionTypeId)
+        {
+            await _unitOfWork.Blogs.RemoveBlogReactionAsync(blogPostId, _currentUserService.AccountId, cancellationToken);
+            return Result<ReactionSummaryDto>.Success(await BuildBlogSummaryAsync(blogPostId, cancellationToken));
+        }
+
+        await _unitOfWork.Blogs.UpsertBlogReactionAsync(blogPostId, _currentUserService.AccountId, reactionType.ReactionTypeId, cancellationToken);
+        return Result<ReactionSummaryDto>.Success(await BuildBlogSummaryAsync(blogPostId, cancellationToken));
+    }
+
+    public async Task<Result<bool>> RemoveBlogReactionAsync(int blogPostId, CancellationToken cancellationToken = default)
+    {
+        if (_currentUserService.AccountId <= 0)
+        {
+            return Result<bool>.Unauthorized();
+        }
+
+        var blog = await _unitOfWork.Blogs.GetByIdAsync(blogPostId, cancellationToken);
+        if (blog == null)
+        {
+            return Result<bool>.NotFound("Blog", blogPostId);
+        }
+
+        var removed = await _unitOfWork.Blogs.RemoveBlogReactionAsync(blogPostId, _currentUserService.AccountId, cancellationToken);
+        return Result<bool>.Success(removed);
+    }
+
+    public async Task<Result<ReactionSummaryDto>> GetBlogReactionSummaryAsync(int blogPostId, CancellationToken cancellationToken = default)
+    {
+        var blog = await _unitOfWork.Blogs.GetByIdAsync(blogPostId, cancellationToken);
+        if (blog == null)
+        {
+            return Result<ReactionSummaryDto>.NotFound("Blog", blogPostId);
+        }
+
+        return Result<ReactionSummaryDto>.Success(await BuildBlogSummaryAsync(blogPostId, cancellationToken));
+    }
+
+    public async Task<Result<string?>> GetMyBlogReactionAsync(int blogPostId, CancellationToken cancellationToken = default)
+    {
+        if (_currentUserService.AccountId <= 0)
+        {
+            return Result<string?>.Unauthorized();
+        }
+
+        var blog = await _unitOfWork.Blogs.GetByIdAsync(blogPostId, cancellationToken);
+        if (blog == null)
+        {
+            return Result<string?>.NotFound("Blog", blogPostId);
+        }
+
+        var reaction = await _unitOfWork.Blogs.GetBlogReactionAsync(blogPostId, _currentUserService.AccountId, cancellationToken);
+        return Result<string?>.Success(reaction?.ReactionType?.Code);
+    }
+
+    public async Task<Result<ReactionSummaryDto>> ReactToReviewAsync(int reviewBlogId, UpsertReactionDto dto, CancellationToken cancellationToken = default)
+    {
+        if (_currentUserService.AccountId <= 0)
+        {
+            return Result<ReactionSummaryDto>.Unauthorized();
+        }
+
+        var review = await _unitOfWork.Blogs.GetReviewByIdAsync(reviewBlogId, cancellationToken);
+        if (review == null)
+        {
+            return Result<ReactionSummaryDto>.NotFound("Review", reviewBlogId);
+        }
+
+        var reactionType = await ResolveReactionTypeAsync(dto.ReactionCode, cancellationToken);
+        if (reactionType == null)
+        {
+            return Result<ReactionSummaryDto>.Failure("VALIDATION_ERROR", "Invalid reaction code.");
+        }
+
+        var existing = await _unitOfWork.Blogs.GetReviewReactionAsync(reviewBlogId, _currentUserService.AccountId, cancellationToken);
+        if (existing != null && existing.ReactionTypeId == reactionType.ReactionTypeId)
+        {
+            await _unitOfWork.Blogs.RemoveReviewReactionAsync(reviewBlogId, _currentUserService.AccountId, cancellationToken);
+            return Result<ReactionSummaryDto>.Success(await BuildReviewSummaryAsync(reviewBlogId, cancellationToken));
+        }
+
+        await _unitOfWork.Blogs.UpsertReviewReactionAsync(reviewBlogId, _currentUserService.AccountId, reactionType.ReactionTypeId, cancellationToken);
+        return Result<ReactionSummaryDto>.Success(await BuildReviewSummaryAsync(reviewBlogId, cancellationToken));
+    }
+
+    public async Task<Result<bool>> RemoveReviewReactionAsync(int reviewBlogId, CancellationToken cancellationToken = default)
+    {
+        if (_currentUserService.AccountId <= 0)
+        {
+            return Result<bool>.Unauthorized();
+        }
+
+        var review = await _unitOfWork.Blogs.GetReviewByIdAsync(reviewBlogId, cancellationToken);
+        if (review == null)
+        {
+            return Result<bool>.NotFound("Review", reviewBlogId);
+        }
+
+        var removed = await _unitOfWork.Blogs.RemoveReviewReactionAsync(reviewBlogId, _currentUserService.AccountId, cancellationToken);
+        return Result<bool>.Success(removed);
+    }
+
+    public async Task<Result<ReactionSummaryDto>> GetReviewReactionSummaryAsync(int reviewBlogId, CancellationToken cancellationToken = default)
+    {
+        var review = await _unitOfWork.Blogs.GetReviewByIdAsync(reviewBlogId, cancellationToken);
+        if (review == null)
+        {
+            return Result<ReactionSummaryDto>.NotFound("Review", reviewBlogId);
+        }
+
+        return Result<ReactionSummaryDto>.Success(await BuildReviewSummaryAsync(reviewBlogId, cancellationToken));
+    }
+
+    public async Task<Result<string?>> GetMyReviewReactionAsync(int reviewBlogId, CancellationToken cancellationToken = default)
+    {
+        if (_currentUserService.AccountId <= 0)
+        {
+            return Result<string?>.Unauthorized();
+        }
+
+        var review = await _unitOfWork.Blogs.GetReviewByIdAsync(reviewBlogId, cancellationToken);
+        if (review == null)
+        {
+            return Result<string?>.NotFound("Review", reviewBlogId);
+        }
+
+        var reaction = await _unitOfWork.Blogs.GetReviewReactionAsync(reviewBlogId, _currentUserService.AccountId, cancellationToken);
+        return Result<string?>.Success(reaction?.ReactionType?.Code);
+    }
+
+    public async Task<Result<ReactionSummaryDto>> ReactToReplyAsync(int replyBlogId, UpsertReactionDto dto, CancellationToken cancellationToken = default)
+    {
+        if (_currentUserService.AccountId <= 0)
+        {
+            return Result<ReactionSummaryDto>.Unauthorized();
+        }
+
+        var reply = await _unitOfWork.Blogs.GetReplyByIdAsync(replyBlogId, cancellationToken);
+        if (reply == null)
+        {
+            return Result<ReactionSummaryDto>.NotFound("Reply", replyBlogId);
+        }
+
+        var reactionType = await ResolveReactionTypeAsync(dto.ReactionCode, cancellationToken);
+        if (reactionType == null)
+        {
+            return Result<ReactionSummaryDto>.Failure("VALIDATION_ERROR", "Invalid reaction code.");
+        }
+
+        var existing = await _unitOfWork.Blogs.GetReplyReactionAsync(replyBlogId, _currentUserService.AccountId, cancellationToken);
+        if (existing != null && existing.ReactionTypeId == reactionType.ReactionTypeId)
+        {
+            await _unitOfWork.Blogs.RemoveReplyReactionAsync(replyBlogId, _currentUserService.AccountId, cancellationToken);
+            return Result<ReactionSummaryDto>.Success(await BuildReplySummaryAsync(replyBlogId, cancellationToken));
+        }
+
+        await _unitOfWork.Blogs.UpsertReplyReactionAsync(replyBlogId, _currentUserService.AccountId, reactionType.ReactionTypeId, cancellationToken);
+        return Result<ReactionSummaryDto>.Success(await BuildReplySummaryAsync(replyBlogId, cancellationToken));
+    }
+
+    public async Task<Result<bool>> RemoveReplyReactionAsync(int replyBlogId, CancellationToken cancellationToken = default)
+    {
+        if (_currentUserService.AccountId <= 0)
+        {
+            return Result<bool>.Unauthorized();
+        }
+
+        var reply = await _unitOfWork.Blogs.GetReplyByIdAsync(replyBlogId, cancellationToken);
+        if (reply == null)
+        {
+            return Result<bool>.NotFound("Reply", replyBlogId);
+        }
+
+        var removed = await _unitOfWork.Blogs.RemoveReplyReactionAsync(replyBlogId, _currentUserService.AccountId, cancellationToken);
+        return Result<bool>.Success(removed);
+    }
+
+    public async Task<Result<ReactionSummaryDto>> GetReplyReactionSummaryAsync(int replyBlogId, CancellationToken cancellationToken = default)
+    {
+        var reply = await _unitOfWork.Blogs.GetReplyByIdAsync(replyBlogId, cancellationToken);
+        if (reply == null)
+        {
+            return Result<ReactionSummaryDto>.NotFound("Reply", replyBlogId);
+        }
+
+        return Result<ReactionSummaryDto>.Success(await BuildReplySummaryAsync(replyBlogId, cancellationToken));
+    }
+
+    public async Task<Result<string?>> GetMyReplyReactionAsync(int replyBlogId, CancellationToken cancellationToken = default)
+    {
+        if (_currentUserService.AccountId <= 0)
+        {
+            return Result<string?>.Unauthorized();
+        }
+
+        var reply = await _unitOfWork.Blogs.GetReplyByIdAsync(replyBlogId, cancellationToken);
+        if (reply == null)
+        {
+            return Result<string?>.NotFound("Reply", replyBlogId);
+        }
+
+        var reaction = await _unitOfWork.Blogs.GetReplyReactionAsync(replyBlogId, _currentUserService.AccountId, cancellationToken);
+        return Result<string?>.Success(reaction?.ReactionType?.Code);
     }
 
     private async Task<Result<BlogDetailDto>> UpdateApprovedBlogAtAsync(
@@ -823,9 +1080,21 @@ public class BlogService : IBlogService
         return null;
     }
 
-    private static List<BlogReviewDto> MapReviewThreads(List<ReviewBlog> reviews, List<ReviewBlogReply> replies, bool includeHidden)
+    private static List<BlogReviewDto> MapReviewThreads(
+        List<ReviewBlog> reviews,
+        List<ReviewBlogReply> replies,
+        bool includeHidden,
+        Dictionary<int, Dictionary<string, int>> reviewCounts,
+        Dictionary<int, Dictionary<string, int>> replyCounts,
+        Dictionary<int, string> myReviewReactions,
+        Dictionary<int, string> myReplyReactions)
     {
-        var replyDtoLookup = replies.ToDictionary(x => x.ReplyBlogId, MapReply);
+        var replyDtoLookup = replies.ToDictionary(
+            x => x.ReplyBlogId,
+            x => MapReply(
+                x,
+                replyCounts.TryGetValue(x.ReplyBlogId, out var countMap) ? countMap : null,
+                myReplyReactions.TryGetValue(x.ReplyBlogId, out var myReaction) ? myReaction : null));
         foreach (var dto in replyDtoLookup.Values)
         {
             dto.Replies = new List<BlogReviewReplyDto>();
@@ -852,7 +1121,10 @@ public class BlogService : IBlogService
             .Where(x => includeHidden || !x.IsDeleted)
             .Select(x =>
             {
-                var mapped = MapReview(x);
+                var mapped = MapReview(
+                    x,
+                    reviewCounts.TryGetValue(x.ReviewBlogId, out var countMap) ? countMap : null,
+                    myReviewReactions.TryGetValue(x.ReviewBlogId, out var myReaction) ? myReaction : null);
                 mapped.Replies = rootsByReview.TryGetValue(x.ReviewBlogId, out var rootReplies)
                     ? rootReplies
                     : new List<BlogReviewReplyDto>();
@@ -861,7 +1133,7 @@ public class BlogService : IBlogService
             .ToList();
     }
 
-    private static BlogReviewDto MapReview(ReviewBlog review)
+    private static BlogReviewDto MapReview(ReviewBlog review, Dictionary<string, int>? counts = null, string? currentUserReaction = null)
     {
         return new BlogReviewDto
         {
@@ -873,12 +1145,16 @@ public class BlogService : IBlogService
             AccountImageUrl = review.Account?.ImageUrl,
             Comment = review.Comment ?? string.Empty,
             Status = review.IsDeleted ? "Hidden" : "Visible",
+            LikeCount = GetReactionCount(counts, ReactionLike),
+            LoveCount = GetReactionCount(counts, ReactionLove),
+            HahaCount = GetReactionCount(counts, ReactionHaha),
+            CurrentUserReaction = currentUserReaction,
             CreatedAt = review.CreatedAt,
             UpdatedAt = review.UpdatedAt
         };
     }
 
-    private static BlogReviewReplyDto MapReply(ReviewBlogReply reply)
+    private static BlogReviewReplyDto MapReply(ReviewBlogReply reply, Dictionary<string, int>? counts = null, string? currentUserReaction = null)
     {
         return new BlogReviewReplyDto
         {
@@ -892,8 +1168,93 @@ public class BlogService : IBlogService
             ReplyToAccountName = reply.ReplyToAccount?.AccountName,
             Comment = reply.Comment,
             Status = reply.IsDeleted ? "Hidden" : "Visible",
+            LikeCount = GetReactionCount(counts, ReactionLike),
+            LoveCount = GetReactionCount(counts, ReactionLove),
+            HahaCount = GetReactionCount(counts, ReactionHaha),
+            CurrentUserReaction = currentUserReaction,
             CreatedAt = reply.CreatedAt,
             UpdatedAt = reply.UpdatedAt
         };
+    }
+
+    private async Task<ReactionSummaryDto> BuildBlogSummaryAsync(int blogPostId, CancellationToken cancellationToken)
+    {
+        var counts = await _unitOfWork.Blogs.GetBlogReactionCountsAsync(blogPostId, cancellationToken);
+        string? current = null;
+        if (_currentUserService.AccountId > 0)
+        {
+            var myReaction = await _unitOfWork.Blogs.GetBlogReactionAsync(blogPostId, _currentUserService.AccountId, cancellationToken);
+            current = myReaction?.ReactionType?.Code;
+        }
+
+        return BuildSummary(counts, current);
+    }
+
+    private async Task<ReactionSummaryDto> BuildReviewSummaryAsync(int reviewBlogId, CancellationToken cancellationToken)
+    {
+        var counts = await _unitOfWork.Blogs.GetReviewReactionCountsAsync(reviewBlogId, cancellationToken);
+        string? current = null;
+        if (_currentUserService.AccountId > 0)
+        {
+            var myReaction = await _unitOfWork.Blogs.GetReviewReactionAsync(reviewBlogId, _currentUserService.AccountId, cancellationToken);
+            current = myReaction?.ReactionType?.Code;
+        }
+
+        return BuildSummary(counts, current);
+    }
+
+    private async Task<ReactionSummaryDto> BuildReplySummaryAsync(int replyBlogId, CancellationToken cancellationToken)
+    {
+        var counts = await _unitOfWork.Blogs.GetReplyReactionCountsAsync(replyBlogId, cancellationToken);
+        string? current = null;
+        if (_currentUserService.AccountId > 0)
+        {
+            var myReaction = await _unitOfWork.Blogs.GetReplyReactionAsync(replyBlogId, _currentUserService.AccountId, cancellationToken);
+            current = myReaction?.ReactionType?.Code;
+        }
+
+        return BuildSummary(counts, current);
+    }
+
+    private static ReactionSummaryDto BuildSummary(Dictionary<string, int>? counts, string? currentUserReaction)
+    {
+        var like = GetReactionCount(counts, ReactionLike);
+        var love = GetReactionCount(counts, ReactionLove);
+        var haha = GetReactionCount(counts, ReactionHaha);
+
+        return new ReactionSummaryDto
+        {
+            LikeCount = like,
+            LoveCount = love,
+            HahaCount = haha,
+            TotalCount = like + love + haha,
+            CurrentUserReaction = currentUserReaction
+        };
+    }
+
+    private static int GetReactionCount(Dictionary<string, int>? counts, string code)
+    {
+        if (counts == null)
+        {
+            return 0;
+        }
+
+        return counts.TryGetValue(code, out var value) ? value : 0;
+    }
+
+    private async Task<ReactionType?> ResolveReactionTypeAsync(string reactionCode, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(reactionCode))
+        {
+            return null;
+        }
+
+        var normalized = reactionCode.Trim().ToLowerInvariant();
+        if (normalized != ReactionLike && normalized != ReactionLove && normalized != ReactionHaha)
+        {
+            return null;
+        }
+
+        return await _unitOfWork.Blogs.GetReactionTypeByCodeAsync(normalized, cancellationToken);
     }
 }

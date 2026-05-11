@@ -87,4 +87,48 @@ public interface IBlogRepository
         CancellationToken cancellationToken = default);
 
     Task<int> CountReviewsForManagementAsync(string? searchTerm, string? status, CancellationToken cancellationToken = default);
+
+    Task<ReactionType?> GetReactionTypeByCodeAsync(string reactionCode, CancellationToken cancellationToken = default);
+
+    Task<BlogPostReaction?> GetBlogReactionAsync(int blogPostId, int accountId, CancellationToken cancellationToken = default);
+
+    Task<ReviewBlogReaction?> GetReviewReactionAsync(int reviewBlogId, int accountId, CancellationToken cancellationToken = default);
+
+    Task<ReviewBlogReplyReaction?> GetReplyReactionAsync(int replyBlogId, int accountId, CancellationToken cancellationToken = default);
+
+    Task UpsertBlogReactionAsync(int blogPostId, int accountId, int reactionTypeId, CancellationToken cancellationToken = default);
+
+    Task UpsertReviewReactionAsync(int reviewBlogId, int accountId, int reactionTypeId, CancellationToken cancellationToken = default);
+
+    Task UpsertReplyReactionAsync(int replyBlogId, int accountId, int reactionTypeId, CancellationToken cancellationToken = default);
+
+    Task<bool> RemoveBlogReactionAsync(int blogPostId, int accountId, CancellationToken cancellationToken = default);
+
+    Task<bool> RemoveReviewReactionAsync(int reviewBlogId, int accountId, CancellationToken cancellationToken = default);
+
+    Task<bool> RemoveReplyReactionAsync(int replyBlogId, int accountId, CancellationToken cancellationToken = default);
+
+    Task<Dictionary<string, int>> GetBlogReactionCountsAsync(int blogPostId, CancellationToken cancellationToken = default);
+
+    Task<Dictionary<string, int>> GetReviewReactionCountsAsync(int reviewBlogId, CancellationToken cancellationToken = default);
+
+    Task<Dictionary<string, int>> GetReplyReactionCountsAsync(int replyBlogId, CancellationToken cancellationToken = default);
+
+    Task<Dictionary<int, Dictionary<string, int>>> GetReviewReactionCountsByIdsAsync(
+        List<int> reviewBlogIds,
+        CancellationToken cancellationToken = default);
+
+    Task<Dictionary<int, Dictionary<string, int>>> GetReplyReactionCountsByIdsAsync(
+        List<int> replyBlogIds,
+        CancellationToken cancellationToken = default);
+
+    Task<Dictionary<int, string>> GetMyReviewReactionsByIdsAsync(
+        List<int> reviewBlogIds,
+        int accountId,
+        CancellationToken cancellationToken = default);
+
+    Task<Dictionary<int, string>> GetMyReplyReactionsByIdsAsync(
+        List<int> replyBlogIds,
+        int accountId,
+        CancellationToken cancellationToken = default);
 }

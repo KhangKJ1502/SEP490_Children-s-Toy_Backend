@@ -32,6 +32,8 @@ public partial class SEP490ToyStoreContext : DbContext
     
     public virtual DbSet<BlogPostStat> BlogPostStats { get; set; }
 
+    public virtual DbSet<BlogPostReaction> BlogPostReactions { get; set; }
+
     public virtual DbSet<Brand> Brands { get; set; }
 
     public virtual DbSet<Campaign> Campaigns { get; set; }
@@ -111,6 +113,8 @@ public partial class SEP490ToyStoreContext : DbContext
     public virtual DbSet<ReviewBlogReaction> ReviewBlogReactions { get; set; }
 
     public virtual DbSet<ReviewBlogReply> ReviewBlogReplies { get; set; }
+
+    public virtual DbSet<ReviewBlogReplyReaction> ReviewBlogReplyReactions { get; set; }
 
     public virtual DbSet<ReviewProduct> ReviewProducts { get; set; }
 
@@ -1648,6 +1652,70 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasForeignKey(d => d.ReviewBlogId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_ReviewBlogReplies_ReviewBlogs");
+        });
+
+        modelBuilder.Entity<BlogPostReaction>(entity =>
+        {
+            entity.HasKey(e => e.ReactionPostId).HasName("PK_BlogPostReactions");
+
+            entity.HasIndex(e => new { e.BlogPostId, e.ReactionTypeId }, "IX_BlogPostReactions_Stats");
+
+            entity.HasIndex(e => new { e.AccountId, e.BlogPostId }, "UQ_BlogPostReactions_AccountPost").IsUnique();
+
+            entity.Property(e => e.ReactionPostId).HasColumnName("ReactionPostID");
+            entity.Property(e => e.BlogPostId).HasColumnName("BlogPostID");
+            entity.Property(e => e.AccountId).HasColumnName("AccountID");
+            entity.Property(e => e.ReactionTypeId).HasColumnName("ReactionTypeID");
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
+
+            entity.HasOne(d => d.Account).WithMany(p => p.BlogPostReactions)
+                .HasForeignKey(d => d.AccountId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_BlogPostReactions_Accounts");
+
+            entity.HasOne(d => d.BlogPost).WithMany(p => p.BlogPostReactions)
+                .HasForeignKey(d => d.BlogPostId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_BlogPostReactions_BlogPosts");
+
+            entity.HasOne(d => d.ReactionType).WithMany(p => p.BlogPostReactions)
+                .HasForeignKey(d => d.ReactionTypeId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_BlogPostReactions_ReactionTypes");
+        });
+
+        modelBuilder.Entity<ReviewBlogReplyReaction>(entity =>
+        {
+            entity.HasKey(e => e.ReactionReplyBlogId).HasName("PK_ReviewBlogReplyReactions");
+
+            entity.HasIndex(e => new { e.ReplyBlogId, e.ReactionTypeId }, "IX_ReviewBlogReplyReactions_Stats");
+
+            entity.HasIndex(e => new { e.AccountId, e.ReplyBlogId }, "UQ_ReviewBlogReplyReactions_AccountReply").IsUnique();
+
+            entity.Property(e => e.ReactionReplyBlogId).HasColumnName("ReactionReplyBlogID");
+            entity.Property(e => e.ReplyBlogId).HasColumnName("ReplyBlogID");
+            entity.Property(e => e.AccountId).HasColumnName("AccountID");
+            entity.Property(e => e.ReactionTypeId).HasColumnName("ReactionTypeID");
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
+
+            entity.HasOne(d => d.Account).WithMany(p => p.ReviewBlogReplyReactions)
+                .HasForeignKey(d => d.AccountId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ReviewBlogReplyReactions_Accounts");
+
+            entity.HasOne(d => d.ReplyBlog).WithMany(p => p.ReviewBlogReplyReactions)
+                .HasForeignKey(d => d.ReplyBlogId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ReviewBlogReplyReactions_ReviewBlogReplies");
+
+            entity.HasOne(d => d.ReactionType).WithMany(p => p.ReviewBlogReplyReactions)
+                .HasForeignKey(d => d.ReactionTypeId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ReviewBlogReplyReactions_ReactionTypes");
         });
 
         modelBuilder.Entity<ReviewProduct>(entity =>
