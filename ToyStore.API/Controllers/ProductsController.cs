@@ -1,10 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using ToyStore.API.Extensions;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Products;
 using ToyStore.Application.Interfaces.Services;
-using ToyStore.Infrastructure.Data;
 
 namespace ToyStore.API.Controllers;
 
@@ -14,18 +12,15 @@ public class ProductsController : ControllerBase
 {
     private readonly IProductService _productService;
     private readonly IImageUploadService _imageUploadService;
-    private readonly SEP490ToyStoreContext _dbContext;
     private readonly ILogger<ProductsController> _logger;
 
     public ProductsController(
         IProductService productService, 
         IImageUploadService imageUploadService,
-        SEP490ToyStoreContext dbContext,
         ILogger<ProductsController> logger)
     {
         _productService = productService;
         _imageUploadService = imageUploadService;
-        _dbContext = dbContext;
         _logger = logger;
     }
 
@@ -101,87 +96,10 @@ public class ProductsController : ControllerBase
     }
 
     [HttpGet("lookups")]
-    public async Task<ActionResult<object>> GetProductLookups(CancellationToken cancellationToken = default)
+    public async Task<ActionResult<ProductLookupsDto>> GetProductLookups(CancellationToken cancellationToken = default)
     {
-        var superCategories = await _dbContext.SuperCategories
-            .AsNoTracking()
-            .Where(x => !x.IsDeleted)
-            .OrderBy(x => x.SuperCategoryName)
-            .Select(x => new
-            {
-                id = x.SuperCategoryId,
-                label = x.SuperCategoryName
-            })
-            .ToListAsync(cancellationToken);
-
-        var categories = await _dbContext.Categories
-            .AsNoTracking()
-            .Where(x => !x.IsDeleted)
-            .OrderBy(x => x.CategoryName)
-            .Select(x => new
-            {
-                id = x.CategoryId,
-                label = x.CategoryName,
-                superCategoryId = x.SuperCategoryId,
-                superCategoryName = x.SuperCategory.SuperCategoryName
-            })
-            .ToListAsync(cancellationToken);
-
-        var brands = await _dbContext.Brands
-            .AsNoTracking()
-            .Where(x => !x.IsDeleted)
-            .OrderBy(x => x.BrandName)
-            .Select(x => new { id = x.BrandId, label = x.BrandName })
-            .ToListAsync(cancellationToken);
-
-        var priceRanges = await _dbContext.PriceRanges
-            .AsNoTracking()
-            .OrderBy(x => x.PriceRangeMin)
-            .Select(x => new
-            {
-                id = x.PriceRangeId,
-                label = $"{x.PriceRangeMin:N0} - {x.PriceRangeMax:N0} VND",
-                min = x.PriceRangeMin,
-                max = x.PriceRangeMax
-            })
-            .ToListAsync(cancellationToken);
-
-        var materials = await _dbContext.Materials
-            .AsNoTracking()
-            .Where(x => !x.IsDeleted)
-            .OrderBy(x => x.MaterialName)
-            .Select(x => new { id = x.MaterialId, label = x.MaterialName })
-            .ToListAsync(cancellationToken);
-
-        var ages = await _dbContext.Ages
-            .AsNoTracking()
-            .OrderBy(x => x.AgeRange)
-            .Select(x => new { id = x.AgeId, label = x.AgeRange })
-            .ToListAsync(cancellationToken);
-
-        var sexes = await _dbContext.Sexes
-            .AsNoTracking()
-            .OrderBy(x => x.SexName)
-            .Select(x => new { id = x.SexId, label = x.SexName })
-            .ToListAsync(cancellationToken);
-
-        var origins = await _dbContext.Origins
-            .AsNoTracking()
-            .OrderBy(x => x.OriginName)
-            .Select(x => new { id = x.OriginId, label = x.OriginName })
-            .ToListAsync(cancellationToken);
-
-        return Ok(new
-        {
-            superCategories,
-            categories,
-            brands,
-            priceRanges,
-            materials,
-            ages,
-            sexes,
-            origins
-        });
+        var result = await _productService.GetProductLookupsAsync(cancellationToken);
+        return result.ToActionResult();
     }
 
     [HttpPost]

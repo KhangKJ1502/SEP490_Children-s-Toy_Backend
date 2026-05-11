@@ -112,4 +112,29 @@ public interface IProductRepository
     /// Lay danh sach Product theo tap hop ID.
     /// </summary>
     Task<List<Product>> GetByIdsAsync(IEnumerable<int> productIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lay danh sach PriceRange.
+    /// </summary>
+    Task<List<PriceRange>> GetPriceRangesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lay danh sach Material.
+    /// </summary>
+    Task<List<Material>> GetMaterialsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lay danh sach Age.
+    /// </summary>
+    Task<List<Age>> GetAgesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lay danh sach Sex.
+    /// </summary>
+    Task<List<Sex>> GetSexesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lay danh sach Origin.
+    /// </summary>
+    Task<List<Origin>> GetOriginsAsync(CancellationToken cancellationToken = default);
 }

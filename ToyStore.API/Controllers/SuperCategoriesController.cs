@@ -46,6 +46,18 @@ public class SuperCategoriesController : ControllerBase
     }
 
     /// <summary>
+    /// Lấy thông tin chi tiết super category theo ID.
+    /// </summary>
+    [HttpGet("{superCategoryId:int}")]
+    public async Task<ActionResult<SuperCategoryListDto>> GetSuperCategoryById(
+        [FromRoute] short superCategoryId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _superCategoryService.GetSuperCategoryByIdAsync(superCategoryId, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
     /// Tạo mới super category.
     /// </summary>
     [HttpPost]

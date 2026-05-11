@@ -21,6 +21,13 @@ public interface ICategoryService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Lấy thông tin chi tiết Category theo ID.
+    /// </summary>
+    Task<Result<CategoryListDto>> GetCategoryByIdAsync(
+        short categoryId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Tạo mới Category.
     /// </summary>
     Task<Result<CategoryListDto>> CreateCategoryAsync(

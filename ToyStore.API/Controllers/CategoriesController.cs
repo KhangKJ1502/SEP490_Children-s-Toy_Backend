@@ -46,6 +46,18 @@ public class CategoriesController : ControllerBase
     }
 
     /// <summary>
+    /// Lấy thông tin chi tiết category theo ID.
+    /// </summary>
+    [HttpGet("{categoryId:int}")]
+    public async Task<ActionResult<CategoryListDto>> GetCategoryById(
+        [FromRoute] short categoryId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _categoryService.GetCategoryByIdAsync(categoryId, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
     /// Tạo mới category.
     /// </summary>
     [HttpPost]

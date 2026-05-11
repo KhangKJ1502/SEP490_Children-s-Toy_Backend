@@ -80,17 +80,17 @@ public class CreateProductValidator : AbstractValidator<CreateProductDto>
             .When(x => x.OriginId.HasValue);
 
         RuleFor(x => x.MainImageUrl)
+            .NotEmpty().WithMessage("Main image is required.")
             .Must(url => Uri.IsWellFormedUriString(url, UriKind.Absolute))
-            .WithMessage("Main image URL is not valid.")
-            .When(x => !string.IsNullOrWhiteSpace(x.MainImageUrl));
+            .WithMessage("Main image URL is not valid.");
 
         RuleFor(x => x.AdditionalImageUrls)
             .NotNull().WithMessage("Additional image URLs are required.")
-            .Must(urls => urls.Count >= 4 && urls.Count <= 6)
+            .Must(urls => urls != null && urls.Count >= 4 && urls.Count <= 6)
             .WithMessage("Additional images must be between 4 and 6.");
 
         RuleForEach(x => x.AdditionalImageUrls)
-            .Must(url => Uri.IsWellFormedUriString(url, UriKind.Absolute))
+            .Must(url => !string.IsNullOrWhiteSpace(url) && Uri.IsWellFormedUriString(url, UriKind.Absolute))
             .WithMessage("Additional image URL is not valid.");
     }
 }
