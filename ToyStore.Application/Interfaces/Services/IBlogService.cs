@@ -47,6 +47,11 @@ public interface IBlogService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets all blog categories.
+    /// </summary>
+    Task<Result<List<BlogCategoryDto>>> GetBlogCategoriesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets blog details by id with access control.
     /// </summary>
     Task<Result<BlogDetailDto>> GetBlogDetailsAsync(int blogPostId, CancellationToken cancellationToken = default);

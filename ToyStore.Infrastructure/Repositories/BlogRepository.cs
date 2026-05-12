@@ -58,6 +58,14 @@ public class BlogRepository : IBlogRepository
             .FirstOrDefaultAsync(x => x.BlogPostId == blogPostId, cancellationToken);
     }
 
+    public Task<List<BlogCategory>> GetBlogCategoriesAsync(CancellationToken cancellationToken = default)
+    {
+        return _context.BlogCategories
+            .AsNoTracking()
+            .OrderBy(x => x.BlogCategoriesName)
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<bool> BlogCategoryExistsAsync(short blogCategoryId, CancellationToken cancellationToken = default)
     {
         return _context.BlogCategories

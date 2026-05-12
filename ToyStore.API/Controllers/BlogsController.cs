@@ -44,6 +44,13 @@ public class BlogsController : ControllerBase
         return result.ToActionResult();
     }
 
+    [HttpGet("categories")]
+    public async Task<ActionResult<List<BlogCategoryDto>>> GetBlogCategories(CancellationToken cancellationToken = default)
+    {
+        var result = await _blogService.GetBlogCategoriesAsync(cancellationToken);
+        return result.ToActionResult();
+    }
+
     [HttpGet("admin")]
     [Authorize(Roles = "Admin")]
     public async Task<ActionResult<PaginatedResponse<BlogListDto>>> GetBlogsForAdmin(

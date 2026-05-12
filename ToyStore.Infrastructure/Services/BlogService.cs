@@ -93,6 +93,20 @@ public class BlogService : IBlogService
         return await GetPagedBlogsAsync(pageNumber, pageSize, sortBy, sortDesc, searchTerm, "Published", false, null, true, cancellationToken);
     }
 
+    public async Task<Result<List<BlogCategoryDto>>> GetBlogCategoriesAsync(CancellationToken cancellationToken = default)
+    {
+        var categories = await _unitOfWork.Blogs.GetBlogCategoriesAsync(cancellationToken);
+        var data = categories
+            .Select(x => new BlogCategoryDto
+            {
+                BlogCategoryId = x.BlogCategoryId,
+                BlogCategoryName = x.BlogCategoriesName
+            })
+            .ToList();
+
+        return Result<List<BlogCategoryDto>>.Success(data);
+    }
+
     public async Task<Result<BlogDetailDto>> GetBlogDetailsAsync(int blogPostId, CancellationToken cancellationToken = default)
     {
         if (blogPostId <= 0)
