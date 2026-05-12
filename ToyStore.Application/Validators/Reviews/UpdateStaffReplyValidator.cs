@@ -9,6 +9,7 @@ public class UpdateStaffReplyValidator : AbstractValidator<UpdateStaffReplyDto>
     {
         RuleFor(x => x.Content)
             .NotEmpty().WithMessage("Reply content is required.")
-            .MaximumLength(1000).WithMessage("Reply content must not exceed 1000 characters.");
+            .MaximumLength(1000).WithMessage("Reply content must not exceed 1000 characters.")
+            .When(x => x.IsDeleted != true);
     }
 }

@@ -88,17 +88,5 @@ public class AdminReviewsController : ControllerBase
         return result.ToActionResult();
     }
 
-    /// <summary>
-    /// Admin/Staff xoá reply.
-    /// DELETE /api/admin/reviews/{id}/reply/{replyId}
-    /// </summary>
-    [HttpDelete("{id:int}/reply/{replyId:int}")]
-    public async Task<ActionResult> DeleteReply(
-        int id,
-        int replyId,
-        CancellationToken cancellationToken)
-    {
-        var result = await _reviewService.DeleteReplyAsync(id, replyId, cancellationToken);
-        return result.ToActionResult();
-    }
+
 }

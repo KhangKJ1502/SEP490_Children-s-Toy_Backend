@@ -189,8 +189,8 @@ public class ReviewService : IReviewService
             // Publish notification events (fire-and-forget)
             if (review.Rating <= 2)
             {
-                _ = _eventPublisher.PublishAsync("Review", review.ReviewId.ToString(), NotificationEventTypes.ReviewLowRating,
-                    new { reviewId = review.ReviewId, rating = review.Rating, productId = dto.ProductId }, CancellationToken.None);
+                await _eventPublisher.PublishAsync("Review", review.ReviewId.ToString(), NotificationEventTypes.ReviewLowRating,
+                    new { reviewId = review.ReviewId, rating = review.Rating, productId = dto.ProductId }, cancellationToken);
             }
 
             // Fetch the fully populated review to map and return
@@ -242,6 +242,24 @@ public class ReviewService : IReviewService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
+            if (dto.IsDeleted == true)
+            {
+                trackReview.IsDeleted = true;
+                trackReview.UpdatedAt = now;
+
+                foreach (var img in trackReview.ReviewProductImages)
+                {
+                    img.IsDeleted = true;
+                    img.UpdatedAt = now;
+                }
+
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+                _logger.LogInformation("User {UserId} soft-deleted review {ReviewId}", accountId, reviewId);
+                return Result<ReviewProductDto>.Success(_mapper.Map<ReviewProductDto>(trackReview));
+            }
+
             if (dto.Rating.HasValue) trackReview.Rating = dto.Rating.Value;
             if (dto.Comment != null) trackReview.Comment = dto.Comment;
 
@@ -307,41 +325,7 @@ public class ReviewService : IReviewService
         }
     }
 
-    public async Task<Result> DeleteReviewAsync(int reviewId, CancellationToken cancellationToken = default)
-    {
-        var accountId = _currentUser.AccountId;
-        var review = await _unitOfWork.Reviews.GetByIdForUpdateAsync(reviewId, cancellationToken);
 
-        if (review == null || review.AccountId != accountId)
-            return Result.NotFound("Review", reviewId);
-
-        var now = DateTime.UtcNow;
-
-        await _unitOfWork.BeginTransactionAsync(cancellationToken);
-        try
-        {
-            review.IsDeleted = true;
-            review.UpdatedAt = now;
-
-            foreach (var img in review.ReviewProductImages)
-            {
-                img.IsDeleted = true;
-                img.UpdatedAt = now;
-            }
-
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-            await _unitOfWork.CommitTransactionAsync(cancellationToken);
-
-            _logger.LogInformation("User {UserId} soft-deleted review {ReviewId}", accountId, reviewId);
-            return Result.Success();
-        }
-        catch (Exception ex)
-        {
-            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-            _logger.LogError(ex, "Failed to delete review {ReviewId}", reviewId);
-            throw;
-        }
-    }
 
     // --- Admin / Staff ---
 
@@ -454,8 +438,8 @@ public class ReviewService : IReviewService
             // Publish when set to ManualReview
             if (dto.ModerationStatus == "ManualReview")
             {
-                _ = _eventPublisher.PublishAsync("Review", reviewId.ToString(), NotificationEventTypes.ReviewNeedsModeration,
-                    new { reviewId, moderatedBy = staffId }, CancellationToken.None);
+                await _eventPublisher.PublishAsync("Review", reviewId.ToString(), NotificationEventTypes.ReviewNeedsModeration,
+                    new { reviewId, moderatedBy = staffId }, cancellationToken);
             }
 
             var completeReview = await _unitOfWork.Reviews.GetByIdForAdminAsync(reviewId, cancellationToken);
@@ -498,8 +482,8 @@ public class ReviewService : IReviewService
         _logger.LogInformation("Staff {StaffId} replied to review {ReviewId}", staffId, reviewId);
 
         // Notify customer that staff replied to their review
-        _ = _eventPublisher.PublishAsync("Review", reviewId.ToString(), NotificationEventTypes.ReviewStaffReplied,
-            new { reviewId, accountId = review.AccountId, productId = review.ProductId }, CancellationToken.None);
+        await _eventPublisher.PublishAsync("Review", reviewId.ToString(), NotificationEventTypes.ReviewStaffReplied,
+            new { reviewId, accountId = review.AccountId, productId = review.ProductId }, cancellationToken);
 
         var savedReply = await _unitOfWork.Reviews.GetReplyByIdAsync(reply.ReplyProductId, cancellationToken);
         var staffDto = _mapper.Map<StaffReplyDto>(savedReply);
@@ -529,16 +513,28 @@ public class ReviewService : IReviewService
         if (reply == null || reply.ReviewProductId != reviewId)
             return Result<StaffReplyDto>.NotFound("Reply", replyId);
 
-        // Chỉ staff tạo reply mới được sửa (hoặc admin - nhưng quy tắc chung là staffId)
+        // Chỉ staff tạo reply mới được sửa/xoá (hoặc admin)
         if (reply.StaffId != _currentUser.AccountId && _currentUser.RoleName != "Admin")
-            return Result<StaffReplyDto>.Failure("UNAUTHORIZED", "You can only edit your own replies.");
+            return Result<StaffReplyDto>.Failure("UNAUTHORIZED", "You can only edit or delete your own replies.");
 
-        reply.Content = dto.Content;
-        reply.UpdatedAt = DateTime.UtcNow;
-
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation("Staff {StaffId} updated reply {ReplyId} for review {ReviewId}", _currentUser.AccountId, replyId, reviewId);
+        if (dto.IsDeleted == true)
+        {
+            reply.IsDeleted = true;
+            reply.UpdatedAt = DateTime.UtcNow;
+            
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Staff {StaffId} soft-deleted reply {ReplyId} for review {ReviewId}", _currentUser.AccountId, replyId, reviewId);
+        }
+        else
+        {
+            if (dto.Content != null)
+                reply.Content = dto.Content;
+                
+            reply.UpdatedAt = DateTime.UtcNow;
+            
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Staff {StaffId} updated reply {ReplyId} for review {ReviewId}", _currentUser.AccountId, replyId, reviewId);
+        }
 
         // Load account to map StaffName
         if(reply.Staff == null)
@@ -547,25 +543,7 @@ public class ReviewService : IReviewService
         return Result<StaffReplyDto>.Success(_mapper.Map<StaffReplyDto>(reply));
     }
 
-    public async Task<Result> DeleteReplyAsync(
-        int reviewId, int replyId, CancellationToken cancellationToken = default)
-    {
-        var reply = await _unitOfWork.Reviews.GetReplyByIdAsync(replyId, cancellationToken);
-        if (reply == null || reply.ReviewProductId != reviewId)
-            return Result.NotFound("Reply", replyId);
 
-        if (reply.StaffId != _currentUser.AccountId && _currentUser.RoleName != "Admin")
-            return Result.Failure("UNAUTHORIZED", "You can only delete your own replies.");
-
-        reply.IsDeleted = true;
-        reply.UpdatedAt = DateTime.UtcNow;
-
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation("Staff {StaffId} soft-deleted reply {ReplyId} for review {ReviewId}", _currentUser.AccountId, replyId, reviewId);
-
-        return Result.Success();
-    }
 
     // --- Private Helpers ---
 
