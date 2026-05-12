@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ToyStore.Domain.Entities;
@@ -20,6 +20,8 @@ public partial class ProductPromotion
     public int ReservedQuantity { get; set; }
 
     public bool IsActive { get; set; }
+
+    public bool IsDeleted { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

@@ -30,6 +30,8 @@ public partial class PromotionProductSlot
 
     public bool IsActive { get; set; }
 
+    public bool IsDeleted { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }
@@ -37,4 +39,6 @@ public partial class PromotionProductSlot
     public virtual PromotionTimeSlot TimeSlot { get; set; } = null!;
 
     public virtual Product Product { get; set; } = null!;
+
+    public virtual ICollection<OrderDetail> OrderDetails { get; set; } = new List<OrderDetail>();
 }

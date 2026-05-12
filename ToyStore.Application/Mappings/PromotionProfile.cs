@@ -11,11 +11,15 @@ public class PromotionProfile : Profile
 {
     public PromotionProfile()
     {
-        CreateMap<Promotion, PromotionDto>();
+        CreateMap<Promotion, PromotionDto>()
+            .ForMember(dest => dest.ProductPromotions, opt => opt.MapFrom(src => src.ProductPromotions.Where(x => !x.IsDeleted)))
+            .ForMember(dest => dest.PromotionTimeSlots, opt => opt.MapFrom(src => src.PromotionTimeSlots.Where(x => !x.IsDeleted)));
 
         CreateMap<Promotion, PromotionListDto>();
 
-        CreateMap<Promotion, CreatePromotionDto>();
+        CreateMap<Promotion, CreatePromotionDto>()
+            .ForMember(dest => dest.ProductPromotions, opt => opt.MapFrom(src => src.ProductPromotions.Where(x => !x.IsDeleted)))
+            .ForMember(dest => dest.PromotionTimeSlots, opt => opt.MapFrom(src => src.PromotionTimeSlots.Where(x => !x.IsDeleted)));
 
         CreateMap<CreatePromotionDto, Promotion>()
             .ForMember(dest => dest.PromotionId, opt => opt.Ignore())
@@ -40,6 +44,7 @@ public class PromotionProfile : Profile
         CreateMap<CreateProductPromotionDto, ProductPromotion>()
             .ForMember(dest => dest.SoldQuantity, opt => opt.MapFrom(_ => 0))
             .ForMember(dest => dest.ReservedQuantity, opt => opt.MapFrom(_ => 0))
+            .ForMember(dest => dest.IsDeleted, opt => opt.MapFrom(_ => false))
             .ForMember(dest => dest.PromotionId, opt => opt.Ignore())
             .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
             .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
@@ -48,12 +53,14 @@ public class PromotionProfile : Profile
 
         CreateMap<ProductPromotion, CreateProductPromotionDto>();
 
-        CreateMap<PromotionTimeSlot, PromotionTimeSlotDto>();
+        CreateMap<PromotionTimeSlot, PromotionTimeSlotDto>()
+            .ForMember(dest => dest.PromotionProductSlots, opt => opt.MapFrom(src => src.PromotionProductSlots.Where(x => !x.IsDeleted)));
         CreateMap<PromotionTimeSlot, CreatePromotionTimeSlotDto>();
 
         CreateMap<CreatePromotionTimeSlotDto, PromotionTimeSlot>()
             .ForMember(dest => dest.TimeSlotId, opt => opt.Ignore())
             .ForMember(dest => dest.PromotionId, opt => opt.Ignore())
+            .ForMember(dest => dest.IsDeleted, opt => opt.MapFrom(_ => false))
             .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
             .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
             .ForMember(dest => dest.Promotion, opt => opt.Ignore());
@@ -68,6 +75,7 @@ public class PromotionProfile : Profile
             .ForMember(dest => dest.TimeSlotId, opt => opt.Ignore())
             .ForMember(dest => dest.SoldQuantity, opt => opt.MapFrom(_ => 0))
             .ForMember(dest => dest.ReservedQuantity, opt => opt.MapFrom(_ => 0))
+            .ForMember(dest => dest.IsDeleted, opt => opt.MapFrom(_ => false))
             .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
             .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
             .ForMember(dest => dest.Product, opt => opt.Ignore())

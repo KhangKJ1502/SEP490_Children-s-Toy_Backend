@@ -61,17 +61,5 @@ public class ReviewsController : ControllerBase
         return result.ToActionResult();
     }
 
-    /// <summary>
-    /// Khách hàng xoá review của chính mình.
-    /// DELETE /api/reviews/{id}
-    /// </summary>
-    [Authorize(Roles = "Customer")]
-    [HttpDelete("{id:int}")]
-    public async Task<ActionResult> DeleteReview(
-        int id,
-        CancellationToken cancellationToken)
-    {
-        var result = await _reviewService.DeleteReviewAsync(id, cancellationToken);
-        return result.ToActionResult();
-    }
+
 }

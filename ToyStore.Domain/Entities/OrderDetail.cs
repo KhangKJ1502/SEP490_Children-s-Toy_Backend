@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ToyStore.Domain.Entities;
@@ -23,6 +23,10 @@ public partial class OrderDetail
 
     public decimal? LineTotal { get; set; }
 
+    public int? PromotionId { get; set; }
+    
+    public int? SlotProductId { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }
@@ -30,4 +34,8 @@ public partial class OrderDetail
     public virtual Order Order { get; set; } = null!;
 
     public virtual Product Product { get; set; } = null!;
+
+    public virtual Promotion? Promotion { get; set; }
+
+    public virtual PromotionProductSlot? SlotProduct { get; set; }
 }

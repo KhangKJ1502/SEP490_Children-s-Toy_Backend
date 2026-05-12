@@ -9,4 +9,6 @@ public class UpdateReviewProductDto
     public string? Comment { get; set; }
     
     public List<IFormFile>? Images { get; set; }
+    
+    public bool? IsDeleted { get; set; }
 }

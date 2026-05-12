@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ToyStore.Domain.Entities;
@@ -34,4 +34,6 @@ public partial class Promotion
     public virtual ICollection<ProductPromotion> ProductPromotions { get; set; } = new List<ProductPromotion>();
 
     public virtual ICollection<PromotionTimeSlot> PromotionTimeSlots { get; set; } = new List<PromotionTimeSlot>();
+
+    public virtual ICollection<OrderDetail> OrderDetails { get; set; } = new List<OrderDetail>();
 }

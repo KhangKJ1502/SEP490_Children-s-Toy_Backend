@@ -2,5 +2,6 @@ namespace ToyStore.Application.DTOs.Reviews;
 
 public class UpdateStaffReplyDto
 {
-    public string Content { get; set; } = null!;
+    public string? Content { get; set; }
+    public bool? IsDeleted { get; set; }
 }
