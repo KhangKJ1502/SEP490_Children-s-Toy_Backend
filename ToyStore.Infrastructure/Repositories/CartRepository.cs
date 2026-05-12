@@ -123,6 +123,16 @@ public class CartRepository : ICartRepository
         _context.CartItems.Update(cartItem);
     }
 
+    public void RemoveItem(CartItem cartItem)
+    {
+        _context.CartItems.Remove(cartItem);
+    }
+
+    public void RemoveItems(IEnumerable<CartItem> cartItems)
+    {
+        _context.CartItems.RemoveRange(cartItems);
+    }
+
     public void UpdateCart(Cart cart)
     {
         _context.Carts.Update(cart);
