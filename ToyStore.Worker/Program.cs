@@ -35,5 +35,9 @@ builder.Services.AddHostedService<AutoCompleteOrderJob>();
 // Campaign sender (uses ICampaignNotificationService — not direct DB bulk-insert)
 builder.Services.AddHostedService<CampaignSenderWorker>();
 
+// Checkout flow workers
+builder.Services.AddHostedService<SePayExpiryJob>();
+builder.Services.AddHostedService<GhnShippingRetryJob>();
+
 var host = builder.Build();
 host.Run();

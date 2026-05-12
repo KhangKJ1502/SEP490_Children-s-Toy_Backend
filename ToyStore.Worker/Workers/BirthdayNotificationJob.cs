@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs.Notifications;
 using ToyStore.Application.Interfaces.Notifications;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Notifications;
 
@@ -16,11 +17,16 @@ public class BirthdayNotificationJob : BackgroundService
 {
     private readonly IServiceProvider _services;
     private readonly ILogger<BirthdayNotificationJob> _logger;
+    private readonly ITimeProvider _timeProvider;
 
-    public BirthdayNotificationJob(IServiceProvider services, ILogger<BirthdayNotificationJob> logger)
+    public BirthdayNotificationJob(
+        IServiceProvider services, 
+        ILogger<BirthdayNotificationJob> logger,
+        ITimeProvider timeProvider)
     {
-        _services = services;
-        _logger   = logger;
+        _services     = services;
+        _logger       = logger;
+        _timeProvider = timeProvider;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -29,7 +35,7 @@ public class BirthdayNotificationJob : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            var now  = DateTime.UtcNow.AddHours(7); // UTC+7
+            var now  = _timeProvider.VnNow;
             var next = now.Date.AddHours(8);
             if (now.Hour >= 8) next = next.AddDays(1);
 
@@ -52,7 +58,7 @@ public class BirthdayNotificationJob : BackgroundService
 
         try
         {
-            var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
+            var today = DateOnly.FromDateTime(_timeProvider.VnNow);
             var year  = (short)today.Year;
 
             // ── Customer birthdays ────────────────────────────────────────────
@@ -123,7 +129,7 @@ public class BirthdayNotificationJob : BackgroundService
 
                 // Mark as sent for this year
                 child.BirthdayNotifiedYear = year;
-                child.UpdatedAt            = DateTime.UtcNow;
+                child.UpdatedAt            = _timeProvider.UtcNow;
             }
 
             await db.SaveChangesAsync(ct);

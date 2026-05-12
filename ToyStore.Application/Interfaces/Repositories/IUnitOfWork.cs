@@ -40,6 +40,7 @@ public interface IUnitOfWork : IDisposable
 
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+    void Detach<T>(T entity) where T : class;
 
     Task BeginTransactionAsync(CancellationToken cancellationToken = default);
 

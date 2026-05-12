@@ -1,6 +1,7 @@
-using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Interfaces.Notifications;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace ToyStore.Worker.Workers;
 
@@ -12,12 +13,17 @@ public class CampaignSenderWorker : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<CampaignSenderWorker> _logger;
+    private readonly ITimeProvider _timeProvider;
     private readonly TimeSpan _interval = TimeSpan.FromMinutes(1);
 
-    public CampaignSenderWorker(IServiceProvider serviceProvider, ILogger<CampaignSenderWorker> logger)
+    public CampaignSenderWorker(
+        IServiceProvider serviceProvider, 
+        ILogger<CampaignSenderWorker> logger,
+        ITimeProvider timeProvider)
     {
         _serviceProvider = serviceProvider;
         _logger          = logger;
+        _timeProvider    = timeProvider;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -48,7 +54,7 @@ public class CampaignSenderWorker : BackgroundService
         var context         = scope.ServiceProvider.GetRequiredService<SEP490ToyStoreContext>();
         var campaignService = scope.ServiceProvider.GetRequiredService<ICampaignNotificationService>();
 
-        var now = DateTime.Now;
+        var now = _timeProvider.UtcNow;
 
         var dueCampaignIds = await context.Campaigns
             .AsNoTracking()

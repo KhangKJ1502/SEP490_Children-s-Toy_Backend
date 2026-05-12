@@ -1,4 +1,5 @@
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Application.Interfaces.Services;
 
 namespace ToyStore.Worker.Workers;
 
@@ -6,12 +7,17 @@ public class BlogPublishWorker : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<BlogPublishWorker> _logger;
+    private readonly ITimeProvider _timeProvider;
     private readonly TimeSpan _interval = TimeSpan.FromMinutes(1);
 
-    public BlogPublishWorker(IServiceProvider serviceProvider, ILogger<BlogPublishWorker> logger)
+    public BlogPublishWorker(
+        IServiceProvider serviceProvider, 
+        ILogger<BlogPublishWorker> logger,
+        ITimeProvider timeProvider)
     {
         _serviceProvider = serviceProvider;
-        _logger = logger;
+        _logger          = logger;
+        _timeProvider    = timeProvider;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -24,7 +30,7 @@ public class BlogPublishWorker : BackgroundService
             {
                 using var scope = _serviceProvider.CreateScope();
                 var blogRepository = scope.ServiceProvider.GetRequiredService<IBlogRepository>();
-                var updatedCount = await blogRepository.PublishDueScheduledBlogsAsync(DateTime.UtcNow, stoppingToken);
+                var updatedCount = await blogRepository.PublishDueScheduledBlogsAsync(_timeProvider.UtcNow, stoppingToken);
 
                 if (updatedCount > 0)
                 {

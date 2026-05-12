@@ -7,6 +7,7 @@ public interface ICartRepository
     Task<Cart?> GetByAccountIdAsync(int accountId, CancellationToken cancellationToken = default);
 
     Task<Cart?> GetByAccountIdWithItemsAsync(int accountId, CancellationToken cancellationToken = default);
+    Task<Cart?> GetByAccountIdWithRemovedItemsAsync(int accountId, CancellationToken cancellationToken = default);
 
     Task<Cart> CreateAsync(int accountId, CancellationToken cancellationToken = default);
 

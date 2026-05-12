@@ -988,6 +988,9 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasForeignKey(d => d.ProductId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_OrderDetails_Products");
+
+            entity.Property(e => e.PromotionId).HasColumnName("PromotionID");
+            entity.Property(e => e.SlotProductId).HasColumnName("SlotProductID");
         });
 
         modelBuilder.Entity<OrderRefund>(entity =>

@@ -17,4 +17,8 @@ public interface IDeliveryRepository
     Task<bool> ExistsByIdempotencyKeyAsync(string idempotencyKey, CancellationToken ct = default);
     Task IncrementCampaignClickAsync(int campaignId, CancellationToken ct = default);
     Task<bool> HasUserClickedAsync(long deliveryId, int accountId, CancellationToken ct = default);
+    Task<List<Delivery>> GetByCampaignPagedAsync(int campaignId, int pageNumber, int pageSize, string? status, CancellationToken ct = default);
+    Task<int> CountByCampaignAsync(int campaignId, string? status, CancellationToken ct = default);
+    Task MarkDeletedAsync(long deliveryId, int accountId, CancellationToken ct = default);
+    Task MarkAllReadAsDeletedAsync(int accountId, CancellationToken ct = default);
 }

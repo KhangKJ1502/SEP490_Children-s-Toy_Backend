@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Infrastructure.Data;
@@ -100,6 +101,11 @@ public class UnitOfWork : IUnitOfWork
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         return _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public void Detach<T>(T entity) where T : class
+    {
+        _context.Entry(entity).State = EntityState.Detached;
     }
 
     public async Task BeginTransactionAsync(CancellationToken cancellationToken = default)

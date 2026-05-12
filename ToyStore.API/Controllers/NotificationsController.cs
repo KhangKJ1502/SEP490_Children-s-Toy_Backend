@@ -165,6 +165,32 @@ public class NotificationsController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// Soft-delete all read notifications.
+    /// </summary>
+    [HttpDelete("read")]
+    public async Task<IActionResult> DeleteRead(CancellationToken ct = default)
+    {
+        var accountId = GetAccountId();
+        if (accountId is null) return Unauthorized();
+
+        await _unitOfWork.Deliveries.MarkAllReadAsDeletedAsync(accountId.Value, ct);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Soft-delete a notification.
+    /// </summary>
+    [HttpDelete("{deliveryId}")]
+    public async Task<IActionResult> Delete(long deliveryId, CancellationToken ct = default)
+    {
+        var accountId = GetAccountId();
+        if (accountId is null) return Unauthorized();
+
+        await _unitOfWork.Deliveries.MarkDeletedAsync(deliveryId, accountId.Value, ct);
+        return NoContent();
+    }
+
     private int? GetAccountId()
     {
         var claim = User.FindFirst("AccountID")?.Value

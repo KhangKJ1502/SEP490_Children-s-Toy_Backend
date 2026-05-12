@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Domain.Entities;
 
@@ -8,10 +9,12 @@ namespace ToyStore.Infrastructure.Repositories;
 public class ProductRepository : IProductRepository
 {
     private readonly SEP490ToyStoreContext _context;
+    private readonly ITimeProvider _timeProvider;
 
-    public ProductRepository(SEP490ToyStoreContext context)
+    public ProductRepository(SEP490ToyStoreContext context, ITimeProvider timeProvider)
     {
-        _context = context;
+        _context      = context;
+        _timeProvider = timeProvider;
     }
 
     public async Task<List<Product>> GetPagedAsync(
@@ -288,12 +291,12 @@ public class ProductRepository : IProductRepository
         CancellationToken cancellationToken = default)
     {
         product.IsDeleted = false;
-        product.CreatedAt = DateTime.UtcNow;
+        product.CreatedAt = _timeProvider.UtcNow;
 
         if (product.ProductImage != null)
         {
             product.ProductImage.IsMain = true;
-            product.ProductImage.CreatedAt = DateTime.UtcNow;
+            product.ProductImage.CreatedAt = _timeProvider.UtcNow;
         }
 
         await _context.Products.AddAsync(product, cancellationToken);
@@ -325,7 +328,7 @@ public class ProductRepository : IProductRepository
         existing.LaunchDate = product.LaunchDate;
         existing.StockThreshold = product.StockThreshold;
         existing.LowStockNotificationEnabled = product.LowStockNotificationEnabled;
-        existing.UpdatedAt = DateTime.UtcNow;
+        existing.UpdatedAt = _timeProvider.UtcNow;
 
         if (product.ProductDetail != null)
         {
@@ -353,13 +356,13 @@ public class ProductRepository : IProductRepository
                     ProductId = existing.ProductId,
                     ImageUrl = product.ProductImage.ImageUrl,
                     IsMain = true,
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = _timeProvider.UtcNow
                 };
             }
             else
             {
                 existing.ProductImage.ImageUrl = product.ProductImage.ImageUrl;
-                existing.ProductImage.UpdatedAt = DateTime.UtcNow;
+                existing.ProductImage.UpdatedAt = _timeProvider.UtcNow;
             }
         }
 
@@ -413,7 +416,7 @@ public class ProductRepository : IProductRepository
             return;
         }
 
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.UtcNow;
         foreach (var url in sanitizedUrls)
         {
             await _context.Database.ExecuteSqlInterpolatedAsync(
@@ -519,5 +522,13 @@ public class ProductRepository : IProductRepository
             .AsNoTracking()
             .OrderBy(x => x.OriginName)
             .ToListAsync(cancellationToken);
+    }
+
+    public Task AdjustStockAsync(int productId, int amount, CancellationToken cancellationToken = default)
+    {
+        return _context.Database.ExecuteSqlRawAsync(
+            "UPDATE Products SET Quantity = Quantity + {0} WHERE ProductID = {1}",
+            new object[] { amount, productId },
+            cancellationToken);
     }
 }

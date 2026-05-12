@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
 using ToyStore.Infrastructure.Data;
 
@@ -11,10 +12,12 @@ namespace ToyStore.Infrastructure.Repositories;
 public class OrderRepository : IOrderRepository
 {
     private readonly SEP490ToyStoreContext _context;
+    private readonly ITimeProvider _timeProvider;
 
-    public OrderRepository(SEP490ToyStoreContext context)
+    public OrderRepository(SEP490ToyStoreContext context, ITimeProvider timeProvider)
     {
-        _context = context;
+        _context      = context;
+        _timeProvider = timeProvider;
     }
 
     // ── Reads ─────────────────────────────────────────────────────────────────
@@ -91,6 +94,15 @@ public class OrderRepository : IOrderRepository
             .FirstOrDefaultAsync(o => o.OrderId == orderId && !o.IsDeleted, cancellationToken);
     }
 
+    public async Task<Order?> GetByIdWithTrackingAsync(int orderId, CancellationToken cancellationToken = default)
+    {
+        return await _context.Orders
+            .AsNoTracking()
+            .Include(o => o.ShippingProviderTransactions.OrderByDescending(t => t.CreatedAt))
+                .ThenInclude(t => t.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt))
+            .FirstOrDefaultAsync(o => o.OrderId == orderId && !o.IsDeleted, cancellationToken);
+    }
+
     public async Task<Dictionary<string, byte>> GetStatusMapAsync(CancellationToken cancellationToken = default)
     {
         var statuses = await _context.StatusOrders
@@ -127,6 +139,96 @@ public class OrderRepository : IOrderRepository
         return await _context.ShippingProviderTransactions
             .Include(t => t.Order)
             .FirstOrDefaultAsync(t => t.ProviderOrderCode == providerOrderCode, cancellationToken);
+    }
+
+    public async Task<PaymentGatewayTransaction?> GetPaymentTransactionByRequestIdAsync(
+        string requestId,
+        CancellationToken cancellationToken = default)
+    {
+        var normalized = requestId.Replace("_", string.Empty);
+        return await _context.PaymentGatewayTransactions
+            .Include(t => t.Order)
+                .ThenInclude(o => o.OrderDetails)
+            .Include(t => t.Order)
+                .ThenInclude(o => o.Account)
+            .FirstOrDefaultAsync(t =>
+                t.RequestId == requestId
+                || (t.RequestId != null && t.RequestId.Replace("_", string.Empty) == normalized),
+                cancellationToken);
+    }
+
+    public Task AdjustFlashSaleStockAsync(int slotProductId, int soldDelta, int reservedDelta, CancellationToken cancellationToken = default)
+    {
+        return _context.Database.ExecuteSqlRawAsync(
+            @"UPDATE PromotionProductSlots 
+              SET SoldQuantity = CASE WHEN SoldQuantity + {0} >= 0 THEN SoldQuantity + {0} ELSE 0 END,
+                  ReservedQuantity = CASE WHEN ReservedQuantity + {1} >= 0 THEN ReservedQuantity + {1} ELSE 0 END
+              WHERE SlotProductID = {2}",
+            new object[] { soldDelta, reservedDelta, slotProductId },
+            cancellationToken);
+    }
+
+    public async Task RefundWalletAsync(int accountId, decimal amount, string transactionId, CancellationToken cancellationToken = default)
+    {
+        var wallet = await _context.Wallets.FirstOrDefaultAsync(w => w.AccountId == accountId, cancellationToken);
+        if (wallet == null) return;
+
+        var idempotencyKey = $"REFUND_{transactionId}";
+        var alreadyRefunded = await _context.WalletTransactions.AnyAsync(wt => wt.IdempotencyKey == idempotencyKey, cancellationToken);
+        if (alreadyRefunded) return;
+
+        var balanceBefore = wallet.Balance;
+        wallet.Balance += amount;
+        var now = _timeProvider.UtcNow;
+
+        await _context.WalletTransactions.AddAsync(new WalletTransaction
+        {
+            WalletId = wallet.WalletId,
+            AccountId = accountId,
+            TxnType = "Refund",
+            Direction = "CR",
+            Amount = amount,
+            BalanceBefore = balanceBefore,
+            BalanceAfter = wallet.Balance,
+            Method = "Wallet",
+            IdempotencyKey = idempotencyKey,
+            Status = "Completed",
+            CreatedAt = now,
+            CompletedAt = now
+        }, cancellationToken);
+    }
+
+    public async Task RestoreVoucherAsync(int orderId, CancellationToken cancellationToken = default)
+    {
+        var usageLogs = await _context.VoucherUsageLogs.Where(l => l.OrderId == orderId).ToListAsync(cancellationToken);
+        foreach (var usageLog in usageLogs)
+        {
+            await _context.Database.ExecuteSqlRawAsync(
+                "UPDATE Vouchers SET UsedQuantity = CASE WHEN UsedQuantity > 0 THEN UsedQuantity - 1 ELSE 0 END WHERE VoucherID = {0}",
+                new object[] { usageLog.VoucherId },
+                cancellationToken);
+            _context.VoucherUsageLogs.Remove(usageLog);
+        }
+    }
+
+    public async Task AddPaymentHistoryAsync(PaymentHistory history, CancellationToken cancellationToken = default)
+    {
+        await _context.PaymentHistories.AddAsync(history, cancellationToken);
+    }
+
+    public async Task<Wallet?> GetWalletByAccountIdAsync(int accountId, CancellationToken cancellationToken = default)
+    {
+        return await _context.Wallets.FirstOrDefaultAsync(w => w.AccountId == accountId, cancellationToken);
+    }
+
+    public async Task AddWalletTransactionAsync(WalletTransaction transaction, CancellationToken cancellationToken = default)
+    {
+        await _context.WalletTransactions.AddAsync(transaction, cancellationToken);
+    }
+
+    public async Task<bool> ExistsWalletTransactionByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken = default)
+    {
+        return await _context.WalletTransactions.AnyAsync(wt => wt.IdempotencyKey == idempotencyKey, cancellationToken);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

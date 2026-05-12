@@ -212,6 +212,14 @@ public static class DependencyInjection
 
         services.AddScoped<IGhnClient, GhnClient>();
 
+        // --- SE_PAY / VietQR ---
+        services.Configure<SePayOptions>(
+            configuration.GetSection(SePayOptions.SectionName));
+        services.AddScoped<ISePayWebhookService, SePayWebhookService>();
+        services.AddScoped<ICheckoutService, CheckoutService>();
+        services.AddScoped<IOrderLifecycleService, OrderLifecycleService>();
+        services.AddScoped<IOrderCustomerService, OrderCustomerService>();
+
         // Cau hinh webhook tokens
         services.Configure<WebhookOptions>(
             configuration.GetSection(WebhookOptions.SectionName));
@@ -231,6 +239,8 @@ public static class DependencyInjection
 
         // Hub push service — default to NoOp; API project overrides with real impl
         services.TryAddScoped<INotificationHubService, NoOpNotificationHubService>();
+
+        services.AddSingleton<ITimeProvider, ToyStore.Infrastructure.Services.TimeProvider>();
 
         return services;
     }

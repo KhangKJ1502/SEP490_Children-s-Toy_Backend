@@ -20,19 +20,22 @@ public class VoucherService : IVoucherService
     private readonly ILogger<VoucherService> _logger;
     private readonly IValidator<CreateVoucherDto> _createValidator;
     private readonly IValidator<UpdateVoucherDto> _updateValidator;
+    private readonly ITimeProvider _timeProvider;
 
     public VoucherService(
         IUnitOfWork unitOfWork,
         IMapper mapper,
         ILogger<VoucherService> logger,
         IValidator<CreateVoucherDto> createValidator,
-        IValidator<UpdateVoucherDto> updateValidator)
+        IValidator<UpdateVoucherDto> updateValidator,
+        ITimeProvider timeProvider)
     {
-        _unitOfWork = unitOfWork;
-        _mapper = mapper;
-        _logger = logger;
+        _unitOfWork      = unitOfWork;
+        _mapper          = mapper;
+        _logger          = logger;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
+        _timeProvider    = timeProvider;
     }
 
     public async Task<Result<PaginatedResponse<VoucherListDto>>> GetVouchersAsync(
@@ -109,7 +112,7 @@ public class VoucherService : IVoucherService
 
         var voucher = _mapper.Map<Voucher>(normalizedRequest);
         voucher.CreatedBy = null;
-        voucher.CreatedAt = DateTime.UtcNow;
+        voucher.CreatedAt = _timeProvider.UtcNow;
         voucher.UpdatedAt = null;
         voucher.UsedQuantity = 0;
         voucher.IsDeleted = false;
@@ -173,7 +176,7 @@ public class VoucherService : IVoucherService
         if (normalizedRequest.IsDeleted == true)
         {
             existingVoucher.IsDeleted = true;
-            existingVoucher.UpdatedAt = DateTime.UtcNow;
+            existingVoucher.UpdatedAt = _timeProvider.UtcNow;
 
             // Fix legacy invalid data to satisfy SQL Server CHECK constraints during soft delete
             if (existingVoucher.DiscountValue <= 0)
@@ -182,7 +185,7 @@ public class VoucherService : IVoucherService
             }
             if (existingVoucher.StartDate == default)
             {
-                existingVoucher.StartDate = DateTime.UtcNow;
+                existingVoucher.StartDate = _timeProvider.UtcNow;
             }
             if (existingVoucher.EndDate <= existingVoucher.StartDate)
             {
@@ -199,7 +202,7 @@ public class VoucherService : IVoucherService
             existingVoucher.DiscountType = NormalizeToken(existingVoucher.DiscountType);
             existingVoucher.DiscountTarget = NormalizeToken(existingVoucher.DiscountTarget);
             existingVoucher.Status = NormalizeStatus(existingVoucher.Status);
-            existingVoucher.UpdatedAt = DateTime.UtcNow;
+            existingVoucher.UpdatedAt = _timeProvider.UtcNow;
 
             // Validate toàn bộ dữ liệu sau merge
             var fullValidationRequest = MapToCreateDto(existingVoucher);

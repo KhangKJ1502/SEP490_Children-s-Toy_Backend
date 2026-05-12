@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Interfaces.Notifications;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Infrastructure.Data;
 
 namespace ToyStore.Worker.Workers;
@@ -8,13 +9,18 @@ public class OutboxProcessorJob : BackgroundService
 {
     private readonly IServiceProvider _services;
     private readonly ILogger<OutboxProcessorJob> _logger;
+    private readonly ITimeProvider _timeProvider;
     private const int MaxAttempts = 5;
     private readonly TimeSpan _interval = TimeSpan.FromSeconds(10);
 
-    public OutboxProcessorJob(IServiceProvider services, ILogger<OutboxProcessorJob> logger)
+    public OutboxProcessorJob(
+        IServiceProvider services, 
+        ILogger<OutboxProcessorJob> logger,
+        ITimeProvider timeProvider)
     {
-        _services = services;
-        _logger   = logger;
+        _services     = services;
+        _logger       = logger;
+        _timeProvider = timeProvider;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -44,7 +50,7 @@ public class OutboxProcessorJob : BackgroundService
                               .ToDictionary(h => h.EventType, StringComparer.OrdinalIgnoreCase);
 
         var lockId = Guid.NewGuid();
-        var now    = DateTime.UtcNow;
+        var now    = _timeProvider.UtcNow;
 
         // Claim a batch of unprocessed events with optimistic locking
         var batch = await db.DomainEventOutboxes
@@ -70,7 +76,7 @@ public class OutboxProcessorJob : BackgroundService
             if (!handlers.TryGetValue(ev.EventType, out var handler))
             {
                 _logger.LogDebug("No handler for OutboxEvent EventType={EventType}", ev.EventType);
-                ev.ProcessedOn = DateTime.UtcNow;
+                ev.ProcessedOn = _timeProvider.UtcNow;
                 continue;
             }
 
@@ -86,7 +92,7 @@ public class OutboxProcessorJob : BackgroundService
 
                 await handler.HandleAsync(data, ct);
 
-                ev.ProcessedOn = DateTime.UtcNow;
+                ev.ProcessedOn = _timeProvider.UtcNow;
                 ev.LastError   = null;
                 _logger.LogInformation(
                     "Outbox event processed. EventType={EventType} EventId={EventId}",

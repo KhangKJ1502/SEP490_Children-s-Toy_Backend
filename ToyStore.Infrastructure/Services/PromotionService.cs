@@ -23,6 +23,7 @@ public class PromotionService : IPromotionService
     private readonly IValidator<CreatePromotionDto> _createValidator;
     private readonly IValidator<UpdatePromotionDto> _updateValidator;
     private readonly ICurrentUserService _currentUserService;
+    private readonly ITimeProvider _timeProvider;
 
     public PromotionService(
         IUnitOfWork unitOfWork,
@@ -31,15 +32,17 @@ public class PromotionService : IPromotionService
         ICartService cartService,
         IValidator<CreatePromotionDto> createValidator,
         IValidator<UpdatePromotionDto> updateValidator,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        ITimeProvider timeProvider)
     {
-        _unitOfWork = unitOfWork;
-        _mapper = mapper;
-        _logger = logger;
-        _cartService = cartService;
-        _createValidator = createValidator;
-        _updateValidator = updateValidator;
+        _unitOfWork         = unitOfWork;
+        _mapper             = mapper;
+        _logger             = logger;
+        _cartService        = cartService;
+        _createValidator    = createValidator;
+        _updateValidator    = updateValidator;
         _currentUserService = currentUserService;
+        _timeProvider       = timeProvider;
     }
 
     public async Task<Result<PaginatedResponse<PromotionListDto>>> GetPromotionsAsync(
@@ -150,7 +153,7 @@ public class PromotionService : IPromotionService
         var promotion = _mapper.Map<Promotion>(request);
         // Set dynamically from current authenticated user
         promotion.CreatedBy = _currentUserService.AccountId; 
-        promotion.CreatedAt = DateTime.UtcNow;
+        promotion.CreatedAt = _timeProvider.UtcNow;
         promotion.UpdatedAt = null;
         promotion.IsDeleted = false;
 
@@ -178,7 +181,7 @@ public class PromotionService : IPromotionService
                 }
 
                 var productPromotion = _mapper.Map<ProductPromotion>(pp);
-                productPromotion.CreatedAt = DateTime.UtcNow;
+                productPromotion.CreatedAt = _timeProvider.UtcNow;
                 promotion.ProductPromotions.Add(productPromotion);
             }
         }
@@ -188,7 +191,7 @@ public class PromotionService : IPromotionService
             foreach (var ts in request.PromotionTimeSlots)
             {
                 var timeSlot = _mapper.Map<PromotionTimeSlot>(ts);
-                timeSlot.CreatedAt = DateTime.UtcNow;
+                timeSlot.CreatedAt = _timeProvider.UtcNow;
                 promotion.PromotionTimeSlots.Add(timeSlot);
             }
         }
@@ -263,12 +266,12 @@ public class PromotionService : IPromotionService
         if (request.IsDeleted == true)
         {
             existingPromotion.IsDeleted = true;
-            existingPromotion.UpdatedAt = DateTime.UtcNow;
+            existingPromotion.UpdatedAt = _timeProvider.UtcNow;
 
             // Fix legacy invalid data to satisfy SQL Server CHECK constraints during soft delete
             if (existingPromotion.StartDate == default)
             {
-                existingPromotion.StartDate = DateTime.UtcNow;
+                existingPromotion.StartDate = _timeProvider.UtcNow;
             }
             if (existingPromotion.EndDate <= existingPromotion.StartDate)
             {
@@ -278,7 +281,7 @@ public class PromotionService : IPromotionService
         else
         {
             _mapper.Map(request, existingPromotion);
-            existingPromotion.UpdatedAt = DateTime.UtcNow;
+            existingPromotion.UpdatedAt = _timeProvider.UtcNow;
 
             var fullValidationRequest = _mapper.Map<CreatePromotionDto>(existingPromotion);
             var fullValidationResult = await _createValidator.ValidateAsync(fullValidationRequest, cancellationToken);
@@ -343,14 +346,14 @@ public class PromotionService : IPromotionService
                         existingPp.DiscountPercent = incomingPp.DiscountPercent;
                         existingPp.SaleQuantity = incomingPp.SaleQuantity;
                         existingPp.IsActive = incomingPp.IsActive;
-                        existingPp.UpdatedAt = DateTime.UtcNow;
+                        existingPp.UpdatedAt = _timeProvider.UtcNow;
                     }
                     else
                     {
                         // Add
                         var newPp = _mapper.Map<ProductPromotion>(incomingPp);
                         newPp.PromotionId = promotionId;
-                        newPp.CreatedAt = DateTime.UtcNow;
+                        newPp.CreatedAt = _timeProvider.UtcNow;
                         existingPromotion.ProductPromotions.Add(newPp);
                     }
                 }
@@ -368,7 +371,7 @@ public class PromotionService : IPromotionService
                 {
                     var newTs = _mapper.Map<PromotionTimeSlot>(incomingTs);
                     newTs.PromotionId = promotionId;
-                    newTs.CreatedAt = DateTime.UtcNow;
+                    newTs.CreatedAt = _timeProvider.UtcNow;
                     existingPromotion.PromotionTimeSlots.Add(newTs);
                 }
             }

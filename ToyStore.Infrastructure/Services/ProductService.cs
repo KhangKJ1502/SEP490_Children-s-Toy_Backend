@@ -18,6 +18,7 @@ public class ProductService : IProductService
     private readonly ICartService _cartService;
     private readonly IValidator<CreateProductDto> _createProductValidator;
     private readonly IValidator<UpdateProductDto> _updateProductValidator;
+    private readonly ITimeProvider _timeProvider;
 
     public ProductService(
         IUnitOfWork unitOfWork,
@@ -25,14 +26,16 @@ public class ProductService : IProductService
         IMapper mapper,
         ICartService cartService,
         IValidator<CreateProductDto> createProductValidator,
-        IValidator<UpdateProductDto> updateProductValidator)
+        IValidator<UpdateProductDto> updateProductValidator,
+        ITimeProvider timeProvider)
     {
-        _unitOfWork = unitOfWork;
-        _logger = logger;
-        _mapper = mapper;
-        _cartService = cartService;
+        _unitOfWork             = unitOfWork;
+        _logger                 = logger;
+        _mapper                 = mapper;
+        _cartService            = cartService;
         _createProductValidator = createProductValidator;
         _updateProductValidator = updateProductValidator;
+        _timeProvider           = timeProvider;
     }
 
     public async Task<Result<PaginatedResponse<ProductListDto>>> GetProductsAsync(
@@ -334,7 +337,7 @@ public class ProductService : IProductService
             return Result<ProductDto>.BusinessError("Launch date is required for coming soon products.");
         }
 
-        if (status == "ComingSoon" && launchDate.HasValue && launchDate.Value.Date < DateTime.UtcNow.Date)
+        if (status == "ComingSoon" && launchDate.HasValue && launchDate.Value.Date < _timeProvider.UtcNow.Date)
         {
             return Result<ProductDto>.BusinessError("Launch date must be today or later for coming soon products.");
         }

@@ -8,11 +8,16 @@ public class ProductFollowerService : IProductFollowerService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUserService _currentUserService;
+    private readonly ITimeProvider _timeProvider;
 
-    public ProductFollowerService(IUnitOfWork unitOfWork, ICurrentUserService currentUserService)
+    public ProductFollowerService(
+        IUnitOfWork unitOfWork,
+        ICurrentUserService currentUserService,
+        ITimeProvider timeProvider)
     {
-        _unitOfWork = unitOfWork;
+        _unitOfWork         = unitOfWork;
         _currentUserService = currentUserService;
+        _timeProvider       = timeProvider;
     }
 
     /// <summary>
@@ -33,7 +38,7 @@ public class ProductFollowerService : IProductFollowerService
         {
             AccountId = accountId,
             ProductId = productId,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = _timeProvider.UtcNow
         };
 
         await _unitOfWork.ProductFollowers.AddAsync(follower, cancellationToken);

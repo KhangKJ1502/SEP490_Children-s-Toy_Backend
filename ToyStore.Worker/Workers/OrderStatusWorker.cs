@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Infrastructure.Data;
 
 namespace ToyStore.Worker.Workers;
@@ -12,12 +13,17 @@ public class OrderStatusWorker : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<OrderStatusWorker> _logger;
+    private readonly ITimeProvider _timeProvider;
     private readonly TimeSpan _interval = TimeSpan.FromMinutes(5);
 
-    public OrderStatusWorker(IServiceProvider serviceProvider, ILogger<OrderStatusWorker> logger)
+    public OrderStatusWorker(
+        IServiceProvider serviceProvider, 
+        ILogger<OrderStatusWorker> logger,
+        ITimeProvider timeProvider)
     {
         _serviceProvider = serviceProvider;
-        _logger = logger;
+        _logger          = logger;
+        _timeProvider    = timeProvider;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -49,7 +55,7 @@ public class OrderStatusWorker : BackgroundService
         _logger.LogInformation("Checking for pending orders to auto-cancel");
 
         // Huỷ đơn PENDING chưa thanh toán sau 24h
-        var cutoff = DateTime.UtcNow.AddHours(-24);
+        var cutoff = _timeProvider.UtcNow.AddHours(-24);
 
         var staleOrders = await context.Orders
             .Where(o => o.PaymentStatus == "PENDING"
@@ -77,9 +83,9 @@ public class OrderStatusWorker : BackgroundService
         {
             order.PaymentStatus = "FAILED";
             order.StatusId = cancelledStatus.StatusId;
-            order.CancelledAt = DateTime.UtcNow;
+            order.CancelledAt = _timeProvider.UtcNow;
             order.CancelReason = "Payment timeout — auto cancelled after 24 hours";
-            order.UpdatedAt = DateTime.UtcNow;
+            order.UpdatedAt = _timeProvider.UtcNow;
 
             _logger.LogInformation(
                 "Auto-cancelled Order {OrderCode} (payment timeout)",

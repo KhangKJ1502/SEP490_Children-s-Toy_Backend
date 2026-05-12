@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs.Notifications;
 using ToyStore.Application.Interfaces.Notifications;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Notifications;
 
@@ -15,12 +16,17 @@ public class BackInStockJob : BackgroundService
 {
     private readonly IServiceProvider _services;
     private readonly ILogger<BackInStockJob> _logger;
+    private readonly ITimeProvider _timeProvider;
     private readonly TimeSpan _interval = TimeSpan.FromMinutes(30);
 
-    public BackInStockJob(IServiceProvider services, ILogger<BackInStockJob> logger)
+    public BackInStockJob(
+        IServiceProvider services, 
+        ILogger<BackInStockJob> logger,
+        ITimeProvider timeProvider)
     {
-        _services = services;
-        _logger   = logger;
+        _services     = services;
+        _logger       = logger;
+        _timeProvider = timeProvider;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -75,7 +81,7 @@ public class BackInStockJob : BackgroundService
                     IdempotencyKey     = $"product.back_in_stock:{follower.ProductId}:{follower.AccountId}",
                 }, ct);
 
-                follower.NotifiedAt = DateTime.UtcNow;
+                follower.NotifiedAt = _timeProvider.UtcNow;
                 count++;
             }
 

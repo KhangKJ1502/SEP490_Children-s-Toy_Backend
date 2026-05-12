@@ -33,6 +33,8 @@ public class AdminOrderService : IAdminOrderService
     private readonly IValidator<AssignOrderRequestDto> _assignValidator;
     private readonly IDomainEventPublisher _eventPublisher;
     private readonly ILogger<AdminOrderService> _logger;
+    private readonly ITimeProvider _timeProvider;
+    private readonly IOrderLifecycleService _orderLifecycle;
 
     // Role names khop voi ClaimTypes.Role trong JWT
     private const string RoleStaff       = "Staff";
@@ -50,7 +52,9 @@ public class AdminOrderService : IAdminOrderService
         IValidator<CancelOrderRequestDto> cancelValidator,
         IValidator<AssignOrderRequestDto> assignValidator,
         IDomainEventPublisher eventPublisher,
-        ILogger<AdminOrderService> logger)
+        ILogger<AdminOrderService> logger,
+        ITimeProvider timeProvider,
+        IOrderLifecycleService orderLifecycle)
     {
         _unitOfWork      = unitOfWork;
         _currentUser     = currentUser;
@@ -63,6 +67,8 @@ public class AdminOrderService : IAdminOrderService
         _assignValidator = assignValidator;
         _eventPublisher  = eventPublisher;
         _logger          = logger;
+        _timeProvider    = timeProvider;
+        _orderLifecycle  = orderLifecycle;
     }
 
     // ── UC1: Danh sach don hang ───────────────────────────────────────────────
@@ -142,7 +148,7 @@ public class AdminOrderService : IAdminOrderService
             return Result<ConfirmOrderResponseDto>.Failure("CONFIGURATION_ERROR",
                 "Status 'Confirmed' not found in database.");
 
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.UtcNow;
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
@@ -211,7 +217,7 @@ public class AdminOrderService : IAdminOrderService
             return Result<ProcessOrderResponseDto>.Failure("CONFIGURATION_ERROR",
                 "Status 'Processing' not found in database.");
 
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.UtcNow;
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
@@ -282,7 +288,7 @@ public class AdminOrderService : IAdminOrderService
                 "Status 'Shipped' not found in database.");
 
         // Xay dung request goi GHN
-        var codAmount = string.Equals(order.PaymentMethod, "SHIP_CODE", StringComparison.OrdinalIgnoreCase)
+        var codAmount = string.Equals(order.PaymentMethod, "SHIP_COD", StringComparison.OrdinalIgnoreCase)
             ? order.TotalAmount
             : 0m;
 
@@ -374,7 +380,7 @@ public class AdminOrderService : IAdminOrderService
                 actualFee = feeResult.Data!.Fee;
         }
 
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.UtcNow;
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
@@ -465,47 +471,21 @@ public class AdminOrderService : IAdminOrderService
             return Result<CancelOrderResponseDto>.Failure("CONFIGURATION_ERROR",
                 "Status 'Cancelled' not found in database.");
 
-        var now = DateTime.UtcNow;
-
-        await _unitOfWork.BeginTransactionAsync(cancellationToken);
-        try
+        var result = await _orderLifecycle.CancelOrderInternalAsync(order, request.Reason ?? "Admin cancelled", _currentUser.AccountId, cancellationToken);
+        if (!result.IsSuccess)
         {
-            order.StatusId     = cancelledId;
-            order.CancelledAt  = now;
-            order.CancelReason = request.Reason;
-            order.CancelledBy  = _currentUser.AccountId;
-            order.UpdatedAt    = now;
-
-            await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
-            {
-                OrderId   = order.OrderId,
-                StatusId  = cancelledId,
-                ChangedBy = _currentUser.AccountId,
-                Note      = request.Reason,
-                CreatedAt = now
-            }, cancellationToken);
-
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-            await _unitOfWork.CommitTransactionAsync(cancellationToken);
-
-            _logger.LogInformation("Order {OrderId} cancelled by account {AccountId}",
-                orderId, _currentUser.AccountId);
-
-            var cancelPayload = new { orderId = order.OrderId, orderCode = order.OrderCode, reason = request.Reason };
-            await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderCancelled, cancelPayload, CancellationToken.None);
-            await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.StaffCancelRequested, cancelPayload, CancellationToken.None);
-
-            return Result<CancelOrderResponseDto>.Success(new CancelOrderResponseDto
-            {
-                OrderId     = order.OrderId,
-                CancelledAt = now
-            });
+            return Result<CancelOrderResponseDto>.Failure(result.ErrorCode!, result.ErrorMessage!);
         }
-        catch
+
+        var cancelPayload = new { orderId = order.OrderId, orderCode = order.OrderCode, reason = request.Reason };
+        await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderCancelled, cancelPayload, CancellationToken.None);
+        await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.StaffCancelRequested, cancelPayload, CancellationToken.None);
+
+        return Result<CancelOrderResponseDto>.Success(new CancelOrderResponseDto
         {
-            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-            throw;
-        }
+            OrderId     = order.OrderId,
+            CancelledAt = order.CancelledAt ?? _timeProvider.UtcNow
+        });
     }
 
     // ── UC7: Admin assign lai don ─────────────────────────────────────────────
@@ -538,7 +518,7 @@ public class AdminOrderService : IAdminOrderService
         if (validationError is not null)
             return Result.UnprocessableEntity(validationError);
 
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.UtcNow;
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
 
         if (!statusMap.TryGetValue(order.Status.StatusName, out var currentStatusId))
@@ -618,7 +598,7 @@ public class AdminOrderService : IAdminOrderService
                 return;
             }
 
-            var now = DateTime.UtcNow;
+            var now = _timeProvider.UtcNow;
 
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
             try

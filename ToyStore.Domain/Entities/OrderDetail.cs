@@ -25,6 +25,10 @@ public partial class OrderDetail
 
     public DateTime CreatedAt { get; set; }
 
+    public int? PromotionId { get; set; }
+
+    public int? SlotProductId { get; set; }
+
     public DateTime? UpdatedAt { get; set; }
 
     public virtual Order Order { get; set; } = null!;

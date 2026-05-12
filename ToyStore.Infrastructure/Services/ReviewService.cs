@@ -26,6 +26,7 @@ public class ReviewService : IReviewService
     private readonly IValidator<UpdateModerationStatusDto> _updateStatusValidator;
     private readonly IValidator<CreateStaffReplyDto> _createReplyValidator;
     private readonly IValidator<UpdateStaffReplyDto> _updateReplyValidator;
+    private readonly ITimeProvider _timeProvider;
 
     public ReviewService(
         IUnitOfWork unitOfWork,
@@ -38,19 +39,21 @@ public class ReviewService : IReviewService
         IValidator<UpdateReviewProductDto> updateValidator,
         IValidator<UpdateModerationStatusDto> updateStatusValidator,
         IValidator<CreateStaffReplyDto> createReplyValidator,
-        IValidator<UpdateStaffReplyDto> updateReplyValidator)
+        IValidator<UpdateStaffReplyDto> updateReplyValidator,
+        ITimeProvider timeProvider)
     {
-        _unitOfWork = unitOfWork;
-        _mapper = mapper;
-        _currentUser = currentUser;
-        _imageUploadService = imageUploadService;
-        _eventPublisher = eventPublisher;
-        _logger = logger;
-        _createValidator = createValidator;
-        _updateValidator = updateValidator;
+        _unitOfWork            = unitOfWork;
+        _mapper                = mapper;
+        _currentUser           = currentUser;
+        _imageUploadService    = imageUploadService;
+        _eventPublisher        = eventPublisher;
+        _logger                = logger;
+        _createValidator       = createValidator;
+        _updateValidator       = updateValidator;
         _updateStatusValidator = updateStatusValidator;
-        _createReplyValidator = createReplyValidator;
-        _updateReplyValidator = updateReplyValidator;
+        _createReplyValidator  = createReplyValidator;
+        _updateReplyValidator  = updateReplyValidator;
+        _timeProvider          = timeProvider;
     }
 
     // --- Public / Customer ---
@@ -117,13 +120,13 @@ public class ReviewService : IReviewService
         if (order.Status.StatusName != "Completed")
             return Result<ReviewProductDto>.BusinessError("You can only review products from completed orders.");
 
-        if (order.CompletedAt == null || (DateTime.UtcNow - order.CompletedAt.Value).TotalDays > 20)
+        if (order.CompletedAt == null || (_timeProvider.UtcNow - order.CompletedAt.Value).TotalDays > 20)
             return Result<ReviewProductDto>.BusinessError("You can only review within 20 days after the order is completed.");
 
         if (!order.OrderDetails.Any(od => od.ProductId == dto.ProductId))
             return Result<ReviewProductDto>.BusinessError("The product is not part of this order.");
 
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.UtcNow;
 
         // 3. Khởi tạo Review entity
         var review = new ReviewProduct
@@ -230,14 +233,14 @@ public class ReviewService : IReviewService
         if (approvedLog == null)
             return Result<ReviewProductDto>.BusinessError("Review is not in an approved state to edit.");
 
-        if ((DateTime.UtcNow - approvedLog.CreatedAt).TotalDays > 3)
+        if ((_timeProvider.UtcNow - approvedLog.CreatedAt).TotalDays > 3)
             return Result<ReviewProductDto>.BusinessError("You can only edit the review within 3 days after it is approved.");
 
         // Lấy entity track để update
         var trackReview = await _unitOfWork.Reviews.GetByIdForUpdateAsync(reviewId, cancellationToken);
         if (trackReview == null) return Result<ReviewProductDto>.NotFound("Review", reviewId);
 
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.UtcNow;
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
@@ -315,7 +318,7 @@ public class ReviewService : IReviewService
         if (review == null || review.AccountId != accountId)
             return Result.NotFound("Review", reviewId);
 
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.UtcNow;
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
@@ -404,7 +407,7 @@ public class ReviewService : IReviewService
         if (review == null)
             return Result<AdminReviewDetailDto>.NotFound("Review", reviewId);
 
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.UtcNow;
         var staffId = _currentUser.AccountId;
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
@@ -481,7 +484,7 @@ public class ReviewService : IReviewService
             return Result<StaffReplyDto>.NotFound("Review", reviewId);
 
         var staffId = _currentUser.AccountId;
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.UtcNow;
 
         var reply = new StaffReviewProductReply
         {
@@ -534,15 +537,18 @@ public class ReviewService : IReviewService
             return Result<StaffReplyDto>.Failure("UNAUTHORIZED", "You can only edit your own replies.");
 
         reply.Content = dto.Content;
-        reply.UpdatedAt = DateTime.UtcNow;
+        reply.UpdatedAt = _timeProvider.UtcNow;
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Staff {StaffId} updated reply {ReplyId} for review {ReviewId}", _currentUser.AccountId, replyId, reviewId);
 
         // Load account to map StaffName
-        if(reply.Staff == null)
-            reply.Staff = await _unitOfWork.Accounts.GetByIdAsync(reply.StaffId, cancellationToken);
+        if (reply.Staff == null)
+        {
+            var staff = await _unitOfWork.Accounts.GetByIdAsync(reply.StaffId, cancellationToken);
+            if (staff != null) reply.Staff = staff;
+        }
 
         return Result<StaffReplyDto>.Success(_mapper.Map<StaffReplyDto>(reply));
     }
@@ -558,7 +564,7 @@ public class ReviewService : IReviewService
             return Result.Failure("UNAUTHORIZED", "You can only delete your own replies.");
 
         reply.IsDeleted = true;
-        reply.UpdatedAt = DateTime.UtcNow;
+        reply.UpdatedAt = _timeProvider.UtcNow;
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 

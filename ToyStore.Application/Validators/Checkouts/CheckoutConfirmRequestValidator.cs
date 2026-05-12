@@ -9,8 +9,9 @@ public class CheckoutConfirmRequestValidator : AbstractValidator<CheckoutConfirm
 
     public CheckoutConfirmRequestValidator()
     {
+        // AccountId từ JWT ở controller; client có thể bỏ trống / 0.
         RuleFor(x => x.AccountId)
-            .GreaterThan(0).WithMessage("Account ID must be greater than 0.");
+            .GreaterThanOrEqualTo(0).WithMessage("Account ID must be non-negative.");
 
         RuleFor(x => x.AddressId)
             .GreaterThan(0).WithMessage("Address ID must be greater than 0.");
@@ -39,10 +40,6 @@ public class CheckoutConfirmRequestValidator : AbstractValidator<CheckoutConfirm
         RuleForEach(x => x.Items)
             .SetValidator(new CheckoutConfirmItemValidator());
 
-        When(x => string.Equals(x.PaymentMethod, "SHIP_COD", StringComparison.OrdinalIgnoreCase), () =>
-        {
-            RuleFor(x => x.CodValue)
-                .GreaterThan(0).WithMessage("COD value must be greater than 0 for SHIP_COD.");
-        });
+        // COD: tổng tiền COD do server tính từ đơn, không bắt client gửi CodValue.
     }
 }
