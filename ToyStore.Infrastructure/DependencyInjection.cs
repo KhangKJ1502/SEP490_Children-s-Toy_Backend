@@ -12,6 +12,7 @@ using ToyStore.Application.DTOs.Brands;
 using ToyStore.Application.DTOs.Campaigns;
 using ToyStore.Application.DTOs.Carts;
 using ToyStore.Application.DTOs.CustomerChildren;
+using ToyStore.Application.DTOs.Customers;
 using ToyStore.Application.DTOs.Orders;
 using ToyStore.Application.DTOs.Profiles;
 using ToyStore.Application.DTOs.Reviews;
@@ -27,6 +28,7 @@ using ToyStore.Application.Validators.Brands;
 using ToyStore.Application.Validators.Campaigns;
 using ToyStore.Application.Validators.Carts;
 using ToyStore.Application.Validators.CustomerChildren;
+using ToyStore.Application.Validators.Customers;
 using ToyStore.Application.Validators.Orders;
 using ToyStore.Application.Validators.Profiles;
 using ToyStore.Application.Validators.Reviews;
@@ -83,6 +85,7 @@ public static class DependencyInjection
             cfg.AddProfile<OrdersProfile>();
             cfg.AddProfile<ReviewProfile>();
             cfg.AddProfile<CustomerChildProfile>();
+            cfg.AddProfile<CustomerProfile>();
         });
 
         services.AddScoped<IValidator<CreateBrandDto>, CreateBrandValidator>();
@@ -96,6 +99,7 @@ public static class DependencyInjection
 
         services.AddScoped<IValidator<CreateAccountDto>, CreateAccountValidator>();
         services.AddScoped<IValidator<UpdateAccountStatusDto>, UpdateAccountStatusValidator>();
+        services.AddScoped<IValidator<UpdateCustomerDto>, UpdateCustomerValidator>();
         services.AddScoped<IValidator<CreateTemplateDto>, CreateTemplateValidator>();
         services.AddScoped<IValidator<UpdateTemplateDto>, UpdateTemplateValidator>();
         services.AddScoped<IValidator<CreateCampaignDto>, CreateCampaignValidator>();
@@ -137,6 +141,7 @@ public static class DependencyInjection
         services.AddScoped<IAccountRepository, AccountRepository>();
         services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<IAccountService, AccountService>();
+        services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<IRoleService, RoleService>();
         services.AddScoped<IBrandRepository, BrandRepository>();
         services.AddScoped<IBlogRepository, BlogRepository>();
