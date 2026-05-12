@@ -39,6 +39,11 @@ public interface IBlogRepository
     Task<BlogPost?> GetByIdAsync(int blogPostId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets all available blog categories.
+    /// </summary>
+    Task<List<BlogCategory>> GetBlogCategoriesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Checks whether a blog category exists.
     /// </summary>
     Task<bool> BlogCategoryExistsAsync(short blogCategoryId, CancellationToken cancellationToken = default);
