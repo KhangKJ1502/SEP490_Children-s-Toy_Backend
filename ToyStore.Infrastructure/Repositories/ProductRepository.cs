@@ -379,6 +379,11 @@ public class ProductRepository : IProductRepository
         return updated!;
     }
 
+    public void Update(Product product)
+    {
+        _context.Products.Update(product);
+    }
+
     public Task<List<string>> GetAdditionalImageUrlsAsync(
         int productId,
         CancellationToken cancellationToken = default)

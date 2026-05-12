@@ -69,6 +69,11 @@ public interface IProductRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Update product using Entity Framework change tracking
+    /// </summary>
+    void Update(Product product);
+
+    /// <summary>
     /// Lay danh sach anh phu cua Product.
     /// </summary>
     Task<List<string>> GetAdditionalImageUrlsAsync(int productId, CancellationToken cancellationToken = default);

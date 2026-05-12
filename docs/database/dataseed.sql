@@ -1,8 +1,30 @@
+
 /* =================================================================
-   DataSeed FINAL – SEP490_ToyStore v3.2 FIXED
-   Fix 1: CHOOSE() overflow → dùng CASE WHEN cho PaymentMethod
-   Fix 2: WalletTransaction BalanceAfter âm → tăng Balance lên 10.000.000
-   Áp dụng trên schema v3.1 (đã tạo sẵn database + schema)
+   DataSeed FINAL – SEP490_ToyStore v3.2 FIXED (Full Audit)
+   
+   Danh sách lỗi đã sửa so với bản gốc:
+   ─────────────────────────────────────────────────────────────────
+   FIX-01: TemplateCode 'NOTIF_PROMO_START' và 'NOTIF_ORDER_PLACED'
+           không tồn tại → đổi thành 'FLASH_SALE_STARTED' và
+           'ORDER_PLACED' (đúng với bảng Templates ở section 27)
+   FIX-02: PaymentHistory dùng 'SHIP_COD' đúng CHECK constraint
+   FIX-03: Campaigns seed FK TemplateCode không khớp → dùng code
+           đúng từ bảng Templates đã seed
+   FIX-10: Notification.Campaigns bỏ cột 'SentAt' không tồn tại
+   FIX-04: Notification.Deliveries INSERT thiếu IdempotencyKey
+           → thêm để đảm bảo idempotent khi chạy lại
+   FIX-05: ShippingProviderTransactions section 15 có thể chèn
+           trùng với section 14 → tăng cường guard NOT EXISTS
+   FIX-06: CampaignStats.TemplateCode trong Campaign seed sai
+           → không có cột đó, bỏ trường thừa
+   FIX-07: Notification.Deliveries seed dùng inline NEWID() trong
+           IdempotencyKey → dùng subquery để đảm bảo unique
+   FIX-08: CHOOSE() overflow giữ nguyên CASE WHEN (giữ fix gốc)
+   FIX-09: WalletTransaction BalanceAfter âm – giữ nguyên fix gốc
+           (Balance seed = 10.000.000)
+   FIX-10: DeliveryActions seed thiếu → thêm vào section 29
+   
+   Áp dụng trên schema v3.1
    Chạy 1 lần duy nhất, idempotent (IF NOT EXISTS guard mọi nơi)
 ================================================================= */
 
@@ -11,6 +33,9 @@ GO
 SET NOCOUNT ON;
 GO
 
+/* ══════════════════════════════════════════════════════════════
+   PRE-FLIGHT: Xử lý PaymentCode UNIQUE constraint nếu cần
+══════════════════════════════════════════════════════════════ */
 DECLARE @cname NVARCHAR(200);
 SELECT @cname = kc.name
 FROM   sys.key_constraints  kc
@@ -35,23 +60,23 @@ IF NOT EXISTS (
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    1. ROLES
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 SET IDENTITY_INSERT [dbo].[Roles] ON;
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Roles] WHERE RoleID = 1)
     INSERT INTO [dbo].[Roles] (RoleID, RoleName, Description, CreatedAt) VALUES
     (1, 'Customer',    N'Khách hàng',         '2024-01-05 08:00:00'),
     (2, 'Admin',       N'Quản trị viên',      '2024-01-05 08:00:00'),
     (3, 'Staff',       N'Nhân viên bán hàng', '2024-01-05 08:00:00'),
-    (4, 'Mechandise',  N'Nhân viên kho',      '2024-01-05 08:00:00');
+    (4, 'Merchandise', N'Nhân viên kho',      '2024-01-05 08:00:00');
 SET IDENTITY_INSERT [dbo].[Roles] OFF;
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    2. ACCOUNTS – nhân viên (3 người)
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Accounts] WHERE Email = 'admin@toyhouse.vn')
     INSERT INTO [dbo].[Accounts]
         (RoleID, EmployeeCode, AccountName, PhoneNumber, Email, PasswordHash, IsActive, CreatedAt)
@@ -62,10 +87,10 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[Accounts] WHERE Email = 'admin@toyhouse.vn')
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    3. ACCOUNTS – khách hàng (20 người)
    Trigger TR_Accounts_InitPreferences tự chèn UserPreferences
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Accounts] WHERE Email = 'lananh.pham@gmail.com')
     INSERT INTO [dbo].[Accounts]
         (RoleID, AccountName, PhoneNumber, Email, PasswordHash, IsActive, CreatedAt)
@@ -93,9 +118,9 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[Accounts] WHERE Email = 'lananh.pham@gmail.c
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    4. LOOKUP TABLES
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 
 -- SuperCategories
 SET IDENTITY_INSERT [dbo].[SuperCategories] ON;
@@ -204,7 +229,8 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[StatusOrders] WHERE StatusID = 1)
     (5,'Delivering'),
     (6,'Delivered'),
     (7,'Completed'),
-    (8,'Cancelled');
+    (8,'Cancelled'),
+    (9,'Refunded');
 SET IDENTITY_INSERT [dbo].[StatusOrders] OFF;
 
 -- ReactionTypes
@@ -218,9 +244,9 @@ SET IDENTITY_INSERT [dbo].[ReactionTypes] OFF;
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    5. PROMOTIONS
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Promotions] WHERE PromotionName = N'Sale Hè Rực Rỡ 2026')
     INSERT INTO [dbo].[Promotions]
         (CreatedBy, PromotionName, PromotionType, Description, StartDate, EndDate, Status, Priority, CreatedAt)
@@ -240,9 +266,9 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[Promotions] WHERE PromotionName = N'Sale Hè
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    6. PRODUCTS (15 sản phẩm)
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 SET IDENTITY_INSERT [dbo].[Products] ON;
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Products] WHERE ProductID = 1)
     INSERT INTO [dbo].[Products]
@@ -267,9 +293,9 @@ SET IDENTITY_INSERT [dbo].[Products] OFF;
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    7. PRODUCT DETAILS
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[ProductDetails] WHERE ProductID = 1)
     INSERT INTO [dbo].[ProductDetails] (ProductID, Description, MaterialID, AgeID, SexID, OriginID)
     VALUES
@@ -291,63 +317,124 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[ProductDetails] WHERE ProductID = 1)
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    8. PRODUCT IMAGES (3 ảnh/sản phẩm)
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════
+   8. PRODUCT IMAGES (5 ảnh/sản phẩm: 1 main + 4 phụ)
+══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[ProductImages] WHERE ProductID = 1 AND IsMain = 1)
     INSERT INTO [dbo].[ProductImages] (ProductID, ImageUrl, IsMain, CreatedAt)
     VALUES
-    ( 1,'https://picsum.photos/seed/lego-city-1/400/400',      1,'2024-02-01 08:00:00'),
+    -- Product 1: Lego City Trạm Cảnh Sát
+    ( 1,'https://picsum.photos/seed/lego-city-main/400/400',   1,'2024-02-01 08:00:00'),
     ( 1,'https://picsum.photos/seed/lego-city-2/400/400',      0,'2024-02-01 08:00:00'),
     ( 1,'https://picsum.photos/seed/lego-city-3/400/400',      0,'2024-02-01 08:00:00'),
-    ( 2,'https://picsum.photos/seed/wooden-block-1/400/400',   1,'2024-02-05 08:00:00'),
+    ( 1,'https://picsum.photos/seed/lego-city-4/400/400',      0,'2024-02-01 08:00:00'),
+    ( 1,'https://picsum.photos/seed/lego-city-5/400/400',      0,'2024-02-01 08:00:00'),
+
+    -- Product 2: Bộ Xếp Hình Gỗ
+    ( 2,'https://picsum.photos/seed/wooden-block-main/400/400',1,'2024-02-05 08:00:00'),
     ( 2,'https://picsum.photos/seed/wooden-block-2/400/400',   0,'2024-02-05 08:00:00'),
     ( 2,'https://picsum.photos/seed/wooden-block-3/400/400',   0,'2024-02-05 08:00:00'),
-    ( 3,'https://picsum.photos/seed/flashcard-1/400/400',      1,'2024-02-10 08:00:00'),
+    ( 2,'https://picsum.photos/seed/wooden-block-4/400/400',   0,'2024-02-05 08:00:00'),
+    ( 2,'https://picsum.photos/seed/wooden-block-5/400/400',   0,'2024-02-05 08:00:00'),
+
+    -- Product 3: Thẻ Học Thông Minh 4D
+    ( 3,'https://picsum.photos/seed/flashcard-main/400/400',   1,'2024-02-10 08:00:00'),
     ( 3,'https://picsum.photos/seed/flashcard-2/400/400',      0,'2024-02-10 08:00:00'),
     ( 3,'https://picsum.photos/seed/flashcard-3/400/400',      0,'2024-02-10 08:00:00'),
-    ( 4,'https://picsum.photos/seed/microscope-1/400/400',     1,'2024-03-01 08:00:00'),
+    ( 3,'https://picsum.photos/seed/flashcard-4/400/400',      0,'2024-02-10 08:00:00'),
+    ( 3,'https://picsum.photos/seed/flashcard-5/400/400',      0,'2024-02-10 08:00:00'),
+
+    -- Product 4: Kính Hiển Vi ScienceMax
+    ( 4,'https://picsum.photos/seed/microscope-main/400/400',  1,'2024-03-01 08:00:00'),
     ( 4,'https://picsum.photos/seed/microscope-2/400/400',     0,'2024-03-01 08:00:00'),
     ( 4,'https://picsum.photos/seed/microscope-3/400/400',     0,'2024-03-01 08:00:00'),
-    ( 5,'https://picsum.photos/seed/duck-car-1/400/400',       1,'2024-03-10 08:00:00'),
+    ( 4,'https://picsum.photos/seed/microscope-4/400/400',     0,'2024-03-01 08:00:00'),
+    ( 4,'https://picsum.photos/seed/microscope-5/400/400',     0,'2024-03-01 08:00:00'),
+
+    -- Product 5: Xe Chòi Chân Hình Vịt Donald
+    ( 5,'https://picsum.photos/seed/duck-car-main/400/400',    1,'2024-03-10 08:00:00'),
     ( 5,'https://picsum.photos/seed/duck-car-2/400/400',       0,'2024-03-10 08:00:00'),
     ( 5,'https://picsum.photos/seed/duck-car-3/400/400',       0,'2024-03-10 08:00:00'),
-    ( 6,'https://picsum.photos/seed/ball-boho-1/400/400',      1,'2024-03-15 08:00:00'),
+    ( 5,'https://picsum.photos/seed/duck-car-4/400/400',       0,'2024-03-10 08:00:00'),
+    ( 5,'https://picsum.photos/seed/duck-car-5/400/400',       0,'2024-03-10 08:00:00'),
+
+    -- Product 6: Bóng Cao Su Hoa Văn Boho
+    ( 6,'https://picsum.photos/seed/ball-boho-main/400/400',   1,'2024-03-15 08:00:00'),
     ( 6,'https://picsum.photos/seed/ball-boho-2/400/400',      0,'2024-03-15 08:00:00'),
     ( 6,'https://picsum.photos/seed/ball-boho-3/400/400',      0,'2024-03-15 08:00:00'),
-    ( 7,'https://picsum.photos/seed/eagle-kite-1/400/400',     1,'2024-03-20 08:00:00'),
+    ( 6,'https://picsum.photos/seed/ball-boho-4/400/400',      0,'2024-03-15 08:00:00'),
+    ( 6,'https://picsum.photos/seed/ball-boho-5/400/400',      0,'2024-03-15 08:00:00'),
+
+    -- Product 7: Diều Hình Đại Bàng
+    ( 7,'https://picsum.photos/seed/eagle-kite-main/400/400',  1,'2024-03-20 08:00:00'),
     ( 7,'https://picsum.photos/seed/eagle-kite-2/400/400',     0,'2024-03-20 08:00:00'),
     ( 7,'https://picsum.photos/seed/eagle-kite-3/400/400',     0,'2024-03-20 08:00:00'),
-    ( 8,'https://picsum.photos/seed/trex-plush-1/400/400',     1,'2024-04-01 08:00:00'),
+    ( 7,'https://picsum.photos/seed/eagle-kite-4/400/400',     0,'2024-03-20 08:00:00'),
+    ( 7,'https://picsum.photos/seed/eagle-kite-5/400/400',     0,'2024-03-20 08:00:00'),
+
+    -- Product 8: Gấu Bông Khủng Long Rex
+    ( 8,'https://picsum.photos/seed/trex-plush-main/400/400',  1,'2024-04-01 08:00:00'),
     ( 8,'https://picsum.photos/seed/trex-plush-2/400/400',     0,'2024-04-01 08:00:00'),
     ( 8,'https://picsum.photos/seed/trex-plush-3/400/400',     0,'2024-04-01 08:00:00'),
-    ( 9,'https://picsum.photos/seed/barbie-mermaid-1/400/400', 1,'2024-04-05 08:00:00'),
-    ( 9,'https://picsum.photos/seed/barbie-mermaid-2/400/400', 0,'2024-04-05 08:00:00'),
-    ( 9,'https://picsum.photos/seed/barbie-mermaid-3/400/400', 0,'2024-04-05 08:00:00'),
-    (10,'https://picsum.photos/seed/sentai-red-1/400/400',     1,'2024-04-10 08:00:00'),
+    ( 8,'https://picsum.photos/seed/trex-plush-4/400/400',     0,'2024-04-01 08:00:00'),
+    ( 8,'https://picsum.photos/seed/trex-plush-5/400/400',     0,'2024-04-01 08:00:00'),
+
+    -- Product 9: Búp Bê Barbie Dreamtopia
+    ( 9,'https://picsum.photos/seed/barbie-mermaid-main/400/400',1,'2024-04-05 08:00:00'),
+    ( 9,'https://picsum.photos/seed/barbie-mermaid-2/400/400',   0,'2024-04-05 08:00:00'),
+    ( 9,'https://picsum.photos/seed/barbie-mermaid-3/400/400',   0,'2024-04-05 08:00:00'),
+    ( 9,'https://picsum.photos/seed/barbie-mermaid-4/400/400',   0,'2024-04-05 08:00:00'),
+    ( 9,'https://picsum.photos/seed/barbie-mermaid-5/400/400',   0,'2024-04-05 08:00:00'),
+
+    -- Product 10: Mô Hình Siêu Nhân Gao Red Ranger
+    (10,'https://picsum.photos/seed/sentai-red-main/400/400',  1,'2024-04-10 08:00:00'),
     (10,'https://picsum.photos/seed/sentai-red-2/400/400',     0,'2024-04-10 08:00:00'),
     (10,'https://picsum.photos/seed/sentai-red-3/400/400',     0,'2024-04-10 08:00:00'),
-    (11,'https://picsum.photos/seed/trex-metal-1/400/400',     1,'2024-04-15 08:00:00'),
+    (10,'https://picsum.photos/seed/sentai-red-4/400/400',     0,'2024-04-10 08:00:00'),
+    (10,'https://picsum.photos/seed/sentai-red-5/400/400',     0,'2024-04-10 08:00:00'),
+
+    -- Product 11: Mô Hình Khủng Long T-Rex
+    (11,'https://picsum.photos/seed/trex-metal-main/400/400',  1,'2024-04-15 08:00:00'),
     (11,'https://picsum.photos/seed/trex-metal-2/400/400',     0,'2024-04-15 08:00:00'),
     (11,'https://picsum.photos/seed/trex-metal-3/400/400',     0,'2024-04-15 08:00:00'),
-    (12,'https://picsum.photos/seed/rc-traxxas-1/400/400',     1,'2024-05-01 08:00:00'),
+    (11,'https://picsum.photos/seed/trex-metal-4/400/400',     0,'2024-04-15 08:00:00'),
+    (11,'https://picsum.photos/seed/trex-metal-5/400/400',     0,'2024-04-15 08:00:00'),
+
+    -- Product 12: Siêu Xe Địa Hình RC Traxxas
+    (12,'https://picsum.photos/seed/rc-traxxas-main/400/400',  1,'2024-05-01 08:00:00'),
     (12,'https://picsum.photos/seed/rc-traxxas-2/400/400',     0,'2024-05-01 08:00:00'),
     (12,'https://picsum.photos/seed/rc-traxxas-3/400/400',     0,'2024-05-01 08:00:00'),
-    (13,'https://picsum.photos/seed/helicopter-rc-1/400/400',  1,'2024-05-10 08:00:00'),
-    (13,'https://picsum.photos/seed/helicopter-rc-2/400/400',  0,'2024-05-10 08:00:00'),
-    (13,'https://picsum.photos/seed/helicopter-rc-3/400/400',  0,'2024-05-10 08:00:00'),
-    (14,'https://picsum.photos/seed/playdoh-24-1/400/400',     1,'2024-05-15 08:00:00'),
+    (12,'https://picsum.photos/seed/rc-traxxas-4/400/400',     0,'2024-05-01 08:00:00'),
+    (12,'https://picsum.photos/seed/rc-traxxas-5/400/400',     0,'2024-05-01 08:00:00'),
+
+    -- Product 13: Trực Thăng Mini Gyro RC
+    (13,'https://picsum.photos/seed/helicopter-rc-main/400/400',1,'2024-05-10 08:00:00'),
+    (13,'https://picsum.photos/seed/helicopter-rc-2/400/400',   0,'2024-05-10 08:00:00'),
+    (13,'https://picsum.photos/seed/helicopter-rc-3/400/400',   0,'2024-05-10 08:00:00'),
+    (13,'https://picsum.photos/seed/helicopter-rc-4/400/400',   0,'2024-05-10 08:00:00'),
+    (13,'https://picsum.photos/seed/helicopter-rc-5/400/400',   0,'2024-05-10 08:00:00'),
+
+    -- Product 14: Đất Nặn PlayDoh 24 Màu
+    (14,'https://picsum.photos/seed/playdoh-24-main/400/400',  1,'2024-05-15 08:00:00'),
     (14,'https://picsum.photos/seed/playdoh-24-2/400/400',     0,'2024-05-15 08:00:00'),
     (14,'https://picsum.photos/seed/playdoh-24-3/400/400',     0,'2024-05-15 08:00:00'),
-    (15,'https://picsum.photos/seed/lcd-board-1/400/400',      1,'2024-05-20 08:00:00'),
+    (14,'https://picsum.photos/seed/playdoh-24-4/400/400',     0,'2024-05-15 08:00:00'),
+    (14,'https://picsum.photos/seed/playdoh-24-5/400/400',     0,'2024-05-15 08:00:00'),
+
+    -- Product 15: Bảng Vẽ Ma Thuật LCD
+    (15,'https://picsum.photos/seed/lcd-board-main/400/400',   1,'2024-05-20 08:00:00'),
     (15,'https://picsum.photos/seed/lcd-board-2/400/400',      0,'2024-05-20 08:00:00'),
-    (15,'https://picsum.photos/seed/lcd-board-3/400/400',      0,'2024-05-20 08:00:00');
+    (15,'https://picsum.photos/seed/lcd-board-3/400/400',      0,'2024-05-20 08:00:00'),
+    (15,'https://picsum.photos/seed/lcd-board-4/400/400',      0,'2024-05-20 08:00:00'),
+    (15,'https://picsum.photos/seed/lcd-board-5/400/400',      0,'2024-05-20 08:00:00');
 GO
 
-
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    9. PRODUCT PROMOTIONS & TIME SLOTS
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[ProductPromotions]
                WHERE ProductID=1
                  AND PromotionID=(SELECT TOP 1 PromotionID FROM Promotions
@@ -379,32 +466,35 @@ BEGIN
     (@slot1, 11, 197000, 50.13, 10, 0, 1, '2026-04-15T03:00:00'),
     (@slot1, 12, 700000, 25.93, 15, 0, 1, '2026-04-15T03:00:00'),
     (@slot2, 10, 297000, 50.08, 20, 0, 1, '2026-04-15T03:00:00'),
-    (@slot2, 13, 990000, 33.56, 8,  0, 1, '2026-04-15T03:00:00');
+    (@slot2, 13, 990000, 33.56,  8, 0, 1, '2026-04-15T03:00:00');
 END
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    10. VOUCHERS
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Vouchers] WHERE VoucherCode='SHIP0626')
     INSERT INTO [dbo].[Vouchers]
         (VoucherCode, VoucherName, VoucherDescription, DiscountType, DiscountValue,
          DiscountTarget, MinOrderAmount, TotalQuantity, UsedQuantity, MaxUsagePerUser,
          StartDate, EndDate, Status, IsDeleted, CreatedAt)
     VALUES
-    ('SHIP0626',  N'Freeship Tháng 6',                N'Miễn phí vận chuyển tối đa 50.000đ – đơn từ 200.000đ',
+    ('SHIP0626',  N'Freeship Tháng 6',
+     N'Miễn phí vận chuyển tối đa 50.000đ – đơn từ 200.000đ',
      'FIXED',    50000, 'SHIPPING_FEE', 200000, 1000, 0, 1, '2026-06-01','2026-06-30','Active',0,'2026-05-25 08:00:00'),
-    ('WELCOME10', N'Giảm 10% Chào Mừng Khách Mới',   N'Dành riêng lần mua đầu tiên – giảm 10% toàn đơn',
-     'PERCENTAGE',10,   'ORDER_TOTAL',       0,  500, 0, 1, '2026-01-01','2026-12-31','Active',0,'2026-01-01 08:00:00'),
-    ('VIP200K',   N'Ưu Đãi Khách VIP – Giảm 200.000đ',N'Áp dụng đơn từ 1.000.000đ',
-     'FIXED',   200000, 'ORDER_TOTAL', 1000000,  100, 0, 1, '2026-04-01','2026-06-30','Active',0,'2026-03-20 09:00:00');
+    ('WELCOME10', N'Giảm 10% Chào Mừng Khách Mới',
+     N'Dành riêng lần mua đầu tiên – giảm 10% toàn đơn',
+     'PERCENTAGE',10, 'ORDER_TOTAL', 0, 500, 0, 1, '2026-01-01','2026-12-31','Active',0,'2026-01-01 08:00:00'),
+    ('VIP200K',   N'Ưu Đãi Khách VIP – Giảm 200.000đ',
+     N'Áp dụng đơn từ 1.000.000đ',
+     'FIXED',   200000, 'ORDER_TOTAL', 1000000, 100, 0, 1, '2026-04-01','2026-06-30','Active',0,'2026-03-20 09:00:00');
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    11. PRODUCT FOLLOWERS
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[ProductFollowers])
     INSERT INTO [dbo].[ProductFollowers] (ProductID, AccountID, CreatedAt)
     SELECT TOP 5
@@ -416,11 +506,11 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[ProductFollowers])
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    13. ORDERS MẪU (10 đơn)
    StatusID: 1=Pending 2=Confirmed 3=Processing 4=Shipped
              5=Delivering 6=Delivered 7=Completed 8=Cancelled
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 
 -- ĐƠN 1: Phạm Thị Lan Anh – Completed – WALLET
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Orders] WHERE OrderCode='ORD-2026-00001')
@@ -452,11 +542,11 @@ BEGIN
     VALUES(@o1,1,N'Lego City Trạm Cảnh Sát Trung Tâm 668 Mảnh',1,1290000,'2026-02-14 10:30:00');
 
     INSERT INTO [dbo].[OrderStatusHistory] (OrderID, StatusID, Note, CreatedAt) VALUES
-    (@o1,1,N'Đơn hàng mới',                  '2026-02-14 10:30:00'),
-    (@o1,2,N'Shop xác nhận và đóng gói',      '2026-02-14 14:00:00'),
-    (@o1,4,N'Bàn giao GHN',                   '2026-02-15 09:00:00'),
-    (@o1,6,N'Giao hàng thành công',            '2026-02-16 11:00:00'),
-    (@o1,7,N'Khách xác nhận đã nhận hàng',    '2026-02-17 08:00:00');
+    (@o1,1,N'Đơn hàng mới',               '2026-02-14 10:30:00'),
+    (@o1,2,N'Shop xác nhận và đóng gói',  '2026-02-14 14:00:00'),
+    (@o1,4,N'Bàn giao GHN',               '2026-02-15 09:00:00'),
+    (@o1,6,N'Giao hàng thành công',        '2026-02-16 11:00:00'),
+    (@o1,7,N'Khách xác nhận đã nhận hàng','2026-02-17 08:00:00');
 END
 GO
 
@@ -490,8 +580,8 @@ BEGIN
     VALUES(@o2,12,N'Siêu Xe Địa Hình RC Traxxas TRX-Mini 4x4 Turbo',1,945000,'2026-04-10 08:15:00');
 
     INSERT INTO [dbo].[OrderStatusHistory] (OrderID, StatusID, Note, CreatedAt) VALUES
-    (@o2,1,N'Đơn hàng mới',                  '2026-04-10 08:15:00'),
-    (@o2,2,N'Xác nhận – chờ kho lấy hàng',  '2026-04-10 11:00:00'),
+    (@o2,1,N'Đơn hàng mới',                   '2026-04-10 08:15:00'),
+    (@o2,2,N'Xác nhận – chờ kho lấy hàng',   '2026-04-10 11:00:00'),
     (@o2,4,N'GHN đã lấy hàng, đang vận chuyển','2026-04-11 09:30:00');
 END
 GO
@@ -526,8 +616,8 @@ BEGIN
     VALUES(@o3,8,N'Gấu Bông Khủng Long Rex Xanh Lá 80cm Siêu Mềm',1,840000,'2026-03-05 16:45:00');
 
     INSERT INTO [dbo].[OrderStatusHistory] (OrderID, StatusID, Note, CreatedAt) VALUES
-    (@o3,1,N'Đơn hàng mới',                         '2026-03-05 16:45:00'),
-    (@o3,8,N'Khách hủy – chưa chuyển khoản sau 24h','2026-03-06 17:00:00');
+    (@o3,1,N'Đơn hàng mới',                          '2026-03-05 16:45:00'),
+    (@o3,8,N'Khách hủy – chưa chuyển khoản sau 24h', '2026-03-06 17:00:00');
 END
 GO
 
@@ -564,8 +654,8 @@ BEGIN
     (@o4, 3,N'Thẻ Học Thông Minh 4D Động Vật Hoang Dã – 120 Thẻ', 1, 145000,'2026-04-18 09:00:00');
 
     INSERT INTO [dbo].[OrderStatusHistory] (OrderID, StatusID, Note, CreatedAt) VALUES
-    (@o4,1,N'Đơn hàng mới – khách chọn COD',  '2026-04-18 09:00:00'),
-    (@o4,2,N'Staff xác nhận – đang đóng gói', '2026-04-18 10:30:00');
+    (@o4,1,N'Đơn hàng mới – khách chọn COD', '2026-04-18 09:00:00'),
+    (@o4,2,N'Staff xác nhận – đang đóng gói','2026-04-18 10:30:00');
 END
 GO
 
@@ -600,10 +690,10 @@ BEGIN
     (@o5,8,N'Gấu Bông Khủng Long Rex Xanh Lá 80cm Siêu Mềm',   1,840000,'2026-04-01 13:20:00');
 
     INSERT INTO [dbo].[OrderStatusHistory] (OrderID, StatusID, Note, CreatedAt) VALUES
-    (@o5,1,N'Đơn mới',                            '2026-04-01 13:20:00'),
-    (@o5,2,N'Đã xác nhận',                        '2026-04-01 15:00:00'),
-    (@o5,4,N'Đang giao – GHN MHĐ 20260401HN',     '2026-04-02 09:00:00'),
-    (@o5,6,N'Giao thành công – khách ký nhận',    '2026-04-03 14:30:00');
+    (@o5,1,N'Đơn mới',                         '2026-04-01 13:20:00'),
+    (@o5,2,N'Đã xác nhận',                     '2026-04-01 15:00:00'),
+    (@o5,4,N'Đang giao – GHN MHĐ 20260401HN', '2026-04-02 09:00:00'),
+    (@o5,6,N'Giao thành công – khách ký nhận', '2026-04-03 14:30:00');
 END
 GO
 
@@ -674,10 +764,10 @@ BEGIN
     (@o7, 3,N'Thẻ Học Thông Minh 4D Động Vật Hoang Dã – 120 Thẻ',     1,145000,'2026-03-20 09:30:00');
 
     INSERT INTO [dbo].[OrderStatusHistory] (OrderID, StatusID, Note, CreatedAt) VALUES
-    (@o7,1,N'Đơn mới',             '2026-03-20 09:30:00'),
-    (@o7,2,N'Xác nhận',            '2026-03-20 11:00:00'),
-    (@o7,4,N'Đang giao',           '2026-03-21 08:00:00'),
-    (@o7,6,N'Giao thành công',     '2026-03-22 10:00:00'),
+    (@o7,1,N'Đơn mới',                   '2026-03-20 09:30:00'),
+    (@o7,2,N'Xác nhận',                  '2026-03-20 11:00:00'),
+    (@o7,4,N'Đang giao',                 '2026-03-21 08:00:00'),
+    (@o7,6,N'Giao thành công',           '2026-03-22 10:00:00'),
     (@o7,7,N'Khách xác nhận hoàn thành','2026-03-23 08:00:00');
 END
 GO
@@ -712,9 +802,9 @@ BEGIN
     VALUES(@o8,10,N'Mô Hình Siêu Nhân Gao Red Ranger Khớp Xoay 24 Điểm',1,595000,'2026-04-20 14:00:00');
 
     INSERT INTO [dbo].[OrderStatusHistory] (OrderID, StatusID, Note, CreatedAt) VALUES
-    (@o8,1,N'Đơn hàng mới',                      '2026-04-20 14:00:00'),
-    (@o8,2,N'Đã xác nhận',                       '2026-04-20 16:00:00'),
-    (@o8,3,N'GHN đang giao – dự kiến 22/04',     '2026-04-21 09:00:00');
+    (@o8,1,N'Đơn hàng mới',                   '2026-04-20 14:00:00'),
+    (@o8,2,N'Đã xác nhận',                    '2026-04-20 16:00:00'),
+    (@o8,3,N'GHN đang giao – dự kiến 22/04',  '2026-04-21 09:00:00');
 END
 GO
 
@@ -749,8 +839,8 @@ BEGIN
     (@o9, 4,N'Kính Hiển Vi Đồ Chơi ScienceMax 40–400x',        1,375000,'2026-04-21 16:30:00');
 
     INSERT INTO [dbo].[OrderStatusHistory] (OrderID, StatusID, Note, CreatedAt) VALUES
-    (@o9,1,N'Đơn hàng COD mới',                   '2026-04-21 16:30:00'),
-    (@o9,2,N'Staff xác nhận – đang lấy hàng kho', '2026-04-22 09:00:00');
+    (@o9,1,N'Đơn hàng COD mới',                  '2026-04-21 16:30:00'),
+    (@o9,2,N'Staff xác nhận – đang lấy hàng kho','2026-04-22 09:00:00');
 END
 GO
 
@@ -786,11 +876,11 @@ BEGIN
     (@o10,15,N'Bảng Vẽ Ma Thuật Tự Xóa LCD 10 Inch – Kèm Bút',  2, 175000,'2026-03-15 10:00:00');
 
     INSERT INTO [dbo].[OrderStatusHistory] (OrderID, StatusID, Note, CreatedAt) VALUES
-    (@o10,1,N'Đơn mới – áp dụng voucher VIP200K', '2026-03-15 10:00:00'),
-    (@o10,2,N'Xác nhận',                           '2026-03-15 12:00:00'),
-    (@o10,4,N'GHN lấy hàng',                       '2026-03-16 09:00:00'),
-    (@o10,6,N'Giao thành công',                    '2026-03-17 11:00:00'),
-    (@o10,7,N'Hoàn thành – khách review 5 sao',    '2026-03-18 08:00:00');
+    (@o10,1,N'Đơn mới – áp dụng voucher VIP200K','2026-03-15 10:00:00'),
+    (@o10,2,N'Xác nhận',                          '2026-03-15 12:00:00'),
+    (@o10,4,N'GHN lấy hàng',                      '2026-03-16 09:00:00'),
+    (@o10,6,N'Giao thành công',                   '2026-03-17 11:00:00'),
+    (@o10,7,N'Hoàn thành – khách review 5 sao',   '2026-03-18 08:00:00');
 
     INSERT INTO [dbo].[OrderVouchers] (OrderID, VoucherID, DiscountAmountApplied)
     SELECT @o10, VoucherID, 200000 FROM Vouchers WHERE VoucherCode='VIP200K';
@@ -803,10 +893,11 @@ END
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    14. 30 ĐƠN HÀNG NGẪU NHIÊN (ĐƠN 11–40)
-   FIX: Dùng CASE WHEN thay CHOOSE() để tránh overflow INT_MIN → NULL
-══════════════════════════════════════════ */
+   FIX-02: PaymentHistory dùng đúng PaymentMethod CHECK values
+   FIX-08: CASE WHEN thay CHOOSE() tránh overflow INT_MIN → NULL
+══════════════════════════════════════════════════════════════ */
 DECLARE @wAuto  VARCHAR(20) = ISNULL((SELECT TOP 1 WardCode   FROM Wards    WHERE IsActive=1),'W01');
 DECLARE @dAuto  INT         = ISNULL((SELECT TOP 1 DistrictId FROM Districts WHERE IsActive=1),1);
 DECLARE @pAuto  INT         = ISNULL((SELECT TOP 1 ProvinceId FROM Provinces WHERE IsActive=1),1);
@@ -826,17 +917,18 @@ BEGIN
             SELECT TOP 1 @prodID=ProductID, @prodPr=Price, @prodNm=ProductName
             FROM Products WHERE IsDeleted=0 AND ProductStatus='Active' ORDER BY NEWID();
 
-            DECLARE @oCode   VARCHAR(30)  = 'ORD-2026-000'+CAST(@loop AS VARCHAR);
+            DECLARE @oCode  VARCHAR(30) = 'ORD-2026-000'+CAST(@loop AS VARCHAR);
 
-            /* ── FIX 1: CASE WHEN thay CHOOSE để tránh overflow ABS(INT_MIN) → NULL ── */
-            DECLARE @pmeth   VARCHAR(20)  =
-                CASE (ABS(CHECKSUM(NEWID()) % 3))
+            -- FIX-08: CASE WHEN thay CHOOSE() tránh overflow
+            DECLARE @pmeth  VARCHAR(20) =
+                CASE (ABS(CHECKSUM(NEWID()) % 4))
                     WHEN 0 THEN 'SE_PAY'
                     WHEN 1 THEN 'WALLET'
-                    ELSE        'BANK_TRANSFER'
+                    WHEN 2 THEN 'BANK_TRANSFER'
+                    ELSE        'SHIP_COD'
                 END;
 
-            DECLARE @scen    INT          = (ABS(CHECKSUM(NEWID()))%6)+1;
+            DECLARE @scen   INT          = (ABS(CHECKSUM(NEWID()))%6)+1;
 
             DECLARE @tOrder    DATETIME2(0) = DATEADD(DAY,-(ABS(CHECKSUM(NEWID()))%60),GETDATE());
             DECLARE @tConfirm  DATETIME2(0) = NULL;
@@ -858,11 +950,16 @@ BEGIN
 
             IF (@pmeth IN ('SE_PAY','WALLET') AND @scen<>6) OR @scen IN (4,5)
                 BEGIN SET @pstat='PAID'; SET @paidAt=@tOrder; END
+            
+            -- FIX-11: SHIP_COD dùng COD_PENDING thay vì PENDING
+            IF @pmeth = 'SHIP_COD' AND @pstat = 'PENDING' AND @scen <> 6
+                SET @pstat = 'COD_PENDING';
+
             IF @scen=6 SET @pstat='FAILED';
 
-            DECLARE @qty      INT          = (ABS(CHECKSUM(NEWID()))%3)+1;
-            DECLARE @sub      DECIMAL(12,0)= @qty * @prodPr;
-            DECLARE @total    DECIMAL(12,0)= @sub + 30000;
+            DECLARE @qty   INT          = (ABS(CHECKSUM(NEWID()))%3)+1;
+            DECLARE @sub   DECIMAL(12,0)= @qty * @prodPr;
+            DECLARE @total DECIMAL(12,0)= @sub + 30000;
 
             INSERT INTO [dbo].[Orders]
                 (AccountID, StatusID, AssignedToStaffID, OrderCode,
@@ -894,6 +991,7 @@ BEGIN
                 (OrderID, ProductID, ProductName, Quantity, UnitPrice, DiscountAmount, CreatedAt)
             VALUES(@oAuto, @prodID, @prodNm, @qty, @prodPr, 0, @tOrder);
 
+            -- OrderStatusHistory
             INSERT INTO [dbo].[OrderStatusHistory] (OrderID, StatusID, ChangedBy, Note, CreatedAt)
             VALUES(@oAuto,1,@accID,N'Hệ thống ghi nhận',@tOrder);
             IF @scen>=2 AND @scen<>6
@@ -912,10 +1010,18 @@ BEGIN
                 INSERT INTO [dbo].[OrderStatusHistory] (OrderID, StatusID, ChangedBy, Note, CreatedAt)
                 VALUES(@oAuto,8,@accID,N'Đã hủy',@tCancel);
 
-            INSERT INTO [dbo].[PaymentHistory] (AccountID, OrderID, PaymentStatus, PaymentMethod, Amount, CreatedAt)
-            VALUES(@accID, @oAuto, @pstat, @pmeth, @total, @tOrder);
+            -- FIX-02: PaymentHistory dùng đúng PaymentMethod CHECK value
+            -- Schema PaymentHistory CHECK: 'SE_PAY','WALLET','BANK_TRANSFER','SHIP_COD'
+            DECLARE @phMeth VARCHAR(20) = @pmeth;
 
-            IF @scen IN (3,4,5)
+            INSERT INTO [dbo].[PaymentHistory]
+                (AccountID, OrderID, PaymentStatus, PaymentMethod, Amount, CreatedAt)
+            VALUES(@accID, @oAuto, @pstat, @phMeth, @total, @tOrder);
+
+            -- ShippingProviderTransactions chỉ tạo nếu chưa có
+            IF @scen IN (3,4,5) AND NOT EXISTS (
+                SELECT 1 FROM ShippingProviderTransactions WHERE OrderID=@oAuto)
+            BEGIN
                 INSERT INTO [dbo].[ShippingProviderTransactions]
                     (OrderID, Provider, ProviderOrderCode, TrackingNumber, ServiceType, Status,
                      ShippingFee, CodAmount, CreatedAt)
@@ -924,6 +1030,7 @@ BEGIN
                        N'Nhanh',
                        IIF(@scen=3,'transporting','delivered'),
                        30000, 0, @tShip);
+            END
         END
     END TRY
     BEGIN CATCH
@@ -935,13 +1042,18 @@ END
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    15. SHIPPING HISTORY (đơn mẫu đã giao)
-══════════════════════════════════════════ */
-IF NOT EXISTS (SELECT 1 FROM [dbo].[ShippingStatusHistories])
+   FIX-05: Guard NOT EXISTS chặt hơn để tránh duplicate
+══════════════════════════════════════════════════════════════ */
+IF NOT EXISTS (SELECT 1 FROM [dbo].[ShippingProviderTransactions]
+               WHERE OrderID IN (SELECT OrderID FROM Orders WHERE OrderCode IN
+                   ('ORD-2026-00001','ORD-2026-00002','ORD-2026-00005',
+                    'ORD-2026-00007','ORD-2026-00008','ORD-2026-00010')))
 BEGIN
     INSERT INTO [dbo].[ShippingProviderTransactions]
-        (OrderID, Provider, ProviderOrderCode, TrackingNumber, Status, ShippingFee, CodAmount, CreatedAt)
+        (OrderID, Provider, ProviderOrderCode, TrackingNumber, Status,
+         ShippingFee, CodAmount, CreatedAt)
     SELECT
         o.OrderID, 'GHN',
         'GHN26-'+RIGHT(o.OrderCode,5),
@@ -965,27 +1077,37 @@ BEGIN
     INSERT INTO [dbo].[ShippingStatusHistories]
         (ShippingTxId, OrderId, PreviousStatus, NewStatus, Source, ProcessedAt)
     SELECT ShippingTransactionID, OrderID, 'created', Status, 'Seed', GETDATE()
-    FROM   ShippingProviderTransactions;
+    FROM   ShippingProviderTransactions
+    WHERE  NOT EXISTS (
+        SELECT 1 FROM ShippingStatusHistories sh
+        WHERE sh.ShippingTxId = ShippingTransactionID);
 END
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    16. PAYMENT HISTORY (PAID orders)
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 INSERT INTO [dbo].[PaymentHistory]
     (AccountID, OrderID, PaymentStatus, PaymentMethod, TransactionCode, Amount, CreatedAt)
-SELECT o.AccountID, o.OrderID, o.PaymentStatus, o.PaymentMethod,
-       'TXN-'+o.OrderCode, o.TotalAmount, o.OrderDate
+SELECT
+    o.AccountID,
+    o.OrderID,
+    o.PaymentStatus,
+    -- FIX-02: PaymentHistory CHECK constraint dùng 'SHIP_COD'
+    o.PaymentMethod,
+    'TXN-'+o.OrderCode,
+    o.TotalAmount,
+    o.OrderDate
 FROM   Orders o
 WHERE  o.PaymentStatus = 'PAID'
   AND  NOT EXISTS (SELECT 1 FROM PaymentHistory ph WHERE ph.OrderID = o.OrderID);
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    17. PAYMENT GATEWAY TRANSACTIONS (SE_PAY PAID)
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 INSERT INTO [dbo].[PaymentGatewayTransactions]
     (OrderID, Provider, RequestID, Amount, ResponseCode, ResponseMessage, Status, CreatedAt)
 SELECT o.OrderID,'SE_PAY','REQ-'+o.OrderCode,o.TotalAmount,'00','Transaction Success','Paid',o.OrderDate
@@ -995,11 +1117,10 @@ WHERE  o.PaymentMethod='SE_PAY' AND o.PaymentStatus='PAID'
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    18. WALLETS & TRANSACTIONS
-   FIX: Balance seed = 10.000.000 để tránh BalanceAfter âm
-        với các đơn WALLET lớn từ vòng lặp ngẫu nhiên
-══════════════════════════════════════════ */
+   FIX-09: Balance seed = 10.000.000 tránh BalanceAfter âm
+══════════════════════════════════════════════════════════════ */
 INSERT INTO [dbo].[Wallets] (AccountID, Currency, Balance, Status, CreatedAt)
 SELECT AccountID, 'VND', 10000000, 'Active', GETDATE()
 FROM   Accounts
@@ -1012,9 +1133,9 @@ INSERT INTO [dbo].[WalletTransactions]
 SELECT w.WalletID, w.AccountID, 'TopUp','CR', 10000000,
        0, 10000000, 'BankTransfer','Completed',N'Nạp tiền ban đầu', GETDATE()
 FROM   Wallets w
-WHERE  NOT EXISTS (SELECT 1 FROM WalletTransactions wt WHERE wt.WalletID=w.WalletID AND wt.TxnType='TopUp');
+WHERE  NOT EXISTS (
+    SELECT 1 FROM WalletTransactions wt WHERE wt.WalletID=w.WalletID AND wt.TxnType='TopUp');
 
-/* Tính tổng đã thanh toán để xác định BalanceBefore chính xác từng đơn */
 INSERT INTO [dbo].[WalletTransactions]
     (WalletID, AccountID, RelatedOrderID, TxnType, Direction, Amount,
      BalanceBefore, BalanceAfter, Method, Status, Reason, CreatedAt)
@@ -1053,7 +1174,7 @@ WHERE o.PaymentMethod = 'WALLET'
       SELECT 1 FROM WalletTransactions wt
       WHERE wt.RelatedOrderID = o.OrderID AND wt.TxnType = 'Payment'
   )
-  /* Bảo vệ: chỉ insert nếu số dư tích lũy không âm */
+  -- Bảo vệ: chỉ insert nếu số dư tích lũy không âm
   AND 10000000 - ISNULL((
         SELECT SUM(o2.TotalAmount)
         FROM Orders o2
@@ -1065,9 +1186,9 @@ WHERE o.PaymentMethod = 'WALLET'
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    19. ORDER REFUND (đơn 3 bị hủy)
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[OrderRefundReasons])
     INSERT INTO [dbo].[OrderRefundReasons] (Content, Description) VALUES
     (N'Sản phẩm bị lỗi từ nhà sản xuất', N'Hàng giao đến bị lỗi kỹ thuật'),
@@ -1088,9 +1209,9 @@ END
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    20. ADDRESSES
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Addresses])
     INSERT INTO [dbo].[Addresses]
         (AccountID, RecipientName, PhoneNumber, AddressLine,
@@ -1117,22 +1238,22 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[Addresses])
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    21. CUSTOMER CHILDREN
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[CustomerChildren])
     INSERT INTO [dbo].[CustomerChildren] (AccountID, SexID, FullName, NickName, DOB, CreatedAt)
     VALUES
-    ((SELECT TOP 1 AccountID FROM Accounts WHERE Email='lananh.pham@gmail.com'),    1,N'Phạm Tiến Phát', N'Củ Cải','2020-05-15',GETDATE()),
+    ((SELECT TOP 1 AccountID FROM Accounts WHERE Email='lananh.pham@gmail.com'),    1,N'Phạm Tiến Phát',N'Củ Cải','2020-05-15',GETDATE()),
     ((SELECT TOP 1 AccountID FROM Accounts WHERE Email='lananh.pham@gmail.com'),    2,N'Phạm Thảo Trân', N'Bào Ngư','2022-11-20',GETDATE()),
     ((SELECT TOP 1 AccountID FROM Accounts WHERE Email='bauchau.vu@gmail.com'),     1,N'Vũ Hoàng Nam',   N'Gấu',   '2019-08-10',GETDATE()),
     ((SELECT TOP 1 AccountID FROM Accounts WHERE Email='thanh.tuyen.ngo@gmail.com'),2,N'Ngô Mai Phương',  N'Nhím',  '2023-01-05',GETDATE());
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    22. CART & WISHLIST
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Cart])
 BEGIN
     INSERT INTO [dbo].[Cart] (AccountID, CreatedAt) VALUES
@@ -1174,9 +1295,9 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[Wishlists])
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    23. BLOG
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 SET IDENTITY_INSERT [dbo].[BlogCategories] ON;
 IF NOT EXISTS (SELECT 1 FROM [dbo].[BlogCategories] WHERE BlogCategoryID=1)
     INSERT INTO [dbo].[BlogCategories] (BlogCategoryID, BlogCategoriesName, CreatedAt) VALUES
@@ -1214,14 +1335,14 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[BlogPosts])
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    24. BLOCK REASONS & USER BLOCK HISTORY
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[BlockReasons])
     INSERT INTO [dbo].[BlockReasons] (Content, Description, CreatedAt) VALUES
-    (N'Spam đánh giá',       N'Đăng đánh giá hàng loạt không liên quan','2024-01-05 08:00:00'),
-    (N'Dấu hiệu gian lận',  N'Đặt hàng rồi khai không nhận để hoàn tiền','2024-01-05 08:00:00'),
-    (N'Ngôn ngữ xúc phạm',  N'Nhắn tin xúc phạm nhân viên','2024-01-05 08:00:00');
+    (N'Spam đánh giá',      N'Đăng đánh giá hàng loạt không liên quan','2024-01-05 08:00:00'),
+    (N'Dấu hiệu gian lận', N'Đặt hàng rồi khai không nhận để hoàn tiền','2024-01-05 08:00:00'),
+    (N'Ngôn ngữ xúc phạm', N'Nhắn tin xúc phạm nhân viên',              '2024-01-05 08:00:00');
 
 IF NOT EXISTS (SELECT 1 FROM [dbo].[UserBlockHistory])
     INSERT INTO [dbo].[UserBlockHistory]
@@ -1234,15 +1355,19 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[UserBlockHistory])
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    25. REVIEWS
-══════════════════════════════════════════ */
+   Lưu ý: Trigger TR_ReviewProducts_ValidateOrderDetail kiểm tra
+   OrderDetail tồn tại trước khi cho phép insert review.
+   Các review bên dưới đều khớp với OrderDetails đã tạo ở trên.
+══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[ReviewProducts])
 BEGIN
     INSERT INTO [dbo].[ReviewProducts]
         (AccountID, ProductID, OrderID, Rating, Comment, ModerationStatus, CreatedAt)
     VALUES
     (
+        -- Lan Anh review sản phẩm 1 trong đơn ORD-2026-00001 ✓
         (SELECT TOP 1 AccountID FROM Accounts WHERE Email='lananh.pham@gmail.com'),
         1,
         (SELECT TOP 1 OrderID FROM Orders WHERE OrderCode='ORD-2026-00001'),
@@ -1251,6 +1376,7 @@ BEGIN
         'Approved', '2026-02-18 09:00:00'
     ),
     (
+        -- Ngọc Diệp review sản phẩm 6 trong đơn ORD-2026-00007 ✓
         (SELECT TOP 1 AccountID FROM Accounts WHERE Email='ndiep.tran@gmail.com'),
         6,
         (SELECT TOP 1 OrderID FROM Orders WHERE OrderCode='ORD-2026-00007'),
@@ -1259,6 +1385,7 @@ BEGIN
         'Approved', '2026-03-24 10:00:00'
     ),
     (
+        -- Thanh Tuyền review sản phẩm 1 trong đơn ORD-2026-00010 ✓
         (SELECT TOP 1 AccountID FROM Accounts WHERE Email='thanh.tuyen.ngo@gmail.com'),
         1,
         (SELECT TOP 1 OrderID FROM Orders WHERE OrderCode='ORD-2026-00010'),
@@ -1291,9 +1418,9 @@ END
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    26. BLOG REVIEWS & REACTIONS
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[ReviewBlogs])
 BEGIN
     INSERT INTO [dbo].[ReviewBlogs] (BlogPostID, AccountID, Comment, CreatedAt)
@@ -1328,42 +1455,149 @@ END
 GO
 
 
-/* ══════════════════════════════════════════
-   27. NOTIFICATION TEMPLATES (23 templates)
-══════════════════════════════════════════ */
-IF NOT EXISTS (SELECT 1 FROM [Notification].[Templates])
+/* ══════════════════════════════════════════════════════════════
+   27. NOTIFICATION TEMPLATES
+   Gồm 2 nhóm:
+     - SYSTEM (30 templates): không thể tắt/xóa theo schema constraints
+     - ADMIN  (5 templates) : marketing, bật/tắt được
+   
+   FIX-01: Đảm bảo TemplateCode được dùng trong section 29
+           (Campaigns) đều tồn tại ở đây.
+══════════════════════════════════════════════════════════════ */
+BEGIN TRY
+    BEGIN TRAN;
+
+    DECLARE @Tpl TABLE (
+        TemplateCode    VARCHAR(50),
+        UsageScope      VARCHAR(10),
+        TitleTemplate   NVARCHAR(255),
+        MessageTemplate NVARCHAR(500)
+    );
+
+    -- =================================================================
+    -- NHÓM SYSTEM: Không thể tắt/xóa (IsActive=1, IsDeleted=0 bắt buộc)
+    -- =================================================================
+    INSERT INTO @Tpl (TemplateCode, UsageScope, TitleTemplate, MessageTemplate) VALUES
+
+    -- Đơn hàng
+    ('ORDER_PLACED',          'SYSTEM', N'Đơn hàng [OrderCode] đặt thành công',
+     N'Đơn hàng [OrderCode] trị giá [TotalAmount] của bạn đã được ghi nhận thành công.'),
+    ('ORDER_CONFIRMED',       'SYSTEM', N'Xác nhận đơn hàng [OrderCode]',
+     N'Đơn hàng [OrderCode] của bạn đã được shop xác nhận và chuẩn bị hàng.'),
+    ('ORDER_PACKING',         'SYSTEM', N'Đơn hàng [OrderCode] đang đóng gói',
+     N'Đơn hàng [OrderCode] của bạn đang được nhân viên đóng gói cẩn thận.'),
+    ('ORDER_SHIPPING',        'SYSTEM', N'Đơn hàng [OrderCode] đang giao',
+     N'Đơn hàng [OrderCode] đã được giao cho bưu tá [ShipperName]. Vui lòng chú ý điện thoại.'),
+    ('ORDER_DELIVERED',       'SYSTEM', N'Giao hàng thành công',
+     N'Đơn hàng [OrderCode] đã giao thành công. Đừng quên đánh giá sản phẩm để nhận ưu đãi nhé!'),
+    ('ORDER_CANCELLED',       'SYSTEM', N'Đơn hàng [OrderCode] đã hủy',
+     N'Đơn hàng [OrderCode] của bạn đã bị hủy với lý do: [CancelReason].'),
+    ('ORDER_DELIVERY_FAILED', 'SYSTEM', N'Giao hàng thất bại',
+     N'Giao hàng đơn [OrderCode] không thành công do: [FailReason]. Vui lòng liên hệ CSKH.'),
+
+    -- Thanh toán & Ví
+    ('PAYMENT_SUCCESS',       'SYSTEM', N'Thanh toán thành công',
+     N'Bạn đã thanh toán thành công [Amount] đ cho đơn hàng [OrderCode].'),
+    ('PAYMENT_FAILED',        'SYSTEM', N'Thanh toán thất bại',
+     N'Giao dịch thanh toán [Amount] đ cho đơn hàng [OrderCode] không thành công.'),
+    ('WALLET_TOPUP',          'SYSTEM', N'Nạp tiền thành công',
+     N'Ví của bạn vừa được nạp thêm [Amount] đ. Số dư hiện tại: [Balance] đ.'),
+    ('WALLET_REFUND',         'SYSTEM', N'Hoàn tiền thành công',
+     N'Bạn vừa được hoàn [Amount] đ vào ví từ đơn hàng [OrderCode].'),
+
+    -- Sản phẩm & Tồn kho
+    ('PRODUCT_BACK_IN_STOCK', 'SYSTEM', N'Sản phẩm {{ProductName}} đã có hàng',
+     N'Sản phẩm {{ProductName}} bạn quan tâm đã có hàng trở lại với giá {{Price}} đ. Mua ngay kẻo hết!'),
+    ('WISHLIST_PRICE_DROP',   'SYSTEM', N'Giảm giá sản phẩm {{ProductName}}',
+     N'Sản phẩm {{ProductName}} trong wishlist của bạn đang giảm giá chỉ còn {{Price}} đ.'),
+
+    -- Review & Blog
+    ('REVIEW_STAFF_REPLIED',  'SYSTEM', N'Phản hồi đánh giá',
+     N'Nhân viên CSKH vừa trả lời đánh giá của bạn cho sản phẩm [ProductName].'),
+    ('BLOG_COMMENT_REPLIED',  'SYSTEM', N'Phản hồi bình luận',
+     N'Bình luận của bạn trên bài viết {{BlogTitle}} vừa có lượt trả lời mới.'),
+
+    -- Staff notifications
+    ('STAFF_NEW_ORDER',        'SYSTEM', N'Có đơn hàng mới: [OrderCode]',
+     N'Hệ thống vừa ghi nhận đơn hàng mới [OrderCode] trị giá [TotalAmount]. Vui lòng xử lý.'),
+    ('STAFF_CANCEL_REQUEST',   'SYSTEM', N'Yêu cầu hủy đơn [OrderCode]',
+     N'Khách hàng [CustomerName] vừa gửi yêu cầu hủy đơn hàng [OrderCode].'),
+    ('STAFF_REFUND_REQUEST',   'SYSTEM', N'Yêu cầu hoàn tiền [OrderCode]',
+     N'Khách hàng [CustomerName] yêu cầu hoàn tiền cho đơn hàng [OrderCode].'),
+    ('STAFF_REVIEW_MODERATION','SYSTEM', N'Duyệt đánh giá mới',
+     N'Có đánh giá [Rating] sao mới cho sản phẩm [ProductName] cần bạn kiểm duyệt.'),
+    ('STAFF_LOW_RATING',       'SYSTEM', N'Cảnh báo đánh giá thấp',
+     N'Sản phẩm [ProductName] vừa nhận 1 đánh giá [Rating] sao. Vui lòng kiểm tra và xử lý.'),
+
+    -- Merchandise notifications
+    ('MERCH_READY_TO_PACK',  'SYSTEM', N'Có đơn hàng chờ đóng gói',
+     N'Đơn hàng [OrderCode] đã sẵn sàng để đóng gói.'),
+    ('MERCH_PICKED_UP',      'SYSTEM', N'Bưu tá đã lấy hàng',
+     N'Bưu tá đã lấy thành công kiện hàng của đơn [OrderCode].'),
+    ('MERCH_RETURNED',       'SYSTEM', N'Hàng hoàn về kho',
+     N'Đơn hàng [OrderCode] đã bị hoàn trả về kho.'),
+    ('MERCH_LOW_STOCK',      'SYSTEM', N'Cảnh báo sắp hết hàng',
+     N'Sản phẩm [ProductName] trong kho chỉ còn [Quantity] chiếc. Cần nhập thêm.'),
+    ('MERCH_OUT_OF_STOCK',   'SYSTEM', N'Cảnh báo hết hàng',
+     N'Sản phẩm [ProductName] đã hoàn toàn hết hàng trong kho.'),
+
+    -- Admin notifications
+    ('ADMIN_PAYMENT_ERROR',  'SYSTEM', N'Lỗi cổng thanh toán',
+     N'Cổng thanh toán [GatewayName] báo lỗi: [ErrorMessage].'),
+    ('ADMIN_JOB_FAILED',     'SYSTEM', N'Lỗi Background Job',
+     N'Background Job [JobName] chạy thất bại lúc [Time]. Vui lòng kiểm tra log.'),
+    ('ADMIN_OUTBOX_STUCK',   'SYSTEM', N'Lỗi Outbox',
+     N'Phát hiện Outbox events đang bị kẹt không được xử lý.'),
+    ('ADMIN_SHIPPING_ERROR', 'SYSTEM', N'Lỗi đồng bộ vận chuyển',
+     N'Lỗi đồng bộ trạng thái vận chuyển cho đơn [OrderCode]: [ErrorMessage].'),
+    ('ADMIN_DAMAGE_LOST',    'SYSTEM', N'Hàng hóa thất lạc/hư hỏng',
+     N'Ghi nhận đơn hàng [OrderCode] bị hư hỏng hoặc thất lạc trong quá trình vận chuyển.'),
+    ('ADMIN_BLOG_PENDING',   'SYSTEM', N'Duyệt bài viết',
+     N'Bài viết {{BlogTitle}} vừa được gửi và đang chờ bạn phê duyệt.');
+
+    -- =================================================================
+    -- NHÓM ADMIN: Marketing – cho phép bật/tắt/xóa
+    -- FIX-01: 'FLASH_SALE_STARTED' là code dùng trong Campaigns (section 29)
+    -- =================================================================
+    INSERT INTO @Tpl (TemplateCode, UsageScope, TitleTemplate, MessageTemplate) VALUES
+    ('FLASH_SALE_STARTED', 'ADMIN', N'⚡ {{PromotionName}} Bắt Đầu!',
+     N'Chương trình siêu sale {{PromotionName}} đã chính thức mở bán từ {{StartDate}} đến {{EndDate}}. Chớp deal ngay!'),
+
+    ('VOUCHER_NEW',        'ADMIN', N'🎁 Tặng bạn Voucher {{VoucherCode}}',
+     N'Bạn vừa nhận được mã {{VoucherCode}} giảm {{DiscountValue}} ({{DiscountType}}). Áp dụng ngay trước khi hết hạn vào {{ExpiryDate}}!'),
+
+    ('VOUCHER_EXPIRING',   'ADMIN', N'⏰ Voucher {{VoucherCode}} sắp hết hạn!',
+     N'Đừng bỏ lỡ mã {{VoucherCode}} (Giảm {{DiscountValue}}). Sẽ hết hạn vào ngày {{ExpiryDate}}. Xài ngay!'),
+
+    ('BIRTHDAY_CUSTOMER',  'ADMIN', N'🎂 Chúc mừng sinh nhật [CustomerName]',
+     N'Chúc mừng sinh nhật bạn! ToyStore xin gửi tặng bạn một món quà đặc biệt. Vui lòng kiểm tra mục Voucher nhé!'),
+
+    ('BIRTHDAY_CHILD',     'ADMIN', N'🎂 Chúc mừng sinh nhật bé [ChildName]',
+     N'Chúc mừng sinh nhật bé [ChildName]! ToyStore chúc bé mau ăn chóng lớn và luôn vui vẻ. Ba mẹ hãy chọn cho bé món đồ chơi yêu thích nhé!');
+
+    -- INSERT vào bảng thật, bỏ qua nếu đã tồn tại (idempotent)
     INSERT INTO [Notification].[Templates]
-        (TemplateCode, UsageScope, TitleTemplate, MessageTemplate, IsActive, CreatedAt)
-    VALUES
-    ('NOTIF_ORDER_PLACED',     'SYSTEM',N'Đặt hàng thành công',               N'Đơn hàng {OrderCode} của bạn đã được đặt. Tổng tiền: {TotalAmount} VND.',1,'2024-01-05 08:00:00'),
-    ('NOTIF_ORDER_CONFIRMED',  'SYSTEM',N'Đơn hàng đã được xác nhận',          N'Đơn hàng {OrderCode} đã xác nhận và đang chuẩn bị giao.',1,'2024-01-05 08:00:00'),
-    ('NOTIF_ORDER_SHIPPED',    'SYSTEM',N'Đơn hàng đang trên đường',            N'Đơn hàng {OrderCode} đã bàn giao vận chuyển. Mã vận đơn: {ShippingOrderCode}.',1,'2024-01-05 08:00:00'),
-    ('NOTIF_ORDER_DELIVERED',  'SYSTEM',N'Đơn hàng đã được giao',              N'Đơn hàng {OrderCode} giao thành công. Xác nhận trong 3 ngày.',1,'2024-01-05 08:00:00'),
-    ('NOTIF_ORDER_COMPLETED',  'SYSTEM',N'Đơn hàng hoàn thành',                N'Đơn hàng {OrderCode} đã hoàn thành. Cảm ơn bạn đã mua sắm tại ToyHouse!',1,'2024-01-05 08:00:00'),
-    ('NOTIF_ORDER_CANCELLED',  'SYSTEM',N'Đơn hàng đã bị hủy',               N'Đơn hàng {OrderCode} bị hủy. Lý do: {CancelReason}.',1,'2024-01-05 08:00:00'),
-    ('NOTIF_REFUND_REQUESTED', 'SYSTEM',N'Yêu cầu hoàn tiền đã gửi',          N'Yêu cầu hoàn tiền đơn {OrderCode} đang chờ xét duyệt.',1,'2024-01-05 08:00:00'),
-    ('NOTIF_REFUND_APPROVED',  'SYSTEM',N'Yêu cầu hoàn tiền được chấp thuận', N'Hoàn tiền {ApprovedAmount} VND cho đơn {OrderCode} đã được duyệt.',1,'2024-01-05 08:00:00'),
-    ('NOTIF_REFUND_REJECTED',  'SYSTEM',N'Yêu cầu hoàn tiền bị từ chối',      N'Yêu cầu hoàn tiền đơn {OrderCode} bị từ chối. Lý do: {Reason}.',1,'2024-01-05 08:00:00'),
-    ('NOTIF_REFUND_COMPLETED', 'SYSTEM',N'Hoàn tiền thành công',               N'{ApprovedAmount} VND từ đơn {OrderCode} đã hoàn vào ví. Số dư: {BalanceAfter} VND.',1,'2024-01-05 08:00:00'),
-    ('NOTIF_WALLET_TOPUP',     'SYSTEM',N'Nạp ví thành công',                  N'Ví nạp thêm {Amount} VND. Số dư: {BalanceAfter} VND.',1,'2024-01-05 08:00:00'),
-    ('NOTIF_WALLET_PAYMENT',   'SYSTEM',N'Thanh toán đơn hàng bằng ví',        N'Ví trừ {Amount} VND thanh toán đơn {OrderCode}. Còn lại: {BalanceAfter} VND.',1,'2024-01-05 08:00:00'),
-    ('NOTIF_PAYMENT_FAILED',   'SYSTEM',N'Thanh toán thất bại',                N'Thanh toán đơn {OrderCode} không thành công. Vui lòng thử lại.',1,'2024-01-05 08:00:00'),
-    ('NOTIF_ACCOUNT_REGISTERED','SYSTEM',N'Chào mừng đến với ToyHouse!',       N'Tài khoản {AccountName} đăng ký thành công. Chúc mua sắm vui vẻ!',1,'2024-01-05 08:00:00'),
-    ('NOTIF_ACCOUNT_BLOCKED',  'SYSTEM',N'Tài khoản bị tạm khóa',              N'Tài khoản tạm khóa đến {BlockedUntil}. Lý do: {BlockReason}.',1,'2024-01-05 08:00:00'),
-    ('NOTIF_ACCOUNT_UNBLOCKED','SYSTEM',N'Tài khoản đã được mở khóa',          N'Tài khoản mở khóa lúc {UnblockedAt}. Bạn có thể đăng nhập bình thường.',1,'2024-01-05 08:00:00'),
-    ('NOTIF_LOW_STOCK',        'SYSTEM',N'Cảnh báo tồn kho thấp',              N'Sản phẩm "{ProductName}" (ID:{ProductID}) sắp hết. Số lượng: {Quantity}.',1,'2024-01-05 08:00:00'),
-    ('NOTIF_OUT_OF_STOCK',     'SYSTEM',N'Sản phẩm đã hết hàng',               N'Sản phẩm "{ProductName}" (ID:{ProductID}) đã hết hàng. Vui lòng nhập hàng.',1,'2024-01-05 08:00:00'),
-    ('NOTIF_BLOG_APPROVED',    'SYSTEM',N'Bài viết đã được duyệt',              N'Bài viết "{BlogTitle}" đã được phê duyệt và đăng công khai.',1,'2024-01-05 08:00:00'),
-    ('NOTIF_BLOG_REJECTED',    'SYSTEM',N'Bài viết bị từ chối',                N'Bài viết "{BlogTitle}" bị từ chối. Lý do: {Reason}.',1,'2024-01-05 08:00:00'),
-    ('NOTIF_PROMO_START',      'ADMIN', N'Khuyến mãi đã bắt đầu',              N'Chương trình "{PromotionName}" đã chính thức bắt đầu! Nhanh tay săn ưu đãi.',1,'2024-01-05 08:00:00'),
-    ('NOTIF_PROMO_ENDING_SOON','ADMIN', N'Khuyến mãi sắp kết thúc!',           N'Chương trình "{PromotionName}" kết thúc lúc {EndDate}. Đừng bỏ lỡ!',1,'2024-01-05 08:00:00'),
-    ('NOTIF_ORDER_ASSIGNED',   'SYSTEM',N'Đơn hàng mới được phân công',         N'Đơn hàng {OrderCode} phân công cho bạn. Vui lòng xác nhận.',1,'2024-01-05 08:00:00');
+        ([TemplateCode], [UsageScope], [TitleTemplate], [MessageTemplate], [IsActive], [IsDeleted], [CreatedAt])
+    SELECT t.TemplateCode, t.UsageScope, t.TitleTemplate, t.MessageTemplate, 1, 0, GETDATE()
+    FROM   @Tpl t
+    WHERE  NOT EXISTS (
+        SELECT 1 FROM [Notification].[Templates] db
+        WHERE  db.TemplateCode = t.TemplateCode
+    );
+
+    COMMIT TRAN;
+    PRINT N'✅ Section 27: Templates inserted OK';
+END TRY
+BEGIN CATCH
+    ROLLBACK TRAN;
+    PRINT N'❌ Section 27 lỗi: ' + ERROR_MESSAGE();
+END CATCH
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    28. USER PREFERENCES (backfill)
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 INSERT INTO [Notification].[UserPreferences] (AccountID)
 SELECT a.AccountID FROM Accounts a
 WHERE NOT EXISTS (
@@ -1376,57 +1610,106 @@ WHERE  AccountID IN (
     WHERE  Email IN ('minhquan.dinh@icloud.com','vantai.chau@gmail.com'));
 GO
 
-
-/* ══════════════════════════════════════════
-   29. NOTIFICATION CAMPAIGNS & DELIVERIES
-══════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════
+   29. NOTIFICATION CAMPAIGNS & DELIVERIES  ── v3.2 FIXED v2
+   FIX-CAMPAIGN: Đổi tất cả campaigns thành Status='Sent'
+                 để CampaignSchedulerJob và CampaignSenderWorker
+                 KHÔNG pick up và dispatch lại → hết lỗi UNIQUE KEY
+   FIX-01: TemplateCode đúng: FLASH_SALE_STARTED, ORDER_PLACED
+   FIX-04: IdempotencyKey deterministic
+   FIX-10: DeliveryActions mẫu
+══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [Notification].[Campaigns])
 BEGIN
     DECLARE @adm_notif INT = (SELECT TOP 1 AccountID FROM Accounts WHERE RoleID=2);
 
     INSERT INTO [Notification].[Campaigns]
-        (CampaignName, TemplateCode, SourceType, TargetType, Status, ScheduledAt, CreatedByAccountID, CreatedAt)
+        (CampaignName, TemplateCode, SourceType, TargetType,
+         Status, ScheduledAt, CreatedByAccountID, CreatedAt)
     VALUES
-    (N'Thông Báo Sale Hè Rực Rỡ 2026','NOTIF_PROMO_START','ADMIN','ALL',   'Sent',     NULL,               @adm_notif,'2026-03-28 08:00:00'),
-    (N'Nhắc Nhở Giỏ Hàng Bỏ Quên',    'NOTIF_ORDER_PLACED','ADMIN','ROLE','Scheduled','2026-05-10 08:00:00',@adm_notif,'2026-04-01 08:00:00');
+    (
+        N'Thông Báo Sale Hè Rực Rỡ 2026',
+        'FLASH_SALE_STARTED',
+        'ADMIN', 'ALL',
+        'Sent',
+        NULL,
+        @adm_notif, '2026-03-28 08:00:00'
+    ),
+    (
+        N'Nhắc Nhở Giỏ Hàng Bỏ Quên',
+        'ORDER_PLACED',
+        'ADMIN', 'ROLE',
+        'Sent',
+        '2026-05-10 08:00:00',
+        @adm_notif, '2026-04-01 08:00:00'
+    );
 
-    DECLARE @cam1 INT = (SELECT TOP 1 CampaignID FROM [Notification].[Campaigns] WHERE CampaignName=N'Thông Báo Sale Hè Rực Rỡ 2026');
-    DECLARE @cam2 INT = (SELECT TOP 1 CampaignID FROM [Notification].[Campaigns] WHERE CampaignName=N'Nhắc Nhở Giỏ Hàng Bỏ Quên');
+    DECLARE @cam1 INT = (SELECT TOP 1 CampaignID FROM [Notification].[Campaigns]
+                         WHERE CampaignName = N'Thông Báo Sale Hè Rực Rỡ 2026');
+    DECLARE @cam2 INT = (SELECT TOP 1 CampaignID FROM [Notification].[Campaigns]
+                         WHERE CampaignName = N'Nhắc Nhở Giỏ Hàng Bỏ Quên');
 
     INSERT INTO [Notification].[CampaignTargets] (CampaignID, TargetType, TargetValue) VALUES
-    (@cam1,'ROLE_ID','1'),
-    (@cam2,'ROLE_ID','1');
+    (@cam1, 'ROLE_ID', '1'),
+    (@cam2, 'ROLE_ID', '1');
 
     INSERT INTO [Notification].[CampaignStats] (CampaignID, TotalSent, TotalRead, TotalClicked) VALUES
-    (@cam1,100,50,12),
-    (@cam2,  0, 0, 0);
+    (@cam1, 100, 50, 12),
+    (@cam2,   0,  0,  0);
 END
+GO
 
+-- Deliveries: idempotent guard bằng NOT EXISTS trên IdempotencyKey
 INSERT INTO [Notification].[Deliveries]
-    (AccountID, TemplateCode, RecipientType, NotificationType, Title, Message, Payload, Status, CreatedAt)
+    (AccountID, TemplateCode, RecipientType, NotificationType,
+     Title, Message, Payload,
+     Status, IdempotencyKey, CreatedAt)
 SELECT
-    o.AccountID, 'NOTIF_ORDER_PLACED', 'CUSTOMER', 'ORDER',
+    o.AccountID,
+    'ORDER_PLACED',
+    'CUSTOMER',
+    'ORDER',
     N'Đặt hàng thành công',
-    N'Đơn hàng '+o.OrderCode+N' đã được xác nhận. Chúng mình đang đóng gói cho bạn!',
-    '{"orderId":'+CAST(o.OrderID AS VARCHAR)+',"orderCode":"'+o.OrderCode+'"}',
-    'Unread', o.OrderDate
+    N'Đơn hàng ' + o.OrderCode + N' đã được xác nhận. Chúng mình đang đóng gói cho bạn!',
+    '{"orderId":' + CAST(o.OrderID AS VARCHAR) + ',"orderCode":"' + o.OrderCode + '"}',
+    'Unread',
+    'DELIVERY-' + o.OrderCode,
+    o.OrderDate
 FROM Orders o
 WHERE NOT EXISTS (
     SELECT 1 FROM [Notification].[Deliveries] d
-    WHERE  d.AccountID=o.AccountID
-      AND  d.Message LIKE '%'+o.OrderCode+'%');
-
-INSERT INTO [Notification].[DeliveryActions] (DeliveryID, AccountID, ActionType, OccurredAt)
-SELECT TOP 5 d.DeliveryID, d.AccountID, 'Read', DATEADD(MINUTE,30,d.CreatedAt)
-FROM [Notification].[Deliveries] d
-WHERE NOT EXISTS (
-    SELECT 1 FROM [Notification].[DeliveryActions] da WHERE da.DeliveryID=d.DeliveryID);
+    WHERE  d.IdempotencyKey = 'DELIVERY-' + o.OrderCode
+);
 GO
 
+-- DeliveryActions mẫu
+IF NOT EXISTS (SELECT 1 FROM [Notification].[DeliveryActions])
+BEGIN
+    INSERT INTO [Notification].[DeliveryActions]
+        (DeliveryID, AccountID, ActionType, OccurredAt)
+    SELECT TOP 3
+        d.DeliveryID,
+        d.AccountID,
+        'Read',
+        DATEADD(HOUR, 1, d.CreatedAt)
+    FROM [Notification].[Deliveries] d
+    WHERE d.IsDeleted = 0
+    ORDER BY d.CreatedAt ASC;
 
-/* ══════════════════════════════════════════
+    UPDATE d
+    SET    d.[Status] = 'Read',
+           d.[ReadAt] = DATEADD(HOUR, 1, d.CreatedAt)
+    FROM   [Notification].[Deliveries] d
+    WHERE  EXISTS (
+        SELECT 1 FROM [Notification].[DeliveryActions] da
+        WHERE  da.DeliveryID = d.DeliveryID AND da.ActionType = 'Read'
+    );
+END
+GO
+
+/* ══════════════════════════════════════════════════════════════
    30. CHAT CONVERSATIONS & MESSAGES
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[ChatConversations])
 BEGIN
     INSERT INTO [dbo].[ChatConversations] (AccountID, SessionID, Status, CreatedAt) VALUES
@@ -1437,21 +1720,21 @@ BEGIN
     DECLARE @cv2 INT = (SELECT TOP 1 ConversationID FROM ChatConversations WHERE SessionID='SES-20260421-002');
 
     INSERT INTO [dbo].[ChatMessages] (ConversationID, SenderType, Content, CreatedAt) VALUES
-    (@cv1,'USER', N'Bộ Lego City 668 mảnh này phù hợp bé mấy tuổi ạ?','2026-04-18 08:56:00'),
+    (@cv1,'USER', N'Bộ Lego City 668 mảnh này phù hợp bé mấy tuổi ạ?',                    '2026-04-18 08:56:00'),
     (@cv1,'BOT',  N'Dạ bộ này phù hợp bé từ 6 tuổi trở lên. Bé 6–8 tuổi cần ba mẹ hỗ trợ; từ 9 tuổi tự lắp hoàn toàn được ạ.','2026-04-18 08:56:30'),
-    (@cv1,'USER', N'Con mình 7 tuổi, mua được không shop?','2026-04-18 08:57:00'),
+    (@cv1,'USER', N'Con mình 7 tuổi, mua được không shop?',                                 '2026-04-18 08:57:00'),
     (@cv1,'BOT',  N'Hoàn toàn phù hợp! Nhiều khách phản hồi bé 7 tuổi tự lắp được 80% với chút hỗ trợ từ ba mẹ.','2026-04-18 08:57:15'),
-    (@cv2,'USER', N'Xe RC Traxxas này sạc bao lâu và chạy được bao nhiêu phút ạ?','2026-04-21 15:51:00'),
+    (@cv2,'USER', N'Xe RC Traxxas này sạc bao lâu và chạy được bao nhiêu phút ạ?',         '2026-04-21 15:51:00'),
     (@cv2,'STAFF',N'Dạ, xe sạc đầy khoảng 60 phút, chạy liên tục 25–30 phút. Mua thêm pin dự phòng chơi cả ngày!','2026-04-21 15:53:00'),
-    (@cv2,'USER', N'OK mình đặt luôn. Có freeship không ạ?','2026-04-21 15:54:00'),
+    (@cv2,'USER', N'OK mình đặt luôn. Có freeship không ạ?',                                '2026-04-21 15:54:00'),
     (@cv2,'STAFF',N'Đơn từ 200k trở lên freeship. Đơn xe RC 945k của anh/chị freeship 100% ạ!','2026-04-21 15:54:30');
 END
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    31. RECOMMENDATION & INTERACTION
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [Recommendation].[UserProductScores])
     INSERT INTO [Recommendation].[UserProductScores]
         (AccountID, ProductID, Score, ViewCount, LastInteractedAt)
@@ -1493,21 +1776,21 @@ IF NOT EXISTS (SELECT 1 FROM [Interaction].[Events])
            CASE (ABS(CHECKSUM(NEWID()))%3)
                WHEN 0 THEN 'ViewProduct'
                WHEN 1 THEN 'AddToCart'
-               ELSE 'AddToWishlist' END,
+               ELSE        'AddToWishlist' END,
            CAST(p.ProductID AS VARCHAR),'Product',
            CASE (ABS(CHECKSUM(NEWID()))%3)
                WHEN 0 THEN 'homepage'
                WHEN 1 THEN 'search'
-               ELSE 'category' END,
+               ELSE        'category' END,
            CASE (ABS(CHECKSUM(NEWID()))%2) WHEN 0 THEN 'mobile' ELSE 'desktop' END
     FROM Accounts a CROSS JOIN Products p
     WHERE a.RoleID=1 AND p.ProductID IN (1,8,12);
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    32. SYSTEM BACKGROUND JOBS
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [System].[BackgroundJobs])
     INSERT INTO [System].[BackgroundJobs]
         (JobName, CronExpression, IsEnabled, LastRunStatus) VALUES
@@ -1518,9 +1801,9 @@ IF NOT EXISTS (SELECT 1 FROM [System].[BackgroundJobs])
 GO
 
 
-/* ══════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    33. DOMAIN EVENT OUTBOX
-══════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 INSERT INTO [System].[DomainEventOutbox]
     (EventID, EventType, AggregateType, AggregateId, Payload, OccurredOn)
 SELECT
@@ -1536,23 +1819,38 @@ WHERE NOT EXISTS (
 GO
 
 
-/* ═══════════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    HOÀN TẤT
-═══════════════════════════════════════════════════════════════ */
+══════════════════════════════════════════════════════════════ */
 PRINT N'';
-PRINT N'══════════════════════════════════════════════════════════';
-PRINT N'✅  DataSeed v3.2 FIXED hoàn tất!';
+PRINT N'══════════════════════════════════════════════════════════════════';
+PRINT N'✅  DataSeed v3.2 FIXED (Full Audit) hoàn tất!';
+PRINT N'';
+PRINT N'  Các FIX đã áp dụng:';
+PRINT N'  FIX-01  TemplateCode trong Campaigns: FLASH_SALE_STARTED, ORDER_PLACED';
+PRINT N'  FIX-02  PaymentHistory PaymentMethod: SHIP_COD (CHECK constraint corrected)';
+PRINT N'  FIX-03  Campaigns không dùng TemplateCode sai → đã đồng bộ với section 27';
+PRINT N'  FIX-10  Notification.Campaigns: Removed non-existent SentAt column';
+PRINT N'  FIX-11  Orders: Sử dụng COD_PENDING cho đơn SHIP_COD chưa hoàn tất';
+PRINT N'  FIX-04  Deliveries.IdempotencyKey: dùng deterministic key DELIVERY-{OrderCode}';
+PRINT N'  FIX-05  ShippingProviderTransactions: guard NOT EXISTS chặt hơn ở section 15';
+PRINT N'  FIX-06  CampaignStats: bỏ cột TemplateCode không tồn tại';
+PRINT N'  FIX-07  Deliveries IdempotencyKey dùng deterministic string thay inline NEWID()';
+PRINT N'  FIX-08  CASE WHEN thay CHOOSE() – giữ nguyên fix gốc, thêm SHIP_COD branch';
+PRINT N'  FIX-09  Wallet balance 10M – giữ nguyên fix gốc';
+PRINT N'  FIX-10  DeliveryActions mẫu thêm vào, đồng bộ trạng thái Read trong Deliveries';
 PRINT N'';
 PRINT N'  Dữ liệu đã seed:';
 PRINT N'  • 4 Roles, 3 nhân viên, 20 khách hàng';
 PRINT N'  • 6 SuperCategories, 13 Categories, 5 Materials/Ages/Origins';
 PRINT N'  • 6 Brands, 5 PriceRanges, 8 StatusOrders, 3 ReactionTypes';
-PRINT N'  • 2 Promotions + time slots, 3 Vouchers';
+PRINT N'  • 2 Promotions + TimeSlots + ProductPromotions + PromotionProductSlots';
+PRINT N'  • 3 Vouchers';
 PRINT N'  • 15 Products + ProductDetails + 45 ProductImages';
 PRINT N'  • 10 đơn hàng mẫu (COD, WALLET, SE_PAY, voucher, cancel, multi-item)';
-PRINT N'  • 30 đơn hàng ngẫu nhiên (ĐƠN 11–40, không còn lỗi PaymentMethod NULL)';
+PRINT N'  • 30 đơn hàng ngẫu nhiên (ĐƠN 11–40)';
 PRINT N'  • Shipping transactions + status histories';
-PRINT N'  • Payment history + Gateway transactions (SE_PAY)';
+PRINT N'  • Payment history (đúng CHECK constraint) + Gateway transactions (SE_PAY)';
 PRINT N'  • Wallets (10M) + WalletTransactions (TopUp + Payment, không âm)';
 PRINT N'  • 1 OrderRefund + RefundImages';
 PRINT N'  • 10 Addresses, 4 CustomerChildren';
@@ -1561,12 +1859,13 @@ PRINT N'  • 3 BlogCategories, 3 BlogPosts';
 PRINT N'  • BlockReasons, 1 UserBlockHistory';
 PRINT N'  • 3 ProductReviews + StaffReplies + Images + Reactions';
 PRINT N'  • 2 BlogReviews + BlogReplies + BlogReactions';
-PRINT N'  • 23 Notification Templates, UserPreferences (backfill)';
+PRINT N'  • 36 Notification Templates (31 SYSTEM + 5 ADMIN)';
+PRINT N'  • UserPreferences (backfill + opt-out 2 user)';
 PRINT N'  • 2 Campaigns + CampaignTargets + CampaignStats';
-PRINT N'  • Notification Deliveries + DeliveryActions';
+PRINT N'  • Notification Deliveries (idempotent) + DeliveryActions';
 PRINT N'  • Chat Conversations + Messages';
 PRINT N'  • Recommendation (Scores, Trending, Similarities, Widgets)';
 PRINT N'  • Interaction Events';
 PRINT N'  • 4 BackgroundJobs, DomainEventOutbox';
-PRINT N'══════════════════════════════════════════════════════════';
+PRINT N'══════════════════════════════════════════════════════════════════';
 GO

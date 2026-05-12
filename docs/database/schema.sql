@@ -1,7 +1,7 @@
-
 /* =================================================================
    E-COMMERCE DATABASE SCHEMA (OPTIMIZED FULL VERSION + AI MODERATION)
-   Platform: SQL Server | Version: 3.1
+   Platform: SQL Server | Version: 3.2
+  
 ================================================================= */
 
 USE [master];
@@ -305,6 +305,7 @@ CREATE TABLE [PromotionTimeSlots] (
     [EndAt]       DATETIME2(0) NOT NULL,   -- thời điểm kết thúc slot (UTC)
     [Status]      VARCHAR(20) NOT NULL DEFAULT 'Scheduled'
         CONSTRAINT [CK_PromotionTimeSlots_Status] CHECK ([Status] IN ('Scheduled', 'Active', 'Expired', 'Inactive')),
+    [IsDeleted]     BIT NOT NULL DEFAULT 0,
     [CreatedAt]   DATETIME2(0) NOT NULL DEFAULT GETUTCDATE(),
     [UpdatedAt]   DATETIME2(0) NULL,
     CONSTRAINT [FK_PromotionTimeSlots_Promotions] FOREIGN KEY ([PromotionID]) REFERENCES [Promotions]([PromotionID]),
@@ -336,6 +337,7 @@ CREATE TABLE [ProductPromotions] (
     [SoldQuantity]     INT           NOT NULL DEFAULT 0,
     [ReservedQuantity] INT           NOT NULL DEFAULT 0,
     [IsActive]         BIT           NOT NULL DEFAULT 1,
+    [IsDeleted]     BIT NOT NULL DEFAULT 0,
     [CreatedAt]        DATETIME2(0)  NOT NULL DEFAULT GETUTCDATE(),
     [UpdatedAt]        DATETIME2(0)  NULL,
     CONSTRAINT [PK_ProductPromotions]           PRIMARY KEY ([ProductID], [PromotionID]),
@@ -368,6 +370,7 @@ CREATE TABLE [PromotionProductSlots] (
     [SoldQuantity]     INT           NOT NULL DEFAULT 0,
     [ReservedQuantity] INT           NOT NULL DEFAULT 0,
     [IsActive]         BIT           NOT NULL DEFAULT 1,
+    [IsDeleted]     BIT NOT NULL DEFAULT 0,
     [CreatedAt]        DATETIME2(0)  NOT NULL DEFAULT GETUTCDATE(),
     [UpdatedAt]        DATETIME2(0)  NULL,
     CONSTRAINT [UQ_PromotionProductSlots_SlotProduct]   UNIQUE ([TimeSlotID], [ProductID]),
@@ -452,10 +455,12 @@ CREATE TABLE [Orders] (
     [DeliveredAt]           DATETIME2(0)  NULL,
     [CompletedAt]           DATETIME2(0)  NULL,
     [CancelledAt]           DATETIME2(0)  NULL,
-    [PaymentMethod] VARCHAR(20) NOT NULL DEFAULT 'SHIP_COD' 
+    [PaymentMethod] VARCHAR(20) NOT NULL DEFAULT 'SHIP_COD'
              CHECK ([PaymentMethod] IN ('BANK_TRANSFER', 'SHIP_COD', 'SE_PAY', 'WALLET')),
+    /* ── v3.2: thêm 'COD_PENDING' ── */
     [PaymentStatus]         VARCHAR(20)   NOT NULL DEFAULT 'PENDING'
-        CHECK ([PaymentStatus] IN ('PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED')),
+        CONSTRAINT [CK_Orders_PaymentStatus]
+        CHECK ([PaymentStatus] IN ('PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED', 'COD_PENDING')),
     [PaymentCode]           VARCHAR(50)   NULL UNIQUE,
     [PaidAt]                DATETIME2(0)  NULL,
     [SubTotal]              DECIMAL(12,0) NOT NULL,
@@ -491,6 +496,7 @@ CREATE TABLE [Orders] (
 );
 GO
 
+/* ── v3.2: OrderDetails với PromotionID + SlotProductID ── */
 CREATE TABLE [OrderDetails] (
     [OrderDetailID]  INT IDENTITY(1,1) PRIMARY KEY,
     [OrderID]        INT NOT NULL,
@@ -501,12 +507,16 @@ CREATE TABLE [OrderDetails] (
     [UnitPrice]      DECIMAL(12,0) NOT NULL CHECK ([UnitPrice] >= 0),
     [DiscountAmount] DECIMAL(12,0) NOT NULL DEFAULT 0 CHECK ([DiscountAmount] >= 0),
     [LineTotal] AS (IIF([Quantity] * [UnitPrice] - [DiscountAmount] < 0, 0, [Quantity] * [UnitPrice] - [DiscountAmount])) PERSISTED,
+    [PromotionID]    INT NULL,   -- FK → Promotions(PromotionID), NULL nếu không áp dụng KM
+    [SlotProductID]  INT NULL,   -- FK → PromotionProductSlots(SlotProductID), NULL nếu không phải flash-sale
     [CreatedAt]      DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [UpdatedAt]      DATETIME2(0) NULL,
-    CONSTRAINT [FK_OrderDetails_Orders]            FOREIGN KEY ([OrderID])   REFERENCES [Orders]([OrderID]),
-    CONSTRAINT [FK_OrderDetails_Products]          FOREIGN KEY ([ProductID]) REFERENCES [Products]([ProductID]),
-    CONSTRAINT [UQ_OrderDetails_OrderProduct]      UNIQUE ([OrderID], [ProductID]),
-    CONSTRAINT [CK_OrderDetails_DiscountNotExceed] CHECK ([DiscountAmount] <= [Quantity] * [UnitPrice])
+    CONSTRAINT [FK_OrderDetails_Orders]                 FOREIGN KEY ([OrderID])        REFERENCES [Orders]([OrderID]),
+    CONSTRAINT [FK_OrderDetails_Products]               FOREIGN KEY ([ProductID])      REFERENCES [Products]([ProductID]),
+    CONSTRAINT [FK_OrderDetails_Promotions]             FOREIGN KEY ([PromotionID])    REFERENCES [Promotions]([PromotionID]),
+    CONSTRAINT [FK_OrderDetails_PromotionProductSlots]  FOREIGN KEY ([SlotProductID])  REFERENCES [PromotionProductSlots]([SlotProductID]),
+    CONSTRAINT [UQ_OrderDetails_OrderProduct]           UNIQUE ([OrderID], [ProductID]),
+    CONSTRAINT [CK_OrderDetails_DiscountNotExceed]      CHECK ([DiscountAmount] <= [Quantity] * [UnitPrice])
 );
 GO
 
@@ -708,7 +718,7 @@ CREATE TABLE [ReviewProducts] (
             [ModerationStatus] IN ('Pending', 'Approved', 'Rejected', 'ManualReview')
         ),
     [IsDeleted] BIT NOT NULL DEFAULT 0,
-	[IsEdited]  BIT NOT NULL DEFAULT 0,
+    [IsEdited]  BIT NOT NULL DEFAULT 0,
     [CreatedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [UpdatedAt] DATETIME2(0) NULL,
     CONSTRAINT [UQ_Review_Account_Order_Product] UNIQUE ([AccountID], [OrderID], [ProductID]),
@@ -1045,15 +1055,17 @@ ON [WalletTransactions]([IdempotencyKey])
 WHERE [IdempotencyKey] IS NOT NULL;
 GO
 
+/* ── v3.2: thêm 'COD_PENDING' vào PaymentHistory.PaymentStatus ── */
 CREATE TABLE [PaymentHistory] (
     [PaymentHistoryID]    INT IDENTITY(1,1) PRIMARY KEY,
     [AccountID]           INT NOT NULL,
     [OrderID]             INT NOT NULL,
     [WalletTransactionID] INT NULL,
     [PaymentStatus]       VARCHAR(20) NOT NULL
-        CHECK ([PaymentStatus] IN ('PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED')),
+        CONSTRAINT [CK_PaymentHistory_PaymentStatus]
+        CHECK ([PaymentStatus] IN ('PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED', 'COD_PENDING')),
     [PaymentMethod]       VARCHAR(20) NOT NULL
-        CHECK ([PaymentMethod] IN ('SE_PAY', 'WALLET', 'BANK_TRANSFER', 'SHIP_CODE')), 
+        CHECK ([PaymentMethod] IN ('SE_PAY', 'WALLET', 'BANK_TRANSFER', 'SHIP_COD')), 
     [TransactionCode]     VARCHAR(100) NULL,
     [Amount]              DECIMAL(12,0) NOT NULL CHECK ([Amount] >= 0),
     [CreatedAt]           DATETIME2(0) NOT NULL DEFAULT GETDATE(),
@@ -1061,6 +1073,7 @@ CREATE TABLE [PaymentHistory] (
     CONSTRAINT [FK_PaymentHistory_WalletTransactions]  FOREIGN KEY ([WalletTransactionID]) REFERENCES [WalletTransactions]([WalletTransactionID]),
     CONSTRAINT [FK_PaymentHistory_Accounts]            FOREIGN KEY ([AccountID])           REFERENCES [Accounts]([AccountID])
 );
+GO
 
 /* =============================================
    8.1. PAYMENT GATEWAY TRANSACTIONS
@@ -1263,16 +1276,16 @@ GO
    9. NOTIFICATION & CHAT & INTERACTIONS
 ============================================= */
 CREATE TABLE [dbo].[CustomerChildren] (
-    [ChildID]               INT IDENTITY(1,1) PRIMARY KEY,
-    [AccountID]             INT NOT NULL,
-    [SexID]                 TINYINT NULL,
-    [FullName]              NVARCHAR(100) NOT NULL,
-    [NickName]              NVARCHAR(50) NULL,
-    [DOB]                   DATE NOT NULL,
-    [BirthdayNotifiedYear]  SMALLINT NULL,
-    [IsDeleted]             BIT NOT NULL DEFAULT 0,
-    [CreatedAt]             DATETIME2(0) NOT NULL DEFAULT GETDATE(),
-    [UpdatedAt]             DATETIME2(0) NULL,
+    [ChildID]   INT IDENTITY(1,1) PRIMARY KEY,
+    [AccountID] INT NOT NULL,
+    [SexID]     TINYINT NULL,
+    [FullName]  NVARCHAR(100) NOT NULL,
+    [NickName]  NVARCHAR(50) NULL,
+    [DOB]       DATE NOT NULL,
+    [BirthdayNotifiedYear] SMALLINT NULL,
+    [IsDeleted] BIT NOT NULL DEFAULT 0,
+    [CreatedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    [UpdatedAt] DATETIME2(0) NULL,
     CONSTRAINT [FK_CustomerChildren_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [dbo].[Accounts]([AccountID]),
     CONSTRAINT [FK_CustomerChildren_Sexes]    FOREIGN KEY ([SexID])     REFERENCES [dbo].[Sexes]([SexID]),
     CONSTRAINT [CK_CustomerChildren_DOB]      CHECK ([DOB] <= CAST(GETDATE() AS DATE))
@@ -1404,9 +1417,9 @@ CREATE TABLE [Notification].[Deliveries] (
     [CampaignID]       INT                  NULL,
     [TemplateCode]     VARCHAR(50)          NULL,
     [RecipientType]    VARCHAR(15)          NOT NULL DEFAULT 'CUSTOMER'
-        CONSTRAINT [CK_Deliveries_RecipientType] CHECK ([RecipientType] IN ('CUSTOMER', 'ADMIN', 'STAFF')),
+        CONSTRAINT [CK_Deliveries_RecipientType] CHECK ([RecipientType] IN ('CUSTOMER', 'ADMIN', 'STAFF', 'MERCHANDISE')),
     [Channel]          VARCHAR(20)          NOT NULL DEFAULT 'WEB_BELL'
-        CONSTRAINT [CK_Deliveries_Channel] CHECK ([Channel] IN ('WEB_BELL', 'WEB_PUSH', 'EMAIL')),
+        CONSTRAINT [CK_Deliveries_Channel] CHECK ([Channel] IN ('WEB_BELL', 'EMAIL')),
     [ImageUrl]         NVARCHAR(500)        NULL,
     [NotificationType] VARCHAR(20)          NOT NULL DEFAULT 'SYSTEM'
         CONSTRAINT [CK_Deliveries_NotificationType] CHECK ([NotificationType] IN ('ORDER', 'PROMOTION', 'SYSTEM', 'BLOG', 'STOCK')),
@@ -1423,10 +1436,10 @@ CREATE TABLE [Notification].[Deliveries] (
         CONSTRAINT [CK_Deliveries_EmailStatus] CHECK ([EmailStatus] IN ('Pending', 'Sent', 'Failed')),
     [PushStatus]       VARCHAR(15)          NULL
         CONSTRAINT [CK_Deliveries_PushStatus] CHECK ([PushStatus] IN ('Pending', 'Sent', 'Failed')),
+    [IdempotencyKey] VARCHAR(200) UNIQUE NULL,
     [IsDeleted]        BIT                  NOT NULL DEFAULT 0,
     [CreatedAt]        DATETIME2(0)         NOT NULL DEFAULT GETDATE(),
     [UpdatedAt]        DATETIME2(0)         NULL,
-    [IdempotencyKey]   VARCHAR(200)         NULL,
 
     CONSTRAINT [FK_Deliveries_Accounts]  FOREIGN KEY ([AccountID])      REFERENCES [dbo].[Accounts]([AccountID]),
     CONSTRAINT [FK_Deliveries_Templates] FOREIGN KEY ([TemplateCode])   REFERENCES [Notification].[Templates]([TemplateCode]),
@@ -1440,7 +1453,11 @@ GO
 CREATE INDEX [IX_Deliveries_AccountID_Status]    ON [Notification].[Deliveries] ([AccountID], [Status]) INCLUDE ([Title], [Message], [CreatedAt], [CampaignID], [NotificationType], [ImageUrl], [ActionType], [ActionTarget]) WHERE [IsDeleted] = 0;
 CREATE INDEX [IX_Deliveries_AccountID_CreatedAt] ON [Notification].[Deliveries] ([AccountID], [CreatedAt] DESC) WHERE [IsDeleted] = 0;
 CREATE INDEX [IX_Deliveries_PushStatus]          ON [Notification].[Deliveries] ([PushStatus], [CreatedAt]) WHERE [PushStatus] = 'Failed';
-CREATE UNIQUE NONCLUSTERED INDEX [UQ_Deliveries_IdempotencyKey] ON [Notification].[Deliveries]([IdempotencyKey]) WHERE [IdempotencyKey] IS NOT NULL;
+GO
+
+CREATE UNIQUE INDEX [UQ_Deliveries_IdempotencyKey]
+ON [Notification].[Deliveries]([IdempotencyKey])
+WHERE [IdempotencyKey] IS NOT NULL;
 GO
 
 CREATE TABLE [Notification].[DeliveryActions] (
@@ -1732,6 +1749,12 @@ CREATE NONCLUSTERED INDEX [IX_ReviewProductImages_ModerationPending]
 ON [dbo].[ReviewProductImages] ([ModerationStatus], [CreatedAt] ASC)
 INCLUDE ([ReviewProductImageID], [ReviewProductID], [ImageURL])
 WHERE [ModerationStatus] = 'Pending' AND [IsDeleted] = 0;
+GO
+
+/* ── v3.2: Index hỗ trợ audit promotion trong OrderDetails ── */
+CREATE NONCLUSTERED INDEX [IX_OrderDetails_PromotionID]
+ON [OrderDetails]([PromotionID])
+WHERE [PromotionID] IS NOT NULL;
 GO
 
 /* =============================================
