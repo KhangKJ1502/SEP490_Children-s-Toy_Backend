@@ -219,6 +219,11 @@ public class AuthService : IAuthService
             return Result.Success();
         }
 
+        if (!account.IsActive)
+        {
+            return Result.Failure("ACCOUNT_INACTIVE", "Your account has been deactivated. Please contact support.");
+        }
+
         var otpCode = GenerateOtpCode();
         var redisKey = $"{OtpForgotPrefix}{normalizedEmail}";
         await _redisService.SetAsync(redisKey, otpCode, OtpExpiry);
@@ -258,6 +263,11 @@ public class AuthService : IAuthService
         if (account == null || account.IsDeleted)
         {
             return Result.NotFound("Account");
+        }
+
+        if (!account.IsActive)
+        {
+            return Result.Failure("ACCOUNT_INACTIVE", "Your account has been deactivated. Please contact support.");
         }
 
         await _unitOfWork.Accounts.UpdatePasswordHashAsync(account.AccountId, HashPassword(dto.NewPassword), cancellationToken);
