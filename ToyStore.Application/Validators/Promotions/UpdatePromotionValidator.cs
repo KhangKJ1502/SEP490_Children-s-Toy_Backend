@@ -46,5 +46,10 @@ public class UpdatePromotionValidator : AbstractValidator<UpdatePromotionDto>
         RuleForEach(x => x.PromotionTimeSlots)
             .SetValidator(new CreatePromotionTimeSlotValidator())
             .When(x => x.PromotionTimeSlots != null);
+
+        RuleFor(x => x.PromotionTimeSlots)
+            .Must((dto, slots) => slots == null || slots.All(s => s.StartAt >= dto.StartDate && s.EndAt <= dto.EndDate))
+            .WithMessage("All time slots must be within the promotion's date range.")
+            .When(x => x.PromotionTimeSlots != null && x.StartDate.HasValue && x.EndDate.HasValue);
     }
 }

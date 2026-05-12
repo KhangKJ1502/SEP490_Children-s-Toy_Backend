@@ -123,6 +123,7 @@ public class PromotionRepository : IPromotionRepository
             .Include(pp => pp.Promotion)
             .AnyAsync(pp => pp.ProductId == productId 
                 && pp.IsActive 
+                && !pp.IsDeleted
                 && !pp.Promotion.IsDeleted 
                 && (pp.Promotion.Status == "Active" || pp.Promotion.Status == "Scheduled"), cancellationToken);
 
@@ -134,6 +135,8 @@ public class PromotionRepository : IPromotionRepository
             .ThenInclude(ts => ts.Promotion)
             .AnyAsync(pps => pps.ProductId == productId 
                 && pps.IsActive 
+                && !pps.IsDeleted
+                && !pps.TimeSlot.IsDeleted
                 && !pps.TimeSlot.Promotion.IsDeleted
                 && (pps.TimeSlot.Promotion.Status == "Active" || pps.TimeSlot.Promotion.Status == "Scheduled"), cancellationToken);
 
@@ -149,8 +152,8 @@ public class PromotionRepository : IPromotionRepository
                 && p.PromotionType == "FLASH_SALE"
                 && (p.Status == "Active" || p.Status == "Scheduled")
                 && p.EndDate >= now)
-            .Include(p => p.PromotionTimeSlots)
-                .ThenInclude(ts => ts.PromotionProductSlots)
+            .Include(p => p.PromotionTimeSlots.Where(ts => !ts.IsDeleted && (ts.Status == "Active" || ts.Status == "Scheduled")))
+                .ThenInclude(ts => ts.PromotionProductSlots.Where(pps => !pps.IsDeleted))
                     .ThenInclude(pps => pps.Product)
                         .ThenInclude(prod => prod.ProductImage)
             .OrderBy(p => p.Priority)

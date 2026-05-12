@@ -443,7 +443,9 @@ public class CartService : ICartService
         // 1. Ưu tiên Flash Sale (PromotionProductSlots)
         var activeFlashSale = product.PromotionProductSlots
             .Where(pps => pps.IsActive
+                         && !pps.IsDeleted
                          && pps.TimeSlot != null
+                         && !pps.TimeSlot.IsDeleted
                          && string.Equals(pps.TimeSlot.Status, "Active", StringComparison.OrdinalIgnoreCase)
                          && pps.TimeSlot.StartAt <= now
                          && pps.TimeSlot.EndAt >= now
@@ -464,6 +466,7 @@ public class CartService : ICartService
         // 2. Nếu không có Flash Sale, tìm trong ProductPromotions (Discount thường)
         var bestRegularPromotion = product.ProductPromotions
             .Where(pp => pp.IsActive
+                         && !pp.IsDeleted
                          && pp.Promotion != null
                          && !pp.Promotion.IsDeleted
                          && (string.Equals(pp.Promotion.Status, "Active", StringComparison.OrdinalIgnoreCase)
@@ -489,7 +492,8 @@ public class CartService : ICartService
 
         // Kiểm tra xem có slot nào đang Active và bao phủ thời gian hiện tại không
         return promotion.PromotionTimeSlots.Any(slot =>
-            string.Equals(slot.Status, "Active", StringComparison.OrdinalIgnoreCase)
+            !slot.IsDeleted
+            && string.Equals(slot.Status, "Active", StringComparison.OrdinalIgnoreCase)
             && slot.StartAt <= now
             && slot.EndAt >= now);
     }
