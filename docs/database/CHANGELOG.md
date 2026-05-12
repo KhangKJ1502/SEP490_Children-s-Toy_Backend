@@ -1,36 +1,57 @@
-# Database Changelog — ToyStore (SEP490)
+﻿# Database Changelog â€” ToyStore (SEP490)
 
-> **Quy tắc:** Entry mới nhất nằm TRÊN CÙNG.
-> **Cập nhật file này** mỗi khi thay đổi schema (thêm bảng, cột, index).
-
----
-
-## [2026-05-09] `v3.2 — Notification: BirthdayNotifiedYear trên CustomerChildren`
-
-### Thay đổi
-
-| Loại | Bảng | Chi tiết |
-|---|---|---|
-| ➕ Thêm cột | `dbo.CustomerChildren.BirthdayNotifiedYear` | `SMALLINT NULL` — năm gần nhất đã gửi thông báo sinh nhật cho bé |
-
-### Lý do
-
-`BirthdayNotificationJob` cần biết đã gửi thông báo sinh nhật cho bé trong năm hiện tại chưa. Cột này lưu `YEAR(GETDATE())` sau khi gửi thành công. Job chỉ gửi khi `BirthdayNotifiedYear IS NULL OR BirthdayNotifiedYear < YEAR(GETDATE())`.
+> **Quy táº¯c:** Entry má»›i nháº¥t náº±m TRÃŠN CÃ™NG.
+> **Cáº­p nháº­t file nÃ y** má»—i khi thay Ä‘á»•i schema (thÃªm báº£ng, cá»™t, index).
 
 ---
 
-## [2026-05-09] `v3.1 — Notification: IdempotencyKey trên Deliveries`
+## [2026-05-11] `v3.3 - Wallet PIN tables: WalletPins + WalletPinAttempts`
 
-### Thay đổi
+### Thay doi
 
-| Loại | Bảng | Chi tiết |
+| Loai | Bang | Chi tiet |
 |---|---|---|
-| ➕ Thêm cột | `Notification.Deliveries.IdempotencyKey` | `VARCHAR(200) NULL` — key chống gửi trùng khi Job retry |
-| ➕ Thêm index | `UQ_Deliveries_IdempotencyKey` | Unique filtered index (`WHERE IdempotencyKey IS NOT NULL`) |
+| + Them bang | `dbo.WalletPins` | Luu hash PIN, trang thai active, so lan nhap sai, lock time va lich su doi PIN |
+| + Them index | `UQ_WalletPins_WalletID` | Unique filtered index (`WHERE IsActive = 1`) dam bao moi vi chi co 1 PIN dang active |
+| + Them bang | `dbo.WalletPinAttempts` | Log tung lan nhap PIN theo `ActionType` (`PAYMENT`, `VIEW_BALANCE`, `TOP_UP`) va ket qua thanh cong/that bai |
+| + Them index | `IX_WalletPinAttempts_Wallet` | Toi uu truy van lich su nhap PIN theo vi va thoi gian moi nhat |
 
-### Lý do
+### Ly do
 
-Hệ thống Outbox + background job có thể retry khi lỗi transient. Cột `IdempotencyKey` + unique index đảm bảo mỗi sự kiện chỉ INSERT 1 delivery row duy nhất dù job chạy lại nhiều lần. Format key: `{EventType}:{AggregateId}:{AccountId}:{Channel}`.
+Can bo sung lop bao mat PIN cho vi dien tu, theo doi so lan nhap sai de lock tam thoi, dong thoi luu audit cho cac thao tac can xac thuc PIN.
+
+### Script
+
+`docs/database/changes/20260511_1700_AddWalletPinTables.sql`
+
+---
+
+## [2026-05-09] `v3.2 â€” Notification: BirthdayNotifiedYear trÃªn CustomerChildren`
+
+### Thay Ä‘á»•i
+
+| Loáº¡i | Báº£ng | Chi tiáº¿t |
+|---|---|---|
+| âž• ThÃªm cá»™t | `dbo.CustomerChildren.BirthdayNotifiedYear` | `SMALLINT NULL` â€” nÄƒm gáº§n nháº¥t Ä‘Ã£ gá»­i thÃ´ng bÃ¡o sinh nháº­t cho bÃ© |
+
+### LÃ½ do
+
+`BirthdayNotificationJob` cáº§n biáº¿t Ä‘Ã£ gá»­i thÃ´ng bÃ¡o sinh nháº­t cho bÃ© trong nÄƒm hiá»‡n táº¡i chÆ°a. Cá»™t nÃ y lÆ°u `YEAR(GETDATE())` sau khi gá»­i thÃ nh cÃ´ng. Job chá»‰ gá»­i khi `BirthdayNotifiedYear IS NULL OR BirthdayNotifiedYear < YEAR(GETDATE())`.
+
+---
+
+## [2026-05-09] `v3.1 â€” Notification: IdempotencyKey trÃªn Deliveries`
+
+### Thay Ä‘á»•i
+
+| Loáº¡i | Báº£ng | Chi tiáº¿t |
+|---|---|---|
+| âž• ThÃªm cá»™t | `Notification.Deliveries.IdempotencyKey` | `VARCHAR(200) NULL` â€” key chá»‘ng gá»­i trÃ¹ng khi Job retry |
+| âž• ThÃªm index | `UQ_Deliveries_IdempotencyKey` | Unique filtered index (`WHERE IdempotencyKey IS NOT NULL`) |
+
+### LÃ½ do
+
+Há»‡ thá»‘ng Outbox + background job cÃ³ thá»ƒ retry khi lá»—i transient. Cá»™t `IdempotencyKey` + unique index Ä‘áº£m báº£o má»—i sá»± kiá»‡n chá»‰ INSERT 1 delivery row duy nháº¥t dÃ¹ job cháº¡y láº¡i nhiá»u láº§n. Format key: `{EventType}:{AggregateId}:{AccountId}:{Channel}`.
 
 ### Script
 
@@ -38,159 +59,162 @@ Hệ thống Outbox + background job có thể retry khi lỗi transient. Cột 
 
 ---
 
-## [2026-05-08] `v2.1 — Promotion Schema v2: StartAt/EndAt + PromotionProductSlots`
+## [2026-05-08] `v2.1 â€” Promotion Schema v2: StartAt/EndAt + PromotionProductSlots`
 
-### Thay đổi
+### Thay Ä‘á»•i
 
-| Loại | Bảng | Chi tiết |
+| Loáº¡i | Báº£ng | Chi tiáº¿t |
 |---|---|---|
-| 🗑️ Xoá cột | `PromotionTimeSlots.SlotDate` | Gộp vào StartAt/EndAt |
-| 🗑️ Xoá cột | `PromotionTimeSlots.StartTime` | Gộp vào StartAt |
-| 🗑️ Xoá cột | `PromotionTimeSlots.EndTime` | Gộp vào EndAt |
-| ➕ Thêm cột | `PromotionTimeSlots.StartAt` | `DATETIME2(0) NOT NULL` — UTC |
-| ➕ Thêm cột | `PromotionTimeSlots.EndAt` | `DATETIME2(0) NOT NULL` — UTC |
-| 🔧 Sửa constraint | `CK_PromotionTimeSlots_Range` | Thay `StartTime < EndTime` → `StartAt < EndAt` |
-| 🔧 Sửa index | `IX_PromotionTimeSlots_Active` | Dùng `(Status, StartAt, EndAt)` |
-| ➕ Thêm index | `IX_PromotionTimeSlots_Promotion` | `(PromotionID, Status)` |
-| 🔧 Sửa unique | `UQ_PromotionTimeSlots_UniqueSlot` | Dùng `(PromotionID, StartAt, EndAt)` |
-| 🔧 Sửa default | `PromotionTimeSlots.CreatedAt` | Đổi sang `GETUTCDATE()` |
-| ➕ Thêm bảng | `PromotionProductSlots` | Liên kết sản phẩm với slot Flash Sale |
+| ðŸ—‘ï¸ XoÃ¡ cá»™t | `PromotionTimeSlots.SlotDate` | Gá»™p vÃ o StartAt/EndAt |
+| ðŸ—‘ï¸ XoÃ¡ cá»™t | `PromotionTimeSlots.StartTime` | Gá»™p vÃ o StartAt |
+| ðŸ—‘ï¸ XoÃ¡ cá»™t | `PromotionTimeSlots.EndTime` | Gá»™p vÃ o EndAt |
+| âž• ThÃªm cá»™t | `PromotionTimeSlots.StartAt` | `DATETIME2(0) NOT NULL` â€” UTC |
+| âž• ThÃªm cá»™t | `PromotionTimeSlots.EndAt` | `DATETIME2(0) NOT NULL` â€” UTC |
+| ðŸ”§ Sá»­a constraint | `CK_PromotionTimeSlots_Range` | Thay `StartTime < EndTime` â†’ `StartAt < EndAt` |
+| ðŸ”§ Sá»­a index | `IX_PromotionTimeSlots_Active` | DÃ¹ng `(Status, StartAt, EndAt)` |
+| âž• ThÃªm index | `IX_PromotionTimeSlots_Promotion` | `(PromotionID, Status)` |
+| ðŸ”§ Sá»­a unique | `UQ_PromotionTimeSlots_UniqueSlot` | DÃ¹ng `(PromotionID, StartAt, EndAt)` |
+| ðŸ”§ Sá»­a default | `PromotionTimeSlots.CreatedAt` | Äá»•i sang `GETUTCDATE()` |
+| âž• ThÃªm báº£ng | `PromotionProductSlots` | LiÃªn káº¿t sáº£n pháº©m vá»›i slot Flash Sale |
 
-### Bảng PromotionProductSlots — cột mới
+### Báº£ng PromotionProductSlots â€” cá»™t má»›i
 
-| Cột | Kiểu | Mô tả |
+| Cá»™t | Kiá»ƒu | MÃ´ táº£ |
 |---|---|---|
 | `SlotProductID` | `INT IDENTITY PK` | |
-| `TimeSlotID` | `INT FK` | → PromotionTimeSlots |
-| `ProductID` | `INT FK` | → Products |
-| `SalePrice` | `DECIMAL(12,2)` | Giá flash-sale của slot này |
-| `DiscountPercent` | `DECIMAL(5,2) NULL` | % giảm giá |
-| `SaleQuantity` | `INT NOT NULL` | Số lượng tối đa (bắt buộc) |
-| `SoldQuantity` | `INT DEFAULT 0` | Đã bán |
-| `ReservedQuantity` | `INT DEFAULT 0` | Đang giữ |
+| `TimeSlotID` | `INT FK` | â†’ PromotionTimeSlots |
+| `ProductID` | `INT FK` | â†’ Products |
+| `SalePrice` | `DECIMAL(12,2)` | GiÃ¡ flash-sale cá»§a slot nÃ y |
+| `DiscountPercent` | `DECIMAL(5,2) NULL` | % giáº£m giÃ¡ |
+| `SaleQuantity` | `INT NOT NULL` | Sá»‘ lÆ°á»£ng tá»‘i Ä‘a (báº¯t buá»™c) |
+| `SoldQuantity` | `INT DEFAULT 0` | ÄÃ£ bÃ¡n |
+| `ReservedQuantity` | `INT DEFAULT 0` | Äang giá»¯ |
 | `IsActive` | `BIT DEFAULT 1` | |
 
-### Lý do
+### LÃ½ do
 
-> Flash Sale cần gán sản phẩm + giá + số lượng riêng cho từng time slot.
-> `ProductPromotions` chỉ giữ nguyên để dùng cho loại DISCOUNT (không phân slot).
+> Flash Sale cáº§n gÃ¡n sáº£n pháº©m + giÃ¡ + sá»‘ lÆ°á»£ng riÃªng cho tá»«ng time slot.
+> `ProductPromotions` chá»‰ giá»¯ nguyÃªn Ä‘á»ƒ dÃ¹ng cho loáº¡i DISCOUNT (khÃ´ng phÃ¢n slot).
 
-### Cách áp dụng
+### CÃ¡ch Ã¡p dá»¥ng
 
 ```bash
-# Chạy file SQL change script trên SSMS hoặc sqlcmd:
+# Cháº¡y file SQL change script trÃªn SSMS hoáº·c sqlcmd:
 docs/database/changes/20260508_1200_PromotionTimeSlots_StartAt_EndAt.sql
 ```
 
 ---
 
-## [2026-04-13] `v1.0 — InitialCreate`
+## [2026-04-13] `v1.0 â€” InitialCreate`
 
-### Thay đổi
+### Thay Ä‘á»•i
 
-| Loại | Bảng | Chi tiết |
+| Loáº¡i | Báº£ng | Chi tiáº¿t |
 |---|---|---|
-| ➕ Schema | `Notification`, `Interaction`, `Recommendation`, `System` | Tạo 4 schema riêng biệt |
-| ➕ Thêm bảng | `System.DomainEventOutbox` | Outbox pattern cho Event-Driven |
-| ➕ Thêm bảng | `System.BackgroundJobs` | Quản lý background jobs / cron |
-| ➕ Thêm bảng | `Roles` | Vai trò người dùng (Customer, Staff, Admin, ...) |
-| ➕ Thêm bảng | `Accounts` | Tài khoản người dùng — Email unique, soft delete |
-| ➕ Thêm bảng | `BlockReasons` | Danh sách lý do khóa tài khoản |
-| ➕ Thêm bảng | `UserBlockHistory` | Lịch sử khóa/mở khóa tài khoản |
-| ➕ Thêm bảng | `Addresses` | Địa chỉ giao hàng của user |
-| ➕ Thêm bảng | `SuperCategories` | Danh mục lớn (Level 1) |
-| ➕ Thêm bảng | `Categories` | Danh mục sản phẩm (Level 2, FK→SuperCategories) |
-| ➕ Thêm bảng | `Materials` | Chất liệu đồ chơi |
-| ➕ Thêm bảng | `Ages` | Độ tuổi phù hợp |
-| ➕ Thêm bảng | `Sexes` | Giới tính phù hợp |
-| ➕ Thêm bảng | `Origins` | Xuất xứ sản phẩm |
-| ➕ Thêm bảng | `Brands` | Thương hiệu |
-| ➕ Thêm bảng | `PriceRanges` | Khoảng giá để lọc |
-| ➕ Thêm bảng | `Promotions` | Chương trình khuyến mãi theo % |
-| ➕ Thêm bảng | `Products` | Sản phẩm đồ chơi — với FK→Categories/Brands/PriceRanges/Promotions |
-| ➕ Thêm bảng | `ProductDetails` | 1-1 với Products — mô tả, vật liệu, tuổi, giới tính, xuất xứ |
-| ➕ Thêm bảng | `ProductImages` | Ảnh sản phẩm (1 ảnh chính unique per product) |
-| ➕ Thêm bảng | `StatusOrders` | Bảng trạng thái đơn hàng (lookup table) |
-| ➕ Thêm bảng | `Orders` | Đơn hàng — với computed TotalAmount (trigger) |
-| ➕ Thêm bảng | `OrderDetails` | Chi tiết đơn — LineTotal là COMPUTED PERSISTED |
-| ➕ Thêm bảng | `OrderStatusHistory` | Audit log thay đổi trạng thái đơn |
-| ➕ Thêm bảng | `Cart` | Giỏ hàng — 1 giỏ per user |
-| ➕ Thêm bảng | `CartItems` | Sản phẩm trong giỏ — soft remove via RemovedAt |
-| ➕ Thêm bảng | `Wishlists` | Sản phẩm yêu thích |
-| ➕ Thêm bảng | `VoucherTypes` | Loại voucher |
-| ➕ Thêm bảng | `Vouchers` | Mã giảm giá — có MaxUsagePerUser, số lượng |
-| ➕ Thêm bảng | `OrderVouchers` | Composite PK — voucher áp dụng cho đơn |
-| ➕ Thêm bảng | `VoucherUsageLogs` | Lịch sử sử dụng voucher |
-| ➕ Thêm bảng | `BlogCategories` | Danh mục bài viết blog |
-| ➕ Thêm bảng | `BlogPosts` | Bài viết blog — có workflow duyệt |
-| ➕ Thêm bảng | `BlogPostCategories` | N-N: bài viết ↔ danh mục blog |
-| ➕ Thêm bảng | `Banners` | Banner quảng cáo theo vị trí |
-| ➕ Thêm bảng | `ReviewProducts` | Đánh giá sản phẩm (rating 1-5, phải có đơn hàng) |
-| ➕ Thêm bảng | `ReviewProductImages` | Ảnh kèm đánh giá |
-| ➕ Thêm bảng | `ReviewProductReplies` | Phản hồi đánh giá |
-| ➕ Thêm bảng | `ReviewProductReactions` | Like/Dislike đánh giá |
-| ➕ Thêm bảng | `Wallets` | Ví điện tử — 1 ví per user |
-| ➕ Thêm bảng | `WalletTransactions` | Giao dịch ví — double-entry (CR/DR) |
-| ➕ Thêm bảng | `PaymentHistory` | Lịch sử thanh toán |
-| ➕ Thêm bảng | `OrderRefunds` | Yêu cầu hoàn tiền |
-| ➕ Thêm bảng | `Notification.Templates` | Template thông báo |
-| ➕ Thêm bảng | `Notification.Deliveries` | Thông báo đã gửi tới user |
-| ➕ Thêm bảng | `ChatConversations` | Hội thoại chatbot (hỗ trợ guest) |
-| ➕ Thêm bảng | `ChatMessages` | Tin nhắn trong hội thoại |
-| ➕ Thêm bảng | `Interaction.Events` | Log hành vi user (click, view, ...) |
-| ➕ Thêm bảng | `Recommendation.ItemSimilarities` | Độ tương đồng sản phẩm cho AI |
-| ➕ Triggers | Nhiều bảng | 9 triggers (xem erd.md mục Triggers) |
-| ➕ Indexes | Nhiều bảng | 25+ indexes tối ưu performance |
-| ➕ Constraints | Nhiều bảng | CHECK constraints cho business rules |
+| âž• Schema | `Notification`, `Interaction`, `Recommendation`, `System` | Táº¡o 4 schema riÃªng biá»‡t |
+| âž• ThÃªm báº£ng | `System.DomainEventOutbox` | Outbox pattern cho Event-Driven |
+| âž• ThÃªm báº£ng | `System.BackgroundJobs` | Quáº£n lÃ½ background jobs / cron |
+| âž• ThÃªm báº£ng | `Roles` | Vai trÃ² ngÆ°á»i dÃ¹ng (Customer, Staff, Admin, ...) |
+| âž• ThÃªm báº£ng | `Accounts` | TÃ i khoáº£n ngÆ°á»i dÃ¹ng â€” Email unique, soft delete |
+| âž• ThÃªm báº£ng | `BlockReasons` | Danh sÃ¡ch lÃ½ do khÃ³a tÃ i khoáº£n |
+| âž• ThÃªm báº£ng | `UserBlockHistory` | Lá»‹ch sá»­ khÃ³a/má»Ÿ khÃ³a tÃ i khoáº£n |
+| âž• ThÃªm báº£ng | `Addresses` | Äá»‹a chá»‰ giao hÃ ng cá»§a user |
+| âž• ThÃªm báº£ng | `SuperCategories` | Danh má»¥c lá»›n (Level 1) |
+| âž• ThÃªm báº£ng | `Categories` | Danh má»¥c sáº£n pháº©m (Level 2, FKâ†’SuperCategories) |
+| âž• ThÃªm báº£ng | `Materials` | Cháº¥t liá»‡u Ä‘á»“ chÆ¡i |
+| âž• ThÃªm báº£ng | `Ages` | Äá»™ tuá»•i phÃ¹ há»£p |
+| âž• ThÃªm báº£ng | `Sexes` | Giá»›i tÃ­nh phÃ¹ há»£p |
+| âž• ThÃªm báº£ng | `Origins` | Xuáº¥t xá»© sáº£n pháº©m |
+| âž• ThÃªm báº£ng | `Brands` | ThÆ°Æ¡ng hiá»‡u |
+| âž• ThÃªm báº£ng | `PriceRanges` | Khoáº£ng giÃ¡ Ä‘á»ƒ lá»c |
+| âž• ThÃªm báº£ng | `Promotions` | ChÆ°Æ¡ng trÃ¬nh khuyáº¿n mÃ£i theo % |
+| âž• ThÃªm báº£ng | `Products` | Sáº£n pháº©m Ä‘á»“ chÆ¡i â€” vá»›i FKâ†’Categories/Brands/PriceRanges/Promotions |
+| âž• ThÃªm báº£ng | `ProductDetails` | 1-1 vá»›i Products â€” mÃ´ táº£, váº­t liá»‡u, tuá»•i, giá»›i tÃ­nh, xuáº¥t xá»© |
+| âž• ThÃªm báº£ng | `ProductImages` | áº¢nh sáº£n pháº©m (1 áº£nh chÃ­nh unique per product) |
+| âž• ThÃªm báº£ng | `StatusOrders` | Báº£ng tráº¡ng thÃ¡i Ä‘Æ¡n hÃ ng (lookup table) |
+| âž• ThÃªm báº£ng | `Orders` | ÄÆ¡n hÃ ng â€” vá»›i computed TotalAmount (trigger) |
+| âž• ThÃªm báº£ng | `OrderDetails` | Chi tiáº¿t Ä‘Æ¡n â€” LineTotal lÃ  COMPUTED PERSISTED |
+| âž• ThÃªm báº£ng | `OrderStatusHistory` | Audit log thay Ä‘á»•i tráº¡ng thÃ¡i Ä‘Æ¡n |
+| âž• ThÃªm báº£ng | `Cart` | Giá» hÃ ng â€” 1 giá» per user |
+| âž• ThÃªm báº£ng | `CartItems` | Sáº£n pháº©m trong giá» â€” soft remove via RemovedAt |
+| âž• ThÃªm báº£ng | `Wishlists` | Sáº£n pháº©m yÃªu thÃ­ch |
+| âž• ThÃªm báº£ng | `VoucherTypes` | Loáº¡i voucher |
+| âž• ThÃªm báº£ng | `Vouchers` | MÃ£ giáº£m giÃ¡ â€” cÃ³ MaxUsagePerUser, sá»‘ lÆ°á»£ng |
+| âž• ThÃªm báº£ng | `OrderVouchers` | Composite PK â€” voucher Ã¡p dá»¥ng cho Ä‘Æ¡n |
+| âž• ThÃªm báº£ng | `VoucherUsageLogs` | Lá»‹ch sá»­ sá»­ dá»¥ng voucher |
+| âž• ThÃªm báº£ng | `BlogCategories` | Danh má»¥c bÃ i viáº¿t blog |
+| âž• ThÃªm báº£ng | `BlogPosts` | BÃ i viáº¿t blog â€” cÃ³ workflow duyá»‡t |
+| âž• ThÃªm báº£ng | `BlogPostCategories` | N-N: bÃ i viáº¿t â†” danh má»¥c blog |
+| âž• ThÃªm báº£ng | `Banners` | Banner quáº£ng cÃ¡o theo vá»‹ trÃ­ |
+| âž• ThÃªm báº£ng | `ReviewProducts` | ÄÃ¡nh giÃ¡ sáº£n pháº©m (rating 1-5, pháº£i cÃ³ Ä‘Æ¡n hÃ ng) |
+| âž• ThÃªm báº£ng | `ReviewProductImages` | áº¢nh kÃ¨m Ä‘Ã¡nh giÃ¡ |
+| âž• ThÃªm báº£ng | `ReviewProductReplies` | Pháº£n há»“i Ä‘Ã¡nh giÃ¡ |
+| âž• ThÃªm báº£ng | `ReviewProductReactions` | Like/Dislike Ä‘Ã¡nh giÃ¡ |
+| âž• ThÃªm báº£ng | `Wallets` | VÃ­ Ä‘iá»‡n tá»­ â€” 1 vÃ­ per user |
+| âž• ThÃªm báº£ng | `WalletTransactions` | Giao dá»‹ch vÃ­ â€” double-entry (CR/DR) |
+| âž• ThÃªm báº£ng | `PaymentHistory` | Lá»‹ch sá»­ thanh toÃ¡n |
+| âž• ThÃªm báº£ng | `OrderRefunds` | YÃªu cáº§u hoÃ n tiá»n |
+| âž• ThÃªm báº£ng | `Notification.Templates` | Template thÃ´ng bÃ¡o |
+| âž• ThÃªm báº£ng | `Notification.Deliveries` | ThÃ´ng bÃ¡o Ä‘Ã£ gá»­i tá»›i user |
+| âž• ThÃªm báº£ng | `ChatConversations` | Há»™i thoáº¡i chatbot (há»— trá»£ guest) |
+| âž• ThÃªm báº£ng | `ChatMessages` | Tin nháº¯n trong há»™i thoáº¡i |
+| âž• ThÃªm báº£ng | `Interaction.Events` | Log hÃ nh vi user (click, view, ...) |
+| âž• ThÃªm báº£ng | `Recommendation.ItemSimilarities` | Äá»™ tÆ°Æ¡ng Ä‘á»“ng sáº£n pháº©m cho AI |
+| âž• Triggers | Nhiá»u báº£ng | 9 triggers (xem erd.md má»¥c Triggers) |
+| âž• Indexes | Nhiá»u báº£ng | 25+ indexes tá»‘i Æ°u performance |
+| âž• Constraints | Nhiá»u báº£ng | CHECK constraints cho business rules |
 
-### Lý do
+### LÃ½ do
 
-> Khởi tạo toàn bộ schema ban đầu cho hệ thống ToyStore E-Commerce (SEP490).
-> Bao gồm: quản lý tài khoản & phân quyền, catalog sản phẩm đồ chơi, quản lý đơn hàng,
-> giỏ hàng, voucher, blog, đánh giá, thanh toán + ví điện tử, chatbot, AI recommendation.
+> Khá»Ÿi táº¡o toÃ n bá»™ schema ban Ä‘áº§u cho há»‡ thá»‘ng ToyStore E-Commerce (SEP490).
+> Bao gá»“m: quáº£n lÃ½ tÃ i khoáº£n & phÃ¢n quyá»n, catalog sáº£n pháº©m Ä‘á»“ chÆ¡i, quáº£n lÃ½ Ä‘Æ¡n hÃ ng,
+> giá» hÃ ng, voucher, blog, Ä‘Ã¡nh giÃ¡, thanh toÃ¡n + vÃ­ Ä‘iá»‡n tá»­, chatbot, AI recommendation.
 
-### Bảng bị ảnh hưởng
+### Báº£ng bá»‹ áº£nh hÆ°á»Ÿng
 
-Tất cả bảng (schema khởi tạo lần đầu).
+Táº¥t cáº£ báº£ng (schema khá»Ÿi táº¡o láº§n Ä‘áº§u).
 
-### Cách áp dụng
+### CÃ¡ch Ã¡p dá»¥ng
 
 ```sql
--- Chạy file SQL trực tiếp trên SQL Server Management Studio (SSMS)
--- Hoặc dùng sqlcmd:
+-- Cháº¡y file SQL trá»±c tiáº¿p trÃªn SQL Server Management Studio (SSMS)
+-- Hoáº·c dÃ¹ng sqlcmd:
 sqlcmd -S localhost -U sa -P "YourPassword" -i docs/database/schema.sql
 ```
 
 ---
 
-<!-- TEMPLATE — copy và điền khi thêm thay đổi mới
+<!-- TEMPLATE â€” copy vÃ  Ä‘iá»n khi thÃªm thay Ä‘á»•i má»›i
 
-## [YYYY-MM-DD] `Mô tả ngắn thay đổi`
+## [YYYY-MM-DD] `MÃ´ táº£ ngáº¯n thay Ä‘á»•i`
 
-### Thay đổi
+### Thay Ä‘á»•i
 
-| Loại | Bảng | Chi tiết |
+| Loáº¡i | Báº£ng | Chi tiáº¿t |
 |---|---|---|
-| ➕ Thêm bảng | `` |  |
-| ➕ Thêm cột | `.` | kiểu dữ liệu — nullable/not null |
-| 🔧 Sửa cột | `.` | Thay đổi gì |
-| ➕ Thêm index | `` | Mục đích |
-| ➕ Thêm FK | `→` | ON DELETE behavior |
-| 🗑️ Xoá cột | `.` | Lý do xoá |
+| âž• ThÃªm báº£ng | `` |  |
+| âž• ThÃªm cá»™t | `.` | kiá»ƒu dá»¯ liá»‡u â€” nullable/not null |
+| ðŸ”§ Sá»­a cá»™t | `.` | Thay Ä‘á»•i gÃ¬ |
+| âž• ThÃªm index | `` | Má»¥c Ä‘Ã­ch |
+| âž• ThÃªm FK | `â†’` | ON DELETE behavior |
+| ðŸ—‘ï¸ XoÃ¡ cá»™t | `.` | LÃ½ do xoÃ¡ |
 
-### Lý do
+### LÃ½ do
 
-> Mô tả feature yêu cầu thay đổi này.
+> MÃ´ táº£ feature yÃªu cáº§u thay Ä‘á»•i nÃ y.
 
-### Bảng bị ảnh hưởng
+### Báº£ng bá»‹ áº£nh hÆ°á»Ÿng
 
 ``, ``
 
-### Cách áp dụng
+### CÃ¡ch Ã¡p dá»¥ng
 
 ```sql
--- SQL script thêm vào schema.sql và chạy lại, HOẶC chạy ALTER TABLE riêng:
-ALTER TABLE [Bảng] ADD [CộtMới] kiểu_dữ_liệu NULL;
+-- SQL script thÃªm vÃ o schema.sql vÃ  cháº¡y láº¡i, HOáº¶C cháº¡y ALTER TABLE riÃªng:
+ALTER TABLE [Báº£ng] ADD [Cá»™tMá»›i] kiá»ƒu_dá»¯_liá»‡u NULL;
 ```
 
 -->
+
+
+

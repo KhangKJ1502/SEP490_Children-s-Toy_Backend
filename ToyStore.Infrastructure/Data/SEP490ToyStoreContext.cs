@@ -152,6 +152,10 @@ public partial class SEP490ToyStoreContext : DbContext
 
     public virtual DbSet<Wallet> Wallets { get; set; }
 
+    public virtual DbSet<WalletPin> WalletPins { get; set; }
+
+    public virtual DbSet<WalletPinAttempt> WalletPinAttempts { get; set; }
+
     public virtual DbSet<WalletTransaction> WalletTransactions { get; set; }
 
     public virtual DbSet<Ward> Wards { get; set; }
@@ -2214,6 +2218,64 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasForeignKey<Wallet>(d => d.AccountId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Wallets_Accounts");
+        });
+
+        modelBuilder.Entity<WalletPin>(entity =>
+        {
+            entity.HasKey(e => e.WalletPinId);
+
+            entity.HasIndex(e => e.WalletId, "UQ_WalletPins_WalletID")
+                .IsUnique()
+                .HasFilter("([IsActive]=(1))");
+
+            entity.Property(e => e.WalletPinId).HasColumnName("WalletPinID");
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.FailedAttempts).HasDefaultValue((byte)0);
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.LastChangedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.LockedUntil).HasPrecision(0);
+            entity.Property(e => e.PinHash)
+                .HasMaxLength(255)
+                .IsUnicode(false);
+            entity.Property(e => e.TotalFailedAttempts).HasDefaultValue((byte)0);
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
+            entity.Property(e => e.WalletId).HasColumnName("WalletID");
+
+            entity.HasOne(d => d.Wallet).WithMany(p => p.WalletPins)
+                .HasForeignKey(d => d.WalletId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_WalletPins_Wallets");
+        });
+
+        modelBuilder.Entity<WalletPinAttempt>(entity =>
+        {
+            entity.HasKey(e => e.AttemptId);
+
+            entity.HasIndex(e => new { e.WalletId, e.CreatedAt }, "IX_WalletPinAttempts_Wallet").IsDescending(false, true);
+
+            entity.Property(e => e.AttemptId).HasColumnName("AttemptID");
+            entity.Property(e => e.AccountId).HasColumnName("AccountID");
+            entity.Property(e => e.ActionType)
+                .HasMaxLength(20)
+                .IsUnicode(false);
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.WalletId).HasColumnName("WalletID");
+
+            entity.HasOne(d => d.Account).WithMany(p => p.WalletPinAttempts)
+                .HasForeignKey(d => d.AccountId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_WalletPinAttempts_Accounts");
+
+            entity.HasOne(d => d.Wallet).WithMany(p => p.WalletPinAttempts)
+                .HasForeignKey(d => d.WalletId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_WalletPinAttempts_Wallets");
         });
 
         modelBuilder.Entity<WalletTransaction>(entity =>
