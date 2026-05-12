@@ -41,5 +41,7 @@ public partial class BlogPost
 
     public virtual BlogPostStat? BlogPostStat { get; set; }
 
+    public virtual ICollection<BlogPostReaction> BlogPostReactions { get; set; } = new List<BlogPostReaction>();
+
     public virtual ICollection<ReviewBlog> ReviewBlogs { get; set; } = new List<ReviewBlog>();
 }

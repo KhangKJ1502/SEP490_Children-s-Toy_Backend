@@ -47,6 +47,11 @@ public interface IBlogService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets all blog categories.
+    /// </summary>
+    Task<Result<List<BlogCategoryDto>>> GetBlogCategoriesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets blog details by id with access control.
     /// </summary>
     Task<Result<BlogDetailDto>> GetBlogDetailsAsync(int blogPostId, CancellationToken cancellationToken = default);
@@ -104,4 +109,28 @@ public interface IBlogService
     Task<Result<BlogReviewDto>> UpdateBlogReviewStatusAsync(int reviewBlogId, UpdateBlogReviewStatusDto dto, CancellationToken cancellationToken = default);
 
     Task<Result<BlogReviewReplyDto>> UpdateBlogReplyStatusAsync(int replyBlogId, UpdateBlogReviewStatusDto dto, CancellationToken cancellationToken = default);
+
+    Task<Result<ReactionSummaryDto>> ReactToBlogAsync(int blogPostId, UpsertReactionDto dto, CancellationToken cancellationToken = default);
+
+    Task<Result<bool>> RemoveBlogReactionAsync(int blogPostId, CancellationToken cancellationToken = default);
+
+    Task<Result<ReactionSummaryDto>> GetBlogReactionSummaryAsync(int blogPostId, CancellationToken cancellationToken = default);
+
+    Task<Result<string?>> GetMyBlogReactionAsync(int blogPostId, CancellationToken cancellationToken = default);
+
+    Task<Result<ReactionSummaryDto>> ReactToReviewAsync(int reviewBlogId, UpsertReactionDto dto, CancellationToken cancellationToken = default);
+
+    Task<Result<bool>> RemoveReviewReactionAsync(int reviewBlogId, CancellationToken cancellationToken = default);
+
+    Task<Result<ReactionSummaryDto>> GetReviewReactionSummaryAsync(int reviewBlogId, CancellationToken cancellationToken = default);
+
+    Task<Result<string?>> GetMyReviewReactionAsync(int reviewBlogId, CancellationToken cancellationToken = default);
+
+    Task<Result<ReactionSummaryDto>> ReactToReplyAsync(int replyBlogId, UpsertReactionDto dto, CancellationToken cancellationToken = default);
+
+    Task<Result<bool>> RemoveReplyReactionAsync(int replyBlogId, CancellationToken cancellationToken = default);
+
+    Task<Result<ReactionSummaryDto>> GetReplyReactionSummaryAsync(int replyBlogId, CancellationToken cancellationToken = default);
+
+    Task<Result<string?>> GetMyReplyReactionAsync(int replyBlogId, CancellationToken cancellationToken = default);
 }

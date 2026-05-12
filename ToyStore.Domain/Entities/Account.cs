@@ -43,6 +43,8 @@ public partial class Account
 
     public virtual ICollection<Campaign> Campaigns { get; set; } = new List<Campaign>();
 
+    public virtual ICollection<BlogPostReaction> BlogPostReactions { get; set; } = new List<BlogPostReaction>();
+
     public virtual Cart? Cart { get; set; }
 
     public virtual ICollection<ChatConversation> ChatConversations { get; set; } = new List<ChatConversation>();
@@ -75,6 +77,8 @@ public partial class Account
 
     public virtual ICollection<ReviewBlogReaction> ReviewBlogReactions { get; set; } = new List<ReviewBlogReaction>();
 
+    public virtual ICollection<ReviewBlogReplyReaction> ReviewBlogReplyReactions { get; set; } = new List<ReviewBlogReplyReaction>();
+
     public virtual ICollection<ReviewBlogReply> ReviewBlogReplyAccounts { get; set; } = new List<ReviewBlogReply>();
 
     public virtual ICollection<ReviewBlogReply> ReviewBlogReplyReplyToAccounts { get; set; } = new List<ReviewBlogReply>();
@@ -102,6 +106,8 @@ public partial class Account
     public virtual ICollection<Voucher> Vouchers { get; set; } = new List<Voucher>();
 
     public virtual Wallet? Wallet { get; set; }
+
+    public virtual ICollection<WalletPinAttempt> WalletPinAttempts { get; set; } = new List<WalletPinAttempt>();
 
     public virtual ICollection<WalletTransaction> WalletTransactions { get; set; } = new List<WalletTransaction>();
 

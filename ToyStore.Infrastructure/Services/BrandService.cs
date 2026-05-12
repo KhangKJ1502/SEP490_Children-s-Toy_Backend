@@ -160,6 +160,15 @@ public class BrandService : IBrandService
                 normalizedName,
                 isDeleted,
                 cancellationToken);
+
+            if (hasStatusChanged && isDeleted)
+            {
+                await _unitOfWork.Brands.UpdateRelatedProductStatusAsync(
+                    brandId,
+                    isDeleted,
+                    cancellationToken);
+            }
+
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             _logger.LogInformation("Brand {BrandId} updated successfully.", updated.BrandId);

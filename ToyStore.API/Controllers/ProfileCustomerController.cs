@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ToyStore.API.Extensions;
+using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs.Products;
 using ToyStore.Application.DTOs.Profiles;
 using ToyStore.Application.Interfaces.Services;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.API.Controllers;
 
@@ -45,14 +47,18 @@ public class ProfileCustomerController : ControllerBase
     {
         if (file == null || file.Length == 0)
         {
-            return BadRequest(new { message = "No file was provided." });
+            return Result<UploadImageResponseDto>
+                .Failure("VALIDATION_ERROR", "No file was provided.")
+                .ToActionResult();
         }
 
         using var stream = file.OpenReadStream();
         var result = await _imageUploadService.UploadImageToFolderAsync(stream, file.FileName, "SEP490_Customers", cancellationToken);
         if (!result.IsSuccess)
         {
-            return BadRequest(new { message = result.ErrorMessage });
+            return Result<UploadImageResponseDto>
+                .Failure(result.ErrorCode ?? "UPLOAD_ERROR", result.ErrorMessage ?? "Upload failed.")
+                .ToActionResult();
         }
 
         var updateProfileResult = await _profileService.UpdateMyProfileAsync(
@@ -61,10 +67,16 @@ public class ProfileCustomerController : ControllerBase
 
         if (!updateProfileResult.IsSuccess)
         {
-            return BadRequest(new { message = updateProfileResult.ErrorMessage ?? "Failed to save avatar URL to profile." });
+            return Result<UploadImageResponseDto>
+                .Failure(
+                    updateProfileResult.ErrorCode ?? "UPDATE_PROFILE_FAILED",
+                    updateProfileResult.ErrorMessage ?? "Failed to save avatar URL to profile.")
+                .ToActionResult();
         }
 
-        return Ok(new UploadImageResponseDto { Url = result.Data! });
+        return Result<UploadImageResponseDto>
+            .Success(new UploadImageResponseDto { Url = result.Data! })
+            .ToActionResult();
     }
 
     [HttpPut("me/password")]

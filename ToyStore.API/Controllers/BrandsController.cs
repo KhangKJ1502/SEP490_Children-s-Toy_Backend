@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ToyStore.API.Extensions;
 using ToyStore.Application.DTOs;
@@ -40,6 +41,7 @@ public class BrandsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin,Staff")]
     public async Task<ActionResult<BrandListDto>> CreateBrand(
         [FromBody] CreateBrandDto dto,
         CancellationToken cancellationToken = default)
@@ -54,6 +56,7 @@ public class BrandsController : ControllerBase
     }
 
     [HttpPut("{brandId:int}")]
+    [Authorize(Roles = "Admin,Staff")]
     public async Task<ActionResult<BrandListDto>> UpdateBrand(
         [FromRoute] short brandId,
         [FromBody] UpdateBrandDto dto,

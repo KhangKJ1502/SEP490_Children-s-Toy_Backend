@@ -13,7 +13,11 @@ public partial class ReactionType
 
     public DateTime CreatedAt { get; set; }
 
+    public virtual ICollection<BlogPostReaction> BlogPostReactions { get; set; } = new List<BlogPostReaction>();
+
     public virtual ICollection<ReviewBlogReaction> ReviewBlogReactions { get; set; } = new List<ReviewBlogReaction>();
+
+    public virtual ICollection<ReviewBlogReplyReaction> ReviewBlogReplyReactions { get; set; } = new List<ReviewBlogReplyReaction>();
 
     public virtual ICollection<ReviewProductReaction> ReviewProductReactions { get; set; } = new List<ReviewProductReaction>();
 }

@@ -37,6 +37,7 @@ public interface IUnitOfWork : IDisposable
     IDeliveryRepository Deliveries { get; }
     IUserPreferenceRepository UserPreferences { get; }
     IProductFollowerRepository ProductFollowers { get; }
+    IWalletRepository Wallets { get; }
 
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

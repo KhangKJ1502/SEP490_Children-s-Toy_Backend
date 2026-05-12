@@ -1,12 +1,12 @@
 using AutoMapper;
 using FluentValidation;
 using Microsoft.Extensions.Logging;
+using ToyStore.Application.Common.Helpers;
 using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs.Carts;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
-using ToyStore.Application.Common.Helpers;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -215,9 +215,8 @@ public class CartService : ICartService
             return Result<CartDto>.NotFound("Cart item", cartItemId);
         }
 
-        item.RemovedAt = _timeProvider.UtcNow;
-        item.UpdatedAt = _timeProvider.UtcNow;
-        _unitOfWork.Carts.UpdateItem(item);
+        var productId = item.ProductId;
+        _unitOfWork.Carts.RemoveItem(item);
 
         var cart = await _unitOfWork.Carts.GetByAccountIdAsync(accountId, cancellationToken);
         if (cart != null)
@@ -234,7 +233,7 @@ public class CartService : ICartService
             CartHubEvents.CartItemRemoved,
             snapshot,
             "Item removed from cart.",
-            new { cartItemId, item.ProductId },
+            new { cartItemId, productId },
             cancellationToken);
 
         return Result<CartDto>.Success(snapshot);
@@ -253,13 +252,8 @@ public class CartService : ICartService
 
         if (cartWithItems != null)
         {
-            var now = _timeProvider.UtcNow;
-            foreach (var item in cartWithItems.CartItems.Where(x => x.RemovedAt == null))
-            {
-                item.RemovedAt = now;
-                item.UpdatedAt = now;
-                _unitOfWork.Carts.UpdateItem(item);
-            }
+            var now = DateTime.UtcNow;
+            _unitOfWork.Carts.RemoveItems(cartWithItems.CartItems);
 
             cart.UpdatedAt = now;
             _unitOfWork.Carts.UpdateCart(cart);

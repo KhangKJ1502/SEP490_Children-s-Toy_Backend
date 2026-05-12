@@ -59,8 +59,10 @@ public class CreateProductValidator : AbstractValidator<CreateProductDto>
             .LessThanOrEqualTo((short)10_000).WithMessage("Stock threshold must not exceed 10,000.");
 
         RuleFor(x => x.Description)
-            .MinimumLength(10).WithMessage("Description must be at least 10 characters.")
-            .MaximumLength(1500).WithMessage("Description must not exceed 1500 characters.")
+            .Must(ProductValidationRules.HasMinimumDescriptionTextLength)
+            .WithMessage("Description must be at least 10 characters.")
+            .Must(ProductValidationRules.HasMaximumDescriptionStorageLength)
+            .WithMessage("Description must not exceed 1500 characters.")
             .When(x => !string.IsNullOrWhiteSpace(x.Description));
 
         RuleFor(x => x.MaterialId)
@@ -81,15 +83,21 @@ public class CreateProductValidator : AbstractValidator<CreateProductDto>
 
         RuleFor(x => x.MainImageUrl)
             .NotEmpty().WithMessage("Main image is required.")
+            .Must(ProductValidationRules.HasValidImageUrlLength)
+            .WithMessage("Main image URL must not exceed 500 characters.")
             .Must(url => Uri.IsWellFormedUriString(url, UriKind.Absolute))
             .WithMessage("Main image URL is not valid.");
 
         RuleFor(x => x.AdditionalImageUrls)
             .NotNull().WithMessage("Additional image URLs are required.")
             .Must(urls => urls != null && urls.Count >= 4 && urls.Count <= 6)
-            .WithMessage("Additional images must be between 4 and 6.");
+            .WithMessage("Additional images must be between 4 and 6.")
+            .Must(ProductValidationRules.HasUniqueNormalizedUrls)
+            .WithMessage("Additional images must be unique.");
 
         RuleForEach(x => x.AdditionalImageUrls)
+            .Must(ProductValidationRules.HasValidImageUrlLength)
+            .WithMessage("Additional image URL must not exceed 500 characters.")
             .Must(url => !string.IsNullOrWhiteSpace(url) && Uri.IsWellFormedUriString(url, UriKind.Absolute))
             .WithMessage("Additional image URL is not valid.");
     }

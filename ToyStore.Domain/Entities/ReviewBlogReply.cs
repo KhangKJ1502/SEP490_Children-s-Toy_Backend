@@ -32,4 +32,6 @@ public partial class ReviewBlogReply
     public virtual Account? ReplyToAccount { get; set; }
 
     public virtual ReviewBlog ReviewBlog { get; set; } = null!;
+
+    public virtual ICollection<ReviewBlogReplyReaction> ReviewBlogReplyReactions { get; set; } = new List<ReviewBlogReplyReaction>();
 }
