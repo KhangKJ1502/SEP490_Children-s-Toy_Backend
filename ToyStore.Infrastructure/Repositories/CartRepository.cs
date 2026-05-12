@@ -38,6 +38,14 @@ public class CartRepository : ICartRepository
             .FirstOrDefaultAsync(x => x.AccountId == accountId, cancellationToken);
     }
 
+    public Task<Cart?> GetByAccountIdWithRemovedItemsAsync(int accountId, CancellationToken cancellationToken = default)
+    {
+        return _context.Carts
+            .Include(x => x.CartItems)
+                .ThenInclude(ci => ci.Product)
+            .FirstOrDefaultAsync(x => x.AccountId == accountId, cancellationToken);
+    }
+
     public async Task<Cart> CreateAsync(int accountId, CancellationToken cancellationToken = default)
     {
         var cart = new Cart

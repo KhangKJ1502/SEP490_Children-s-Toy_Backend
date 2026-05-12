@@ -16,17 +16,20 @@ public class CustomerChildService : ICustomerChildService
     private readonly ICurrentUserService _currentUserService;
     private readonly IMapper _mapper;
     private readonly ILogger<CustomerChildService> _logger;
+    private readonly ITimeProvider _timeProvider;
 
     public CustomerChildService(
         IUnitOfWork unitOfWork,
         ICurrentUserService currentUserService,
         IMapper mapper,
-        ILogger<CustomerChildService> logger)
+        ILogger<CustomerChildService> logger,
+        ITimeProvider timeProvider)
     {
-        _unitOfWork = unitOfWork;
+        _unitOfWork         = unitOfWork;
         _currentUserService = currentUserService;
-        _mapper = mapper;
-        _logger = logger;
+        _mapper             = mapper;
+        _logger             = logger;
+        _timeProvider       = timeProvider;
     }
 
     public async Task<Result<List<CustomerChildDto>>> GetMyChildrenAsync(CancellationToken cancellationToken = default)
@@ -57,7 +60,7 @@ public class CustomerChildService : ICustomerChildService
                 ["FullName"] = ["Full name is required."]
             });
 
-        if (dto.Dob == default || dto.Dob > DateTime.UtcNow)
+        if (dto.Dob == default || dto.Dob > _timeProvider.UtcNow)
             return Result<CustomerChildDto>.ValidationFailure(new Dictionary<string, string[]>
             {
                 ["Dob"] = ["Date of birth must be a valid past date."]
@@ -76,7 +79,7 @@ public class CustomerChildService : ICustomerChildService
             Dob = dto.Dob,
             SexId = dto.SexId,
             IsDeleted = false,
-            CreatedAt = DateTime.UtcNow,
+            CreatedAt = _timeProvider.UtcNow,
             UpdatedAt = null
         };
 
@@ -120,7 +123,7 @@ public class CustomerChildService : ICustomerChildService
                 ["FullName"] = ["Full name cannot be empty."]
             });
 
-        if (dto.Dob.HasValue && dto.Dob.Value > DateTime.UtcNow)
+        if (dto.Dob.HasValue && dto.Dob.Value > _timeProvider.UtcNow)
             return Result<CustomerChildDto>.ValidationFailure(new Dictionary<string, string[]>
             {
                 ["Dob"] = ["Date of birth must be a valid past date."]
@@ -138,7 +141,7 @@ public class CustomerChildService : ICustomerChildService
             if (dto.SexId.HasValue)
                 child.SexId = dto.SexId.Value;
 
-            child.UpdatedAt = DateTime.UtcNow;
+            child.UpdatedAt = _timeProvider.UtcNow;
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
@@ -174,7 +177,7 @@ public class CustomerChildService : ICustomerChildService
         try
         {
             child.IsDeleted = true;
-            child.UpdatedAt = DateTime.UtcNow;
+            child.UpdatedAt = _timeProvider.UtcNow;
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);

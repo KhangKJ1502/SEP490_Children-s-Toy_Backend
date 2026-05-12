@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs.Notifications;
 using ToyStore.Application.Interfaces.Notifications;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Notifications;
 
@@ -15,18 +16,23 @@ public class VoucherExpiryReminderJob : BackgroundService
 {
     private readonly IServiceProvider _services;
     private readonly ILogger<VoucherExpiryReminderJob> _logger;
+    private readonly ITimeProvider _timeProvider;
 
-    public VoucherExpiryReminderJob(IServiceProvider services, ILogger<VoucherExpiryReminderJob> logger)
+    public VoucherExpiryReminderJob(
+        IServiceProvider services, 
+        ILogger<VoucherExpiryReminderJob> logger,
+        ITimeProvider timeProvider)
     {
-        _services = services;
-        _logger   = logger;
+        _services     = services;
+        _logger       = logger;
+        _timeProvider = timeProvider;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            var now  = DateTime.UtcNow.AddHours(7);
+            var now  = _timeProvider.VnNow;
             var next = now.Date.AddHours(9);
             if (now.Hour >= 9) next = next.AddDays(1);
 
@@ -49,7 +55,7 @@ public class VoucherExpiryReminderJob : BackgroundService
 
         try
         {
-            var now         = DateTime.UtcNow;
+            var now         = _timeProvider.UtcNow;
             var cutoffStart = now;
             var cutoffEnd   = now.AddDays(3);
 

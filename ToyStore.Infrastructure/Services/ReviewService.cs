@@ -26,6 +26,7 @@ public class ReviewService : IReviewService
     private readonly IValidator<UpdateModerationStatusDto> _updateStatusValidator;
     private readonly IValidator<CreateStaffReplyDto> _createReplyValidator;
     private readonly IValidator<UpdateStaffReplyDto> _updateReplyValidator;
+    private readonly ITimeProvider _timeProvider;
 
     public ReviewService(
         IUnitOfWork unitOfWork,
@@ -38,7 +39,8 @@ public class ReviewService : IReviewService
         IValidator<UpdateReviewProductDto> updateValidator,
         IValidator<UpdateModerationStatusDto> updateStatusValidator,
         IValidator<CreateStaffReplyDto> createReplyValidator,
-        IValidator<UpdateStaffReplyDto> updateReplyValidator)
+        IValidator<UpdateStaffReplyDto> updateReplyValidator,
+        ITimeProvider timeProvider)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
@@ -51,6 +53,7 @@ public class ReviewService : IReviewService
         _updateStatusValidator = updateStatusValidator;
         _createReplyValidator = createReplyValidator;
         _updateReplyValidator = updateReplyValidator;
+        _timeProvider = timeProvider;
     }
 
     // --- Public / Customer ---
@@ -117,13 +120,13 @@ public class ReviewService : IReviewService
         if (order.Status.StatusName != "Completed")
             return Result<ReviewProductDto>.BusinessError("You can only review products from completed orders.");
 
-        if (order.CompletedAt == null || (DateTime.UtcNow - order.CompletedAt.Value).TotalDays > 20)
+        if (order.CompletedAt == null || (_timeProvider.UtcNow - order.CompletedAt.Value).TotalDays > 20)
             return Result<ReviewProductDto>.BusinessError("You can only review within 20 days after the order is completed.");
 
         if (!order.OrderDetails.Any(od => od.ProductId == dto.ProductId))
             return Result<ReviewProductDto>.BusinessError("The product is not part of this order.");
 
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.UtcNow;
 
         // 3. Khởi tạo Review entity
         var review = new ReviewProduct
@@ -214,7 +217,7 @@ public class ReviewService : IReviewService
             return validation.ToResult<ReviewProductDto>();
 
         var accountId = _currentUser.AccountId;
-        
+
         var review = await _unitOfWork.Reviews.GetByIdForAdminAsync(reviewId, cancellationToken); // Dùng admin get để lấy log
         if (review == null || review.AccountId != accountId)
             return Result<ReviewProductDto>.NotFound("Review", reviewId);
@@ -231,14 +234,14 @@ public class ReviewService : IReviewService
         if (approvedLog == null)
             return Result<ReviewProductDto>.BusinessError("Review is not in an approved state to edit.");
 
-        if ((DateTime.UtcNow - approvedLog.CreatedAt).TotalDays > 3)
+        if ((_timeProvider.UtcNow - approvedLog.CreatedAt).TotalDays > 3)
             return Result<ReviewProductDto>.BusinessError("You can only edit the review within 3 days after it is approved.");
 
         // Lấy entity track để update
         var trackReview = await _unitOfWork.Reviews.GetByIdForUpdateAsync(reviewId, cancellationToken);
         if (trackReview == null) return Result<ReviewProductDto>.NotFound("Review", reviewId);
 
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.UtcNow;
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
@@ -389,7 +392,7 @@ public class ReviewService : IReviewService
         if (review == null)
             return Result<AdminReviewDetailDto>.NotFound("Review", reviewId);
 
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.UtcNow;
         var staffId = _currentUser.AccountId;
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
@@ -466,7 +469,7 @@ public class ReviewService : IReviewService
             return Result<StaffReplyDto>.NotFound("Review", reviewId);
 
         var staffId = _currentUser.AccountId;
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.UtcNow;
 
         var reply = new StaffReviewProductReply
         {
@@ -491,13 +494,13 @@ public class ReviewService : IReviewService
         // Explicitly set StaffName since it might not be eagerly loaded if we just created it without tracking include
         if (savedReply?.Staff != null)
         {
-             staffDto.StaffName = savedReply.Staff.AccountName;
+            staffDto.StaffName = savedReply.Staff.AccountName;
         }
         else
         {
             // fallback, get staff info
             var staffInfo = await _unitOfWork.Accounts.GetByIdAsync(staffId, cancellationToken);
-            if(staffInfo != null) staffDto.StaffName = staffInfo.AccountName;
+            if (staffInfo != null) staffDto.StaffName = staffInfo.AccountName;
         }
 
         return Result<StaffReplyDto>.Success(staffDto);
@@ -521,25 +524,30 @@ public class ReviewService : IReviewService
         if (dto.IsDeleted == true)
         {
             reply.IsDeleted = true;
-            reply.UpdatedAt = DateTime.UtcNow;
-            
+            reply.UpdatedAt = _timeProvider.UtcNow;
+
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             _logger.LogInformation("Staff {StaffId} soft-deleted reply {ReplyId} for review {ReviewId}", _currentUser.AccountId, replyId, reviewId);
         }
         else
         {
             if (dto.Content != null)
+            {
                 reply.Content = dto.Content;
-                
-            reply.UpdatedAt = DateTime.UtcNow;
-            
+            }
+
+            reply.UpdatedAt = _timeProvider.UtcNow;
+
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             _logger.LogInformation("Staff {StaffId} updated reply {ReplyId} for review {ReviewId}", _currentUser.AccountId, replyId, reviewId);
         }
 
         // Load account to map StaffName
-        if(reply.Staff == null)
-            reply.Staff = await _unitOfWork.Accounts.GetByIdAsync(reply.StaffId, cancellationToken);
+        if (reply.Staff == null)
+        {
+            var staff = await _unitOfWork.Accounts.GetByIdAsync(reply.StaffId, cancellationToken);
+            if (staff != null) reply.Staff = staff;
+        }
 
         return Result<StaffReplyDto>.Success(_mapper.Map<StaffReplyDto>(reply));
     }
@@ -549,8 +557,8 @@ public class ReviewService : IReviewService
     // --- Private Helpers ---
 
     private async Task AutoApproveAsync(
-        ReviewProduct review, 
-        List<ReviewProductImage> images, 
+        ReviewProduct review,
+        List<ReviewProductImage> images,
         DateTime now,
         CancellationToken cancellationToken)
     {

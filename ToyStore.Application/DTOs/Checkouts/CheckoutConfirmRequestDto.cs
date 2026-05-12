@@ -17,5 +17,8 @@ public class CheckoutConfirmRequestDto
 
     public string? Note { get; set; }
 
+    /// <summary>Mã voucher (tuỳ chọn).</summary>
+    public string? VoucherCode { get; set; }
+
     public List<CheckoutConfirmItemDto> Items { get; set; } = [];
 }

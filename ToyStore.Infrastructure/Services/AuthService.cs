@@ -8,6 +8,7 @@ using Google.Apis.Auth;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using StackExchange.Redis;
 using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs.Auth;
 using ToyStore.Application.Interfaces.Repositories;
@@ -37,6 +38,7 @@ public class AuthService : IAuthService
     private readonly IValidator<ResetPasswordDto> _resetPasswordValidator;
     private readonly IValidator<GoogleLoginDto> _googleLoginValidator;
     private readonly IValidator<GoogleRegisterDto> _googleRegisterValidator;
+    private readonly ITimeProvider _timeProvider;
 
     public AuthService(
         IUnitOfWork unitOfWork,
@@ -51,21 +53,23 @@ public class AuthService : IAuthService
         IValidator<ForgotPasswordDto> forgotPasswordValidator,
         IValidator<ResetPasswordDto> resetPasswordValidator,
         IValidator<GoogleLoginDto> googleLoginValidator,
-        IValidator<GoogleRegisterDto> googleRegisterValidator)
+        IValidator<GoogleRegisterDto> googleRegisterValidator,
+        ITimeProvider timeProvider)
     {
-        _unitOfWork = unitOfWork;
-        _emailService = emailService;
-        _redisService = redisService;
-        _configuration = configuration;
-        _logger = logger;
-        _mapper = mapper;
-        _loginValidator = loginValidator;
+        _unitOfWork               = unitOfWork;
+        _emailService             = emailService;
+        _redisService             = redisService;
+        _configuration            = configuration;
+        _logger                   = logger;
+        _mapper                   = mapper;
+        _loginValidator           = loginValidator;
         _sendRegisterOtpValidator = sendRegisterOtpValidator;
-        _registerValidator = registerValidator;
-        _forgotPasswordValidator = forgotPasswordValidator;
-        _resetPasswordValidator = resetPasswordValidator;
-        _googleLoginValidator = googleLoginValidator;
-        _googleRegisterValidator = googleRegisterValidator;
+        _registerValidator        = registerValidator;
+        _forgotPasswordValidator  = forgotPasswordValidator;
+        _resetPasswordValidator   = resetPasswordValidator;
+        _googleLoginValidator     = googleLoginValidator;
+        _googleRegisterValidator  = googleRegisterValidator;
+        _timeProvider             = timeProvider;
     }
 
     public async Task<Result<AuthResponseDto>> LoginAsync(LoginDto dto, CancellationToken cancellationToken = default)
@@ -285,7 +289,14 @@ public class AuthService : IAuthService
         }
 
         var blacklistKey = $"{TokenBlacklistPrefix}{jti}";
-        await _redisService.SetAsync(blacklistKey, "blacklisted", remainingTime);
+        try
+        {
+            await _redisService.SetAsync(blacklistKey, "blacklisted", remainingTime);
+        }
+        catch (RedisConnectionException ex)
+        {
+            _logger.LogWarning(ex, "Redis unavailable; skip token blacklist for {Jti}", jti);
+        }
 
         _logger.LogInformation("Token {Jti} blacklisted.", jti);
         return Result.Success();
@@ -317,7 +328,7 @@ public class AuthService : IAuthService
             issuer: issuer,
             audience: audience,
             claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(expirationMinutes),
+            expires: _timeProvider.UtcNow.AddMinutes(expirationMinutes),
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);

@@ -10,13 +10,16 @@ public class WishlistService : IWishlistService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUserService _currentUserService;
+    private readonly ITimeProvider _timeProvider;
 
     public WishlistService(
         IUnitOfWork unitOfWork,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        ITimeProvider timeProvider)
     {
-        _unitOfWork = unitOfWork;
+        _unitOfWork         = unitOfWork;
         _currentUserService = currentUserService;
+        _timeProvider       = timeProvider;
     }
 
     public async Task<Result<List<WishlistItemDto>>> GetMyWishlistAsync(CancellationToken cancellationToken = default)
@@ -68,7 +71,7 @@ public class WishlistService : IWishlistService
         {
             AccountId = accountId,
             ProductId = dto.ProductId,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = _timeProvider.UtcNow
         }, cancellationToken);
 
         try

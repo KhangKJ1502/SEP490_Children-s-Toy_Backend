@@ -15,19 +15,22 @@ public class AddressService : IAddressService
     private readonly IMapper _mapper;
     private readonly IValidator<CreateAddressDto> _createAddressValidator;
     private readonly IValidator<UpdateAddressDto> _updateAddressValidator;
+    private readonly ITimeProvider _timeProvider;
 
     public AddressService(
         IUnitOfWork unitOfWork,
         ICurrentUserService currentUserService,
         IMapper mapper,
         IValidator<CreateAddressDto> createAddressValidator,
-        IValidator<UpdateAddressDto> updateAddressValidator)
+        IValidator<UpdateAddressDto> updateAddressValidator,
+        ITimeProvider timeProvider)
     {
-        _unitOfWork = unitOfWork;
-        _currentUserService = currentUserService;
-        _mapper = mapper;
+        _unitOfWork             = unitOfWork;
+        _currentUserService     = currentUserService;
+        _mapper                 = mapper;
         _createAddressValidator = createAddressValidator;
         _updateAddressValidator = updateAddressValidator;
+        _timeProvider           = timeProvider;
     }
 
     public async Task<Result<List<AddressDto>>> GetMyAddressesAsync(CancellationToken cancellationToken = default)
@@ -80,7 +83,7 @@ public class AddressService : IAddressService
             DistrictId = dto.DistrictId,
             WardCode = dto.WardCode.Trim(),
             IsDeleted = false,
-            CreatedAt = DateTime.UtcNow,
+            CreatedAt = _timeProvider.UtcNow,
             UpdatedAt = null,
             IsDefault = currentAddresses.Count == 0 || dto.IsDefault
         };
@@ -93,7 +96,7 @@ public class AddressService : IAddressService
                 foreach (var address in currentAddresses)
                 {
                     address.IsDefault = false;
-                    address.UpdatedAt = DateTime.UtcNow;
+                    address.UpdatedAt = _timeProvider.UtcNow;
                 }
 
                 // Save the "unset default" phase first to avoid filtered unique-index conflict.
@@ -171,7 +174,7 @@ public class AddressService : IAddressService
             address.ProvinceId = provinceId;
             address.DistrictId = districtId;
             address.WardCode = wardCode.Trim();
-            address.UpdatedAt = DateTime.UtcNow;
+            address.UpdatedAt = _timeProvider.UtcNow;
 
             if (setAsDefault)
             {
@@ -182,7 +185,7 @@ public class AddressService : IAddressService
                 foreach (var item in otherDefaults)
                 {
                     item.IsDefault = false;
-                    item.UpdatedAt = DateTime.UtcNow;
+                    item.UpdatedAt = _timeProvider.UtcNow;
                 }
 
                 // Save first so DB no longer has another default before setting this one.
@@ -236,7 +239,7 @@ public class AddressService : IAddressService
         {
             address.IsDeleted = true;
             address.IsDefault = false;
-            address.UpdatedAt = DateTime.UtcNow;
+            address.UpdatedAt = _timeProvider.UtcNow;
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             if (wasDefault)
@@ -249,7 +252,7 @@ public class AddressService : IAddressService
                 if (newDefault != null)
                 {
                     newDefault.IsDefault = true;
-                    newDefault.UpdatedAt = DateTime.UtcNow;
+                    newDefault.UpdatedAt = _timeProvider.UtcNow;
                     await _unitOfWork.SaveChangesAsync(cancellationToken);
                 }
             }

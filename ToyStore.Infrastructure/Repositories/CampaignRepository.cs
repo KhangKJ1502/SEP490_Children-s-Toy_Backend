@@ -226,7 +226,30 @@ public class CampaignRepository : ICampaignRepository
             stat.ComputedAt  = DateTime.Now;
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UQ_CampaignStats_CampaignID") == true)
+        {
+            // Race condition: another process created the stat record.
+            // Detach the failed new stat and try updating the existing one.
+            if (stat != null && _context.Entry(stat).State == EntityState.Added)
+            {
+                _context.Entry(stat).State = EntityState.Detached;
+            }
+
+            var existingStat = await _context.CampaignStats
+                .Where(s => s.CampaignId == campaignId)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (existingStat != null)
+            {
+                existingStat.TotalSent += totalSent;
+                existingStat.ComputedAt = DateTime.Now;
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+        }
     }
 
     public async Task CreateDeliveriesAsync(List<Delivery> deliveries, CancellationToken cancellationToken = default)

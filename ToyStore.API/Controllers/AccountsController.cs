@@ -37,7 +37,7 @@ public class AccountsController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         _logger.LogDebug(
-            "Get accounts called with pageNumber {PageNumber}, pageSize {PageSize}, sortBy {SortBy}, sortDesc {SortDesc}, hasSearchTerm {HasSearchTerm}",
+            "Get accounts called with pageNumber {PageNumber}, pageSize {PageSize}, sortBy {SortBy}, sortDesc {SortDesc}, hasSearchTerm {HasSearchTerm}, roleId {RoleId}",
             pageNumber,
             pageSize,
             sortBy,

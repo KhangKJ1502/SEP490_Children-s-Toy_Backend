@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs.Notifications;
 using ToyStore.Application.Interfaces.Notifications;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Notifications;
 
@@ -16,12 +17,17 @@ public class AutoCompleteOrderJob : BackgroundService
 {
     private readonly IServiceProvider _services;
     private readonly ILogger<AutoCompleteOrderJob> _logger;
+    private readonly ITimeProvider _timeProvider;
     private readonly TimeSpan _interval = TimeSpan.FromHours(1);
 
-    public AutoCompleteOrderJob(IServiceProvider services, ILogger<AutoCompleteOrderJob> logger)
+    public AutoCompleteOrderJob(
+        IServiceProvider services, 
+        ILogger<AutoCompleteOrderJob> logger,
+        ITimeProvider timeProvider)
     {
-        _services = services;
-        _logger   = logger;
+        _services     = services;
+        _logger       = logger;
+        _timeProvider = timeProvider;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -46,7 +52,7 @@ public class AutoCompleteOrderJob : BackgroundService
 
         try
         {
-            var cutoff = DateTime.UtcNow.AddDays(-7);
+            var cutoff = _timeProvider.UtcNow.AddDays(-7);
 
             // StatusID=6 (Delivered), delivered more than 7 days ago, customer hasn't confirmed
             var ordersToComplete = await db.Orders
@@ -59,8 +65,8 @@ public class AutoCompleteOrderJob : BackgroundService
             foreach (var order in ordersToComplete)
             {
                 order.StatusId    = 7; // Completed
-                order.CompletedAt = DateTime.UtcNow;
-                order.UpdatedAt   = DateTime.UtcNow;
+                order.CompletedAt = _timeProvider.UtcNow;
+                order.UpdatedAt   = _timeProvider.UtcNow;
 
                 // Bell-only: auto-completion, customer didn't initiate
                 await dispatcher.DispatchAsync(new NotificationContext

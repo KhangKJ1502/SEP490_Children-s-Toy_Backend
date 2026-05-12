@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs.Notifications;
 using ToyStore.Application.Interfaces.Notifications;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Notifications;
 
@@ -15,12 +16,17 @@ public class PaymentOverdueJob : BackgroundService
 {
     private readonly IServiceProvider _services;
     private readonly ILogger<PaymentOverdueJob> _logger;
+    private readonly ITimeProvider _timeProvider;
     private readonly TimeSpan _interval = TimeSpan.FromMinutes(15);
 
-    public PaymentOverdueJob(IServiceProvider services, ILogger<PaymentOverdueJob> logger)
+    public PaymentOverdueJob(
+        IServiceProvider services, 
+        ILogger<PaymentOverdueJob> logger,
+        ITimeProvider timeProvider)
     {
-        _services = services;
-        _logger   = logger;
+        _services     = services;
+        _logger       = logger;
+        _timeProvider = timeProvider;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -45,7 +51,7 @@ public class PaymentOverdueJob : BackgroundService
 
         try
         {
-            var cutoff = DateTime.UtcNow.AddHours(-24);
+            var cutoff = _timeProvider.UtcNow.AddHours(-24);
 
             // Orders with StatusID=1 (Pending), older than 24h, without a PAID payment
             var overdueOrders = await db.Orders
@@ -75,7 +81,7 @@ public class PaymentOverdueJob : BackgroundService
                         SendBell           = true,
                         SendEmail          = false,
                         TemplateCode       = NotificationTemplates.StaffNewOrder,
-                        IdempotencyKey     = $"order.payment_overdue:{order.OrderId}:{DateTime.UtcNow:yyyyMMddHH}:{staffId}",
+                        IdempotencyKey     = $"order.payment_overdue:{order.OrderId}:{_timeProvider.UtcNow:yyyyMMddHH}:{staffId}",
                     }, ct);
                 }
             }

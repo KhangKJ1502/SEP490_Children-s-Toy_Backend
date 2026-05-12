@@ -1,13 +1,11 @@
 using AutoMapper;
 using FluentValidation;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Campaigns;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
-using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Services.Resolvers;
 
 namespace ToyStore.Infrastructure.Services;
@@ -23,29 +21,29 @@ public class CampaignService : ICampaignService
     private static readonly HashSet<string> ValidReferenceTypes = ["VOUCHER", "PRODUCT", "BLOG", "SALE", "OTHER"];
 
     private readonly IUnitOfWork _unitOfWork;
-    private readonly SEP490ToyStoreContext _context;
     private readonly ILogger<CampaignService> _logger;
     private readonly IMapper _mapper;
     private readonly IValidator<CreateCampaignDto> _createValidator;
     private readonly IValidator<UpdateCampaignDto> _updateValidator;
     private readonly BusinessObjectResolverFactory _resolverFactory;
+    private readonly ITimeProvider _timeProvider;
 
     public CampaignService(
         IUnitOfWork unitOfWork,
-        SEP490ToyStoreContext context,
         ILogger<CampaignService> logger,
         IMapper mapper,
         IValidator<CreateCampaignDto> createValidator,
         IValidator<UpdateCampaignDto> updateValidator,
-        BusinessObjectResolverFactory resolverFactory)
+        BusinessObjectResolverFactory resolverFactory,
+        ITimeProvider timeProvider)
     {
-        _unitOfWork = unitOfWork;
-        _context = context;
-        _logger = logger;
-        _mapper = mapper;
+        _unitOfWork      = unitOfWork;
+        _logger          = logger;
+        _mapper          = mapper;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
         _resolverFactory = resolverFactory;
+        _timeProvider    = timeProvider;
     }
 
     // ── GET list ──────────────────────────────────────────────────────────────
@@ -139,41 +137,27 @@ public class CampaignService : ICampaignService
         if (pageSize < 1 || pageSize > 100) pageSize = 10;
 
         // Verify campaign exists
-        var campaignExists = await _context.Campaigns
-            .AsNoTracking()
-            .AnyAsync(c => c.CampaignId == campaignId && !c.IsDeleted, cancellationToken);
-
-        if (!campaignExists)
+        var campaign = await _unitOfWork.Campaigns.GetByIdAsync(campaignId, cancellationToken);
+        if (campaign is null)
             return Result<PaginatedResponse<CampaignDeliveryDto>>.NotFound("Campaign", campaignId);
 
-        var query = _context.Deliveries
-            .AsNoTracking()
-            .Where(d => d.CampaignId == campaignId && !d.IsDeleted);
+        var totalCount = await _unitOfWork.Deliveries.CountByCampaignAsync(campaignId, status, cancellationToken);
+        var items = await _unitOfWork.Deliveries.GetByCampaignPagedAsync(campaignId, pageNumber, pageSize, status, cancellationToken);
 
-        if (!string.IsNullOrWhiteSpace(status))
-            query = query.Where(d => d.Status == status);
+        var deliveryDtos = items.Select(d => new CampaignDeliveryDto
+        {
+            DeliveryId  = d.DeliveryId,
+            AccountId   = d.AccountId,
+            AccountName = d.Account.AccountName,
+            Email       = d.Account.Email,
+            Status      = d.Status,
+            Title       = d.Title,
+            Message     = d.Message,
+            ReadAt      = d.ReadAt,
+            CreatedAt   = d.CreatedAt
+        }).ToList();
 
-        var totalCount = await query.CountAsync(cancellationToken);
-
-        var items = await query
-            .OrderByDescending(d => d.CreatedAt)
-            .Skip((pageNumber - 1) * pageSize)
-            .Take(pageSize)
-            .Select(d => new CampaignDeliveryDto
-            {
-                DeliveryId  = d.DeliveryId,
-                AccountId   = d.AccountId,
-                AccountName = d.Account.AccountName,
-                Email       = d.Account.Email,
-                Status      = d.Status,
-                Title       = d.Title,
-                Message     = d.Message,
-                ReadAt      = d.ReadAt,
-                CreatedAt   = d.CreatedAt
-            })
-            .ToListAsync(cancellationToken);
-
-        var response = new PaginatedResponse<CampaignDeliveryDto>(items, totalCount, pageNumber, pageSize);
+        var response = new PaginatedResponse<CampaignDeliveryDto>(deliveryDtos, totalCount, pageNumber, pageSize);
         return Result<PaginatedResponse<CampaignDeliveryDto>>.Success(response);
     }
 
@@ -274,7 +258,7 @@ public class CampaignService : ICampaignService
         // Apply fields
         existing.CampaignName = dto.CampaignName.Trim();
         // Neu khong co ScheduledAt, gui ngay lap tuc: dat ScheduledAt = Now de Worker xu ly
-        existing.ScheduledAt = dto.ScheduledAt ?? DateTime.Now;
+        existing.ScheduledAt = dto.ScheduledAt ?? _timeProvider.UtcNow;
 
         existing.TemplateCode = string.IsNullOrWhiteSpace(dto.TemplateCode) ? null : dto.TemplateCode.Trim();
         existing.ReferenceType = string.IsNullOrWhiteSpace(dto.ReferenceType) ? null : dto.ReferenceType.Trim().ToUpper();

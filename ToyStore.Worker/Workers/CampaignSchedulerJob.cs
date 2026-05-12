@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Interfaces.Notifications;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Notifications;
 
@@ -13,12 +14,17 @@ public class CampaignSchedulerJob : BackgroundService
 {
     private readonly IServiceProvider _services;
     private readonly ILogger<CampaignSchedulerJob> _logger;
+    private readonly ITimeProvider _timeProvider;
     private readonly TimeSpan _interval = TimeSpan.FromMinutes(1);
 
-    public CampaignSchedulerJob(IServiceProvider services, ILogger<CampaignSchedulerJob> logger)
+    public CampaignSchedulerJob(
+        IServiceProvider services, 
+        ILogger<CampaignSchedulerJob> logger,
+        ITimeProvider timeProvider)
     {
-        _services = services;
-        _logger   = logger;
+        _services     = services;
+        _logger       = logger;
+        _timeProvider = timeProvider;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -43,7 +49,7 @@ public class CampaignSchedulerJob : BackgroundService
 
         try
         {
-            var now = DateTime.Now;
+            var now = _timeProvider.UtcNow;
 
             var due = await db.Campaigns
                 .Where(c => c.Status     == "Scheduled"

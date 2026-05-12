@@ -4,6 +4,7 @@ using ToyStore.API.Extensions;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Orders;
 using ToyStore.Application.Interfaces.Services;
+using ToyStore.API.Controllers;
 
 namespace ToyStore.API.Controllers;
 
@@ -16,10 +17,17 @@ namespace ToyStore.API.Controllers;
 public class AdminOrdersController : ControllerBase
 {
     private readonly IAdminOrderService _orderService;
+    private readonly IOrderCustomerService _customerOrderService;
+    private readonly ICurrentUserService _currentUser;
 
-    public AdminOrdersController(IAdminOrderService orderService)
+    public AdminOrdersController(
+        IAdminOrderService orderService,
+        IOrderCustomerService customerOrderService,
+        ICurrentUserService currentUser)
     {
-        _orderService = orderService;
+        _orderService        = orderService;
+        _customerOrderService = customerOrderService;
+        _currentUser         = currentUser;
     }
 
     /// <summary>
@@ -120,6 +128,59 @@ public class AdminOrdersController : ControllerBase
         CancellationToken cancellationToken)
     {
         var result = await _orderService.AssignOrderAsync(id, request, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Admin tạo đơn vận chuyển GHN thủ công.
+    /// Chỉ cho phép khi ShippingOrderCode IS NULL và PaymentStatus IN (PAID, COD_PENDING).
+    /// POST /api/admin/orders/{id}/create-shipping
+    /// </summary>
+    [HttpPost("{id:int}/create-shipping")]
+    [Authorize(Roles = "Merchandise,Admin")]
+    public async Task<ActionResult<ShipOrderResponseDto>> CreateShipping(
+        int id,
+        [FromBody] ShipOrderRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _orderService.ShipOrderAsync(id, request, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Admin hủy đơn hàng (dùng pipeline đầy đủ: restore stock + voucher + wallet refund).
+    /// POST /api/admin/orders/{id}/cancel-full
+    /// </summary>
+    [HttpPost("{id:int}/cancel-full")]
+    [Authorize(Roles = "Staff,Admin")]
+    public async Task<ActionResult<CancelOrderCustomerResponseDto>> CancelFull(
+        int id,
+        [FromBody] CancelOrderCustomerRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _customerOrderService.CancelAsync(
+            id,
+            _currentUser.AccountId,
+            isAdmin: true,
+            request.Reason,
+            cancellationToken);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Admin xem tracking GHN của đơn.
+    /// GET /api/admin/orders/{id}/tracking
+    /// </summary>
+    [HttpGet("{id:int}/tracking")]
+    public async Task<ActionResult<OrderTrackingDto>> GetTracking(
+        int id,
+        CancellationToken cancellationToken)
+    {
+        var result = await _customerOrderService.GetTrackingAsync(
+            id,
+            _currentUser.AccountId,
+            isAdmin: true,
+            cancellationToken);
         return result.ToActionResult();
     }
 }

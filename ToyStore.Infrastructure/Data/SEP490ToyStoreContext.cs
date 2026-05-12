@@ -29,7 +29,7 @@ public partial class SEP490ToyStoreContext : DbContext
     public virtual DbSet<BlogCategory> BlogCategories { get; set; }
 
     public virtual DbSet<BlogPost> BlogPosts { get; set; }
-    
+
     public virtual DbSet<BlogPostStat> BlogPostStats { get; set; }
 
     public virtual DbSet<BlogPostReaction> BlogPostReactions { get; set; }
@@ -997,6 +997,9 @@ public partial class SEP490ToyStoreContext : DbContext
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_OrderDetails_Products");
 
+            entity.Property(e => e.PromotionId).HasColumnName("PromotionID");
+            entity.Property(e => e.SlotProductId).HasColumnName("SlotProductID");
+
             entity.HasOne(d => d.Promotion).WithMany(p => p.OrderDetails)
                 .HasForeignKey(d => d.PromotionId)
                 .HasConstraintName("FK_OrderDetails_Promotions");
@@ -1461,7 +1464,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasForeignKey(d => d.CreatedBy)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Promotions_Accounts");
-            
+
             entity.HasMany(d => d.OrderDetails).WithOne(p => p.Promotion)
                 .HasForeignKey(p => p.PromotionId)
                 .HasConstraintName("FK_OrderDetails_Promotions");

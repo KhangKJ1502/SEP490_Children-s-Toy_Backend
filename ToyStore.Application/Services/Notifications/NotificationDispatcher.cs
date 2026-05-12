@@ -82,6 +82,7 @@ public class NotificationDispatcher : INotificationDispatcher
         }
         catch (Exception ex)
         {
+            _unitOfWork.Detach(delivery);
             // Note: In a real Clean Architecture, we'd have a specific exception for unique constraints
             // from the repository layer. For now, we log and skip to maintain idempotency behavior.
             _logger.LogWarning(ex, "Could not dispatch bell notification. It might be a duplicate. IdempotencyKey={Key}", bellKey);
@@ -151,6 +152,7 @@ public class NotificationDispatcher : INotificationDispatcher
         }
         catch (Exception ex)
         {
+            _unitOfWork.Detach(emailDelivery);
             _logger.LogWarning(ex, "Could not queue email notification. It might be a duplicate. IdempotencyKey={Key}", emailKey);
         }
     }

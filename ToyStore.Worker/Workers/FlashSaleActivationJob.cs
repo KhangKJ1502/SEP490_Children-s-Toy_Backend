@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs.Notifications;
 using ToyStore.Application.Interfaces.Notifications;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Notifications;
 
@@ -15,12 +16,17 @@ public class FlashSaleActivationJob : BackgroundService
 {
     private readonly IServiceProvider _services;
     private readonly ILogger<FlashSaleActivationJob> _logger;
+    private readonly ITimeProvider _timeProvider;
     private readonly TimeSpan _interval = TimeSpan.FromMinutes(1);
 
-    public FlashSaleActivationJob(IServiceProvider services, ILogger<FlashSaleActivationJob> logger)
+    public FlashSaleActivationJob(
+        IServiceProvider services, 
+        ILogger<FlashSaleActivationJob> logger,
+        ITimeProvider timeProvider)
     {
-        _services = services;
-        _logger   = logger;
+        _services     = services;
+        _logger       = logger;
+        _timeProvider = timeProvider;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -41,7 +47,7 @@ public class FlashSaleActivationJob : BackgroundService
         var dispatcher     = scope.ServiceProvider.GetRequiredService<INotificationDispatcher>();
         var prefChecker    = scope.ServiceProvider.GetRequiredService<IUserPreferenceChecker>();
 
-        var nowUtc    = DateTime.UtcNow;
+        var nowUtc    = _timeProvider.UtcNow;
         var oneMinAgo = nowUtc.AddMinutes(-1);
 
         // Time slots whose StartAt is within the last 1 minute (just became active)

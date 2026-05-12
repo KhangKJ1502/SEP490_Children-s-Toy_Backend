@@ -18,6 +18,7 @@ public class ShippingWebhookService : IShippingWebhookService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDomainEventPublisher _eventPublisher;
     private readonly ILogger<ShippingWebhookService> _logger;
+    private readonly ITimeProvider _timeProvider;
 
     // Map GHN status → notification event type
     private static readonly Dictionary<string, string?> WebhookEventMap = new(StringComparer.OrdinalIgnoreCase)
@@ -33,11 +34,13 @@ public class ShippingWebhookService : IShippingWebhookService
     public ShippingWebhookService(
         IUnitOfWork unitOfWork,
         IDomainEventPublisher eventPublisher,
-        ILogger<ShippingWebhookService> logger)
+        ILogger<ShippingWebhookService> logger,
+        ITimeProvider timeProvider)
     {
         _unitOfWork     = unitOfWork;
         _eventPublisher = eventPublisher;
         _logger         = logger;
+        _timeProvider   = timeProvider;
     }
 
     public async Task HandleAsync(
@@ -78,7 +81,7 @@ public class ShippingWebhookService : IShippingWebhookService
             }
 
             var previousStatus = tx.Status ?? string.Empty;
-            var now = DateTime.UtcNow;
+            var now = _timeProvider.UtcNow;
 
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
             try

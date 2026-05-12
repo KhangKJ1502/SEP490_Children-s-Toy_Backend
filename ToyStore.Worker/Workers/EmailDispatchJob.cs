@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Constants;
 using ToyStore.Application.Interfaces.Notifications;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Infrastructure.Data;
 
 namespace ToyStore.Worker.Workers;
@@ -9,12 +10,17 @@ public class EmailDispatchJob : BackgroundService
 {
     private readonly IServiceProvider _services;
     private readonly ILogger<EmailDispatchJob> _logger;
+    private readonly ITimeProvider _timeProvider;
     private readonly TimeSpan _interval = TimeSpan.FromSeconds(30);
 
-    public EmailDispatchJob(IServiceProvider services, ILogger<EmailDispatchJob> logger)
+    public EmailDispatchJob(
+        IServiceProvider services, 
+        ILogger<EmailDispatchJob> logger,
+        ITimeProvider timeProvider)
     {
-        _services = services;
-        _logger   = logger;
+        _services     = services;
+        _logger       = logger;
+        _timeProvider = timeProvider;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -67,7 +73,7 @@ public class EmailDispatchJob : BackgroundService
                 await emailSender.SendAsync(emailMsg, ct);
 
                 delivery.EmailStatus = EmailStatuses.Sent;
-                delivery.UpdatedAt   = DateTime.UtcNow;
+                delivery.UpdatedAt   = _timeProvider.UtcNow;
 
                 _logger.LogInformation(
                     "Email sent. DeliveryID={DeliveryId} To={Email}",
@@ -76,7 +82,7 @@ public class EmailDispatchJob : BackgroundService
             catch (Exception ex)
             {
                 delivery.EmailStatus = EmailStatuses.Failed;
-                delivery.UpdatedAt   = DateTime.UtcNow;
+                delivery.UpdatedAt   = _timeProvider.UtcNow;
 
                 _logger.LogError(ex,
                     "Email send failed. DeliveryID={DeliveryId} IdempotencyKey={Key}",

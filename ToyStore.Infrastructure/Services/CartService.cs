@@ -1,6 +1,7 @@
 using AutoMapper;
 using FluentValidation;
 using Microsoft.Extensions.Logging;
+using ToyStore.Application.Common.Helpers;
 using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs.Carts;
 using ToyStore.Application.Interfaces.Repositories;
@@ -18,6 +19,7 @@ public class CartService : ICartService
     private readonly IValidator<UpdateCartItemQuantityDto> _updateQuantityValidator;
     private readonly IMapper _mapper;
     private readonly ILogger<CartService> _logger;
+    private readonly ITimeProvider _timeProvider;
 
     public CartService(
         IUnitOfWork unitOfWork,
@@ -26,7 +28,8 @@ public class CartService : ICartService
         IValidator<AddToCartDto> addToCartValidator,
         IValidator<UpdateCartItemQuantityDto> updateQuantityValidator,
         IMapper mapper,
-        ILogger<CartService> logger)
+        ILogger<CartService> logger,
+        ITimeProvider timeProvider)
     {
         _unitOfWork = unitOfWork;
         _currentUserService = currentUserService;
@@ -35,6 +38,7 @@ public class CartService : ICartService
         _updateQuantityValidator = updateQuantityValidator;
         _mapper = mapper;
         _logger = logger;
+        _timeProvider = timeProvider;
     }
 
     public async Task<Result<CartDto>> AddItemAsync(AddToCartDto dto, CancellationToken cancellationToken = default)
@@ -69,8 +73,8 @@ public class CartService : ICartService
 
         var cart = await EnsureCartAsync(accountId, cancellationToken);
         var existingItem = await _unitOfWork.Carts.GetItemByProductAsync(cart.CartId, dto.ProductId, cancellationToken);
-        var now = DateTime.UtcNow;
-        var currentPrice = ResolveCurrentPrice(product, now);
+        var now = _timeProvider.UtcNow;
+        var currentPrice = PriceHelper.ResolveCurrentPrice(product, now);
 
         if (existingItem != null)
         {
@@ -175,8 +179,8 @@ public class CartService : ICartService
         }
 
         item.Quantity = dto.Quantity;
-        item.CurrentPrice = ResolveCurrentPrice(item.Product, DateTime.UtcNow);
-        item.UpdatedAt = DateTime.UtcNow;
+        item.CurrentPrice = PriceHelper.ResolveCurrentPrice(item.Product, _timeProvider.UtcNow);
+        item.UpdatedAt = _timeProvider.UtcNow;
         _unitOfWork.Carts.UpdateItem(item);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -217,7 +221,7 @@ public class CartService : ICartService
         var cart = await _unitOfWork.Carts.GetByAccountIdAsync(accountId, cancellationToken);
         if (cart != null)
         {
-            cart.UpdatedAt = DateTime.UtcNow;
+            cart.UpdatedAt = _timeProvider.UtcNow;
             _unitOfWork.Carts.UpdateCart(cart);
         }
 
@@ -352,7 +356,7 @@ public class CartService : ICartService
             return new CartDto();
         }
 
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.UtcNow;
         var modified = false;
         var removedAny = false;
 
@@ -380,7 +384,7 @@ public class CartService : ICartService
 
             var latestPrice = isReadOnlyStatus
                 ? product.Price
-                : ResolveCurrentPrice(product, now);
+                : PriceHelper.ResolveCurrentPrice(product, now);
             if (item.CurrentPrice != latestPrice)
             {
                 item.CurrentPrice = latestPrice;
@@ -430,66 +434,6 @@ public class CartService : ICartService
         {
             await _cartRealtimeService.PublishAsync(accountId, CartHubEvents.CartUpdated, cart, message, payload, cancellationToken);
         }
-    }
-
-    private static decimal ResolveCurrentPrice(Product product, DateTime now)
-    {
-        // 1. Ưu tiên Flash Sale (PromotionProductSlots)
-        var activeFlashSale = product.PromotionProductSlots
-            .Where(pps => pps.IsActive
-                         && !pps.IsDeleted
-                         && pps.TimeSlot != null
-                         && !pps.TimeSlot.IsDeleted
-                         && string.Equals(pps.TimeSlot.Status, "Active", StringComparison.OrdinalIgnoreCase)
-                         && pps.TimeSlot.StartAt <= now
-                         && pps.TimeSlot.EndAt >= now
-                         && pps.TimeSlot.Promotion != null
-                         && !pps.TimeSlot.Promotion.IsDeleted
-                         && (string.Equals(pps.TimeSlot.Promotion.Status, "Active", StringComparison.OrdinalIgnoreCase)
-                             || string.Equals(pps.TimeSlot.Promotion.Status, "Scheduled", StringComparison.OrdinalIgnoreCase))
-                         && (pps.SoldQuantity + pps.ReservedQuantity < pps.SaleQuantity))
-            .OrderByDescending(pps => pps.TimeSlot.Promotion.Priority)
-            .ThenBy(pps => pps.SalePrice)
-            .FirstOrDefault();
-
-        if (activeFlashSale != null)
-        {
-            return activeFlashSale.SalePrice;
-        }
-
-        // 2. Nếu không có Flash Sale, tìm trong ProductPromotions (Discount thường)
-        var bestRegularPromotion = product.ProductPromotions
-            .Where(pp => pp.IsActive
-                         && !pp.IsDeleted
-                         && pp.Promotion != null
-                         && !pp.Promotion.IsDeleted
-                         && (string.Equals(pp.Promotion.Status, "Active", StringComparison.OrdinalIgnoreCase)
-                             || string.Equals(pp.Promotion.Status, "Scheduled", StringComparison.OrdinalIgnoreCase))
-                         && pp.Promotion.StartDate <= now
-                         && pp.Promotion.EndDate >= now
-                         && (!pp.SaleQuantity.HasValue || pp.SoldQuantity + pp.ReservedQuantity < pp.SaleQuantity.Value)
-                         && IsPromotionSlotActive(pp.Promotion, now))
-            .OrderByDescending(pp => pp.Promotion.Priority)
-            .ThenBy(pp => pp.SalePrice)
-            .FirstOrDefault();
-
-        return bestRegularPromotion?.SalePrice ?? product.Price;
-    }
-
-    private static bool IsPromotionSlotActive(Promotion promotion, DateTime now)
-    {
-        // Nếu promotion không chia slot (ví dụ Discount thường chạy cả ngày) thì trả về true
-        if (promotion.PromotionTimeSlots == null || promotion.PromotionTimeSlots.Count == 0)
-        {
-            return true;
-        }
-
-        // Kiểm tra xem có slot nào đang Active và bao phủ thời gian hiện tại không
-        return promotion.PromotionTimeSlots.Any(slot =>
-            !slot.IsDeleted
-            && string.Equals(slot.Status, "Active", StringComparison.OrdinalIgnoreCase)
-            && slot.StartAt <= now
-            && slot.EndAt >= now);
     }
 
     private static bool IsCartItemReadOnlyStatus(string? productStatus)

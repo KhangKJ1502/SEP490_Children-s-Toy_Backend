@@ -31,7 +31,7 @@ public class DeliveryRepository : IDeliveryRepository
     public async Task<List<Delivery>> GetBellNotificationsAsync(int accountId, string? status, int page, int pageSize, CancellationToken ct = default)
     {
         var query = _db.Deliveries
-            .Where(d => d.AccountId == accountId && d.Channel == NotificationChannels.WebBell);
+            .Where(d => d.AccountId == accountId && d.Channel == NotificationChannels.WebBell && !d.IsDeleted);
 
         if (!string.IsNullOrEmpty(status))
             query = query.Where(d => d.Status == status);
@@ -46,7 +46,7 @@ public class DeliveryRepository : IDeliveryRepository
     public async Task<int> CountBellNotificationsAsync(int accountId, string? status, CancellationToken ct = default)
     {
         var query = _db.Deliveries
-            .Where(d => d.AccountId == accountId && d.Channel == NotificationChannels.WebBell);
+            .Where(d => d.AccountId == accountId && d.Channel == NotificationChannels.WebBell && !d.IsDeleted);
 
         if (!string.IsNullOrEmpty(status))
             query = query.Where(d => d.Status == status);
@@ -83,7 +83,8 @@ public class DeliveryRepository : IDeliveryRepository
         return await _db.Deliveries
             .CountAsync(d => d.AccountId == accountId
                           && d.Channel   == NotificationChannels.WebBell
-                          && d.Status    == NotificationStatuses.Unread, ct);
+                          && d.Status    == NotificationStatuses.Unread
+                          && !d.IsDeleted, ct);
     }
 
     public async Task MarkAllReadAsync(int accountId, CancellationToken ct = default)
@@ -152,5 +153,56 @@ public class DeliveryRepository : IDeliveryRepository
             a.DeliveryId == deliveryId && 
             a.AccountId == accountId && 
             a.ActionType == "Click", ct);
+    }
+
+    public async Task<List<Delivery>> GetByCampaignPagedAsync(int campaignId, int pageNumber, int pageSize, string? status, CancellationToken ct = default)
+    {
+        var query = _db.Deliveries
+            .AsNoTracking()
+            .Include(d => d.Account)
+            .Where(d => d.CampaignId == campaignId && !d.IsDeleted);
+
+        if (!string.IsNullOrWhiteSpace(status))
+            query = query.Where(d => d.Status == status);
+
+        return await query
+            .OrderByDescending(d => d.CreatedAt)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+    }
+
+    public async Task<int> CountByCampaignAsync(int campaignId, string? status, CancellationToken ct = default)
+    {
+        var query = _db.Deliveries
+            .Where(d => d.CampaignId == campaignId && !d.IsDeleted);
+
+        if (!string.IsNullOrWhiteSpace(status))
+            query = query.Where(d => d.Status == status);
+
+        return await query.CountAsync(ct);
+    }
+
+    public async Task MarkDeletedAsync(long deliveryId, int accountId, CancellationToken ct = default)
+    {
+        var now = DateTime.Now;
+        await _db.Deliveries
+            .Where(d => d.DeliveryId == deliveryId && d.AccountId == accountId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(d => d.IsDeleted, true)
+                .SetProperty(d => d.UpdatedAt, now), ct);
+    }
+
+    public async Task MarkAllReadAsDeletedAsync(int accountId, CancellationToken ct = default)
+    {
+        var now = DateTime.Now;
+        await _db.Deliveries
+            .Where(d => d.AccountId == accountId 
+                     && d.Channel == NotificationChannels.WebBell 
+                     && d.Status == NotificationStatuses.Read
+                     && !d.IsDeleted)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(d => d.IsDeleted, true)
+                .SetProperty(d => d.UpdatedAt, now), ct);
     }
 }

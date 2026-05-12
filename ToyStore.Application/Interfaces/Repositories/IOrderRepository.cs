@@ -53,6 +53,7 @@ public interface IOrderRepository
     /// Tra ve null neu khong tim thay hoac da bi xoa mem.
     /// </summary>
     Task<Order?> GetByIdForUpdateAsync(int orderId, CancellationToken cancellationToken = default);
+    Task<Order?> GetByIdWithTrackingAsync(int orderId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Lay map StatusName -> StatusID tu bang StatusOrders.
@@ -82,4 +83,28 @@ public interface IOrderRepository
     Task<ShippingProviderTransaction?> GetShippingTransactionByProviderCodeAsync(
         string providerOrderCode,
         CancellationToken cancellationToken = default);
+
+    Task<PaymentGatewayTransaction?> GetPaymentTransactionByRequestIdAsync(
+        string requestId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cap nhat ton kho Flash Sale atomic.
+    /// </summary>
+    Task AdjustFlashSaleStockAsync(int slotProductId, int soldDelta, int reservedDelta, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Hoan tien vao vi (atomic).
+    /// </summary>
+    Task RefundWalletAsync(int accountId, decimal amount, string transactionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Hoan lai voucher (atomic).
+    /// </summary>
+    Task RestoreVoucherAsync(int orderId, CancellationToken cancellationToken = default);
+
+    Task AddPaymentHistoryAsync(PaymentHistory history, CancellationToken cancellationToken = default);
+    Task<Wallet?> GetWalletByAccountIdAsync(int accountId, CancellationToken cancellationToken = default);
+    Task AddWalletTransactionAsync(WalletTransaction transaction, CancellationToken cancellationToken = default);
+    Task<bool> ExistsWalletTransactionByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken = default);
 }

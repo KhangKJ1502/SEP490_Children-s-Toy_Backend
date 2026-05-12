@@ -24,7 +24,7 @@ public partial class OrderDetail
     public decimal? LineTotal { get; set; }
 
     public int? PromotionId { get; set; }
-    
+
     public int? SlotProductId { get; set; }
 
     public DateTime CreatedAt { get; set; }

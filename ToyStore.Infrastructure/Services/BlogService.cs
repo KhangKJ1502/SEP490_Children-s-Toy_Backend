@@ -29,26 +29,28 @@ public class BlogService : IBlogService
     {
         PendingStatus
     };
-    private static readonly TimeZoneInfo VietnamTimeZone = ResolveVietnamTimeZone();
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUserService _currentUserService;
     private readonly IDomainEventPublisher _eventPublisher;
     private readonly IMapper _mapper;
     private readonly ILogger<BlogService> _logger;
+    private readonly ITimeProvider _timeProvider;
 
     public BlogService(
         IUnitOfWork unitOfWork,
         ICurrentUserService currentUserService,
         IDomainEventPublisher eventPublisher,
         IMapper mapper,
-        ILogger<BlogService> logger)
+        ILogger<BlogService> logger,
+        ITimeProvider timeProvider)
     {
-        _unitOfWork = unitOfWork;
+        _unitOfWork         = unitOfWork;
         _currentUserService = currentUserService;
-        _eventPublisher = eventPublisher;
-        _mapper = mapper;
-        _logger = logger;
+        _eventPublisher     = eventPublisher;
+        _mapper             = mapper;
+        _logger             = logger;
+        _timeProvider       = timeProvider;
     }
 
     public async Task<Result<PaginatedResponse<BlogListDto>>> GetBlogsForAdminAsync(
@@ -160,7 +162,7 @@ public class BlogService : IBlogService
             Reason = null,
             ApprovedBy = null,
             IsDeleted = false,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = _timeProvider.UtcNow
         };
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
@@ -215,7 +217,7 @@ public class BlogService : IBlogService
         blog.BlogContent = dto.BlogContent!.Trim();
         blog.BlogThumbnail = dto.BlogThumbnail?.Trim();
         blog.BlogAt = NormalizeBlogAtUtc(dto.BlogAt);
-        blog.UpdatedAt = DateTime.UtcNow;
+        blog.UpdatedAt = _timeProvider.UtcNow;
 
         blog.Status = DraftStatus;
         if (!wasHidden && string.Equals(dto.Status?.Trim(), PendingStatus, StringComparison.OrdinalIgnoreCase))
@@ -283,7 +285,7 @@ public class BlogService : IBlogService
         blog.Reason = null;
         blog.ApprovedBy = null;
 
-        blog.UpdatedAt = DateTime.UtcNow;
+        blog.UpdatedAt = _timeProvider.UtcNow;
         await _unitOfWork.Blogs.UpdateAsync(blog, cancellationToken);
 
         // Notify admins that a blog is pending approval
@@ -316,14 +318,14 @@ public class BlogService : IBlogService
         if (string.Equals(decision, "Approved", StringComparison.OrdinalIgnoreCase))
         {
             blog.Reason = null;
-            if (blog.BlogAt.HasValue && blog.BlogAt.Value > DateTime.UtcNow)
+            if (blog.BlogAt.HasValue && blog.BlogAt.Value > _timeProvider.UtcNow)
             {
                 blog.Status = ScheduledStatus;
             }
             else
             {
                 blog.Status = PublishedStatus;
-                blog.BlogAt ??= DateTime.UtcNow;
+                blog.BlogAt ??= _timeProvider.UtcNow;
                 _logger.LogInformation("Blog {BlogId} approved and published immediately (BlogAt <= now).", blogPostId);
             }
         }
@@ -342,7 +344,7 @@ public class BlogService : IBlogService
         }
 
         blog.ApprovedBy = _currentUserService.AccountId;
-        blog.UpdatedAt = DateTime.UtcNow;
+        blog.UpdatedAt = _timeProvider.UtcNow;
 
         await _unitOfWork.Blogs.UpdateAsync(blog, cancellationToken);
         var updated = await _unitOfWork.Blogs.GetByIdAsync(blogPostId, cancellationToken);
@@ -371,9 +373,9 @@ public class BlogService : IBlogService
         }
 
         blog.Status = PublishedStatus;
-        blog.BlogAt = DateTime.UtcNow;
+        blog.BlogAt = _timeProvider.UtcNow;
         blog.Reason = null;
-        blog.UpdatedAt = DateTime.UtcNow;
+        blog.UpdatedAt = _timeProvider.UtcNow;
 
         await _unitOfWork.Blogs.UpdateAsync(blog, cancellationToken);
         var updated = await _unitOfWork.Blogs.GetByIdAsync(blogPostId, cancellationToken);
@@ -421,7 +423,7 @@ public class BlogService : IBlogService
         blog.Status = HiddenStatus;
         blog.IsFeatured = false;
         blog.Reason = null;
-        blog.UpdatedAt = DateTime.UtcNow;
+        blog.UpdatedAt = _timeProvider.UtcNow;
 
         await _unitOfWork.Blogs.HideAsync(blog, cancellationToken);
         var hiddenBlog = await _unitOfWork.Blogs.GetByIdAsync(blogPostId, cancellationToken);
@@ -494,7 +496,7 @@ public class BlogService : IBlogService
             AccountId = _currentUserService.AccountId,
             Comment = comment,
             IsDeleted = false,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = _timeProvider.UtcNow
         };
 
         var created = await _unitOfWork.Blogs.CreateReviewAsync(entity, cancellationToken);
@@ -548,7 +550,7 @@ public class BlogService : IBlogService
             ReplyToAccountId = dto.ReplyToAccountId,
             Comment = comment,
             IsDeleted = false,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = _timeProvider.UtcNow
         };
 
         var created = await _unitOfWork.Blogs.CreateReplyAsync(entity, cancellationToken);
@@ -580,7 +582,7 @@ public class BlogService : IBlogService
         }
 
         review.IsDeleted = true;
-        review.UpdatedAt = DateTime.UtcNow;
+        review.UpdatedAt = _timeProvider.UtcNow;
         await _unitOfWork.Blogs.UpdateReviewAsync(review, cancellationToken);
 
         return Result<bool>.Success(true);
@@ -643,7 +645,7 @@ public class BlogService : IBlogService
         }
 
         review.IsDeleted = isHidden.Value;
-        review.UpdatedAt = DateTime.UtcNow;
+        review.UpdatedAt = _timeProvider.UtcNow;
         await _unitOfWork.Blogs.UpdateReviewAsync(review, cancellationToken);
         var updated = await _unitOfWork.Blogs.GetReviewByIdAsync(reviewBlogId, cancellationToken);
         return Result<BlogReviewDto>.Success(MapReview(updated!));
@@ -669,7 +671,7 @@ public class BlogService : IBlogService
         }
 
         reply.IsDeleted = isHidden.Value;
-        reply.UpdatedAt = DateTime.UtcNow;
+        reply.UpdatedAt = _timeProvider.UtcNow;
         await _unitOfWork.Blogs.UpdateReplyAsync(reply, cancellationToken);
         var updated = await _unitOfWork.Blogs.GetReplyByIdAsync(replyBlogId, cancellationToken);
         return Result<BlogReviewReplyDto>.Success(MapReply(updated!));
@@ -910,8 +912,8 @@ public class BlogService : IBlogService
             return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "BlogAt is required when blog is Approved.");
         }
 
-        var normalizedBlogAtUtc = NormalizeToUtc(dto.BlogAt.Value);
-        if (normalizedBlogAtUtc <= DateTime.UtcNow)
+        var normalizedBlogAtUtc = _timeProvider.ToUtc(dto.BlogAt.Value);
+        if (normalizedBlogAtUtc <= _timeProvider.UtcNow)
         {
             return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "BlogAt must be in the future.");
         }
@@ -919,7 +921,7 @@ public class BlogService : IBlogService
         blog.BlogAt = normalizedBlogAtUtc;
         blog.Status = ScheduledStatus;
         blog.Reason = null;
-        blog.UpdatedAt = DateTime.UtcNow;
+        blog.UpdatedAt = _timeProvider.UtcNow;
 
         await _unitOfWork.Blogs.UpdateAsync(blog, cancellationToken);
         var updated = await _unitOfWork.Blogs.GetByIdAsync(blog.BlogPostId, cancellationToken);
@@ -1033,44 +1035,16 @@ public class BlogService : IBlogService
         return string.Equals(roleName, "Admin", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static DateTime? NormalizeBlogAtUtc(DateTime? blogAt)
+    private DateTime? NormalizeBlogAtUtc(DateTime? blogAt)
     {
         if (!blogAt.HasValue)
         {
             return null;
         }
 
-        return NormalizeToUtc(blogAt.Value);
+        return _timeProvider.ToUtc(blogAt.Value);
     }
 
-    private static DateTime NormalizeToUtc(DateTime value)
-    {
-        return value.Kind switch
-        {
-            DateTimeKind.Utc => value,
-            DateTimeKind.Local => value.ToUniversalTime(),
-            _ => TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(value, DateTimeKind.Unspecified), VietnamTimeZone)
-        };
-    }
-
-    private static TimeZoneInfo ResolveVietnamTimeZone()
-    {
-        try
-        {
-            return TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
-        }
-        catch (TimeZoneNotFoundException)
-        {
-            try
-            {
-                return TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh");
-            }
-            catch (TimeZoneNotFoundException)
-            {
-                return TimeZoneInfo.Utc;
-            }
-        }
-    }
 
     private bool IsPrivilegedUser()
     {

@@ -52,25 +52,6 @@ public sealed class GhnClient : IGhnClient
         FeeRequestDTO request,
         CancellationToken cancellationToken = default)
     {
-        var serviceId = request.ServiceId is > 0 ? request.ServiceId : null;
-        int? preferredTypeId = request.ServiceTypeId is > 0
-            ? request.ServiceTypeId
-            : (_ghnOptions.FeeServiceTypeId > 0 ? _ghnOptions.FeeServiceTypeId : null);
-
-        int resolvedServiceId;
-        if (serviceId.HasValue)
-        {
-            resolvedServiceId = serviceId.Value;
-        }
-        else
-        {
-            var resolveResult = await ResolveServiceIdAsync(request.ToDistrictId, preferredTypeId, cancellationToken);
-            if (!resolveResult.IsSuccess)
-                return MapFailure<FeeResponseDTO, int>(resolveResult);
-
-            resolvedServiceId = resolveResult.Data;
-        }
-
         var payload = new Dictionary<string, object>
         {
             ["from_district_id"] = request.FromDistrictId,
@@ -82,18 +63,47 @@ public sealed class GhnClient : IGhnClient
             ["weight"] = request.Weight,
             ["length"] = request.Length,
             ["width"] = request.Width,
-            ["height"] = request.Height,
-            ["service_id"] = resolvedServiceId
+            ["height"] = request.Height
         };
 
+        if (request.ServiceId is > 0)
+        {
+            payload["service_id"] = request.ServiceId.Value;
+        }
+        else
+        {
+            // GHN fee API supports passing service_type_id directly, avoiding the need to resolve service_id first!
+            int typeId = request.ServiceTypeId is > 0
+                ? request.ServiceTypeId.Value
+                : (_ghnOptions.FeeServiceTypeId > 0 ? _ghnOptions.FeeServiceTypeId : 2);
+            payload["service_type_id"] = typeId;
+        }
+
         var feeResult = await PostAsync<GhnFeeData>("v2/shipping-order/fee", payload, "fee", cancellationToken);
+        
+        // Cố gắng resolve service_id nếu GHN bắt buộc (trường hợp hiếm)
+        if (!feeResult.IsSuccess && feeResult.ErrorMessage != null && feeResult.ErrorMessage.Contains("service_id"))
+        {
+            _logger.LogWarning("GHN fee API requires service_id. Falling back to ResolveServiceIdAsync...");
+            var resolveResult = await ResolveServiceIdAsync(request.ToDistrictId, null, cancellationToken);
+            if (resolveResult.IsSuccess)
+            {
+                payload.Remove("service_type_id");
+                payload["service_id"] = resolveResult.Data;
+                feeResult = await PostAsync<GhnFeeData>("v2/shipping-order/fee", payload, "fee_retry", cancellationToken);
+            }
+        }
+
         if (!feeResult.IsSuccess)
+        {
+            _logger.LogError("GetFeeAsync failed. Error: {Error}", feeResult.ErrorMessage);
             return MapFailure<FeeResponseDTO, GhnFeeData>(feeResult);
+        }
 
         return Result<FeeResponseDTO>.Success(new FeeResponseDTO
         {
             Fee = feeResult.Data!.Total,
-            ServiceId = resolvedServiceId
+            ServiceId = request.ServiceId ?? 0 // Note: Not exact if service_type_id was used, but sufficient for preview
         });
     }
 
@@ -124,6 +134,63 @@ public sealed class GhnClient : IGhnClient
                 .UtcDateTime
         });
     }
+
+    // ── Master data ──────────────────────────────────────────────────────────
+
+    public async Task<Result<List<GhnProvinceDto>>> GetProvincesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await GetAsync<List<GhnProvinceMdData>>(
+            "master-data/province", "provinces", cancellationToken);
+        if (!result.IsSuccess)
+            return MapFailure<List<GhnProvinceDto>, List<GhnProvinceMdData>>(result);
+
+        var dtos = (result.Data ?? []).Select(p => new GhnProvinceDto
+        {
+            ProvinceId   = p.ProvinceId,
+            ProvinceName = p.ProvinceName,
+            ProvinceCode = p.Code
+        }).ToList();
+        return Result<List<GhnProvinceDto>>.Success(dtos);
+    }
+
+    public async Task<Result<List<GhnDistrictDto>>> GetDistrictsAsync(
+        int provinceId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await GetAsync<List<GhnDistrictMdData>>(
+            $"master-data/district?province_id={provinceId}", "districts", cancellationToken);
+        if (!result.IsSuccess)
+            return MapFailure<List<GhnDistrictDto>, List<GhnDistrictMdData>>(result);
+
+        var dtos = (result.Data ?? []).Select(d => new GhnDistrictDto
+        {
+            DistrictId   = d.DistrictId,
+            ProvinceId   = d.ProvinceId,
+            DistrictName = d.DistrictName
+        }).ToList();
+        return Result<List<GhnDistrictDto>>.Success(dtos);
+    }
+
+    public async Task<Result<List<GhnWardDto>>> GetWardsAsync(
+        int districtId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await GetAsync<List<GhnWardMdData>>(
+            $"master-data/ward?district_id={districtId}", "wards", cancellationToken);
+        if (!result.IsSuccess)
+            return MapFailure<List<GhnWardDto>, List<GhnWardMdData>>(result);
+
+        var dtos = (result.Data ?? []).Select(w => new GhnWardDto
+        {
+            WardCode   = w.WardCode,
+            DistrictId = w.DistrictId,
+            WardName   = w.WardName
+        }).ToList();
+        return Result<List<GhnWardDto>>.Success(dtos);
+    }
+
+    // ── Tao don van chuyen ──────────────────────────────────────────────────
 
     public async Task<Result<ShippingOrderCreateResponseDto>> CreateOrderAsync(
         ShippingOrderCreateRequestDto request,
@@ -252,11 +319,21 @@ public sealed class GhnClient : IGhnClient
             .OrderBy(s => s.ServiceId)
             .FirstOrDefault();
 
+        // [CƠ CHẾ FALLBACK]
+        // Nếu tuyến đường không hỗ trợ loại dịch vụ mặc định (vd: 2 - Chuyển phát tiêu chuẩn)
+        // thì tự động lấy dịch vụ đầu tiên khả dụng mà GHN hỗ trợ để không bị chết API.
+        if (selected is null && preferredServiceTypeId.HasValue)
+        {
+            _logger.LogWarning("GHN preferred service_type_id={Type} not available. Falling back to any available service.", preferredServiceTypeId.Value);
+            selected = services
+                .Where(s => s.ServiceId > 0)
+                .OrderBy(s => s.ServiceId)
+                .FirstOrDefault();
+        }
+
         if (selected is null)
         {
-            var msg = preferredServiceTypeId.HasValue
-                ? $"No GHN service found for service_type_id={preferredServiceTypeId.Value} on this route."
-                : "No GHN service found for this route.";
+            var msg = "No GHN service found for this route.";
             return Result<int>.Failure("GHN_SERVICE_UNAVAILABLE", msg);
         }
 
@@ -265,6 +342,47 @@ public sealed class GhnClient : IGhnClient
             selected.ServiceId, selected.ServiceTypeId, toDistrictId);
 
         return Result<int>.Success(selected.ServiceId);
+    }
+
+    private async Task<Result<TData>> GetAsync<TData>(
+        string path,
+        string operation,
+        CancellationToken cancellationToken)
+    {
+        var timeoutSeconds = Math.Max(5, _ghnOptions.TimeoutSeconds);
+        try
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+            using var client = _httpClientFactory.CreateClient(HttpClientName);
+            using var response = await client.GetAsync(path, timeoutCts.Token);
+            var responseText = await response.Content.ReadAsStringAsync(timeoutCts.Token);
+
+            if (!response.IsSuccessStatusCode)
+                return Result<TData>.BusinessError(
+                    $"GHN {operation} failed – HTTP {(int)response.StatusCode}: {Truncate(responseText)}");
+
+            var body = JsonSerializer.Deserialize<GhnApiResponse<TData>>(responseText, JsonOptions);
+            if (body is null)
+                return Result<TData>.Failure("GHN_EMPTY_RESPONSE", $"GHN {operation} returned empty body.");
+            if (body.Code != 200)
+                return Result<TData>.BusinessError($"GHN {operation} business error (code={body.Code}): {body.Message}");
+            if (body.Data is null)
+                return Result<TData>.Failure("GHN_EMPTY_DATA", $"GHN {operation} returned null data.");
+
+            return Result<TData>.Success(body.Data);
+        }
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "GHN {Operation} timeout", operation);
+            return Result<TData>.Failure("GHN_TIMEOUT", $"GHN {operation} timed out.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GHN {Operation} error", operation);
+            return Result<TData>.Failure("GHN_ERROR", $"GHN {operation} error: {ex.Message}");
+        }
     }
 
     private async Task<Result<TData>> PostAsync<TData>(
@@ -417,5 +535,26 @@ public sealed class GhnClient : IGhnClient
         [JsonPropertyName("order_code")] public string OrderCode { get; set; } = string.Empty;
         [JsonPropertyName("sort_code")] public string? SortCode { get; set; }
         [JsonPropertyName("expected_delivery_time")] public DateTime? ExpectedDeliveryTime { get; set; }
+    }
+
+    private sealed class GhnProvinceMdData
+    {
+        [JsonPropertyName("ProvinceID")] public int ProvinceId { get; set; }
+        [JsonPropertyName("ProvinceName")] public string ProvinceName { get; set; } = string.Empty;
+        [JsonPropertyName("Code")] public string? Code { get; set; }
+    }
+
+    private sealed class GhnDistrictMdData
+    {
+        [JsonPropertyName("DistrictID")] public int DistrictId { get; set; }
+        [JsonPropertyName("ProvinceID")] public int ProvinceId { get; set; }
+        [JsonPropertyName("DistrictName")] public string DistrictName { get; set; } = string.Empty;
+    }
+
+    private sealed class GhnWardMdData
+    {
+        [JsonPropertyName("WardCode")] public string WardCode { get; set; } = string.Empty;
+        [JsonPropertyName("DistrictID")] public int DistrictId { get; set; }
+        [JsonPropertyName("WardName")] public string WardName { get; set; } = string.Empty;
     }
 }
