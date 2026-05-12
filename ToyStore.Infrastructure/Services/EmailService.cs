@@ -32,6 +32,13 @@ public class EmailService : IEmailService
         await SendEmailAsync(toEmail, subject, htmlBody, cancellationToken);
     }
 
+
+    public async Task SendForgotWalletPinOtpEmailAsync(string toEmail, string otpCode, CancellationToken cancellationToken = default)
+    {
+        var subject = "ToyStore Wallet PIN Reset Verification Code";
+        var htmlBody = BuildForgotWalletPinOtpEmailHtml(toEmail, otpCode);
+        await SendEmailAsync(toEmail, subject, htmlBody, cancellationToken);
+    }
     private async Task SendEmailAsync(string toEmail, string subject, string htmlBody, CancellationToken cancellationToken)
     {
         var host = _configuration["Email:Host"]!;
@@ -208,4 +215,59 @@ public class EmailService : IEmailService
 </body>
 </html>";
     }
+
+    private static string BuildForgotWalletPinOtpEmailHtml(string toEmail, string otpCode)
+    {
+        return $@"
+<!DOCTYPE html>
+<html lang=""en"">
+<head>
+  <meta charset=""UTF-8"" />
+  <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"" />
+  <title>Wallet PIN Reset Verification - ToyStore</title>
+</head>
+<body style=""margin:0;padding:0;background-color:#f7f7f7;font-family:Arial,sans-serif;"">
+  <table width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""padding:24px 0;"">
+    <tr>
+      <td align=""center"">
+        <table width=""560"" cellpadding=""0"" cellspacing=""0"" style=""background:#ffffff;border-radius:12px;overflow:hidden;"">
+          <tr>
+            <td style=""background:#ff7a00;color:#ffffff;padding:24px;text-align:center;"">
+              <h2 style=""margin:0;"">ToyStore Wallet Security</h2>
+            </td>
+          </tr>
+          <tr>
+            <td style=""padding:28px;color:#333333;"">
+              <p style=""margin:0 0 12px;"">Hello,</p>
+              <p style=""margin:0 0 20px;"">
+                We received a request to reset the PIN for your ToyStore Wallet account. To protect your wallet, please verify this request by entering the one-time password (OTP) below:
+              </p>
+              <div style=""text-align:center;background:#fff4eb;border:2px solid #ff7a00;border-radius:10px;padding:16px;margin:16px 0;"">
+                <div style=""font-size:34px;letter-spacing:8px;font-weight:700;color:#ff7a00;"">{otpCode}</div>
+                <p style=""margin:8px 0 0;font-size:12px;color:#666;"">This OTP is valid for 10 minutes.</p>
+              </div>
+              <p style=""margin:0 0 12px;font-size:14px;color:#555;line-height:1.6;"">
+                For your security, never share this OTP with anyone, including people claiming to be ToyStore staff. ToyStore will never ask for your OTP through phone calls, messages, or social media.
+              </p>
+              <p style=""margin:0 0 12px;font-size:14px;color:#555;line-height:1.6;"">
+                If you did not request a PIN reset, please ignore this email. Your current wallet PIN will remain unchanged unless the correct OTP is entered.
+              </p>
+              <p style=""margin:0;font-size:13px;color:#666;"">
+                Need help? Please contact ToyStore Support so we can assist you right away.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style=""background:#fafafa;padding:16px;text-align:center;color:#999;font-size:12px;"">
+              Email sent to <strong>{toEmail}</strong>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>";
+    }
 }
+

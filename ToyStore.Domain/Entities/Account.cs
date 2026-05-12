@@ -103,6 +103,8 @@ public partial class Account
 
     public virtual Wallet? Wallet { get; set; }
 
+    public virtual ICollection<WalletPinAttempt> WalletPinAttempts { get; set; } = new List<WalletPinAttempt>();
+
     public virtual ICollection<WalletTransaction> WalletTransactions { get; set; } = new List<WalletTransaction>();
 
     public virtual ICollection<Wishlist> Wishlists { get; set; } = new List<Wishlist>();
