@@ -17,4 +17,7 @@ public class VoucherListDto
     public string? ImageUrl { get; set; }
     public int? TotalQuantity { get; set; }
     public int UsedQuantity { get; set; }
+    public decimal? MinOrderAmount { get; set; }
+    public string VoucherDescription { get; set; } = string.Empty;
+    public short? MaxUsagePerUser { get; set; }
 }

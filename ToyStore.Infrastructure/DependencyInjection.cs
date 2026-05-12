@@ -87,6 +87,7 @@ public static class DependencyInjection
             cfg.AddProfile<OrdersProfile>();
             cfg.AddProfile<ReviewProfile>();
             cfg.AddProfile<CustomerChildProfile>();
+            cfg.AddProfile<RefundProfile>();
             cfg.AddProfile<CustomerProfile>();
             cfg.AddProfile<WalletProfile>();
         });
@@ -165,6 +166,9 @@ public static class DependencyInjection
         services.AddScoped<IDeliveryRepository, DeliveryRepository>();
         services.AddScoped<IUserPreferenceRepository, UserPreferenceRepository>();
         services.AddScoped<IProductFollowerRepository, ProductFollowerRepository>();
+        services.AddScoped<IRefundRepository, RefundRepository>();
+        services.AddScoped<IRefundImageRepository, RefundImageRepository>();
+        services.AddScoped<IWalletTransactionRepository, WalletTransactionRepository>();
         services.AddScoped<IWalletRepository, WalletRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ICategoryService, CategoryService>();
@@ -180,6 +184,7 @@ public static class DependencyInjection
         services.AddScoped<IWishlistService, WishlistService>();
         services.AddScoped<IProductFollowerService, ProductFollowerService>();
         services.AddScoped<IReviewService, ReviewService>();
+        services.AddScoped<IRefundService, RefundService>();
         services.AddScoped<IWalletService, WalletService>();
 
         // Resolver business object

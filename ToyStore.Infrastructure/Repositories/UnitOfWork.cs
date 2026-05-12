@@ -35,7 +35,10 @@ public class UnitOfWork : IUnitOfWork
         IDeliveryRepository deliveries,
         IUserPreferenceRepository userPreferences,
         IProductFollowerRepository productFollowers,
-        IWalletRepository wallets)
+        IRefundRepository refunds,
+        IRefundImageRepository refundImages,
+        IWalletRepository wallets,
+        IWalletTransactionRepository walletTransactions)
     {
         _context = context;
         Vouchers = vouchers;
@@ -58,8 +61,10 @@ public class UnitOfWork : IUnitOfWork
         Deliveries = deliveries;
         UserPreferences = userPreferences;
         ProductFollowers = productFollowers;
+        Refunds = refunds;
+        RefundImages = refundImages;
         Wallets = wallets;
-
+        WalletTransactions = walletTransactions;
     }
 
     public IVoucherRepository Vouchers { get; }
@@ -91,6 +96,7 @@ public class UnitOfWork : IUnitOfWork
     public ICustomerChildRepository CustomerChildren { get; }
 
     public IOrderRepository Orders { get; }
+
     public IWishlistRepository Wishlists { get; }
 
     public IReviewRepository Reviews { get; }
@@ -98,8 +104,16 @@ public class UnitOfWork : IUnitOfWork
     public IDeliveryRepository Deliveries { get; }
 
     public IUserPreferenceRepository UserPreferences { get; }
+
     public IProductFollowerRepository ProductFollowers { get; }
+
+    public IRefundRepository Refunds { get; }
+
+    public IRefundImageRepository RefundImages { get; }
+
     public IWalletRepository Wallets { get; }
+
+    public IWalletTransactionRepository WalletTransactions { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

@@ -15,6 +15,7 @@ builder.Services.AddRecommendation();
 // ── Background workers / hosted services ────────────────────────────────────
 // Core system workers
 builder.Services.AddHostedService<OrderStatusWorker>();
+builder.Services.AddHostedService<PromotionStatusJob>();
 builder.Services.AddHostedService<RecommendationWorker>();
 builder.Services.AddHostedService<BlogPublishWorker>();
 

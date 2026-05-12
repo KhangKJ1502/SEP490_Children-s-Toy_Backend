@@ -35,14 +35,14 @@ public class PromotionService : IPromotionService
         ICurrentUserService currentUserService,
         ITimeProvider timeProvider)
     {
-        _unitOfWork         = unitOfWork;
-        _mapper             = mapper;
-        _logger             = logger;
-        _cartService        = cartService;
-        _createValidator    = createValidator;
-        _updateValidator    = updateValidator;
+        _unitOfWork = unitOfWork;
+        _mapper = mapper;
+        _logger = logger;
+        _cartService = cartService;
+        _createValidator = createValidator;
+        _updateValidator = updateValidator;
         _currentUserService = currentUserService;
-        _timeProvider       = timeProvider;
+        _timeProvider = timeProvider;
     }
 
     public async Task<Result<PaginatedResponse<PromotionListDto>>> GetPromotionsAsync(
@@ -120,7 +120,7 @@ public class PromotionService : IPromotionService
             cancellationToken,
             includeProperties: "ProductPromotions,ProductPromotions.Product,PromotionTimeSlots,PromotionTimeSlots.PromotionProductSlots,PromotionTimeSlots.PromotionProductSlots.Product"
         );
-        
+
         if (promotion is null)
         {
             return Result<PromotionDto>.NotFound("Promotion", promotionId);
@@ -152,7 +152,7 @@ public class PromotionService : IPromotionService
 
         var promotion = _mapper.Map<Promotion>(request);
         // Set dynamically from current authenticated user
-        promotion.CreatedBy = _currentUserService.AccountId; 
+        promotion.CreatedBy = _currentUserService.AccountId;
         promotion.CreatedAt = _timeProvider.UtcNow;
         promotion.UpdatedAt = null;
         promotion.IsDeleted = false;
@@ -217,8 +217,8 @@ public class PromotionService : IPromotionService
         // Since ID is generated, we might just return what we have mapped minus ID if we can't fetch it by Name
         // Or we can fetch it again:
         var createdPromotion = await _unitOfWork.Promotions.GetByIdAsync(
-            promotion.PromotionId, 
-            cancellationToken, 
+            promotion.PromotionId,
+            cancellationToken,
             includeProperties: "ProductPromotions,ProductPromotions.Product,PromotionTimeSlots,PromotionTimeSlots.PromotionProductSlots,PromotionTimeSlots.PromotionProductSlots.Product"
         );
         var dto = _mapper.Map<PromotionDto>(createdPromotion ?? promotion);
@@ -253,7 +253,7 @@ public class PromotionService : IPromotionService
         }
 
         var existingPromotion = await _unitOfWork.Promotions.GetByIdAsync(
-            promotionId, 
+            promotionId,
             cancellationToken,
             includeProperties: "ProductPromotions,PromotionTimeSlots,PromotionTimeSlots.PromotionProductSlots"
         );
@@ -280,100 +280,190 @@ public class PromotionService : IPromotionService
         }
         else
         {
-            _mapper.Map(request, existingPromotion);
-            existingPromotion.UpdatedAt = _timeProvider.UtcNow;
+            if (existingPromotion.Status == "Expired" || existingPromotion.Status == "Inactive")
+            {
+                return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot update an Expired or Inactive promotion.");
+            }
 
+            if (existingPromotion.Status == "Active")
+            {
+                if (request.Status != "Inactive" && request.Status != "Active")
+                {
+                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Active promotion can only be changed to Inactive.");
+                }
+
+                // Lock all other fields, only update status
+                existingPromotion.Status = request.Status;
+                existingPromotion.UpdatedAt = _timeProvider.UtcNow;
+            }
+            else
+            {
+                // Scheduled promotion
+                if (request.StartDate != existingPromotion.StartDate && request.StartDate < _timeProvider.UtcNow.AddMinutes(9))
+                {
+                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Start date must be at least 10 minutes from now.");
+                }
+
+                _mapper.Map(request, existingPromotion);
+                existingPromotion.UpdatedAt = _timeProvider.UtcNow;
+
+                var promotionNameExists = await _unitOfWork.Promotions.ExistsPromotionNameAsync(
+                    existingPromotion.PromotionName,
+                    promotionId,
+                    cancellationToken);
+
+                if (promotionNameExists)
+                {
+                    return Result<PromotionDto>.Conflict("Promotion name already exists.");
+                }
+
+                if (request.ProductPromotions != null)
+                {
+                    var productIds = request.ProductPromotions.Select(p => p.ProductId).Distinct().ToList();
+                    var products = await _unitOfWork.Products.GetByIdsAsync(productIds, cancellationToken);
+
+                    if (products.Count != productIds.Count)
+                    {
+                        return Result<PromotionDto>.Failure("VALIDATION_ERROR", "One or more products do not exist.");
+                    }
+
+                    var incomingProductIds = request.ProductPromotions.Select(p => p.ProductId).ToList();
+                    var toRemove = existingPromotion.ProductPromotions
+                        .Where(pp => !incomingProductIds.Contains(pp.ProductId))
+                        .ToList();
+
+                    foreach (var item in toRemove)
+                    {
+                        item.IsDeleted = true;
+                        item.UpdatedAt = _timeProvider.UtcNow;
+                    }
+
+                    foreach (var incomingPp in request.ProductPromotions)
+                    {
+                        var product = products.First(p => p.ProductId == incomingPp.ProductId);
+                        if (incomingPp.SalePrice > product.Price)
+                        {
+                            return Result<PromotionDto>.Failure("VALIDATION_ERROR", $"Sale price for product {product.ProductName} cannot be greater than original price ({product.Price}).");
+                        }
+
+                        if (incomingPp.SaleQuantity.HasValue && incomingPp.SaleQuantity.Value > product.Quantity)
+                        {
+                            return Result<PromotionDto>.Failure("VALIDATION_ERROR", $"Sale quantity for product {product.ProductName} cannot exceed available stock ({product.Quantity}).");
+                        }
+
+                        var existingPp = existingPromotion.ProductPromotions
+                            .FirstOrDefault(pp => pp.ProductId == incomingPp.ProductId);
+
+                        if (existingPp != null)
+                        {
+                            existingPp.SalePrice = incomingPp.SalePrice;
+                            existingPp.DiscountPercent = incomingPp.DiscountPercent;
+                            existingPp.SaleQuantity = incomingPp.SaleQuantity;
+                            existingPp.IsActive = incomingPp.IsActive;
+                            existingPp.UpdatedAt = _timeProvider.UtcNow;
+                            existingPp.IsDeleted = false;
+                        }
+                        else
+                        {
+                            var newPp = _mapper.Map<ProductPromotion>(incomingPp);
+                            newPp.PromotionId = promotionId;
+                            newPp.CreatedAt = _timeProvider.UtcNow;
+                            existingPromotion.ProductPromotions.Add(newPp);
+                        }
+                    }
+                }
+
+                if (request.PromotionTimeSlots != null)
+                {
+                    var existingTimeSlots = existingPromotion.PromotionTimeSlots.ToList();
+                    var incomingTimeSlots = request.PromotionTimeSlots.ToList();
+                    var incomingStartTimes = incomingTimeSlots.Select(ts => ts.StartAt).ToList();
+
+                    var toRemoveSlots = existingTimeSlots
+                        .Where(ts => !incomingStartTimes.Contains(ts.StartAt))
+                        .ToList();
+
+                    foreach (var item in toRemoveSlots)
+                    {
+                        if (item.Status == "Active" || item.Status == "Expired" || item.Status == "Inactive")
+                        {
+                            return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot delete an Active, Expired, or Inactive time slot.");
+                        }
+                        item.IsDeleted = true;
+                        item.UpdatedAt = _timeProvider.UtcNow;
+                    }
+
+                    foreach (var incomingTs in incomingTimeSlots)
+                    {
+                        var existingTs = existingPromotion.PromotionTimeSlots.FirstOrDefault(ts => ts.StartAt == incomingTs.StartAt);
+                        if (existingTs != null)
+                        {
+                            if (existingTs.Status == "Active" || existingTs.Status == "Expired" || existingTs.Status == "Inactive")
+                            {
+                                if (existingTs.Status != incomingTs.Status)
+                                {
+                                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot modify the status of an Active, Expired, or Inactive time slot.");
+                                }
+                                continue;
+                            }
+
+                            existingTs.EndAt = incomingTs.EndAt;
+                            existingTs.Status = incomingTs.Status;
+                            existingTs.UpdatedAt = _timeProvider.UtcNow;
+                            existingTs.IsDeleted = false;
+
+                            if (incomingTs.PromotionProductSlots != null)
+                            {
+                                var incomingProductIds = incomingTs.PromotionProductSlots.Select(p => p.ProductId).ToList();
+                                var toRemoveProducts = existingTs.PromotionProductSlots
+                                    .Where(p => !incomingProductIds.Contains(p.ProductId))
+                                    .ToList();
+
+                                foreach (var rp in toRemoveProducts)
+                                {
+                                    rp.IsDeleted = true;
+                                    rp.UpdatedAt = _timeProvider.UtcNow;
+                                }
+
+                                foreach (var incomingP in incomingTs.PromotionProductSlots)
+                                {
+                                    var existingP = existingTs.PromotionProductSlots.FirstOrDefault(p => p.ProductId == incomingP.ProductId);
+                                    if (existingP != null)
+                                    {
+                                        existingP.SalePrice = incomingP.SalePrice;
+                                        existingP.DiscountPercent = incomingP.DiscountPercent;
+                                        existingP.SaleQuantity = incomingP.SaleQuantity;
+                                        existingP.IsActive = incomingP.IsActive;
+                                        existingP.UpdatedAt = _timeProvider.UtcNow;
+                                        existingP.IsDeleted = false;
+                                    }
+                                    else
+                                    {
+                                        var newP = _mapper.Map<PromotionProductSlot>(incomingP);
+                                        newP.CreatedAt = _timeProvider.UtcNow;
+                                        existingTs.PromotionProductSlots.Add(newP);
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            var newTs = _mapper.Map<PromotionTimeSlot>(incomingTs);
+                            newTs.PromotionId = promotionId;
+                            newTs.CreatedAt = _timeProvider.UtcNow;
+                            existingPromotion.PromotionTimeSlots.Add(newTs);
+                        }
+                    }
+                }
+            }
+
+            // Run full validation on the final combined state
             var fullValidationRequest = _mapper.Map<CreatePromotionDto>(existingPromotion);
             var fullValidationResult = await _createValidator.ValidateAsync(fullValidationRequest, cancellationToken);
 
             if (!fullValidationResult.IsValid)
             {
                 return fullValidationResult.ToResult<PromotionDto>();
-            }
-
-            var promotionNameExists = await _unitOfWork.Promotions.ExistsPromotionNameAsync(
-                existingPromotion.PromotionName,
-                promotionId,
-                cancellationToken);
-
-            if (promotionNameExists)
-            {
-                return Result<PromotionDto>.Conflict("Promotion name already exists.");
-            }
-
-            if (request.ProductPromotions != null)
-            {
-                var productIds = request.ProductPromotions.Select(p => p.ProductId).Distinct().ToList();
-                var products = await _unitOfWork.Products.GetByIdsAsync(productIds, cancellationToken);
-
-                if (products.Count != productIds.Count)
-                {
-                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", "One or more products do not exist.");
-                }
-
-                // Remove deleted items
-                var incomingProductIds = request.ProductPromotions.Select(p => p.ProductId).ToList();
-                var toRemove = existingPromotion.ProductPromotions
-                    .Where(pp => !incomingProductIds.Contains(pp.ProductId))
-                    .ToList();
-                
-                foreach (var item in toRemove)
-                {
-                    _unitOfWork.Promotions.RemoveProductPromotion(item);
-                }
-
-                // Update or add items
-                foreach (var incomingPp in request.ProductPromotions)
-                {
-                    var product = products.First(p => p.ProductId == incomingPp.ProductId);
-                    if (incomingPp.SalePrice > product.Price)
-                    {
-                        return Result<PromotionDto>.Failure("VALIDATION_ERROR", $"Sale price for product {product.ProductName} cannot be greater than original price ({product.Price}).");
-                    }
-
-                    if (incomingPp.SaleQuantity.HasValue && incomingPp.SaleQuantity.Value > product.Quantity)
-                    {
-                        return Result<PromotionDto>.Failure("VALIDATION_ERROR", $"Sale quantity for product {product.ProductName} cannot exceed available stock ({product.Quantity}).");
-                    }
-
-                    var existingPp = existingPromotion.ProductPromotions
-                        .FirstOrDefault(pp => pp.ProductId == incomingPp.ProductId);
-
-                    if (existingPp != null)
-                    {
-                        // Update
-                        existingPp.SalePrice = incomingPp.SalePrice;
-                        existingPp.DiscountPercent = incomingPp.DiscountPercent;
-                        existingPp.SaleQuantity = incomingPp.SaleQuantity;
-                        existingPp.IsActive = incomingPp.IsActive;
-                        existingPp.UpdatedAt = _timeProvider.UtcNow;
-                    }
-                    else
-                    {
-                        // Add
-                        var newPp = _mapper.Map<ProductPromotion>(incomingPp);
-                        newPp.PromotionId = promotionId;
-                        newPp.CreatedAt = _timeProvider.UtcNow;
-                        existingPromotion.ProductPromotions.Add(newPp);
-                    }
-                }
-            }
-
-            if (request.PromotionTimeSlots != null)
-            {
-                var existingTimeSlots = existingPromotion.PromotionTimeSlots.ToList();
-                foreach (var item in existingTimeSlots)
-                {
-                    _unitOfWork.Promotions.RemovePromotionTimeSlot(item);
-                }
-
-                foreach (var incomingTs in request.PromotionTimeSlots)
-                {
-                    var newTs = _mapper.Map<PromotionTimeSlot>(incomingTs);
-                    newTs.PromotionId = promotionId;
-                    newTs.CreatedAt = _timeProvider.UtcNow;
-                    existingPromotion.PromotionTimeSlots.Add(newTs);
-                }
             }
         }
 
@@ -391,7 +481,7 @@ public class PromotionService : IPromotionService
         }
 
         var updatedPromotion = await _unitOfWork.Promotions.GetByIdAsync(
-            promotionId, 
+            promotionId,
             cancellationToken,
             includeProperties: "ProductPromotions,ProductPromotions.Product,PromotionTimeSlots,PromotionTimeSlots.PromotionProductSlots,PromotionTimeSlots.PromotionProductSlots.Product"
         ) ?? existingPromotion;

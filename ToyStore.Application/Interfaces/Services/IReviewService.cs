@@ -20,8 +20,7 @@ public interface IReviewService
     Task<Result<ReviewProductDto>> UpdateReviewAsync(
         int reviewId, UpdateReviewProductDto dto, CancellationToken cancellationToken = default);
 
-    Task<Result> DeleteReviewAsync(
-        int reviewId, CancellationToken cancellationToken = default);
+
 
     // --- Admin / Staff ---
     Task<Result<PaginatedResponse<AdminReviewListDto>>> GetAdminListAsync(
@@ -39,6 +38,5 @@ public interface IReviewService
     Task<Result<StaffReplyDto>> UpdateReplyAsync(
         int reviewId, int replyId, UpdateStaffReplyDto dto, CancellationToken cancellationToken = default);
 
-    Task<Result> DeleteReplyAsync(
-        int reviewId, int replyId, CancellationToken cancellationToken = default);
+
 }

@@ -305,6 +305,7 @@ CREATE TABLE [PromotionTimeSlots] (
     [EndAt]       DATETIME2(0) NOT NULL,   -- thời điểm kết thúc slot (UTC)
     [Status]      VARCHAR(20) NOT NULL DEFAULT 'Scheduled'
         CONSTRAINT [CK_PromotionTimeSlots_Status] CHECK ([Status] IN ('Scheduled', 'Active', 'Expired', 'Inactive')),
+    [IsDeleted]     BIT NOT NULL DEFAULT 0,
     [CreatedAt]   DATETIME2(0) NOT NULL DEFAULT GETUTCDATE(),
     [UpdatedAt]   DATETIME2(0) NULL,
     CONSTRAINT [FK_PromotionTimeSlots_Promotions] FOREIGN KEY ([PromotionID]) REFERENCES [Promotions]([PromotionID]),
@@ -336,6 +337,7 @@ CREATE TABLE [ProductPromotions] (
     [SoldQuantity]     INT           NOT NULL DEFAULT 0,
     [ReservedQuantity] INT           NOT NULL DEFAULT 0,
     [IsActive]         BIT           NOT NULL DEFAULT 1,
+    [IsDeleted]     BIT NOT NULL DEFAULT 0,
     [CreatedAt]        DATETIME2(0)  NOT NULL DEFAULT GETUTCDATE(),
     [UpdatedAt]        DATETIME2(0)  NULL,
     CONSTRAINT [PK_ProductPromotions]           PRIMARY KEY ([ProductID], [PromotionID]),
@@ -368,6 +370,7 @@ CREATE TABLE [PromotionProductSlots] (
     [SoldQuantity]     INT           NOT NULL DEFAULT 0,
     [ReservedQuantity] INT           NOT NULL DEFAULT 0,
     [IsActive]         BIT           NOT NULL DEFAULT 1,
+    [IsDeleted]     BIT NOT NULL DEFAULT 0,
     [CreatedAt]        DATETIME2(0)  NOT NULL DEFAULT GETUTCDATE(),
     [UpdatedAt]        DATETIME2(0)  NULL,
     CONSTRAINT [UQ_PromotionProductSlots_SlotProduct]   UNIQUE ([TimeSlotID], [ProductID]),
