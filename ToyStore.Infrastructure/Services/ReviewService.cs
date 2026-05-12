@@ -189,7 +189,7 @@ public class ReviewService : IReviewService
             // Publish notification events (fire-and-forget)
             if (review.Rating <= 2)
             {
-                _ = _eventPublisher.PublishAsync("Review", review.ReviewId.ToString(), NotificationEventTypes.ReviewLowRating,
+                await _eventPublisher.PublishAsync("Review", review.ReviewId.ToString(), NotificationEventTypes.ReviewLowRating,
                     new { reviewId = review.ReviewId, rating = review.Rating, productId = dto.ProductId }, CancellationToken.None);
             }
 
@@ -454,7 +454,7 @@ public class ReviewService : IReviewService
             // Publish when set to ManualReview
             if (dto.ModerationStatus == "ManualReview")
             {
-                _ = _eventPublisher.PublishAsync("Review", reviewId.ToString(), NotificationEventTypes.ReviewNeedsModeration,
+                await _eventPublisher.PublishAsync("Review", reviewId.ToString(), NotificationEventTypes.ReviewNeedsModeration,
                     new { reviewId, moderatedBy = staffId }, CancellationToken.None);
             }
 
@@ -498,7 +498,7 @@ public class ReviewService : IReviewService
         _logger.LogInformation("Staff {StaffId} replied to review {ReviewId}", staffId, reviewId);
 
         // Notify customer that staff replied to their review
-        _ = _eventPublisher.PublishAsync("Review", reviewId.ToString(), NotificationEventTypes.ReviewStaffReplied,
+        await _eventPublisher.PublishAsync("Review", reviewId.ToString(), NotificationEventTypes.ReviewStaffReplied,
             new { reviewId, accountId = review.AccountId, productId = review.ProductId }, CancellationToken.None);
 
         var savedReply = await _unitOfWork.Reviews.GetReplyByIdAsync(reply.ReplyProductId, cancellationToken);
