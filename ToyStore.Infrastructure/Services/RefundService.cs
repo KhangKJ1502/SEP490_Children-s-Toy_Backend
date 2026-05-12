@@ -1,9 +1,4 @@
 using AutoMapper;
-using Microsoft.EntityFrameworkCore;
-using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Refunds;
 using ToyStore.Application.Interfaces.Repositories;
@@ -38,7 +33,7 @@ public class RefundService : IRefundService
             return Result<RefundDto>.BusinessError("Refund request must be made within 7 days of delivery.");
 
         var existingRefunds = await _unitOfWork.Refunds.GetAdminRefundsAsync(new AdminRefundFilterDto { OrderId = dto.OrderId, PageSize = 100 }, cancellationToken);
-        
+
         if (existingRefunds.Items.Count >= 2)
             return Result<RefundDto>.BusinessError("Maximum of 2 refund requests allowed per order.");
 
@@ -130,7 +125,7 @@ public class RefundService : IRefundService
             refund.RefundStatus = RefundStatuses.Cancelled;
             refund.UpdatedAt = DateTime.UtcNow;
             _unitOfWork.Refunds.Update(refund);
-            
+
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
@@ -193,8 +188,8 @@ public class RefundService : IRefundService
             }
             else if (dto.Status == RefundStatuses.Rejected)
             {
-                refund.ReasonDetails = string.IsNullOrEmpty(refund.ReasonDetails) 
-                    ? $"Reject Reason: {dto.RejectReason}" 
+                refund.ReasonDetails = string.IsNullOrEmpty(refund.ReasonDetails)
+                    ? $"Reject Reason: {dto.RejectReason}"
                     : $"{refund.ReasonDetails} | Reject Reason: {dto.RejectReason}";
             }
             else if (dto.Status == RefundStatuses.Completed)
@@ -231,7 +226,7 @@ public class RefundService : IRefundService
                 CreatedAt = DateTime.UtcNow,
                 LastTransactionAt = DateTime.UtcNow
             };
-            await _unitOfWork.Wallets.AddAsync(wallet, cancellationToken);
+            await _unitOfWork.Wallets.CreateAsync(wallet, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken); // to get WalletId
         }
         else
@@ -239,7 +234,7 @@ public class RefundService : IRefundService
             wallet.Balance += refund.ApprovedAmount;
             wallet.LastTransactionAt = DateTime.UtcNow;
             wallet.UpdatedAt = DateTime.UtcNow;
-            _unitOfWork.Wallets.Update(wallet);
+            _unitOfWork.Wallets.UpdateWallet(wallet);
         }
 
         // 2. WalletTransactions
@@ -270,7 +265,7 @@ public class RefundService : IRefundService
         // 4. Orders.StatusID -> status Refunded
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
         byte refundedStatusId = statusMap.GetValueOrDefault("Refunded", (byte)OrderStatus.Refunded);
-        
+
         order.StatusId = refundedStatusId;
         order.UpdatedAt = DateTime.UtcNow;
 

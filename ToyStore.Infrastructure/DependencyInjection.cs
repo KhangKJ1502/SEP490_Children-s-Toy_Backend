@@ -12,10 +12,12 @@ using ToyStore.Application.DTOs.Brands;
 using ToyStore.Application.DTOs.Campaigns;
 using ToyStore.Application.DTOs.Carts;
 using ToyStore.Application.DTOs.CustomerChildren;
+using ToyStore.Application.DTOs.Customers;
 using ToyStore.Application.DTOs.Orders;
 using ToyStore.Application.DTOs.Profiles;
 using ToyStore.Application.DTOs.Reviews;
 using ToyStore.Application.DTOs.Templates;
+using ToyStore.Application.DTOs.Wallets;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Application.Mappings;
@@ -27,10 +29,12 @@ using ToyStore.Application.Validators.Brands;
 using ToyStore.Application.Validators.Campaigns;
 using ToyStore.Application.Validators.Carts;
 using ToyStore.Application.Validators.CustomerChildren;
+using ToyStore.Application.Validators.Customers;
 using ToyStore.Application.Validators.Orders;
 using ToyStore.Application.Validators.Profiles;
 using ToyStore.Application.Validators.Reviews;
 using ToyStore.Application.Validators.Templates;
+using ToyStore.Application.Validators.Wallets;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using ToyStore.Application;
 using ToyStore.Application.Interfaces.Notifications;
@@ -84,6 +88,8 @@ public static class DependencyInjection
             cfg.AddProfile<ReviewProfile>();
             cfg.AddProfile<CustomerChildProfile>();
             cfg.AddProfile<RefundProfile>();
+            cfg.AddProfile<CustomerProfile>();
+            cfg.AddProfile<WalletProfile>();
         });
 
         services.AddScoped<IValidator<CreateBrandDto>, CreateBrandValidator>();
@@ -97,6 +103,7 @@ public static class DependencyInjection
 
         services.AddScoped<IValidator<CreateAccountDto>, CreateAccountValidator>();
         services.AddScoped<IValidator<UpdateAccountStatusDto>, UpdateAccountStatusValidator>();
+        services.AddScoped<IValidator<UpdateCustomerDto>, UpdateCustomerValidator>();
         services.AddScoped<IValidator<CreateTemplateDto>, CreateTemplateValidator>();
         services.AddScoped<IValidator<UpdateTemplateDto>, UpdateTemplateValidator>();
         services.AddScoped<IValidator<CreateCampaignDto>, CreateCampaignValidator>();
@@ -129,6 +136,11 @@ public static class DependencyInjection
         services.AddScoped<IValidator<UpdateModerationStatusDto>, UpdateModerationStatusValidator>();
         services.AddScoped<IValidator<CreateStaffReplyDto>, CreateStaffReplyValidator>();
         services.AddScoped<IValidator<UpdateStaffReplyDto>, UpdateStaffReplyValidator>();
+        services.AddScoped<IValidator<CreateWalletRequestDto>, CreateWalletRequestValidator>();
+        services.AddScoped<IValidator<VerifyWalletPinRequestDto>, VerifyWalletPinRequestValidator>();
+        services.AddScoped<IValidator<ChangeWalletPinRequestDto>, ChangeWalletPinRequestValidator>();
+        services.AddScoped<IValidator<VerifyForgotWalletPinOtpRequestDto>, VerifyForgotWalletPinOtpRequestValidator>();
+        services.AddScoped<IValidator<ResetForgotWalletPinRequestDto>, ResetForgotWalletPinRequestValidator>();
 
         services.AddScoped<IVoucherRepository, VoucherRepository>();
         services.AddScoped<IVoucherService, VoucherService>();
@@ -138,6 +150,7 @@ public static class DependencyInjection
         services.AddScoped<IAccountRepository, AccountRepository>();
         services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<IAccountService, AccountService>();
+        services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<IRoleService, RoleService>();
         services.AddScoped<IBrandRepository, BrandRepository>();
         services.AddScoped<IBlogRepository, BlogRepository>();
@@ -153,12 +166,10 @@ public static class DependencyInjection
         services.AddScoped<IDeliveryRepository, DeliveryRepository>();
         services.AddScoped<IUserPreferenceRepository, UserPreferenceRepository>();
         services.AddScoped<IProductFollowerRepository, ProductFollowerRepository>();
-        
         services.AddScoped<IRefundRepository, RefundRepository>();
         services.AddScoped<IRefundImageRepository, RefundImageRepository>();
-        services.AddScoped<IWalletRepository, WalletRepository>();
         services.AddScoped<IWalletTransactionRepository, WalletTransactionRepository>();
-        
+        services.AddScoped<IWalletRepository, WalletRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ISuperCategoryService, SuperCategoryService>();
@@ -174,6 +185,7 @@ public static class DependencyInjection
         services.AddScoped<IProductFollowerService, ProductFollowerService>();
         services.AddScoped<IReviewService, ReviewService>();
         services.AddScoped<IRefundService, RefundService>();
+        services.AddScoped<IWalletService, WalletService>();
 
         // Resolver business object
         services.AddScoped<IBusinessObjectResolver, VoucherResolver>();

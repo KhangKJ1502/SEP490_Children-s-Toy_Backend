@@ -44,6 +44,13 @@ public class BlogsController : ControllerBase
         return result.ToActionResult();
     }
 
+    [HttpGet("categories")]
+    public async Task<ActionResult<List<BlogCategoryDto>>> GetBlogCategories(CancellationToken cancellationToken = default)
+    {
+        var result = await _blogService.GetBlogCategoriesAsync(cancellationToken);
+        return result.ToActionResult();
+    }
+
     [HttpGet("admin")]
     [Authorize(Roles = "Admin")]
     public async Task<ActionResult<PaginatedResponse<BlogListDto>>> GetBlogsForAdmin(
@@ -129,6 +136,126 @@ public class BlogsController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var result = await _blogService.CreateBlogReviewReplyAsync(reviewBlogId, dto, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpPost("{blogPostId:int}/reactions")]
+    [Authorize]
+    public async Task<ActionResult<ReactionSummaryDto>> ReactToBlog(
+        [FromRoute] int blogPostId,
+        [FromBody] UpsertReactionDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _blogService.ReactToBlogAsync(blogPostId, dto, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpDelete("{blogPostId:int}/reactions")]
+    [Authorize]
+    public async Task<ActionResult<bool>> RemoveBlogReaction(
+        [FromRoute] int blogPostId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _blogService.RemoveBlogReactionAsync(blogPostId, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpGet("{blogPostId:int}/reactions/summary")]
+    public async Task<ActionResult<ReactionSummaryDto>> GetBlogReactionSummary(
+        [FromRoute] int blogPostId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _blogService.GetBlogReactionSummaryAsync(blogPostId, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpGet("{blogPostId:int}/reactions/me")]
+    [Authorize]
+    public async Task<ActionResult<string?>> GetMyBlogReaction(
+        [FromRoute] int blogPostId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _blogService.GetMyBlogReactionAsync(blogPostId, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpPost("reviews/{reviewBlogId:int}/reactions")]
+    [Authorize]
+    public async Task<ActionResult<ReactionSummaryDto>> ReactToReview(
+        [FromRoute] int reviewBlogId,
+        [FromBody] UpsertReactionDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _blogService.ReactToReviewAsync(reviewBlogId, dto, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpDelete("reviews/{reviewBlogId:int}/reactions")]
+    [Authorize]
+    public async Task<ActionResult<bool>> RemoveReviewReaction(
+        [FromRoute] int reviewBlogId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _blogService.RemoveReviewReactionAsync(reviewBlogId, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpGet("reviews/{reviewBlogId:int}/reactions/summary")]
+    public async Task<ActionResult<ReactionSummaryDto>> GetReviewReactionSummary(
+        [FromRoute] int reviewBlogId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _blogService.GetReviewReactionSummaryAsync(reviewBlogId, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpGet("reviews/{reviewBlogId:int}/reactions/me")]
+    [Authorize]
+    public async Task<ActionResult<string?>> GetMyReviewReaction(
+        [FromRoute] int reviewBlogId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _blogService.GetMyReviewReactionAsync(reviewBlogId, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpPost("reviews/replies/{replyBlogId:int}/reactions")]
+    [Authorize]
+    public async Task<ActionResult<ReactionSummaryDto>> ReactToReply(
+        [FromRoute] int replyBlogId,
+        [FromBody] UpsertReactionDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _blogService.ReactToReplyAsync(replyBlogId, dto, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpDelete("reviews/replies/{replyBlogId:int}/reactions")]
+    [Authorize]
+    public async Task<ActionResult<bool>> RemoveReplyReaction(
+        [FromRoute] int replyBlogId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _blogService.RemoveReplyReactionAsync(replyBlogId, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpGet("reviews/replies/{replyBlogId:int}/reactions/summary")]
+    public async Task<ActionResult<ReactionSummaryDto>> GetReplyReactionSummary(
+        [FromRoute] int replyBlogId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _blogService.GetReplyReactionSummaryAsync(replyBlogId, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpGet("reviews/replies/{replyBlogId:int}/reactions/me")]
+    [Authorize]
+    public async Task<ActionResult<string?>> GetMyReplyReaction(
+        [FromRoute] int replyBlogId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _blogService.GetMyReplyReactionAsync(replyBlogId, cancellationToken);
         return result.ToActionResult();
     }
 

@@ -31,6 +31,11 @@ public interface IBrandRepository
         bool isDeleted,
         CancellationToken cancellationToken = default);
 
+    Task UpdateRelatedProductStatusAsync(
+        short brandId,
+        bool isDeleted,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Lấy tất cả Brand (không phân trang).
     /// </summary>

@@ -24,5 +24,9 @@ public interface ICartRepository
 
     void UpdateItem(CartItem cartItem);
 
+    void RemoveItem(CartItem cartItem);
+
+    void RemoveItems(IEnumerable<CartItem> cartItems);
+
     void UpdateCart(Cart cart);
 }

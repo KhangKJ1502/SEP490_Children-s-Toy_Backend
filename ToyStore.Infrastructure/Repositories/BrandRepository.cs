@@ -137,4 +137,25 @@ public class BrandRepository : IBrandRepository
             .Where(x => !x.IsDeleted)
             .ToListAsync(cancellationToken);
     }
+
+    public async Task UpdateRelatedProductStatusAsync(
+        short brandId,
+        bool isDeleted,
+        CancellationToken cancellationToken = default)
+    {
+        if (!isDeleted)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+
+        await _context.Products
+            .Where(x => x.BrandId == brandId)
+            .ExecuteUpdateAsync(
+                updates => updates
+                    .SetProperty(x => x.ProductStatus, _ => "Inactive")
+                    .SetProperty(x => x.UpdatedAt, _ => now),
+                cancellationToken);
+    }
 }

@@ -191,6 +191,7 @@ public class ReviewService : IReviewService
             {
                 await _eventPublisher.PublishAsync("Review", review.ReviewId.ToString(), NotificationEventTypes.ReviewLowRating,
                     new { reviewId = review.ReviewId, rating = review.Rating, productId = dto.ProductId }, cancellationToken);
+
             }
 
             // Fetch the fully populated review to map and return

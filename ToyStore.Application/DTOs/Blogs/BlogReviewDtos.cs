@@ -10,6 +10,10 @@ public class BlogReviewDto
     public string? AccountImageUrl { get; set; }
     public string Comment { get; set; } = string.Empty;
     public string Status { get; set; } = "Visible";
+    public int LikeCount { get; set; }
+    public int LoveCount { get; set; }
+    public int HahaCount { get; set; }
+    public string? CurrentUserReaction { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public List<BlogReviewReplyDto> Replies { get; set; } = new();
@@ -27,6 +31,10 @@ public class BlogReviewReplyDto
     public string? ReplyToAccountName { get; set; }
     public string Comment { get; set; } = string.Empty;
     public string Status { get; set; } = "Visible";
+    public int LikeCount { get; set; }
+    public int LoveCount { get; set; }
+    public int HahaCount { get; set; }
+    public string? CurrentUserReaction { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public List<BlogReviewReplyDto> Replies { get; set; } = new();
@@ -47,4 +55,18 @@ public class CreateBlogReviewReplyDto
 public class UpdateBlogReviewStatusDto
 {
     public string Status { get; set; } = string.Empty;
+}
+
+public class UpsertReactionDto
+{
+    public string ReactionCode { get; set; } = string.Empty;
+}
+
+public class ReactionSummaryDto
+{
+    public int LikeCount { get; set; }
+    public int LoveCount { get; set; }
+    public int HahaCount { get; set; }
+    public int TotalCount { get; set; }
+    public string? CurrentUserReaction { get; set; }
 }

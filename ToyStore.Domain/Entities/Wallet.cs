@@ -23,5 +23,9 @@ public partial class Wallet
 
     public virtual Account Account { get; set; } = null!;
 
+    public virtual ICollection<WalletPin> WalletPins { get; set; } = new List<WalletPin>();
+
+    public virtual ICollection<WalletPinAttempt> WalletPinAttempts { get; set; } = new List<WalletPinAttempt>();
+
     public virtual ICollection<WalletTransaction> WalletTransactions { get; set; } = new List<WalletTransaction>();
 }

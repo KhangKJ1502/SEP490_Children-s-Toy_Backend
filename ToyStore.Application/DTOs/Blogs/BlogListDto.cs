@@ -11,8 +11,11 @@ public class BlogListDto
     public bool IsHidden { get; set; }
     public bool IsFeatured { get; set; }
     public int LikeCount { get; set; }
+    public int LoveCount { get; set; }
+    public int HahaCount { get; set; }
     public int CommentCount { get; set; }
     public int TotalInteraction { get; set; }
+    public string? CurrentUserReaction { get; set; }
     public DateTime? BlogAt { get; set; }
     public string Author { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }

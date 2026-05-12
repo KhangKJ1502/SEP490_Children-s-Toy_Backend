@@ -10,27 +10,94 @@ namespace ToyStore.Infrastructure.Repositories;
 public class WalletRepository : IWalletRepository
 {
     private readonly SEP490ToyStoreContext _context;
-    private readonly DbSet<Wallet> _dbSet;
 
     public WalletRepository(SEP490ToyStoreContext context)
     {
         _context = context;
-        _dbSet = context.Set<Wallet>();
     }
 
-    public async Task<Wallet?> GetByAccountIdAsync(int accountId, CancellationToken cancellationToken = default)
+    public Task<Wallet?> GetByAccountIdAsync(int accountId, CancellationToken cancellationToken = default)
     {
-        return await _dbSet.FirstOrDefaultAsync(w => w.AccountId == accountId, cancellationToken);
+        return _context.Wallets.FirstOrDefaultAsync(x => x.AccountId == accountId, cancellationToken);
     }
 
-    public async Task<Wallet> AddAsync(Wallet wallet, CancellationToken cancellationToken = default)
+    public Task<Wallet?> GetByAccountIdWithActivePinAsync(int accountId, CancellationToken cancellationToken = default)
     {
-        var result = await _dbSet.AddAsync(wallet, cancellationToken);
-        return result.Entity;
+        return _context.Wallets
+            .Include(x => x.WalletPins.Where(p => p.IsActive))
+            .FirstOrDefaultAsync(x => x.AccountId == accountId, cancellationToken);
     }
 
-    public void Update(Wallet wallet)
+    public Task<WalletPin?> GetActivePinByWalletIdAsync(int walletId, CancellationToken cancellationToken = default)
     {
-        _dbSet.Update(wallet);
+        return _context.WalletPins
+            .FirstOrDefaultAsync(x => x.WalletId == walletId && x.IsActive, cancellationToken);
+    }
+
+    public async Task<Wallet> CreateAsync(Wallet wallet, CancellationToken cancellationToken = default)
+    {
+        await _context.Wallets.AddAsync(wallet, cancellationToken);
+        return wallet;
+    }
+
+    public async Task AddPinAsync(WalletPin walletPin, CancellationToken cancellationToken = default)
+    {
+        await _context.WalletPins.AddAsync(walletPin, cancellationToken);
+    }
+
+    public async Task AddPinAttemptAsync(WalletPinAttempt attempt, CancellationToken cancellationToken = default)
+    {
+        await _context.WalletPinAttempts.AddAsync(attempt, cancellationToken);
+    }
+
+    public Task<int> CountTransactionsByWalletIdAsync(int walletId, CancellationToken cancellationToken = default)
+    {
+        return _context.WalletTransactions
+            .Where(x => x.WalletId == walletId)
+            .CountAsync(cancellationToken);
+    }
+
+    public Task<List<WalletTransaction>> GetTransactionsByWalletIdAsync(
+        int walletId,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        return _context.WalletTransactions
+            .Where(x => x.WalletId == walletId)
+            .OrderByDescending(x => x.CreatedAt)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+    }
+
+    public void UpdateWallet(Wallet wallet)
+    {
+        _context.Wallets.Update(wallet);
+    }
+
+    public void UpdatePin(WalletPin walletPin)
+    {
+        _context.WalletPins.Update(walletPin);
+    }
+
+    public async Task DeactivateActivePinsAsync(int walletId, CancellationToken cancellationToken = default)
+    {
+        var activePins = await _context.WalletPins
+            .Where(x => x.WalletId == walletId && x.IsActive)
+            .ToListAsync(cancellationToken);
+
+        if (activePins.Count == 0)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        foreach (var pin in activePins)
+        {
+            pin.IsActive = false;
+            pin.UpdatedAt = now;
+            _context.WalletPins.Update(pin);
+        }
     }
 }

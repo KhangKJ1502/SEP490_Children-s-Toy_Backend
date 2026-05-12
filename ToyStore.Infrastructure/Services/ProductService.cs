@@ -136,64 +136,10 @@ public class ProductService : IProductService
             return Result<ProductDto>.ValidationFailure(errors);
         }
 
-        var category = await _unitOfWork.Categories.GetByIdAsync(dto.CategoryId, cancellationToken);
-        if (category == null)
+        var referenceErrors = await ValidateCreateProductReferencesAsync(dto, cancellationToken);
+        if (referenceErrors.Count > 0)
         {
-            return Result<ProductDto>.NotFound("Category", dto.CategoryId);
-        }
-
-        if (dto.BrandId.HasValue)
-        {
-            var brand = await _unitOfWork.Brands.GetByIdAsync(dto.BrandId.Value, cancellationToken);
-            if (brand == null)
-            {
-                return Result<ProductDto>.NotFound("Brand", dto.BrandId.Value);
-            }
-        }
-
-        if (dto.PriceRangeId.HasValue)
-        {
-            var exists = await _unitOfWork.Products.PriceRangeExistsAsync(dto.PriceRangeId.Value, cancellationToken);
-            if (!exists)
-            {
-                return Result<ProductDto>.NotFound("Price range", dto.PriceRangeId.Value);
-            }
-        }
-
-        if (dto.MaterialId.HasValue)
-        {
-            var exists = await _unitOfWork.Products.MaterialExistsAsync(dto.MaterialId.Value, cancellationToken);
-            if (!exists)
-            {
-                return Result<ProductDto>.NotFound("Material", dto.MaterialId.Value);
-            }
-        }
-
-        if (dto.AgeId.HasValue)
-        {
-            var exists = await _unitOfWork.Products.AgeExistsAsync(dto.AgeId.Value, cancellationToken);
-            if (!exists)
-            {
-                return Result<ProductDto>.NotFound("Age", dto.AgeId.Value);
-            }
-        }
-
-        if (dto.SexId.HasValue)
-        {
-            var exists = await _unitOfWork.Products.SexExistsAsync(dto.SexId.Value, cancellationToken);
-            if (!exists)
-            {
-                return Result<ProductDto>.NotFound("Sex", dto.SexId.Value);
-            }
-        }
-
-        if (dto.OriginId.HasValue)
-        {
-            var exists = await _unitOfWork.Products.OriginExistsAsync(dto.OriginId.Value, cancellationToken);
-            if (!exists)
-            {
-                return Result<ProductDto>.NotFound("Origin", dto.OriginId.Value);
-            }
+            return Result<ProductDto>.ValidationFailure(referenceErrors);
         }
 
         var product = _mapper.Map<Product>(dto);
@@ -575,5 +521,59 @@ public class ProductService : IProductService
                || dto.OriginId.HasValue
                || !string.IsNullOrWhiteSpace(dto.MainImageUrl)
                || dto.AdditionalImageUrls != null;
+    }
+
+    private async Task<Dictionary<string, string[]>> ValidateCreateProductReferencesAsync(
+        CreateProductDto dto,
+        CancellationToken cancellationToken)
+    {
+        var errors = new Dictionary<string, string[]>();
+
+        if (!await _unitOfWork.Products.CategoryExistsAsync(dto.CategoryId, cancellationToken))
+        {
+            errors[nameof(dto.CategoryId)] = ["Selected category does not exist."];
+        }
+
+        if (dto.BrandId.HasValue && !await _unitOfWork.Products.BrandExistsAsync(dto.BrandId.Value, cancellationToken))
+        {
+            errors[nameof(dto.BrandId)] = ["Selected brand does not exist."];
+        }
+
+        if (dto.PriceRangeId.HasValue && !await _unitOfWork.Products.PriceRangeExistsAsync(dto.PriceRangeId.Value, cancellationToken))
+        {
+            errors[nameof(dto.PriceRangeId)] = ["Selected price range does not exist."];
+        }
+        else if (dto.PriceRangeId.HasValue)
+        {
+            var priceRange = (await _unitOfWork.Products.GetPriceRangesAsync(cancellationToken))
+                .FirstOrDefault(range => range.PriceRangeId == dto.PriceRangeId.Value);
+
+            if (priceRange != null && (dto.Price < priceRange.PriceRangeMin || dto.Price > priceRange.PriceRangeMax))
+            {
+                errors[nameof(dto.PriceRangeId)] = ["Selected price range does not match the entered price."];
+            }
+        }
+
+        if (dto.MaterialId.HasValue && !await _unitOfWork.Products.MaterialExistsAsync(dto.MaterialId.Value, cancellationToken))
+        {
+            errors[nameof(dto.MaterialId)] = ["Selected material does not exist."];
+        }
+
+        if (dto.AgeId.HasValue && !await _unitOfWork.Products.AgeExistsAsync(dto.AgeId.Value, cancellationToken))
+        {
+            errors[nameof(dto.AgeId)] = ["Selected age range does not exist."];
+        }
+
+        if (dto.SexId.HasValue && !await _unitOfWork.Products.SexExistsAsync(dto.SexId.Value, cancellationToken))
+        {
+            errors[nameof(dto.SexId)] = ["Selected sex does not exist."];
+        }
+
+        if (dto.OriginId.HasValue && !await _unitOfWork.Products.OriginExistsAsync(dto.OriginId.Value, cancellationToken))
+        {
+            errors[nameof(dto.OriginId)] = ["Selected origin does not exist."];
+        }
+
+        return errors;
     }
 }
