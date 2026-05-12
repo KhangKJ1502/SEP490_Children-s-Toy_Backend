@@ -33,7 +33,8 @@ public class UnitOfWork : IUnitOfWork
         ICustomerChildRepository customerChildren,
         IDeliveryRepository deliveries,
         IUserPreferenceRepository userPreferences,
-        IProductFollowerRepository productFollowers)
+        IProductFollowerRepository productFollowers,
+        IWalletRepository wallets)
     {
         _context = context;
         Vouchers = vouchers;
@@ -56,6 +57,7 @@ public class UnitOfWork : IUnitOfWork
         Deliveries = deliveries;
         UserPreferences = userPreferences;
         ProductFollowers = productFollowers;
+        Wallets = wallets;
 
     }
 
@@ -96,6 +98,7 @@ public class UnitOfWork : IUnitOfWork
 
     public IUserPreferenceRepository UserPreferences { get; }
     public IProductFollowerRepository ProductFollowers { get; }
+    public IWalletRepository Wallets { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

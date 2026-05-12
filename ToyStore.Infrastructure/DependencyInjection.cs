@@ -17,6 +17,7 @@ using ToyStore.Application.DTOs.Orders;
 using ToyStore.Application.DTOs.Profiles;
 using ToyStore.Application.DTOs.Reviews;
 using ToyStore.Application.DTOs.Templates;
+using ToyStore.Application.DTOs.Wallets;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Application.Mappings;
@@ -33,6 +34,7 @@ using ToyStore.Application.Validators.Orders;
 using ToyStore.Application.Validators.Profiles;
 using ToyStore.Application.Validators.Reviews;
 using ToyStore.Application.Validators.Templates;
+using ToyStore.Application.Validators.Wallets;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using ToyStore.Application;
 using ToyStore.Application.Interfaces.Notifications;
@@ -86,6 +88,7 @@ public static class DependencyInjection
             cfg.AddProfile<ReviewProfile>();
             cfg.AddProfile<CustomerChildProfile>();
             cfg.AddProfile<CustomerProfile>();
+            cfg.AddProfile<WalletProfile>();
         });
 
         services.AddScoped<IValidator<CreateBrandDto>, CreateBrandValidator>();
@@ -132,6 +135,11 @@ public static class DependencyInjection
         services.AddScoped<IValidator<UpdateModerationStatusDto>, UpdateModerationStatusValidator>();
         services.AddScoped<IValidator<CreateStaffReplyDto>, CreateStaffReplyValidator>();
         services.AddScoped<IValidator<UpdateStaffReplyDto>, UpdateStaffReplyValidator>();
+        services.AddScoped<IValidator<CreateWalletRequestDto>, CreateWalletRequestValidator>();
+        services.AddScoped<IValidator<VerifyWalletPinRequestDto>, VerifyWalletPinRequestValidator>();
+        services.AddScoped<IValidator<ChangeWalletPinRequestDto>, ChangeWalletPinRequestValidator>();
+        services.AddScoped<IValidator<VerifyForgotWalletPinOtpRequestDto>, VerifyForgotWalletPinOtpRequestValidator>();
+        services.AddScoped<IValidator<ResetForgotWalletPinRequestDto>, ResetForgotWalletPinRequestValidator>();
 
         services.AddScoped<IVoucherRepository, VoucherRepository>();
         services.AddScoped<IVoucherService, VoucherService>();
@@ -157,6 +165,7 @@ public static class DependencyInjection
         services.AddScoped<IDeliveryRepository, DeliveryRepository>();
         services.AddScoped<IUserPreferenceRepository, UserPreferenceRepository>();
         services.AddScoped<IProductFollowerRepository, ProductFollowerRepository>();
+        services.AddScoped<IWalletRepository, WalletRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ISuperCategoryService, SuperCategoryService>();
@@ -171,6 +180,7 @@ public static class DependencyInjection
         services.AddScoped<IWishlistService, WishlistService>();
         services.AddScoped<IProductFollowerService, ProductFollowerService>();
         services.AddScoped<IReviewService, ReviewService>();
+        services.AddScoped<IWalletService, WalletService>();
 
         // Resolver business object
         services.AddScoped<IBusinessObjectResolver, VoucherResolver>();
