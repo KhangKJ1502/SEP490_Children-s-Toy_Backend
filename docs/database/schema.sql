@@ -934,6 +934,40 @@ CREATE TABLE [ReviewBlogReactions] (
 );
 GO
 
+CREATE TABLE [dbo].[BlogPostReactions]
+    (
+        [ReactionPostID] INT IDENTITY(1,1) PRIMARY KEY,
+        [BlogPostID]     INT NOT NULL,
+        [AccountID]      INT NOT NULL,
+        [ReactionTypeID] INT NOT NULL,
+        [CreatedAt]      DATETIME2(0) NOT NULL CONSTRAINT [DF_BlogPostReactions_CreatedAt] DEFAULT (GETDATE()),
+        CONSTRAINT [FK_BlogPostReactions_BlogPosts] FOREIGN KEY ([BlogPostID]) REFERENCES [dbo].[BlogPosts]([BlogPostID]),
+        CONSTRAINT [FK_BlogPostReactions_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [dbo].[Accounts]([AccountID]),
+        CONSTRAINT [FK_BlogPostReactions_ReactionTypes] FOREIGN KEY ([ReactionTypeID]) REFERENCES [dbo].[ReactionTypes]([ReactionTypeID]),
+        CONSTRAINT [UQ_BlogPostReactions_AccountPost] UNIQUE ([AccountID], [BlogPostID])
+    );
+
+CREATE NONCLUSTERED INDEX [IX_BlogPostReactions_Stats]
+    ON [dbo].[BlogPostReactions]([BlogPostID], [ReactionTypeID]);
+GO
+
+CREATE TABLE [dbo].[ReviewBlogReplyReactions]
+    (
+        [ReactionReplyBlogID] INT IDENTITY(1,1) PRIMARY KEY,
+        [ReplyBlogID]         INT NOT NULL,
+        [AccountID]           INT NOT NULL,
+        [ReactionTypeID]      INT NOT NULL,
+        [CreatedAt]           DATETIME2(0) NOT NULL CONSTRAINT [DF_ReviewBlogReplyReactions_CreatedAt] DEFAULT (GETDATE()),
+        CONSTRAINT [FK_ReviewBlogReplyReactions_ReviewBlogReplies] FOREIGN KEY ([ReplyBlogID]) REFERENCES [dbo].[ReviewBlogReplies]([ReplyBlogID]),
+        CONSTRAINT [FK_ReviewBlogReplyReactions_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [dbo].[Accounts]([AccountID]),
+        CONSTRAINT [FK_ReviewBlogReplyReactions_ReactionTypes] FOREIGN KEY ([ReactionTypeID]) REFERENCES [dbo].[ReactionTypes]([ReactionTypeID]),
+        CONSTRAINT [UQ_ReviewBlogReplyReactions_AccountReply] UNIQUE ([AccountID], [ReplyBlogID])
+    );
+
+CREATE NONCLUSTERED INDEX [IX_ReviewBlogReplyReactions_Stats]
+    ON [dbo].[ReviewBlogReplyReactions]([ReplyBlogID], [ReactionTypeID]);
+
+GO
 CREATE INDEX [IX_BlogPostStats_Score]
 ON [BlogPostStats]([LikeCount] DESC, [CommentCount] DESC);
 GO
@@ -992,14 +1026,104 @@ BEGIN
 END;
 GO
 
+
+/* =============================================
+   TRIGGERS
+============================================= */
+
+-- 1. Tự động tạo row BlogPostStats khi có BlogPost mới
 CREATE TRIGGER [trg_BlogPost_InitStats]
 ON [BlogPosts] AFTER INSERT
 AS
 BEGIN
     SET NOCOUNT ON;
+    INSERT INTO [BlogPostStats] ([BlogPostID], [LikeCount], [CommentCount], [UpdatedAt])
+    SELECT i.[BlogPostID], 0, 0, GETDATE()
+    FROM inserted i
+    WHERE NOT EXISTS (
+        SELECT 1 FROM [BlogPostStats] s
+        WHERE s.[BlogPostID] = i.[BlogPostID]
+    );
+END;
+GO
 
-    INSERT INTO [BlogPostStats] ([BlogPostID])
-    SELECT [BlogPostID] FROM inserted;
+-- 2. Cập nhật LikeCount khi react vào bài blog
+CREATE TRIGGER [trg_BlogPostReaction_UpdateLikeCount]
+ON [BlogPostReactions] AFTER INSERT, UPDATE, DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    WITH affected AS (
+        SELECT [BlogPostID] FROM inserted
+        UNION
+        SELECT [BlogPostID] FROM deleted
+    )
+    UPDATE s
+    SET
+        s.[LikeCount] = (
+            SELECT COUNT(*)
+            FROM [BlogPostReactions] bpr
+            WHERE bpr.[BlogPostID] = s.[BlogPostID]
+        ),
+        s.[UpdatedAt] = GETDATE()
+    FROM [BlogPostStats] s
+    WHERE s.[BlogPostID] IN (SELECT [BlogPostID] FROM affected);
+END;
+GO
+
+-- 3. Cập nhật CommentCount khi có comment/xóa comment
+CREATE TRIGGER [trg_ReviewBlog_UpdateCommentCount]
+ON [ReviewBlogs] AFTER INSERT, UPDATE, DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    WITH affected AS (
+        SELECT [BlogPostID] FROM inserted
+        UNION
+        SELECT [BlogPostID] FROM deleted
+    )
+    UPDATE s
+    SET
+        s.[CommentCount] = (
+            SELECT COUNT(*)
+            FROM [ReviewBlogs] rb
+            WHERE rb.[BlogPostID] = s.[BlogPostID]
+              AND rb.[IsDeleted] = 0
+        ),
+        s.[UpdatedAt] = GETDATE()
+    FROM [BlogPostStats] s
+    WHERE s.[BlogPostID] IN (SELECT [BlogPostID] FROM affected);
+END;
+GO
+
+-- 4. Tự động cập nhật IsFeatured top 5 khi BlogPostStats thay đổi
+CREATE TRIGGER [trg_BlogPostStats_UpdateFeatured]
+ON [BlogPostStats] AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Reset toàn bộ
+    UPDATE [BlogPosts]
+    SET [IsFeatured] = 0
+    WHERE [IsDeleted] = 0 AND [Status] = 'Published';
+
+    -- Set top 5
+    WITH TopFeatured AS (
+        SELECT TOP 5 bp.[BlogPostID]
+        FROM [BlogPosts] bp
+        JOIN [BlogPostStats] s ON bp.[BlogPostID] = s.[BlogPostID]
+        WHERE bp.[IsDeleted] = 0
+          AND bp.[Status] = 'Published'
+        ORDER BY
+            (s.[LikeCount] + s.[CommentCount]) DESC,
+            s.[LikeCount] DESC,
+            bp.[CreatedAt] DESC
+    )
+    UPDATE bp
+    SET bp.[IsFeatured] = 1
+    FROM [BlogPosts] bp
+    JOIN TopFeatured tf ON bp.[BlogPostID] = tf.[BlogPostID];
 END;
 GO
 
@@ -1017,42 +1141,6 @@ CREATE TABLE [Wallets] (
     [CreatedAt]         DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [UpdatedAt]         DATETIME2(0) NULL,
     CONSTRAINT [FK_Wallets_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [Accounts]([AccountID])
-);
-GO
-
-CREATE TABLE [WalletPins] (
-    [WalletPinID]         INT          IDENTITY(1,1) PRIMARY KEY,
-    [WalletID]            INT          NOT NULL,
-    [PinHash]             VARCHAR(255) NOT NULL,
-    [IsActive]            BIT          NOT NULL DEFAULT 1,
-    [FailedAttempts]      TINYINT      NOT NULL DEFAULT 0,
-    [TotalFailedAttempts] TINYINT      NOT NULL DEFAULT 0,
-    [LockedUntil]         DATETIME2(0) NULL,
-    [LastChangedAt]       DATETIME2(0) NOT NULL DEFAULT GETDATE(),
-    [CreatedAt]           DATETIME2(0) NOT NULL DEFAULT GETDATE(),
-    [UpdatedAt]           DATETIME2(0) NULL,
-    CONSTRAINT [FK_WalletPins_Wallets]        FOREIGN KEY ([WalletID]) REFERENCES [Wallets]([WalletID]),
-    CONSTRAINT [CK_WalletPins_FailedAttempts] CHECK ([FailedAttempts] BETWEEN 0 AND 3),
-    CONSTRAINT [CK_WalletPins_TotalFailed]    CHECK ([TotalFailedAttempts] BETWEEN 0 AND 6)
-);
-GO
-
-CREATE UNIQUE INDEX [UQ_WalletPins_WalletID]
-ON [WalletPins]([WalletID])
-WHERE [IsActive] = 1;
-GO
-
-CREATE TABLE [WalletPinAttempts] (
-    [AttemptID]  INT          IDENTITY(1,1) PRIMARY KEY,
-    [WalletID]   INT          NOT NULL,
-    [AccountID]  INT          NOT NULL,
-    [ActionType] VARCHAR(20)  NOT NULL
-        CONSTRAINT [CK_WalletPinAttempts_ActionType]
-            CHECK ([ActionType] IN ('PAYMENT', 'VIEW_BALANCE', 'TOP_UP')),
-    [IsSuccess]  BIT          NOT NULL,
-    [CreatedAt]  DATETIME2(0) NOT NULL DEFAULT GETDATE(),
-    CONSTRAINT [FK_WalletPinAttempts_Wallets]  FOREIGN KEY ([WalletID]) REFERENCES [Wallets]([WalletID]),
-    CONSTRAINT [FK_WalletPinAttempts_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [Accounts]([AccountID])
 );
 GO
      
@@ -1722,10 +1810,6 @@ ON [WalletTransactions]([RelatedOrderID])
 WHERE [RelatedOrderID] IS NOT NULL;
 GO
 
-CREATE NONCLUSTERED INDEX [IX_WalletPinAttempts_Wallet]
-ON [WalletPinAttempts]([WalletID], [CreatedAt] DESC);
-GO
-
 CREATE NONCLUSTERED INDEX [IX_PaymentHistory_Order]
 ON [PaymentHistory]([OrderID])
 INCLUDE ([PaymentStatus], [Amount], [CreatedAt]);
@@ -1845,4 +1929,48 @@ CREATE NONCLUSTERED INDEX [IX_Deliveries_NotificationType]
 ON [Notification].[Deliveries]([AccountID], [NotificationType], [Status])
 INCLUDE ([Title], [CreatedAt])
 WHERE [IsDeleted] = 0;
+GO
+
+/* =============================================
+   WALLET PIN MANAGEMENT
+============================================= */
+
+CREATE TABLE [WalletPins] (
+    [WalletPinID]         INT          IDENTITY(1,1) PRIMARY KEY,
+    [WalletID]            INT          NOT NULL,
+    [PinHash]             VARCHAR(255) NOT NULL,
+    [IsActive]            BIT          NOT NULL DEFAULT 1,
+    [FailedAttempts]      TINYINT      NOT NULL DEFAULT 0,
+    [TotalFailedAttempts] TINYINT      NOT NULL DEFAULT 0,
+    [LockedUntil]         DATETIME2(0) NULL,
+    [LastChangedAt]       DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    [CreatedAt]           DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    [UpdatedAt]           DATETIME2(0) NULL,
+    CONSTRAINT [FK_WalletPins_Wallets]        FOREIGN KEY ([WalletID]) REFERENCES [Wallets]([WalletID]),
+    CONSTRAINT [CK_WalletPins_FailedAttempts] CHECK ([FailedAttempts]      BETWEEN 0 AND 3),
+    CONSTRAINT [CK_WalletPins_TotalFailed]    CHECK ([TotalFailedAttempts] BETWEEN 0 AND 6)
+);
+GO
+
+CREATE UNIQUE INDEX [UQ_WalletPins_WalletID]
+ON [WalletPins]([WalletID])
+WHERE [IsActive] = 1;
+GO
+
+CREATE TABLE [WalletPinAttempts] (
+    [AttemptID]  INT          IDENTITY(1,1) PRIMARY KEY,
+    [WalletID]   INT          NOT NULL,
+    [AccountID]  INT          NOT NULL,
+    [ActionType] VARCHAR(20)  NOT NULL
+        CONSTRAINT [CK_WalletPinAttempts_ActionType]
+            CHECK ([ActionType] IN ('PAYMENT', 'VIEW_BALANCE', 'TOP_UP')),
+    [IsSuccess]  BIT          NOT NULL,
+    [CreatedAt]  DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    CONSTRAINT [FK_WalletPinAttempts_Wallets]  FOREIGN KEY ([WalletID])  REFERENCES [Wallets]([WalletID]),
+    CONSTRAINT [FK_WalletPinAttempts_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [Accounts]([AccountID])
+);
+GO
+
+CREATE NONCLUSTERED INDEX [IX_WalletPinAttempts_Wallet]
+ON [WalletPinAttempts]([WalletID], [CreatedAt] DESC);
 GO

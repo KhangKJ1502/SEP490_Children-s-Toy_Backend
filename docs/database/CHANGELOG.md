@@ -1,7 +1,27 @@
-﻿# Database Changelog â€” ToyStore (SEP490)
+# Database Changelog â€” ToyStore (SEP490)
 
 > **Quy táº¯c:** Entry má»›i nháº¥t náº±m TRÃŠN CÃ™NG.
 > **Cáº­p nháº­t file nÃ y** má»—i khi thay Ä‘á»•i schema (thÃªm báº£ng, cá»™t, index).
+
+---
+
+## [2026-05-13] `v3.4 - Add Inactive Status to Promotion and PromotionTimeSlot`
+
+### Thay đổi
+
+| Loại | Bảng | Chi tiết |
+|---|---|---|
+| 🔧 Sửa constraint | `CK_Promotions_Status` | Thêm 'Inactive' vào danh sách trạng thái hợp lệ |
+| 🔧 Sửa constraint | `CK_PromotionTimeSlots_Status` | Thêm 'Inactive' vào danh sách trạng thái hợp lệ |
+
+### Lý do
+
+Hỗ trợ chức năng dừng khẩn cấp (Emergency Stop) cho các PromotionTimeSlot đang Active, và tạm hoãn các Promotion đang Scheduled. 
+Khi chuyển sang Inactive, TimeSlot sẽ không còn khả dụng cho user.
+
+### Script
+
+`docs/database/changes/20260513_2022_AddInactiveStatusToPromotions.sql`
 
 ---
 

@@ -280,9 +280,9 @@ public class PromotionService : IPromotionService
         }
         else
         {
-            if (existingPromotion.Status == "Expired" || existingPromotion.Status == "Inactive")
+            if (existingPromotion.Status == "Expired")
             {
-                return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot update an Expired or Inactive promotion.");
+                return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot update an Expired promotion.");
             }
 
             if (existingPromotion.Status == "Active")
@@ -296,25 +296,65 @@ public class PromotionService : IPromotionService
                 existingPromotion.Status = request.Status;
                 existingPromotion.UpdatedAt = _timeProvider.UtcNow;
             }
+            else if (existingPromotion.Status == "Inactive")
+            {
+                // Inactive -> Scheduled allowed only if it has never been Active (SoldQuantity == 0)
+                if (request.Status == "Scheduled")
+                {
+                    bool hasTransactions = existingPromotion.ProductPromotions.Any(p => p.SoldQuantity > 0)
+                        || existingPromotion.PromotionTimeSlots.Any(ts => ts.PromotionProductSlots.Any(pps => pps.SoldQuantity > 0));
+                    
+                    if (hasTransactions)
+                    {
+                        return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot reschedule an Inactive promotion that has already had transactions.");
+                    }
+                }
+                else if (request.Status != "Inactive")
+                {
+                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Inactive promotion can only be rescheduled or wait to expire.");
+                }
+                
+                existingPromotion.Status = request.Status;
+                existingPromotion.UpdatedAt = _timeProvider.UtcNow;
+                
+                // Allow updates if it goes back to Scheduled
+                if (request.Status == "Scheduled")
+                {
+                    if (request.StartDate != existingPromotion.StartDate && request.StartDate < _timeProvider.UtcNow.AddMinutes(9))
+                    {
+                        return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Start date must be at least 10 minutes from now.");
+                    }
+
+                    _mapper.Map(request, existingPromotion);
+                }
+            }
             else
             {
                 // Scheduled promotion
-                if (request.StartDate != existingPromotion.StartDate && request.StartDate < _timeProvider.UtcNow.AddMinutes(9))
+                if (request.Status == "Inactive")
                 {
-                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Start date must be at least 10 minutes from now.");
+                    existingPromotion.Status = request.Status;
+                    existingPromotion.UpdatedAt = _timeProvider.UtcNow;
                 }
-
-                _mapper.Map(request, existingPromotion);
-                existingPromotion.UpdatedAt = _timeProvider.UtcNow;
-
-                var promotionNameExists = await _unitOfWork.Promotions.ExistsPromotionNameAsync(
-                    existingPromotion.PromotionName,
-                    promotionId,
-                    cancellationToken);
-
-                if (promotionNameExists)
+                else
                 {
-                    return Result<PromotionDto>.Conflict("Promotion name already exists.");
+                    if (request.StartDate != existingPromotion.StartDate && request.StartDate < _timeProvider.UtcNow.AddMinutes(9))
+                    {
+                        return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Start date must be at least 10 minutes from now.");
+                    }
+
+                    _mapper.Map(request, existingPromotion);
+                    existingPromotion.UpdatedAt = _timeProvider.UtcNow;
+
+                    var promotionNameExists = await _unitOfWork.Promotions.ExistsPromotionNameAsync(
+                        existingPromotion.PromotionName,
+                        promotionId,
+                        cancellationToken);
+
+                    if (promotionNameExists)
+                    {
+                        return Result<PromotionDto>.Conflict("Promotion name already exists.");
+                    }
                 }
 
                 if (request.ProductPromotions != null)
@@ -385,9 +425,9 @@ public class PromotionService : IPromotionService
 
                     foreach (var item in toRemoveSlots)
                     {
-                        if (item.Status == "Active" || item.Status == "Expired" || item.Status == "Inactive")
+                        if (item.Status == "Active" || item.Status == "Inactive" || item.Status == "Expired")
                         {
-                            return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot delete an Active, Expired, or Inactive time slot.");
+                            return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot delete an Active, Inactive, or Expired time slot.");
                         }
                         item.IsDeleted = true;
                         item.UpdatedAt = _timeProvider.UtcNow;
@@ -398,11 +438,25 @@ public class PromotionService : IPromotionService
                         var existingTs = existingPromotion.PromotionTimeSlots.FirstOrDefault(ts => ts.StartAt == incomingTs.StartAt);
                         if (existingTs != null)
                         {
-                            if (existingTs.Status == "Active" || existingTs.Status == "Expired" || existingTs.Status == "Inactive")
+                            if (existingTs.Status == "Active")
+                            {
+                                if (incomingTs.Status != "Active" && incomingTs.Status != "Inactive")
+                                {
+                                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Active time slot can only be changed to Inactive.");
+                                }
+                                
+                                if (existingTs.Status != incomingTs.Status)
+                                {
+                                    existingTs.Status = incomingTs.Status;
+                                    existingTs.UpdatedAt = _timeProvider.UtcNow;
+                                }
+                                continue;
+                            }
+                            else if (existingTs.Status == "Inactive" || existingTs.Status == "Expired")
                             {
                                 if (existingTs.Status != incomingTs.Status)
                                 {
-                                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot modify the status of an Active, Expired, or Inactive time slot.");
+                                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot modify the status of an Inactive or Expired time slot.");
                                 }
                                 continue;
                             }
