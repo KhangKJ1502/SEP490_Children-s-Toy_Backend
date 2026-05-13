@@ -161,7 +161,7 @@ public class BrandService : IBrandService
                 isDeleted,
                 cancellationToken);
 
-            if (hasStatusChanged && isDeleted)
+            if (hasStatusChanged)
             {
                 await _unitOfWork.Brands.UpdateRelatedProductStatusAsync(
                     brandId,

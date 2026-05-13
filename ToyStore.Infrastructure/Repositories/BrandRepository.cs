@@ -143,18 +143,13 @@ public class BrandRepository : IBrandRepository
         bool isDeleted,
         CancellationToken cancellationToken = default)
     {
-        if (!isDeleted)
-        {
-            return;
-        }
-
         var now = DateTime.UtcNow;
 
         await _context.Products
             .Where(x => x.BrandId == brandId)
             .ExecuteUpdateAsync(
                 updates => updates
-                    .SetProperty(x => x.ProductStatus, _ => "Inactive")
+                    .SetProperty(x => x.ProductStatus, _ => isDeleted ? "Inactive" : "Active")
                     .SetProperty(x => x.UpdatedAt, _ => now),
                 cancellationToken);
     }
