@@ -21,6 +21,14 @@ public interface IWalletService
         VerifyWalletPinRequestDto dto,
         CancellationToken cancellationToken = default);
 
+    Task<Result<SePayTopUpQrResponseDto>> CreateSePayTopUpQrAsync(
+        CreateSePayTopUpQrRequestDto dto,
+        CancellationToken cancellationToken = default);
+
+    Task<Result<SePayTopUpStatusResponseDto>> GetSePayTopUpStatusAsync(
+        string attemptCode,
+        CancellationToken cancellationToken = default);
+
     Task<Result> ChangeWalletPinAsync(
         ChangeWalletPinRequestDto dto,
         CancellationToken cancellationToken = default);

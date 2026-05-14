@@ -14,11 +14,11 @@ public class CreatePromotionTimeSlotValidator : AbstractValidator<CreatePromotio
             .When(x => x.Status == "Scheduled")
             .WithMessage("Start time must be at least 10 minutes from now.");
 
-        // EndAt — phải sau StartAt ít nhất 5 phút
+        // EndAt — phải sau StartAt ít nhất 10 phút
         RuleFor(x => x.EndAt)
             .NotEmpty().WithMessage("End date/time is required.")
-            .GreaterThan(x => x.StartAt.AddMinutes(5))
-            .WithMessage("End time must be at least 5 minutes after start time.");
+            .GreaterThan(x => x.StartAt.AddMinutes(9))
+            .WithMessage("End time must be at least 10 minutes after start time.");
 
         RuleFor(x => x.Status)
             .NotEmpty().WithMessage("Status is required.")
