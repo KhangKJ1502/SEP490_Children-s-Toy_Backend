@@ -54,6 +54,24 @@ public class WalletsController : ControllerBase
         return result.ToActionResult();
     }
 
+    [HttpPost("topup/sepay/qr")]
+    public async Task<ActionResult<SePayTopUpQrResponseDto>> CreateSePayTopUpQr(
+        [FromBody] CreateSePayTopUpQrRequestDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _walletService.CreateSePayTopUpQrAsync(dto, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpGet("topup/sepay/status/{attemptCode}")]
+    public async Task<ActionResult<SePayTopUpStatusResponseDto>> GetSePayTopUpStatus(
+        string attemptCode,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _walletService.GetSePayTopUpStatusAsync(attemptCode, cancellationToken);
+        return result.ToActionResult();
+    }
+
     [HttpPut("pin/change")]
     public async Task<ActionResult> ChangePin(
         [FromBody] ChangeWalletPinRequestDto dto,

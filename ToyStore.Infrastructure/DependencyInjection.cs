@@ -138,6 +138,7 @@ public static class DependencyInjection
         services.AddScoped<IValidator<UpdateStaffReplyDto>, UpdateStaffReplyValidator>();
         services.AddScoped<IValidator<CreateWalletRequestDto>, CreateWalletRequestValidator>();
         services.AddScoped<IValidator<VerifyWalletPinRequestDto>, VerifyWalletPinRequestValidator>();
+        services.AddScoped<IValidator<CreateSePayTopUpQrRequestDto>, CreateSePayTopUpQrRequestValidator>();
         services.AddScoped<IValidator<ChangeWalletPinRequestDto>, ChangeWalletPinRequestValidator>();
         services.AddScoped<IValidator<VerifyForgotWalletPinOtpRequestDto>, VerifyForgotWalletPinOtpRequestValidator>();
         services.AddScoped<IValidator<ResetForgotWalletPinRequestDto>, ResetForgotWalletPinRequestValidator>();
