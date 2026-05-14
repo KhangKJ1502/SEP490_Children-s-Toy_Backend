@@ -6,6 +6,8 @@ namespace ToyStore.Application.Validators.Profiles;
 public class UpdateProfileValidator : AbstractValidator<UpdateProfileDto>
 {
     private static readonly byte[] AllowedSexIds = [1, 2, 3];
+    private const int MinimumAge = 15;
+    private const string MinimumAgeMessage = "You must be at least 15 years old.";
 
     public UpdateProfileValidator()
     {
@@ -22,7 +24,8 @@ public class UpdateProfileValidator : AbstractValidator<UpdateProfileDto>
             .When(x => !string.IsNullOrWhiteSpace(x.ImageUrl));
 
         RuleFor(x => x.Dob)
-            .LessThanOrEqualTo(DateTime.UtcNow.Date).WithMessage("DOB cannot be in the future.")
+            .Must(BeAtLeastMinimumAge)
+            .WithMessage(MinimumAgeMessage)
             .When(x => x.Dob.HasValue);
 
         RuleFor(x => x.SexId)
@@ -43,5 +46,17 @@ public class UpdateProfileValidator : AbstractValidator<UpdateProfileDto>
         }
 
         return uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps;
+    }
+
+    private static bool BeAtLeastMinimumAge(DateTime? dob)
+    {
+        if (!dob.HasValue)
+        {
+            return true;
+        }
+
+        var todayUtc = DateTime.UtcNow.Date;
+        var latestAllowedDob = todayUtc.AddYears(-MinimumAge);
+        return dob.Value.Date <= latestAllowedDob;
     }
 }
