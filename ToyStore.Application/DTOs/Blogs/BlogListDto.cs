@@ -3,6 +3,7 @@ namespace ToyStore.Application.DTOs.Blogs;
 public class BlogListDto
 {
     public int BlogPostId { get; set; }
+    public int AccountId { get; set; }
     public short BlogCategoryId { get; set; }
     public string BlogCategoryName { get; set; } = string.Empty;
     public string BlogTitle { get; set; } = string.Empty;

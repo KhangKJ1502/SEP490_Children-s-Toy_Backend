@@ -8,7 +8,6 @@ namespace ToyStore.Infrastructure.Repositories;
 public class BlogRepository : IBlogRepository
 {
     private readonly SEP490ToyStoreContext _context;
-    private static readonly string[] AdminVisibleStatuses = ["Pending", "Published", "Scheduled", "Hidden"];
 
     public BlogRepository(SEP490ToyStoreContext context)
     {
@@ -91,7 +90,7 @@ public class BlogRepository : IBlogRepository
     {
         var dueBlogs = await _context.BlogPosts
             .Where(x => !x.IsDeleted
-                && x.Status == "Scheduled"
+                && (x.Status == "Scheduled" || x.Status == "Approved")
                 && x.BlogAt != null
                 && x.BlogAt <= utcNow)
             .ToListAsync(cancellationToken);
@@ -478,13 +477,6 @@ public class BlogRepository : IBlogRepository
         if (onlyPublished)
         {
             query = query.Where(x => x.Status == "Published");
-        }
-
-        // Admin listing (no owner filter, not public search) only shows workflow states
-        // that are relevant for review and published visibility.
-        if (!createdByAccountId.HasValue && !onlyPublished)
-        {
-            query = query.Where(x => AdminVisibleStatuses.Contains(x.Status));
         }
 
         if (!string.IsNullOrWhiteSpace(status))
