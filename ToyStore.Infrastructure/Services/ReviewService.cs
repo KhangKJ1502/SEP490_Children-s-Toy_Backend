@@ -329,6 +329,89 @@ public class ReviewService : IReviewService
         }
     }
 
+    public async Task<Result<PaginatedResponse<UnreviewedProductDto>>> GetUnreviewedProductsAsync(
+        int pageNumber, int pageSize, CancellationToken cancellationToken = default)
+    {
+        var accountId = _currentUser.AccountId;
+        pageSize = Math.Min(pageSize, 100);
+        pageNumber = Math.Max(pageNumber, 1);
+
+        var items = await _unitOfWork.Reviews.GetUnreviewedProductsAsync(accountId, pageNumber, pageSize, cancellationToken);
+        var count = await _unitOfWork.Reviews.GetUnreviewedProductsCountAsync(accountId, cancellationToken);
+
+        var dtos = items.Select(od => new UnreviewedProductDto
+        {
+            ProductId = od.ProductId,
+            ProductName = od.ProductName,
+            ProductImage = od.ProductImage,
+            OrderId = od.OrderId,
+            OrderCode = od.Order.OrderCode,
+            CompletedAt = od.Order.CompletedAt,
+            RemainingDays = od.Order.CompletedAt.HasValue 
+                ? Math.Max(0, 20 - (int)(_timeProvider.UtcNow - od.Order.CompletedAt.Value).TotalDays) 
+                : 0
+        }).ToList();
+
+        return Result<PaginatedResponse<UnreviewedProductDto>>.Success(
+            new PaginatedResponse<UnreviewedProductDto>(dtos, count, pageNumber, pageSize));
+    }
+
+    public async Task<Result<PaginatedResponse<MyReviewDto>>> GetMyReviewsAsync(
+        MyReviewQueryDto query, CancellationToken cancellationToken = default)
+    {
+        var accountId = _currentUser.AccountId;
+        var pageSize = Math.Min(query.PageSize, 100);
+        var pageNumber = Math.Max(query.PageNumber, 1);
+
+        var items = await _unitOfWork.Reviews.GetMyReviewsPagedAsync(
+            accountId,
+            pageNumber,
+            pageSize,
+            query.SortBy,
+            query.SortDesc,
+            query.ModerationStatus,
+            cancellationToken);
+
+        var count = await _unitOfWork.Reviews.GetMyReviewsCountAsync(
+            accountId,
+            query.ModerationStatus,
+            cancellationToken);
+
+        var dtos = items.Select(r => new MyReviewDto
+        {
+            ReviewId = r.ReviewId,
+            ProductId = r.ProductId,
+            ProductName = r.Product?.ProductName ?? "Unknown Product",
+            ProductImage = r.Product?.ProductImage?.ImageUrl,
+            OrderId = r.OrderId,
+            OrderCode = r.Order?.OrderCode ?? "Unknown Order",
+            Rating = r.Rating,
+            Comment = r.Comment,
+            ModerationStatus = r.ModerationStatus,
+            IsEdited = r.IsEdited,
+            CreatedAt = r.CreatedAt,
+            // Calculate ModeratedAt from logs if needed, or we just map it from something.
+            // For now, if it's approved, we can assume it was moderated recently, but let's just use UpdatedAt if it's not Pending
+            ModeratedAt = r.ModerationStatus != "Pending" ? (r.UpdatedAt ?? r.CreatedAt) : null,
+            Images = r.ReviewProductImages.Select(img => new ReviewImageDto
+            {
+                ReviewProductImageId = img.ReviewProductImageId,
+                ImageUrl = img.ImageUrl
+            }).ToList(),
+            Replies = r.StaffReviewProductReplies.Select(reply => new StaffReplyDto
+            {
+                ReplyProductId = reply.ReplyProductId,
+                StaffId = reply.StaffId,
+                StaffName = reply.Staff?.AccountName ?? "Staff",
+                Content = reply.Content,
+                CreatedAt = reply.CreatedAt,
+                UpdatedAt = reply.UpdatedAt
+            }).ToList()
+        }).ToList();
+
+        return Result<PaginatedResponse<MyReviewDto>>.Success(
+            new PaginatedResponse<MyReviewDto>(dtos, count, pageNumber, pageSize));
+    }
 
 
     // --- Admin / Staff ---

@@ -42,6 +42,22 @@ public interface IReviewRepository
     Task AddImageAsync(ReviewProductImage image, CancellationToken cancellationToken = default);
     Task AddModerationLogAsync(ReviewModerationLog log, CancellationToken cancellationToken = default);
 
+    // --- Customer My Reviews ---
+    Task<List<OrderDetail>> GetUnreviewedProductsAsync(int accountId, int pageNumber, int pageSize, CancellationToken cancellationToken = default);
+    Task<int> GetUnreviewedProductsCountAsync(int accountId, CancellationToken cancellationToken = default);
+    Task<List<ReviewProduct>> GetMyReviewsPagedAsync(
+        int accountId,
+        int pageNumber,
+        int pageSize,
+        string? sortBy,
+        bool sortDesc,
+        string? moderationStatus,
+        CancellationToken cancellationToken = default);
+    Task<int> GetMyReviewsCountAsync(
+        int accountId,
+        string? moderationStatus,
+        CancellationToken cancellationToken = default);
+
     // --- Admin / Staff ---
     Task<List<ReviewProduct>> GetAdminPagedAsync(
         int pageNumber,

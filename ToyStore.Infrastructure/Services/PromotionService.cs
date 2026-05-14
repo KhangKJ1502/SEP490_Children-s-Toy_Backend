@@ -8,6 +8,7 @@ using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Application.Validators.Promotions;
 using ToyStore.Domain.Entities;
+using Microsoft.Extensions.Configuration;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -24,6 +25,7 @@ public class PromotionService : IPromotionService
     private readonly IValidator<UpdatePromotionDto> _updateValidator;
     private readonly ICurrentUserService _currentUserService;
     private readonly ITimeProvider _timeProvider;
+    private readonly IConfiguration _configuration;
 
     public PromotionService(
         IUnitOfWork unitOfWork,
@@ -33,7 +35,8 @@ public class PromotionService : IPromotionService
         IValidator<CreatePromotionDto> createValidator,
         IValidator<UpdatePromotionDto> updateValidator,
         ICurrentUserService currentUserService,
-        ITimeProvider timeProvider)
+        ITimeProvider timeProvider,
+        IConfiguration configuration)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
@@ -43,6 +46,7 @@ public class PromotionService : IPromotionService
         _updateValidator = updateValidator;
         _currentUserService = currentUserService;
         _timeProvider = timeProvider;
+        _configuration = configuration;
     }
 
     public async Task<Result<PaginatedResponse<PromotionListDto>>> GetPromotionsAsync(
@@ -96,7 +100,8 @@ public class PromotionService : IPromotionService
     public async Task<Result<List<PromotionDto>>> GetFlashSalePromotionsAsync(
         CancellationToken cancellationToken = default)
     {
-        var promotions = await _unitOfWork.Promotions.GetFlashSalePromotionsAsync(cancellationToken);
+        int visibilityDays = _configuration.GetValue<int>("Promotions:FlashSaleVisibilityDays", 2);
+        var promotions = await _unitOfWork.Promotions.GetFlashSalePromotionsAsync(visibilityDays, cancellationToken);
         var dtos = _mapper.Map<List<PromotionDto>>(promotions);
 
         _logger.LogInformation(
@@ -292,8 +297,10 @@ public class PromotionService : IPromotionService
                     return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Active promotion can only be changed to Inactive.");
                 }
 
-                // Lock all other fields, only update status
+                // Allow updating status, description and priority
                 existingPromotion.Status = request.Status;
+                existingPromotion.Description = request.Description;
+                existingPromotion.Priority = request.Priority;
                 existingPromotion.UpdatedAt = _timeProvider.UtcNow;
             }
             else if (existingPromotion.Status == "Inactive")
@@ -327,6 +334,12 @@ public class PromotionService : IPromotionService
 
                     _mapper.Map(request, existingPromotion);
                 }
+                else
+                {
+                    // Allow updating description and priority even when staying Inactive
+                    existingPromotion.Description = request.Description;
+                    existingPromotion.Priority = request.Priority;
+                }
             }
             else
             {
@@ -356,8 +369,9 @@ public class PromotionService : IPromotionService
                         return Result<PromotionDto>.Conflict("Promotion name already exists.");
                     }
                 }
+            }
 
-                if (request.ProductPromotions != null)
+            if (request.ProductPromotions != null)
                 {
                     var productIds = request.ProductPromotions.Select(p => p.ProductId).Distinct().ToList();
                     var products = await _unitOfWork.Products.GetByIdsAsync(productIds, cancellationToken);
@@ -502,6 +516,11 @@ public class PromotionService : IPromotionService
                         }
                         else
                         {
+                            if (incomingTs.Status == "Scheduled" && incomingTs.StartAt < _timeProvider.UtcNow.AddMinutes(9))
+                            {
+                                return Result<PromotionDto>.Failure("VALIDATION_ERROR", "New time slot start time must be at least 10 minutes from now.");
+                            }
+
                             var newTs = _mapper.Map<PromotionTimeSlot>(incomingTs);
                             newTs.PromotionId = promotionId;
                             newTs.CreatedAt = _timeProvider.UtcNow;
@@ -509,11 +528,14 @@ public class PromotionService : IPromotionService
                         }
                     }
                 }
-            }
 
             // Run full validation on the final combined state
             var fullValidationRequest = _mapper.Map<CreatePromotionDto>(existingPromotion);
-            var fullValidationResult = await _createValidator.ValidateAsync(fullValidationRequest, cancellationToken);
+            
+            var context = new FluentValidation.ValidationContext<CreatePromotionDto>(fullValidationRequest);
+            context.RootContextData["IsUpdate"] = true;
+            
+            var fullValidationResult = await _createValidator.ValidateAsync(context, cancellationToken);
 
             if (!fullValidationResult.IsValid)
             {

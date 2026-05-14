@@ -62,5 +62,5 @@ public interface IPromotionRepository
     /// <summary>
     /// Lấy danh sách promotion FLASH_SALE đang Active hoặc Scheduled, bao gồm đầy đủ time slots và sản phẩm.
     /// </summary>
-    Task<List<Promotion>> GetFlashSalePromotionsAsync(CancellationToken cancellationToken = default);
+    Task<List<Promotion>> GetFlashSalePromotionsAsync(int visibilityDays = 2, CancellationToken cancellationToken = default);
 }
