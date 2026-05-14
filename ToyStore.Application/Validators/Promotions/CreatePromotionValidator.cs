@@ -22,7 +22,7 @@ public class CreatePromotionValidator : AbstractValidator<CreatePromotionDto>
         RuleFor(x => x.StartDate)
             .NotEmpty().WithMessage("Start date is required.")
             .Must(d => d >= DateTime.UtcNow.AddMinutes(9))
-            .When(x => x.Status == "Scheduled")
+            .When((x, ctx) => x.Status == "Scheduled" && !ctx.RootContextData.ContainsKey("IsUpdate"))
             .WithMessage("Start date must be at least 10 minutes from now.");
 
         RuleFor(x => x.EndDate)

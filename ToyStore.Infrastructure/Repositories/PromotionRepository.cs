@@ -144,15 +144,18 @@ public class PromotionRepository : IPromotionRepository
     }
 
     public async Task<List<Promotion>> GetFlashSalePromotionsAsync(
+        int visibilityDays = 2,
         CancellationToken cancellationToken = default)
     {
         var now = DateTime.UtcNow;
+        var maxVisibleDate = now.AddDays(visibilityDays);
+
         return await _context.Promotions
             .Where(p => !p.IsDeleted
                 && p.PromotionType == "FLASH_SALE"
-                && (p.Status == "Active" || p.Status == "Scheduled")
-                && p.EndDate >= now)
-            .Include(p => p.PromotionTimeSlots.Where(ts => !ts.IsDeleted && (ts.Status == "Active" || ts.Status == "Scheduled")))
+                && p.EndDate >= now
+                && (p.Status == "Active" || (p.Status == "Scheduled" && p.StartDate <= maxVisibleDate)))
+            .Include(p => p.PromotionTimeSlots.Where(ts => !ts.IsDeleted && (ts.Status == "Active" || (ts.Status == "Scheduled" && ts.StartAt <= maxVisibleDate))))
                 .ThenInclude(ts => ts.PromotionProductSlots.Where(pps => !pps.IsDeleted))
                     .ThenInclude(pps => pps.Product)
                         .ThenInclude(prod => prod.ProductImage)
