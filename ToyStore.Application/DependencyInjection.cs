@@ -2,6 +2,8 @@ using Microsoft.Extensions.DependencyInjection;
 using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Services.Notifications;
 using ToyStore.Application.Features.Notifications.Handlers;
+using ToyStore.Application.Interfaces.Services;
+using ToyStore.Application.Services;
 
 namespace ToyStore.Application;
 
@@ -13,6 +15,9 @@ public static class DependencyInjection
         services.AddScoped<INotificationDispatcher, NotificationDispatcher>();
         services.AddScoped<ICampaignNotificationService, CampaignNotificationService>();
         services.AddScoped<IUserPreferenceChecker, UserPreferenceChecker>();
+
+        // Shipping status mapper
+        services.AddScoped<IShippingStatusMapper, ShippingStatusMapper>();
 
         // Outbox Event Handlers
         services.AddScoped<IOutboxEventHandler, OrderPlacedHandler>();
@@ -32,6 +37,12 @@ public static class DependencyInjection
         services.AddScoped<IOutboxEventHandler, BlogCommentRepliedHandler>();
         services.AddScoped<IOutboxEventHandler, StaffCancelRequestedHandler>();
         services.AddScoped<IOutboxEventHandler, StaffOrderAssignedHandler>();
+        services.AddScoped<IOutboxEventHandler, OrderReadyForAssignmentHandler>();
+        services.AddScoped<IOutboxEventHandler, OrderAutoAssignedHandler>();
+        services.AddScoped<IOutboxEventHandler, OrderQueuedHandler>();
+        services.AddScoped<IOutboxEventHandler, CapacityFreedHandler>();
+        services.AddScoped<IOutboxEventHandler, ShiftStartedHandler>();
+        services.AddScoped<IOutboxEventHandler, ShiftEndedWithPendingOrdersHandler>();
 
         // Merch / order status handlers
         services.AddScoped<IOutboxEventHandler, MerchReadyToPackHandler>();

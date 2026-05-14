@@ -75,6 +75,23 @@ GO
 
 
 /* ══════════════════════════════════════════════════════════════
+   1.1 SHIFT TEMPLATES
+══════════════════════════════════════════════════════════════ */
+IF NOT EXISTS (SELECT 1 FROM [dbo].[ShiftTemplates] WHERE [ShiftName] = N'Ca sang')
+    INSERT INTO [dbo].[ShiftTemplates] ([ShiftName], [StartTime], [EndTime])
+    VALUES (N'Ca sang', '07:00', '12:00');
+
+IF NOT EXISTS (SELECT 1 FROM [dbo].[ShiftTemplates] WHERE [ShiftName] = N'Ca chieu')
+    INSERT INTO [dbo].[ShiftTemplates] ([ShiftName], [StartTime], [EndTime])
+    VALUES (N'Ca chieu', '12:00', '17:00');
+
+IF NOT EXISTS (SELECT 1 FROM [dbo].[ShiftTemplates] WHERE [ShiftName] = N'Ca toi')
+    INSERT INTO [dbo].[ShiftTemplates] ([ShiftName], [StartTime], [EndTime])
+    VALUES (N'Ca toi', '17:00', '22:00');
+GO
+
+
+/* ══════════════════════════════════════════════════════════════
    2. ACCOUNTS – nhân viên (3 người)
 ══════════════════════════════════════════════════════════════ */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Accounts] WHERE Email = 'admin@toyhouse.vn')

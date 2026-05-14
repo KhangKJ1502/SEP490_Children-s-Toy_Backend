@@ -25,6 +25,19 @@ public interface IOrderRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Lay danh sach don hang cua customer co phan trang.
+    /// </summary>
+    Task<List<Order>> GetCustomerPagedAsync(
+        int accountId,
+        IReadOnlyCollection<string>? statusNames,
+        int pageNumber,
+        int pageSize,
+        string? keyword,
+        DateTime? fromDate,
+        DateTime? toDate,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Dem tong so don hang theo dieu kien admin.
     /// </summary>
     Task<int> CountAdminAsync(
@@ -32,6 +45,17 @@ public interface IOrderRepository
         int? statusId,
         bool assignedToMe,
         int currentAccountId,
+        string? keyword,
+        DateTime? fromDate,
+        DateTime? toDate,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Dem tong so don hang cua customer theo dieu kien.
+    /// </summary>
+    Task<int> CountCustomerAsync(
+        int accountId,
+        IReadOnlyCollection<string>? statusNames,
         string? keyword,
         DateTime? fromDate,
         DateTime? toDate,
@@ -47,6 +71,11 @@ public interface IOrderRepository
     /// Tra ve null neu khong tim thay hoac da bi xoa mem.
     /// </summary>
     Task<Order?> GetByIdForAdminAsync(int orderId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lay chi tiet don hang day du cho customer (co kiem tra owner).
+    /// </summary>
+    Task<Order?> GetByIdForCustomerAsync(int orderId, int accountId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Lay don hang de xu ly trang thai (tracking lock, khong AsNoTracking).

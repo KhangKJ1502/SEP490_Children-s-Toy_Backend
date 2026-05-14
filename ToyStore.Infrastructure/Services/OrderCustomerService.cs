@@ -1,11 +1,14 @@
-using Microsoft.EntityFrameworkCore;
+using AutoMapper;
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Constants;
+using ToyStore.Application.DTOs;
+using ToyStore.Application.DTOs.Orders;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
 using ToyStore.Domain.Entities;
+using ToyStore.Domain.Enums;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -21,6 +24,8 @@ public class OrderCustomerService : IOrderCustomerService
     private readonly ILogger<OrderCustomerService> _logger;
     private readonly ITimeProvider _timeProvider;
     private readonly IOrderLifecycleService _orderLifecycle;
+    private readonly IMapper _mapper;
+    private readonly IShippingStatusMapper _statusMapper;
 
     private static readonly HashSet<string> NonCancellableGhnStatuses =
         new(StringComparer.OrdinalIgnoreCase)
@@ -32,14 +37,76 @@ public class OrderCustomerService : IOrderCustomerService
         IDomainEventPublisher eventPublisher,
         ILogger<OrderCustomerService> logger,
         ITimeProvider timeProvider,
-        IOrderLifecycleService orderLifecycle)
+        IOrderLifecycleService orderLifecycle,
+        IMapper mapper,
+        IShippingStatusMapper statusMapper)
     {
-        _uow            = uow;
-        _ghnClient      = ghnClient;
+        _uow = uow;
+        _ghnClient = ghnClient;
         _eventPublisher = eventPublisher;
-        _logger         = logger;
-        _timeProvider   = timeProvider;
+        _logger = logger;
+        _timeProvider = timeProvider;
         _orderLifecycle = orderLifecycle;
+        _mapper = mapper;
+        _statusMapper = statusMapper;
+    }
+
+
+    public async Task<Result<PaginatedResponse<CustomerOrderListItemDto>>> GetListAsync(
+        CustomerOrderQueryDto query,
+        int accountId,
+        CancellationToken cancellationToken = default)
+    {
+        var pageSize = Math.Min(query.PageSize, 100);
+        var pageNumber = Math.Max(query.PageNumber, 1);
+
+        var statusNames = MapCustomerStatusFilter(query.Status);
+
+        var items = await _uow.Orders.GetCustomerPagedAsync(
+            accountId,
+            statusNames,
+            pageNumber,
+            pageSize,
+            query.Keyword,
+            query.FromDate,
+            query.ToDate,
+            cancellationToken);
+
+        var count = await _uow.Orders.CountCustomerAsync(
+            accountId,
+            statusNames,
+            query.Keyword,
+            query.FromDate,
+            query.ToDate,
+            cancellationToken);
+
+        var dtos = _mapper.Map<List<CustomerOrderListItemDto>>(items);
+        var response = new PaginatedResponse<CustomerOrderListItemDto>(dtos, count, pageNumber, pageSize);
+
+        return Result<PaginatedResponse<CustomerOrderListItemDto>>.Success(response);
+    }
+
+    // ── Detail ─────────────────────────────────────────────────────────────
+
+    public async Task<Result<CustomerOrderDetailDto>> GetDetailAsync(
+        int orderId,
+        int accountId,
+        CancellationToken cancellationToken = default)
+    {
+        var order = await _uow.Orders.GetByIdForCustomerAsync(orderId, accountId, cancellationToken);
+        if (order is null)
+        {
+            var exists = await _uow.Orders.GetByIdAsync(orderId, cancellationToken);
+            if (exists is null)
+            {
+                return Result<CustomerOrderDetailDto>.NotFound("Order", orderId);
+            }
+
+            return Result<CustomerOrderDetailDto>.Unauthorized("Bạn không có quyền xem đơn hàng này.");
+        }
+
+        var dto = _mapper.Map<CustomerOrderDetailDto>(order);
+        return Result<CustomerOrderDetailDto>.Success(dto);
     }
 
     // ── Cancel ────────────────────────────────────────────────────────────────
@@ -97,10 +164,10 @@ public class OrderCustomerService : IOrderCustomerService
 
         return Result<CancelOrderCustomerResponseDto>.Success(new CancelOrderCustomerResponseDto
         {
-            OrderId       = order.OrderId,
-            OrderCode     = order.OrderCode,
-            Status        = OrderStatuses.Cancelled,
-            Message       = "Hủy đơn hàng thành công."
+            OrderId = order.OrderId,
+            OrderCode = order.OrderCode,
+            Status = OrderStatuses.Cancelled,
+            Message = "Hủy đơn hàng thành công."
         });
     }
 
@@ -120,21 +187,21 @@ public class OrderCustomerService : IOrderCustomerService
             return Result<OrderTrackingDto>.Unauthorized("Bạn không có quyền xem thông tin đơn này.");
 
         var shippingTxn = order.ShippingProviderTransactions.FirstOrDefault();
-        
+
         var dto = new OrderTrackingDto
         {
             OrderId = order.OrderId,
             OrderCode = order.OrderCode,
             ShippingOrderCode = order.ShippingOrderCode,
-            CurrentStatus = shippingTxn?.Status,
-            StatusDescription = MapGhnStatusToDescription(shippingTxn?.Status),
+            CurrentStatus = _statusMapper.NormalizeStatus(shippingTxn?.Status, (OrderStatus)order.StatusId),
+            StatusDescription = _statusMapper.GetStatusDescription(shippingTxn?.Status),
             EstimatedDelivery = shippingTxn?.EstimatedDelivery,
             Events = shippingTxn?.ShippingStatusHistories
                 .Select(h => new OrderTrackingEventDto
                 {
                     Time = h.ProcessedAt,
-                    Status = h.NewStatus,
-                    Description = MapGhnStatusToDescription(h.NewStatus)
+                    Status = _statusMapper.NormalizeStatus(h.NewStatus, (OrderStatus)order.StatusId),
+                    Description = _statusMapper.GetStatusDescription(h.NewStatus)
                 }).ToList() ?? []
         };
 
@@ -165,27 +232,21 @@ public class OrderCustomerService : IOrderCustomerService
         });
     }
 
-    private static string? MapGhnStatusToDescription(string? status)
+    private static IReadOnlyCollection<string>? MapCustomerStatusFilter(string? status)
     {
-        if (string.IsNullOrEmpty(status)) return "Đang xử lý";
-        return status.ToLower() switch
+        if (string.IsNullOrWhiteSpace(status) || status.Equals("all", StringComparison.OrdinalIgnoreCase))
         {
-            "ready_to_pick" => "Chờ lấy hàng",
-            "picking" => "Đang lấy hàng",
-            "cancel" => "Đã hủy đơn vận chuyển",
-            "picked" => "Đã lấy hàng",
-            "storing" => "Đang nhập kho",
-            "transporting" => "Đang luân chuyển",
-            "sorting" => "Đang phân loại",
-            "delivering" => "Đang giao hàng",
-            "money_collect_delivering" => "Đang giao hàng và thu tiền",
-            "delivered" => "Giao hàng thành công",
-            "delivery_failed" => "Giao hàng thất bại",
-            "waiting_to_return" => "Chờ chuyển hoàn",
-            "return" => "Đang chuyển hoàn",
-            "returned" => "Đã chuyển hoàn",
-            "return_fail" => "Chuyển hoàn thất bại",
-            _ => status
+            return null;
+        }
+
+        return status.Trim().ToLowerInvariant() switch
+        {
+            "pending" => [OrderStatuses.Pending],
+            "shipping" => [OrderStatuses.Shipped, OrderStatuses.Processing],
+            "delivering" => [OrderStatuses.Delivering],
+            "completed" => [OrderStatuses.Completed, OrderStatuses.Delivered],
+            "cancelled" => [OrderStatuses.Cancelled],
+            _ => null
         };
     }
 }

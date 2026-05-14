@@ -164,6 +164,17 @@ public partial class SEP490ToyStoreContext : DbContext
 
     public virtual DbSet<Wishlist> Wishlists { get; set; }
 
+    // ── Luồng B — Shift Management & Auto Order Assignment ────────────────
+    public virtual DbSet<ShiftTemplate> ShiftTemplates { get; set; }
+
+    public virtual DbSet<WorkSchedule> WorkSchedules { get; set; }
+
+    public virtual DbSet<StaffShiftCapacity> StaffShiftCapacities { get; set; }
+
+    public virtual DbSet<OrderAssignment> OrderAssignments { get; set; }
+
+    public virtual DbSet<OrderQueue> OrderQueues { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Account>(entity =>
@@ -2534,6 +2545,195 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasForeignKey(d => d.ReviewId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_ModerationLogs_ReviewProducts");
+        });
+
+        // ── Luồng B entity configurations ────────────────────────────────────
+        modelBuilder.Entity<ShiftTemplate>(entity =>
+        {
+            entity.HasKey(e => e.ShiftTemplateId).HasName("PK_ShiftTemplates");
+
+            entity.ToTable("ShiftTemplates");
+
+            entity.HasIndex(e => e.ShiftName, "UQ_ShiftTemplates_ShiftName").IsUnique();
+
+            entity.Property(e => e.ShiftTemplateId)
+                .ValueGeneratedOnAdd()
+                .HasColumnName("ShiftTemplateID");
+            entity.Property(e => e.ShiftName).HasMaxLength(50);
+            entity.Property(e => e.StartTime).HasPrecision(0);
+            entity.Property(e => e.EndTime).HasPrecision(0);
+            entity.Property(e => e.MaxOrdersPerShift).HasDefaultValue((short)20);
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
+        });
+
+        modelBuilder.Entity<WorkSchedule>(entity =>
+        {
+            entity.HasKey(e => e.ScheduleId).HasName("PK_WorkSchedules");
+
+            entity.ToTable("WorkSchedules", tb => tb.HasTrigger("TR_WorkSchedules_CreateCapacity"));
+
+            entity.HasIndex(
+                e => new { e.AccountId, e.WorkDate, e.ShiftTemplateId },
+                "UQ_WorkSchedules_StaffShiftDay").IsUnique();
+
+            entity.HasIndex(
+                e => new { e.WorkDate, e.Status },
+                "IX_WorkSchedules_Date_Status");
+
+            entity.Property(e => e.ScheduleId).HasColumnName("ScheduleID");
+            entity.Property(e => e.AccountId).HasColumnName("AccountID");
+            entity.Property(e => e.ShiftTemplateId).HasColumnName("ShiftTemplateID");
+            entity.Property(e => e.Status)
+                .HasMaxLength(20)
+                .IsUnicode(false)
+                .HasDefaultValue("Scheduled");
+            entity.Property(e => e.CreatedBy).HasColumnName("CreatedBy");
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
+
+            entity.HasOne(d => d.Account)
+                .WithMany()
+                .HasForeignKey(d => d.AccountId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_WorkSchedules_Accounts");
+
+            entity.HasOne(d => d.ShiftTemplate)
+                .WithMany(p => p.WorkSchedules)
+                .HasForeignKey(d => d.ShiftTemplateId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_WorkSchedules_ShiftTemplates");
+
+            entity.HasOne(d => d.CreatedByNavigation)
+                .WithMany()
+                .HasForeignKey(d => d.CreatedBy)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_WorkSchedules_CreatedBy");
+        });
+
+        modelBuilder.Entity<StaffShiftCapacity>(entity =>
+        {
+            entity.HasKey(e => e.CapacityId).HasName("PK_StaffShiftCapacity");
+
+            entity.ToTable("StaffShiftCapacity");
+
+            entity.HasIndex(e => e.ScheduleId, "UQ_SSC_ScheduleID").IsUnique();
+
+            entity.Property(e => e.CapacityId).HasColumnName("CapacityID");
+            entity.Property(e => e.ScheduleId).HasColumnName("ScheduleID");
+            entity.Property(e => e.AccountId).HasColumnName("AccountID");
+            entity.Property(e => e.CurrentLoad).HasDefaultValue((short)0);
+            entity.Property(e => e.MaxLoad).HasDefaultValue((short)20);
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
+
+            entity.HasOne(d => d.WorkSchedule)
+                .WithOne(p => p.StaffShiftCapacity)
+                .HasForeignKey<StaffShiftCapacity>(d => d.ScheduleId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_SSC_Schedules");
+
+            entity.HasOne(d => d.Account)
+                .WithMany()
+                .HasForeignKey(d => d.AccountId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_SSC_Accounts");
+        });
+
+        modelBuilder.Entity<OrderAssignment>(entity =>
+        {
+            entity.HasKey(e => e.AssignmentId).HasName("PK_OrderAssignments");
+
+            entity.ToTable("OrderAssignments");
+
+            entity.HasIndex(
+                e => new { e.OrderId, e.RoleId },
+                "UQ_OA_ActiveOrderRole")
+                .IsUnique()
+                .HasFilter("([IsActive]=(1))");
+
+            entity.HasIndex(e => e.OrderId, "IX_OA_OrderID");
+            entity.HasIndex(e => new { e.AccountId, e.AssignedAt }, "IX_OA_AccountID_Date").IsDescending(false, true);
+            entity.HasIndex(e => e.ScheduleId, "IX_OA_ScheduleID");
+
+            entity.Property(e => e.AssignmentId).HasColumnName("AssignmentID");
+            entity.Property(e => e.OrderId).HasColumnName("OrderID");
+            entity.Property(e => e.ScheduleId).HasColumnName("ScheduleID");
+            entity.Property(e => e.AccountId).HasColumnName("AccountID");
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.AssignedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.Notes).HasMaxLength(200);
+
+            entity.HasOne(d => d.Order)
+                .WithMany()
+                .HasForeignKey(d => d.OrderId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_OA_Orders");
+
+            entity.HasOne(d => d.WorkSchedule)
+                .WithMany(p => p.OrderAssignments)
+                .HasForeignKey(d => d.ScheduleId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_OA_Schedules");
+
+            entity.HasOne(d => d.Account)
+                .WithMany()
+                .HasForeignKey(d => d.AccountId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_OA_Accounts");
+
+            entity.HasOne(d => d.AssignedByNavigation)
+                .WithMany()
+                .HasForeignKey(d => d.AssignedBy)
+                .HasConstraintName("FK_OA_AssignedBy");
+
+            entity.HasOne(d => d.Role)
+                .WithMany()
+                .HasForeignKey(d => d.RoleId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_OA_Roles");
+        });
+
+        modelBuilder.Entity<OrderQueue>(entity =>
+        {
+            entity.HasKey(e => e.QueueId).HasName("PK_OrderQueue");
+
+            entity.ToTable("OrderQueue");
+
+            entity.HasIndex(e => e.OrderId, "UQ_OQ_OrderID").IsUnique();
+
+            entity.HasIndex(
+                e => new { e.IsResolved, e.QueuedAt },
+                "IX_OQ_Unresolved")
+                .HasFilter("([IsResolved]=(0))");
+
+            entity.Property(e => e.QueueId).HasColumnName("QueueID");
+            entity.Property(e => e.OrderId).HasColumnName("OrderID");
+            entity.Property(e => e.QueuedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.Reason)
+                .HasMaxLength(50)
+                .IsUnicode(false);
+            entity.Property(e => e.ResolvedAt).HasPrecision(0);
+            entity.Property(e => e.IsResolved).HasDefaultValue(false);
+
+            entity.HasOne(d => d.Order)
+                .WithMany()
+                .HasForeignKey(d => d.OrderId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_OQ_Orders");
+
+            entity.HasOne(d => d.AssignedByNavigation)
+                .WithMany()
+                .HasForeignKey(d => d.AssignedBy)
+                .HasConstraintName("FK_OQ_AssignedBy");
         });
 
         OnModelCreatingPartial(modelBuilder);

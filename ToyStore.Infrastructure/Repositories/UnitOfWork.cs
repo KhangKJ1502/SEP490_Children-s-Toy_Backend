@@ -38,7 +38,12 @@ public class UnitOfWork : IUnitOfWork
         IRefundRepository refunds,
         IRefundImageRepository refundImages,
         IWalletRepository wallets,
-        IWalletTransactionRepository walletTransactions)
+        IWalletTransactionRepository walletTransactions,
+        IShiftTemplateRepository shiftTemplates,
+        IWorkScheduleRepository workSchedules,
+        IStaffShiftCapacityRepository staffShiftCapacities,
+        IOrderAssignmentRepository orderAssignments,
+        IOrderQueueRepository orderQueues)
     {
         _context = context;
         Vouchers = vouchers;
@@ -65,6 +70,11 @@ public class UnitOfWork : IUnitOfWork
         RefundImages = refundImages;
         Wallets = wallets;
         WalletTransactions = walletTransactions;
+        ShiftTemplates = shiftTemplates;
+        WorkSchedules = workSchedules;
+        StaffShiftCapacities = staffShiftCapacities;
+        OrderAssignments = orderAssignments;
+        OrderQueues = orderQueues;
     }
 
     public IVoucherRepository Vouchers { get; }
@@ -114,6 +124,16 @@ public class UnitOfWork : IUnitOfWork
     public IWalletRepository Wallets { get; }
 
     public IWalletTransactionRepository WalletTransactions { get; }
+
+    public IShiftTemplateRepository ShiftTemplates { get; }
+
+    public IWorkScheduleRepository WorkSchedules { get; }
+
+    public IStaffShiftCapacityRepository StaffShiftCapacities { get; }
+
+    public IOrderAssignmentRepository OrderAssignments { get; }
+
+    public IOrderQueueRepository OrderQueues { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
