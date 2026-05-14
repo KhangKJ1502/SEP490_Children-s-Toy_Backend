@@ -51,5 +51,23 @@ public class UpdatePromotionValidator : AbstractValidator<UpdatePromotionDto>
             .Must((dto, slots) => slots == null || slots.All(s => s.StartAt >= dto.StartDate && s.EndAt <= dto.EndDate))
             .WithMessage("All time slots must be within the promotion's date range.")
             .When(x => x.PromotionTimeSlots != null && x.StartDate.HasValue && x.EndDate.HasValue);
+
+        RuleFor(x => x.PromotionTimeSlots)
+            .Must((dto, slots) => 
+            {
+                if (slots == null || !slots.Any()) return true;
+                var activeSlots = slots.Where(s => s.Status != "Expired").ToList();
+                for (int i = 0; i < activeSlots.Count; i++)
+                {
+                    for (int j = i + 1; j < activeSlots.Count; j++)
+                    {
+                        if (activeSlots[i].StartAt < activeSlots[j].EndAt && activeSlots[j].StartAt < activeSlots[i].EndAt)
+                            return false;
+                    }
+                }
+                return true;
+            })
+            .WithMessage("Flash sale time slots cannot overlap with each other.")
+            .When(x => x.PromotionTimeSlots != null);
     }
 }

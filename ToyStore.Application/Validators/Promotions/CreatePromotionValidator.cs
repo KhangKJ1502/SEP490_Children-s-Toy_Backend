@@ -51,7 +51,7 @@ public class CreatePromotionValidator : AbstractValidator<CreatePromotionDto>
             .Must((dto, slots) => 
             {
                 if (slots == null || !slots.Any()) return true;
-                var activeSlots = slots.Where(s => s.Status != "Inactive").ToList();
+                var activeSlots = slots.Where(s => s.Status != "Expired").ToList();
                 for (int i = 0; i < activeSlots.Count; i++)
                 {
                     for (int j = i + 1; j < activeSlots.Count; j++)
