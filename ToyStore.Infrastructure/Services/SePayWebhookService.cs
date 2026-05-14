@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ToyStore.Application.Interfaces.Notifications;
@@ -6,6 +7,7 @@ using ToyStore.Application.Interfaces.Services;
 using ToyStore.Application.Constants;
 using ToyStore.Domain.Entities;
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Options;
 
 namespace ToyStore.Infrastructure.Services;
@@ -16,8 +18,12 @@ namespace ToyStore.Infrastructure.Services;
 /// </summary>
 public class SePayWebhookService : ISePayWebhookService
 {
+    private const string TopUpAttemptPrefix = "wallet:topup:attempt:";
+
     private readonly IUnitOfWork _uow;
+    private readonly SEP490ToyStoreContext _db;
     private readonly IGhnClient _ghnClient;
+    private readonly IRedisService _redisService;
     private readonly SePayOptions _sePayOpts;
     private readonly ShopAddressOptions _shopAddr;
     private readonly IDomainEventPublisher _eventPublisher;
@@ -26,7 +32,9 @@ public class SePayWebhookService : ISePayWebhookService
 
     public SePayWebhookService(
         IUnitOfWork uow,
+        SEP490ToyStoreContext db,
         IGhnClient ghnClient,
+        IRedisService redisService,
         IOptions<SePayOptions> sePayOpts,
         IOptions<ShopAddressOptions> shopAddr,
         IDomainEventPublisher eventPublisher,
@@ -34,7 +42,9 @@ public class SePayWebhookService : ISePayWebhookService
         ITimeProvider timeProvider)
     {
         _uow            = uow;
+        _db             = db;
         _ghnClient      = ghnClient;
+        _redisService   = redisService;
         _sePayOpts      = sePayOpts.Value;
         _shopAddr       = shopAddr.Value;
         _eventPublisher = eventPublisher;
@@ -65,7 +75,7 @@ public class SePayWebhookService : ISePayWebhookService
         }
         else if (IsPrefixed(attemptCode, "WLT"))
         {
-            await HandleWalletTopUpAsync(attemptCode, payload.TransferAmount, cancellationToken);
+            await HandleWalletTopUpAsync(attemptCode, payload, cancellationToken);
         }
     }
 
@@ -244,13 +254,19 @@ public class SePayWebhookService : ISePayWebhookService
 
     // ── WLT_: Nạp ví ─────────────────────────────────────────────────────────
 
-    private async Task HandleWalletTopUpAsync(string idempotencyKey, decimal amount, CancellationToken ct)
+    private async Task HandleWalletTopUpAsync(string idempotencyKey, SePayWebhookPayload payload, CancellationToken ct)
     {
-        // Idempotency
-        var alreadyExists = await _uow.Orders.ExistsWalletTransactionByIdempotencyKeyAsync(idempotencyKey, ct);
-        if (alreadyExists)
+        var amount = payload.TransferAmount;
+
+        // Ưu tiên xử lý theo metadata topup đã tạo trước đó từ API tạo QR.
+        // Nếu không tìm thấy metadata thì fallback về nhánh xử lý thủ công cũ phía dưới.
+        if (await TryHandleWalletTopUpFromAttemptCacheAsync(idempotencyKey, payload, ct))
         {
-            _logger.LogInformation("WLT webhook: idempotencyKey '{Key}' already processed", idempotencyKey);
+            return;
+        }
+
+        if (await TryBackfillWalletTopUpGatewayTransactionAsync(idempotencyKey, payload, ct))
+        {
             return;
         }
 
@@ -282,20 +298,66 @@ public class SePayWebhookService : ISePayWebhookService
 
     private static string? ResolveAttemptCode(SePayWebhookPayload payload)
     {
-        var content = (payload.Content ?? string.Empty).Trim();
-        if (IsPrefixed(content, "SPX") || IsPrefixed(content, "WLT"))
+        var fromCode = NormalizeAttemptCode(payload.Code);
+        if (!string.IsNullOrWhiteSpace(fromCode))
         {
-            return content;
+            return fromCode;
         }
 
-        var description = (payload.Description ?? string.Empty).Trim();
-        if (string.IsNullOrEmpty(description))
+        var fromContent = ExtractAttemptCode(payload.Content);
+        if (!string.IsNullOrWhiteSpace(fromContent))
+        {
+            return fromContent;
+        }
+
+        return ExtractAttemptCode(payload.Description);
+    }
+
+    private static string? ExtractAttemptCode(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
         {
             return null;
         }
 
-        return ExtractToken(description, "SPX")
-            ?? ExtractToken(description, "WLT");
+        var normalized = text.Trim();
+        return ExtractToken(normalized, "SPX")
+            ?? ExtractToken(normalized, "WLT");
+    }
+
+    private static string? NormalizeAttemptCode(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        var value = raw.Trim();
+        if (!value.StartsWith("SPX", StringComparison.OrdinalIgnoreCase)
+            && !value.StartsWith("WLT", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var token = ExtractLeadingToken(value);
+        return string.IsNullOrWhiteSpace(token) ? null : token;
+    }
+
+    private static string ExtractLeadingToken(string text)
+    {
+        var end = 0;
+        while (end < text.Length)
+        {
+            var ch = text[end];
+            if (!(char.IsLetterOrDigit(ch) || ch == '_' || ch == '-'))
+            {
+                break;
+            }
+
+            end++;
+        }
+
+        return text[..end];
     }
 
     private static string? ExtractToken(string text, string prefix)
@@ -306,20 +368,371 @@ public class SePayWebhookService : ISePayWebhookService
             return null;
         }
 
-        var end = index;
-        while (end < text.Length)
-        {
-            var ch = text[end];
-            if (char.IsWhiteSpace(ch))
-            {
-                break;
-            }
+        var token = ExtractLeadingToken(text[index..]);
+        return NormalizeAttemptCode(token);
+    }
 
-            end++;
+    private async Task<bool> TryHandleWalletTopUpFromAttemptCacheAsync(
+        string idempotencyKey,
+        SePayWebhookPayload payload,
+        CancellationToken ct)
+    {
+        var amount = payload.TransferAmount;
+        var cacheKey = BuildTopUpAttemptKey(idempotencyKey);
+        var rawAttempt = await _redisService.GetAsync(cacheKey);
+        if (string.IsNullOrWhiteSpace(rawAttempt))
+        {
+            return false;
         }
 
-        var token = text.Substring(index, end - index).Trim();
-        return string.IsNullOrEmpty(token) ? null : token;
+        WalletTopUpAttemptCache? topUpAttempt;
+        try
+        {
+            topUpAttempt = JsonSerializer.Deserialize<WalletTopUpAttemptCache>(rawAttempt);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "WLT webhook: invalid top-up cache for key '{Key}'", idempotencyKey);
+            return true;
+        }
+
+        if (topUpAttempt == null)
+        {
+            _logger.LogWarning("WLT webhook: top-up attempt '{Key}' cannot be parsed", idempotencyKey);
+            return true;
+        }
+
+        if (string.Equals(topUpAttempt.Status, "PAID", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogInformation("WLT webhook: attempt '{Key}' already marked as PAID", idempotencyKey);
+            return false;
+        }
+
+        var diff = Math.Abs(amount - topUpAttempt.Amount);
+        if (diff > 1)
+        {
+            topUpAttempt.Status = "FAILED";
+            topUpAttempt.CompletedAt = _timeProvider.UtcNow;
+            await _redisService.SetAsync(cacheKey, JsonSerializer.Serialize(topUpAttempt), TimeSpan.FromHours(24));
+
+            _logger.LogWarning(
+                "WLT webhook: amount mismatch for key '{Key}' expected {Expected}, got {Actual}",
+                idempotencyKey,
+                topUpAttempt.Amount,
+                amount);
+            return true;
+        }
+
+        var wallet = await _uow.Orders.GetWalletByAccountIdAsync(topUpAttempt.AccountId, ct);
+        if (wallet == null || wallet.WalletId != topUpAttempt.WalletId)
+        {
+            _logger.LogWarning(
+                "WLT webhook: wallet not found/mismatch for key '{Key}' account {AccountId}",
+                idempotencyKey,
+                topUpAttempt.AccountId);
+            return true;
+        }
+
+        var now = _timeProvider.UtcNow;
+        var rawCallback = JsonSerializer.Serialize(payload);
+        var webhookTxnNo = ResolveWebhookTransactionNo(payload);
+        await _uow.BeginTransactionAsync(ct);
+        try
+        {
+            var existingWalletTransaction = await _db.WalletTransactions
+                .FirstOrDefaultAsync(wt => wt.IdempotencyKey == idempotencyKey, ct);
+
+            var paymentGatewayTxn = await _uow.Orders.GetPaymentTransactionByRequestIdAsync(idempotencyKey, ct);
+            if (paymentGatewayTxn == null)
+            {
+                var topUpOrder = await GetOrCreateWalletTopUpShadowOrderAsync(topUpAttempt, idempotencyKey, now, ct);
+                paymentGatewayTxn = new PaymentGatewayTransaction
+                {
+                    OrderId = topUpOrder.OrderId,
+                    Provider = "SE_PAY",
+                    RequestId = idempotencyKey,
+                    Amount = topUpAttempt.Amount,
+                    Status = "Pending",
+                    RetryCount = 0,
+                    CreatedAt = now
+                };
+                await _db.PaymentGatewayTransactions.AddAsync(paymentGatewayTxn, ct);
+            }
+
+            WalletTransaction? walletTransaction = existingWalletTransaction;
+            var balanceAfter = wallet.Balance;
+            var createdWalletTransaction = false;
+            if (existingWalletTransaction == null)
+            {
+                var balanceBefore = wallet.Balance;
+                wallet.Balance += topUpAttempt.Amount;
+                balanceAfter = wallet.Balance;
+
+                walletTransaction = new WalletTransaction
+                {
+                    WalletId = wallet.WalletId,
+                    AccountId = topUpAttempt.AccountId,
+                    TxnType = "TopUp",
+                    Direction = "CR",
+                    Amount = topUpAttempt.Amount,
+                    BalanceBefore = balanceBefore,
+                    BalanceAfter = balanceAfter,
+                    Method = "BankTransfer",
+                    IdempotencyKey = idempotencyKey,
+                    Status = "Completed",
+                    CreatedAt = now,
+                    CompletedAt = now
+                };
+
+                await _uow.Orders.AddWalletTransactionAsync(walletTransaction, ct);
+                createdWalletTransaction = true;
+            }
+
+            paymentGatewayTxn.TransactionNo = paymentGatewayTxn.TransactionNo ?? webhookTxnNo;
+            paymentGatewayTxn.ResponseCode = "00";
+            paymentGatewayTxn.ResponseMessage = "Transaction Success";
+            paymentGatewayTxn.Status = "Paid";
+            paymentGatewayTxn.RawCallback = rawCallback;
+            paymentGatewayTxn.UpdatedAt = now;
+
+            await _uow.SaveChangesAsync(ct);
+            await _uow.CommitTransactionAsync(ct);
+
+            topUpAttempt.Status = "PAID";
+            topUpAttempt.WalletTransactionId = walletTransaction?.WalletTransactionId;
+            topUpAttempt.CompletedAt = now;
+            await _redisService.SetAsync(cacheKey, JsonSerializer.Serialize(topUpAttempt), TimeSpan.FromHours(24));
+
+            if (createdWalletTransaction && walletTransaction != null)
+            {
+                await _eventPublisher.PublishAsync(
+                    "Wallet",
+                    walletTransaction.WalletTransactionId.ToString(),
+                    NotificationEventTypes.WalletTopup,
+                    new
+                    {
+                        accountId = topUpAttempt.AccountId,
+                        amount = topUpAttempt.Amount,
+                        balanceAfter,
+                        walletTransactionId = walletTransaction.WalletTransactionId
+                    },
+                    CancellationToken.None);
+            }
+
+            _logger.LogInformation(
+                "WLT webhook processed: key='{Key}', walletTxnId={WalletTxnId}, amount={Amount}",
+                idempotencyKey,
+                walletTransaction?.WalletTransactionId,
+                topUpAttempt.Amount);
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            await _uow.RollbackTransactionAsync(ct);
+
+            var existingWalletTxn = await _db.WalletTransactions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(wt => wt.IdempotencyKey == idempotencyKey, ct);
+            if (existingWalletTxn != null)
+            {
+                topUpAttempt.Status = "PAID";
+                topUpAttempt.WalletTransactionId = existingWalletTxn.WalletTransactionId;
+                topUpAttempt.CompletedAt = _timeProvider.UtcNow;
+                await _redisService.SetAsync(cacheKey, JsonSerializer.Serialize(topUpAttempt), TimeSpan.FromHours(24));
+                _logger.LogInformation("WLT webhook: duplicate callback handled for key '{Key}'", idempotencyKey);
+                return true;
+            }
+
+            throw;
+        }
+        catch
+        {
+            await _uow.RollbackTransactionAsync(ct);
+            throw;
+        }
+
+        return true;
+    }
+
+    private async Task<bool> TryBackfillWalletTopUpGatewayTransactionAsync(
+        string idempotencyKey,
+        SePayWebhookPayload payload,
+        CancellationToken ct)
+    {
+        var walletTransaction = await _db.WalletTransactions
+            .FirstOrDefaultAsync(wt => wt.IdempotencyKey == idempotencyKey, ct);
+        if (walletTransaction == null)
+        {
+            return false;
+        }
+
+        var now = _timeProvider.UtcNow;
+        var rawCallback = JsonSerializer.Serialize(payload);
+        var webhookTxnNo = ResolveWebhookTransactionNo(payload);
+
+        await _uow.BeginTransactionAsync(ct);
+        try
+        {
+            var gatewayTxn = await _uow.Orders.GetPaymentTransactionByRequestIdAsync(idempotencyKey, ct);
+            if (gatewayTxn == null)
+            {
+                var fallbackAttempt = new WalletTopUpAttemptCache
+                {
+                    AttemptCode = idempotencyKey,
+                    AccountId = walletTransaction.AccountId,
+                    WalletId = walletTransaction.WalletId,
+                    Amount = walletTransaction.Amount,
+                    Status = "PAID",
+                    WalletTransactionId = walletTransaction.WalletTransactionId,
+                    CreatedAt = walletTransaction.CreatedAt,
+                    CompletedAt = walletTransaction.CompletedAt
+                };
+
+                var topUpOrder = await GetOrCreateWalletTopUpShadowOrderAsync(fallbackAttempt, idempotencyKey, now, ct);
+                gatewayTxn = new PaymentGatewayTransaction
+                {
+                    OrderId = topUpOrder.OrderId,
+                    Provider = "SE_PAY",
+                    RequestId = idempotencyKey,
+                    Amount = walletTransaction.Amount,
+                    Status = "Pending",
+                    RetryCount = 0,
+                    CreatedAt = now
+                };
+                await _db.PaymentGatewayTransactions.AddAsync(gatewayTxn, ct);
+            }
+
+            gatewayTxn.TransactionNo = gatewayTxn.TransactionNo ?? webhookTxnNo;
+            gatewayTxn.ResponseCode = "00";
+            gatewayTxn.ResponseMessage = "Transaction Success";
+            gatewayTxn.Status = "Paid";
+            gatewayTxn.RawCallback = rawCallback;
+            gatewayTxn.UpdatedAt = now;
+
+            await _uow.SaveChangesAsync(ct);
+            await _uow.CommitTransactionAsync(ct);
+
+            _logger.LogInformation("WLT webhook backfill: gateway transaction ensured for key '{Key}'", idempotencyKey);
+            return true;
+        }
+        catch
+        {
+            await _uow.RollbackTransactionAsync(ct);
+            throw;
+        }
+    }
+
+    private async Task<Order> GetOrCreateWalletTopUpShadowOrderAsync(
+        WalletTopUpAttemptCache topUpAttempt,
+        string idempotencyKey,
+        DateTime now,
+        CancellationToken ct)
+    {
+        var orderCode = BuildTopUpShadowOrderCode(idempotencyKey);
+        var existingOrder = await _db.Orders
+            .FirstOrDefaultAsync(o => o.OrderCode == orderCode, ct);
+        if (existingOrder != null)
+        {
+            return existingOrder;
+        }
+
+        var statusMap = await _uow.Orders.GetStatusMapAsync(ct);
+        byte statusId = 1;
+        if (statusMap.TryGetValue("Confirmed", out var confirmedStatusId))
+        {
+            statusId = confirmedStatusId;
+        }
+        else if (statusMap.TryGetValue("Pending", out var pendingStatusId))
+        {
+            statusId = pendingStatusId;
+        }
+
+        var shadowOrder = new Order
+        {
+            AccountId = topUpAttempt.AccountId,
+            StatusId = statusId,
+            OrderCode = orderCode,
+            ShippingName = "Wallet Top-up",
+            ShippingPhone = "0000000000",
+            ShippingAddress = "SePay Wallet Top-up",
+            ShippingWardCode = "TOPUP",
+            ShippingWardName = "TOPUP",
+            ShippingDistrictId = 0,
+            ShippingDistrictName = "TOPUP",
+            ShippingProvinceId = 0,
+            ShippingProvinceName = "TOPUP",
+            PaymentMethod = "SE_PAY",
+            PaymentStatus = "PAID",
+            SubTotal = topUpAttempt.Amount,
+            VoucherDiscountAmount = 0,
+            EstimatedShippingFee = 0,
+            TotalAmount = topUpAttempt.Amount,
+            Note = $"Wallet top-up via SePay ({idempotencyKey})",
+            OrderDate = now,
+            PaidAt = now,
+            ConfirmedAt = now,
+            IsDeleted = true,
+            CreatedAt = now
+        };
+
+        await _db.Orders.AddAsync(shadowOrder, ct);
+        await _uow.SaveChangesAsync(ct);
+        return shadowOrder;
+    }
+
+    private static string BuildTopUpShadowOrderCode(string idempotencyKey)
+    {
+        var normalized = new string((idempotencyKey ?? string.Empty)
+            .Where(char.IsLetterOrDigit)
+            .ToArray())
+            .ToUpperInvariant();
+
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            normalized = "WLTTOPUP";
+        }
+
+        if (!normalized.StartsWith("WLT", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = $"WLT{normalized}";
+        }
+
+        return normalized.Length <= 30
+            ? normalized
+            : normalized[..30];
+    }
+
+    private static string? ResolveWebhookTransactionNo(SePayWebhookPayload payload)
+    {
+        if (!string.IsNullOrWhiteSpace(payload.ReferenceCode))
+        {
+            return payload.ReferenceCode.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(payload.Code))
+        {
+            return payload.Code.Trim();
+        }
+
+        return payload.Id?.ToString();
+    }
+
+    private static bool IsUniqueViolation(DbUpdateException ex)
+        => ex.InnerException?.Message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase) == true
+        || ex.InnerException?.Message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static string BuildTopUpAttemptKey(string attemptCode)
+        => $"{TopUpAttemptPrefix}{attemptCode.ToUpperInvariant()}";
+
+    private sealed class WalletTopUpAttemptCache
+    {
+        public string AttemptCode { get; set; } = string.Empty;
+        public int AccountId { get; set; }
+        public int WalletId { get; set; }
+        public decimal Amount { get; set; }
+        public string Status { get; set; } = "PENDING";
+        public int? WalletTransactionId { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime? CompletedAt { get; set; }
     }
 
 }

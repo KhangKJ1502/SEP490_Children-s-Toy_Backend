@@ -11,19 +11,24 @@ public class CreatePromotionTimeSlotValidator : AbstractValidator<CreatePromotio
         RuleFor(x => x.StartAt)
             .NotEmpty().WithMessage("Start date/time is required.")
             .Must(d => d >= DateTime.UtcNow.AddMinutes(9))
-            .When(x => x.Status == "Scheduled")
+            .When((x, ctx) => x.Status == "Scheduled" && !ctx.RootContextData.ContainsKey("IsUpdate"))
             .WithMessage("Start time must be at least 10 minutes from now.");
 
-        // EndAt — phải sau StartAt ít nhất 5 phút
+        // EndAt — luôn phải sau StartAt
         RuleFor(x => x.EndAt)
             .NotEmpty().WithMessage("End date/time is required.")
-            .GreaterThan(x => x.StartAt.AddMinutes(5))
-            .WithMessage("End time must be at least 5 minutes after start time.");
+            .GreaterThan(x => x.StartAt).WithMessage("End time must be after start time.");
+
+        // Đối với slot mới (Scheduled), EndAt phải sau StartAt ít nhất 10 phút
+        RuleFor(x => x.EndAt)
+            .GreaterThan(x => x.StartAt.AddMinutes(9))
+            .When(x => x.Status == "Scheduled")
+            .WithMessage("End time must be at least 10 minutes after start time.");
 
         RuleFor(x => x.Status)
             .NotEmpty().WithMessage("Status is required.")
-            .Must(s => s == "Active" || s == "Scheduled")
-            .WithMessage("Status must be either 'Active' or 'Scheduled'.");
+            .Must(s => s == "Active" || s == "Scheduled" || s == "Expired")
+            .WithMessage("Status must be 'Active', 'Scheduled', or 'Expired'.");
 
         // Validate từng sản phẩm trong slot
         RuleForEach(x => x.PromotionProductSlots)

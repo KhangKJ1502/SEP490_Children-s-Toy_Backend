@@ -13,4 +13,6 @@ public class VerifyWalletPinResponseDto
     public DateTime? LockedUntil { get; set; }
 
     public string WalletStatus { get; set; } = null!;
+
+    public string? TopUpToken { get; set; }
 }

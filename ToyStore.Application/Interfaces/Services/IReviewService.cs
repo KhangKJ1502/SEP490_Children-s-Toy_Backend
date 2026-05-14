@@ -20,7 +20,11 @@ public interface IReviewService
     Task<Result<ReviewProductDto>> UpdateReviewAsync(
         int reviewId, UpdateReviewProductDto dto, CancellationToken cancellationToken = default);
 
+    Task<Result<PaginatedResponse<UnreviewedProductDto>>> GetUnreviewedProductsAsync(
+        int pageNumber, int pageSize, CancellationToken cancellationToken = default);
 
+    Task<Result<PaginatedResponse<MyReviewDto>>> GetMyReviewsAsync(
+        MyReviewQueryDto query, CancellationToken cancellationToken = default);
 
     // --- Admin / Staff ---
     Task<Result<PaginatedResponse<AdminReviewListDto>>> GetAdminListAsync(

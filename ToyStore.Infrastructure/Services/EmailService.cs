@@ -20,14 +20,14 @@ public class EmailService : IEmailService
 
     public async Task SendRegisterOtpEmailAsync(string toEmail, string otpCode, CancellationToken cancellationToken = default)
     {
-        var subject = "Xác nhận đăng ký tài khoản - ToyStore";
+      var subject = "Account Registration Verification - ToyStore";
         var htmlBody = BuildRegisterOtpEmailHtml(toEmail, otpCode);
         await SendEmailAsync(toEmail, subject, htmlBody, cancellationToken);
     }
 
     public async Task SendForgotPasswordOtpEmailAsync(string toEmail, string otpCode, CancellationToken cancellationToken = default)
     {
-        var subject = "Đặt lại mật khẩu - ToyStore";
+      var subject = "Password Reset - ToyStore";
         var htmlBody = BuildForgotPasswordOtpEmailHtml(toEmail, otpCode);
         await SendEmailAsync(toEmail, subject, htmlBody, cancellationToken);
     }
@@ -76,11 +76,11 @@ public class EmailService : IEmailService
     {
         return $@"
 <!DOCTYPE html>
-<html lang=""vi"">
+<html lang=""en"">
 <head>
   <meta charset=""UTF-8"" />
   <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"" />
-  <title>Xác nhận đăng ký - ToyStore</title>
+  <title>Account Registration - ToyStore</title>
 </head>
 <body style=""margin:0;padding:0;background-color:#f4f4f5;font-family:'Segoe UI',Arial,sans-serif;"">
   <table width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""background-color:#f4f4f5;padding:40px 0;"">
@@ -93,32 +93,32 @@ public class EmailService : IEmailService
             <td style=""background:linear-gradient(135deg,#ff6a00 0%,#ff9500 100%);padding:40px 40px 36px;text-align:center;"">
               <div style=""display:inline-block;background:rgba(255,255,255,0.15);border-radius:50%;width:64px;height:64px;line-height:64px;margin-bottom:16px;font-size:32px;"">🧸</div>
               <h1 style=""margin:0;color:#ffffff;font-size:26px;font-weight:700;letter-spacing:-0.5px;"">ToyStore</h1>
-              <p style=""margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:13px;"">Đồ Chơi Trẻ Em Chất Lượng Cao</p>
+              <p style=""margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:13px;"">Premium Kids Toys</p>
             </td>
           </tr>
 
           <!-- Body -->
           <tr>
             <td style=""padding:40px 40px 32px;"">
-              <h2 style=""margin:0 0 12px;color:#1a1a2e;font-size:20px;font-weight:600;"">Xác nhận đăng ký tài khoản</h2>
+              <h2 style=""margin:0 0 12px;color:#1a1a2e;font-size:20px;font-weight:600;"">Verify your registration</h2>
               <p style=""margin:0 0 24px;color:#555b6e;font-size:15px;line-height:1.6;"">
-                Cảm ơn bạn đã đăng ký tài khoản tại <strong>ToyStore</strong>. Để hoàn tất đăng ký, vui lòng nhập mã OTP bên dưới:
+                Thanks for creating a <strong>ToyStore</strong> account. To complete your registration, please enter the OTP below:
               </p>
 
               <!-- OTP Box -->
               <div style=""background:linear-gradient(135deg,#fff7f0 0%,#fff3e8 100%);border:2px solid #ff6a00;border-radius:12px;padding:28px;text-align:center;margin:24px 0;"">
-                <p style=""margin:0 0 8px;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:2px;font-weight:600;"">Mã xác nhận OTP</p>
+                <p style=""margin:0 0 8px;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:2px;font-weight:600;"">Verification OTP</p>
                 <div style=""font-size:42px;font-weight:800;letter-spacing:10px;color:#ff6a00;font-family:'Courier New',monospace;line-height:1.2;"">{otpCode}</div>
-                <p style=""margin:12px 0 0;color:#888;font-size:12px;"">⏱ Mã có hiệu lực trong <strong>5 phút</strong></p>
+                <p style=""margin:12px 0 0;color:#888;font-size:12px;"">⏱ This code is valid for <strong>5 minutes</strong></p>
               </div>
 
               <p style=""margin:0 0 16px;color:#555b6e;font-size:14px;line-height:1.6;"">
-                Nếu bạn không yêu cầu đăng ký, vui lòng bỏ qua email này. Tài khoản sẽ không được tạo nếu mã OTP không được xác nhận.
+                If you did not request this, please ignore this email. Your account will not be created unless the OTP is confirmed.
               </p>
 
               <div style=""background:#f8f9fa;border-left:4px solid #ff6a00;border-radius:4px;padding:16px;margin-top:24px;"">
                 <p style=""margin:0;color:#666;font-size:13px;"">
-                  🔒 <strong>Lưu ý bảo mật:</strong> Không chia sẻ mã OTP này với bất kỳ ai, kể cả nhân viên ToyStore.
+                  🔒 <strong>Security note:</strong> Do not share this OTP with anyone, including ToyStore staff.
                 </p>
               </div>
             </td>
@@ -128,10 +128,10 @@ public class EmailService : IEmailService
           <tr>
             <td style=""background:#f8f9fa;padding:24px 40px;border-top:1px solid #e9ecef;"">
               <p style=""margin:0 0 8px;color:#aaa;font-size:12px;text-align:center;"">
-                Email này được gửi đến <strong>{toEmail}</strong>
+                This email was sent to <strong>{toEmail}</strong>
               </p>
               <p style=""margin:0;color:#aaa;font-size:12px;text-align:center;"">
-                © 2024 ToyStore - Đồ Chơi Trẻ Em. Mọi quyền được bảo lưu.
+                © 2024 ToyStore - Kids Toys. All rights reserved.
               </p>
             </td>
           </tr>
@@ -148,11 +148,11 @@ public class EmailService : IEmailService
     {
         return $@"
 <!DOCTYPE html>
-<html lang=""vi"">
+<html lang=""en"">
 <head>
   <meta charset=""UTF-8"" />
   <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"" />
-  <title>Đặt lại mật khẩu - ToyStore</title>
+  <title>Password Reset - ToyStore</title>
 </head>
 <body style=""margin:0;padding:0;background-color:#f4f4f5;font-family:'Segoe UI',Arial,sans-serif;"">
   <table width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""background-color:#f4f4f5;padding:40px 0;"">
@@ -165,32 +165,32 @@ public class EmailService : IEmailService
             <td style=""background:linear-gradient(135deg,#ff6a00 0%,#ff9500 100%);padding:40px 40px 36px;text-align:center;"">
               <div style=""display:inline-block;background:rgba(255,255,255,0.15);border-radius:50%;width:64px;height:64px;line-height:64px;margin-bottom:16px;font-size:32px;"">🔐</div>
               <h1 style=""margin:0;color:#ffffff;font-size:26px;font-weight:700;letter-spacing:-0.5px;"">ToyStore</h1>
-              <p style=""margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:13px;"">Đồ Chơi Trẻ Em Chất Lượng Cao</p>
+              <p style=""margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:13px;"">Premium Kids Toys</p>
             </td>
           </tr>
 
           <!-- Body -->
           <tr>
             <td style=""padding:40px 40px 32px;"">
-              <h2 style=""margin:0 0 12px;color:#1a1a2e;font-size:20px;font-weight:600;"">Yêu cầu đặt lại mật khẩu</h2>
+              <h2 style=""margin:0 0 12px;color:#1a1a2e;font-size:20px;font-weight:600;"">Password reset request</h2>
               <p style=""margin:0 0 24px;color:#555b6e;font-size:15px;line-height:1.6;"">
-                Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản liên kết với email này. Vui lòng sử dụng mã OTP bên dưới để tiếp tục:
+                We received a request to reset the password for the account linked to this email. Please use the OTP below to continue:
               </p>
 
               <!-- OTP Box -->
               <div style=""background:linear-gradient(135deg,#fff7f0 0%,#fff3e8 100%);border:2px solid #ff6a00;border-radius:12px;padding:28px;text-align:center;margin:24px 0;"">
-                <p style=""margin:0 0 8px;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:2px;font-weight:600;"">Mã OTP đặt lại mật khẩu</p>
+                <p style=""margin:0 0 8px;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:2px;font-weight:600;"">Password reset OTP</p>
                 <div style=""font-size:42px;font-weight:800;letter-spacing:10px;color:#ff6a00;font-family:'Courier New',monospace;line-height:1.2;"">{otpCode}</div>
-                <p style=""margin:12px 0 0;color:#888;font-size:12px;"">⏱ Mã có hiệu lực trong <strong>5 phút</strong></p>
+                <p style=""margin:12px 0 0;color:#888;font-size:12px;"">⏱ This code is valid for <strong>5 minutes</strong></p>
               </div>
 
               <p style=""margin:0 0 16px;color:#555b6e;font-size:14px;line-height:1.6;"">
-                Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này. Mật khẩu của bạn sẽ không thay đổi.
+                If you did not request a password reset, please ignore this email. Your password will not be changed.
               </p>
 
               <div style=""background:#fff3f3;border-left:4px solid #ff4444;border-radius:4px;padding:16px;margin-top:24px;"">
                 <p style=""margin:0;color:#cc0000;font-size:13px;"">
-                  ⚠️ <strong>Cảnh báo:</strong> Nếu bạn không thực hiện yêu cầu này, tài khoản của bạn có thể đang bị xâm phạm. Hãy liên hệ hỗ trợ ngay lập tức.
+                  ⚠️ <strong>Warning:</strong> If you did not initiate this request, your account may be compromised. Please contact support immediately.
                 </p>
               </div>
             </td>
@@ -200,10 +200,10 @@ public class EmailService : IEmailService
           <tr>
             <td style=""background:#f8f9fa;padding:24px 40px;border-top:1px solid #e9ecef;"">
               <p style=""margin:0 0 8px;color:#aaa;font-size:12px;text-align:center;"">
-                Email này được gửi đến <strong>{toEmail}</strong>
+                This email was sent to <strong>{toEmail}</strong>
               </p>
               <p style=""margin:0;color:#aaa;font-size:12px;text-align:center;"">
-                © 2024 ToyStore - Đồ Chơi Trẻ Em. Mọi quyền được bảo lưu.
+                © 2024 ToyStore - Kids Toys. All rights reserved.
               </p>
             </td>
           </tr>

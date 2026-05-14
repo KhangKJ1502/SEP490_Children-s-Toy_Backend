@@ -24,6 +24,8 @@ public class BlogService : IBlogService
     private const string PublishedStatus = "Published";
     private const string RejectedStatus = "Rejected";
     private const string HiddenStatus = "Hidden";
+    private const string ApprovePublishNowDecision = "ApprovePublishNow";
+    private const string ApproveKeepScheduleDecision = "ApproveKeepSchedule";
 
     private static readonly HashSet<string> AllowedSubmitStatus = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -194,7 +196,9 @@ public class BlogService : IBlogService
             return Result<BlogDetailDto>.NotFound("Blog", blogPostId);
         }
 
-        if (blog.AccountId != _currentUserService.AccountId)
+        var roleName = _currentUserService.RoleName;
+        var isAdmin = string.Equals(roleName, "Admin", StringComparison.OrdinalIgnoreCase);
+        if (!isAdmin && blog.AccountId != _currentUserService.AccountId)
         {
             return Result<BlogDetailDto>.Unauthorized("You are not allowed to edit this blog.");
         }
@@ -315,10 +319,21 @@ public class BlogService : IBlogService
         }
 
         var decision = dto.Decision?.Trim() ?? string.Empty;
-        if (string.Equals(decision, "Approved", StringComparison.OrdinalIgnoreCase))
+        var isApprovePublishNow = string.Equals(decision, ApprovePublishNowDecision, StringComparison.OrdinalIgnoreCase);
+        var isApproveKeepSchedule = string.Equals(decision, ApproveKeepScheduleDecision, StringComparison.OrdinalIgnoreCase);
+        var isApprovedLegacy = string.Equals(decision, "Approved", StringComparison.OrdinalIgnoreCase);
+        var isRejected = string.Equals(decision, "Rejected", StringComparison.OrdinalIgnoreCase);
+
+        if (isApprovePublishNow || isApproveKeepSchedule || isApprovedLegacy)
         {
             blog.Reason = null;
-            if (blog.BlogAt.HasValue && blog.BlogAt.Value > _timeProvider.UtcNow)
+            if (isApprovePublishNow || (isApprovedLegacy && dto.PublishNow == true))
+            {
+                blog.Status = PublishedStatus;
+                blog.BlogAt = _timeProvider.UtcNow;
+                _logger.LogInformation("Blog {BlogId} approved and published immediately by account {AccountId}.", blogPostId, _currentUserService.AccountId);
+            }
+            else if (blog.BlogAt.HasValue && blog.BlogAt.Value > _timeProvider.UtcNow)
             {
                 blog.Status = ScheduledStatus;
             }
@@ -329,7 +344,7 @@ public class BlogService : IBlogService
                 _logger.LogInformation("Blog {BlogId} approved and published immediately (BlogAt <= now).", blogPostId);
             }
         }
-        else if (string.Equals(decision, "Rejected", StringComparison.OrdinalIgnoreCase))
+        else if (isRejected)
         {
             if (string.IsNullOrWhiteSpace(dto.Reason))
             {
@@ -340,7 +355,7 @@ public class BlogService : IBlogService
         }
         else
         {
-            return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "Decision must be Approved or Rejected.");
+            return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "Decision must be ApprovePublishNow, ApproveKeepSchedule, Approved, or Rejected.");
         }
 
         blog.ApprovedBy = _currentUserService.AccountId;
