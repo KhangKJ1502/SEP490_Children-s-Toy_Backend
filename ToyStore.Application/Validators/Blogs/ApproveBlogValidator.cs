@@ -9,7 +9,7 @@ public class ApproveBlogValidator : AbstractValidator<ApproveBlogDto>
     {
         RuleFor(x => x.Decision)
             .NotEmpty().WithMessage("Decision is required.")
-            .Must(IsValidDecision).WithMessage("Decision must be Approved or Rejected.");
+            .Must(IsValidDecision).WithMessage("Decision must be ApprovePublishNow, ApproveKeepSchedule, Approved, or Rejected.");
 
         RuleFor(x => x.Reason)
             .NotEmpty().WithMessage("Reason is required when rejecting a blog.")
@@ -25,7 +25,9 @@ public class ApproveBlogValidator : AbstractValidator<ApproveBlogDto>
         }
 
         var normalized = decision.Trim();
-        return string.Equals(normalized, "Approved", StringComparison.OrdinalIgnoreCase)
+        return string.Equals(normalized, "ApprovePublishNow", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "ApproveKeepSchedule", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "Approved", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalized, "Rejected", StringComparison.OrdinalIgnoreCase);
     }
 }
