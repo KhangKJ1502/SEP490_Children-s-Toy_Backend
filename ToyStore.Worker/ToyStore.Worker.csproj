@@ -8,7 +8,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Global using: Result<T> nằm ở ToyStore.Application.Common.Models -->
     <Using Include="ToyStore.Application.Common.Models" />
   </ItemGroup>
 
