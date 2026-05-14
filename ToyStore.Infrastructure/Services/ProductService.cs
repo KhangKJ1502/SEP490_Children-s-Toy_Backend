@@ -1,6 +1,13 @@
 using AutoMapper;
+using ClosedXML.Excel;
 using FluentValidation;
 using Microsoft.Extensions.Logging;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
+using System.Globalization;
+using System.Text;
+using ToyStore.Application.Common.Helpers;
 using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Products;
@@ -505,6 +512,72 @@ public class ProductService : IProductService
         return Result<ProductLookupsDto>.Success(result);
     }
 
+    public async Task<Result<InventoryReportFileDto>> ExportInventoryReportAsync(
+        InventoryReportRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request == null)
+        {
+            return Result<InventoryReportFileDto>.Failure("VALIDATION_ERROR", "Report request is required.");
+        }
+
+        var format = (request.Format ?? "pdf").Trim().ToLowerInvariant();
+        if (format is not ("pdf" or "xlsx" or "csv"))
+        {
+            return Result<InventoryReportFileDto>.Failure("VALIDATION_ERROR", "Report format is invalid.");
+        }
+
+        if (request.DateFrom.HasValue && request.DateTo.HasValue && request.DateFrom.Value > request.DateTo.Value)
+        {
+            return Result<InventoryReportFileDto>.Failure("VALIDATION_ERROR", "Date range is invalid.");
+        }
+
+        var dateField = request.DateField?.Trim().ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(dateField) && dateField is not ("createdat" or "updatedat"))
+        {
+            return Result<InventoryReportFileDto>.Failure("VALIDATION_ERROR", "Date field is invalid.");
+        }
+
+        var dateFrom = request.DateFrom;
+        var dateTo = request.DateTo;
+        if (dateTo.HasValue && dateTo.Value.TimeOfDay == TimeSpan.Zero)
+        {
+            dateTo = dateTo.Value.Date.AddDays(1).AddTicks(-1);
+        }
+
+        var products = await _unitOfWork.Products.GetInventoryReportAsync(
+            sortBy: request.SortBy,
+            sortDesc: request.SortDesc,
+            searchTerm: request.SearchTerm,
+            categoryId: request.CategoryId,
+            brandId: request.BrandId,
+            priceRangeId: request.PriceRangeId,
+            materialId: request.MaterialId,
+            ageId: request.AgeId,
+            originId: request.OriginId,
+            status: request.Status,
+            lowStockOnly: request.LowStockOnly,
+            dateFrom: dateFrom,
+            dateTo: dateTo,
+            dateField: dateField,
+            cancellationToken: cancellationToken);
+
+        var items = _mapper.Map<List<InventoryReportItemDto>>(products);
+        var summary = BuildInventorySummary(items);
+        var generatedAt = _timeProvider.VnNow;
+        var filterDescriptions = BuildFilterDescriptions(request, dateFrom, dateTo);
+
+        var file = format switch
+        {
+            "pdf" => BuildPdfReport(items, summary, generatedAt, filterDescriptions),
+            "xlsx" => BuildXlsxReport(items, summary, generatedAt, filterDescriptions),
+            "csv" => BuildCsvReport(items),
+            _ => new InventoryReportFileDto()
+        };
+
+        return Result<InventoryReportFileDto>.Success(file);
+    }
+
     private static bool HasAnyUpdate(UpdateProductDto dto)
     {
         return dto.CategoryId.HasValue
@@ -524,6 +597,471 @@ public class ProductService : IProductService
                || dto.OriginId.HasValue
                || !string.IsNullOrWhiteSpace(dto.MainImageUrl)
                || dto.AdditionalImageUrls != null;
+    }
+
+    private static InventoryReportSummaryDto BuildInventorySummary(IReadOnlyCollection<InventoryReportItemDto> items)
+    {
+        return new InventoryReportSummaryDto
+        {
+            TotalProducts = items.Count,
+            TotalQuantity = items.Sum(x => x.Quantity),
+            TotalInventoryValue = items.Sum(x => x.InventoryValue),
+            LowStockCount = items.Count(x => x.LowStock),
+            OutOfStockCount = items.Count(x => x.Quantity == 0)
+        };
+    }
+
+    private static List<string> BuildFilterDescriptions(
+        InventoryReportRequestDto request,
+        DateTime? dateFrom,
+        DateTime? dateTo)
+    {
+        var filters = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(request.SearchTerm))
+        {
+            filters.Add($"Search: {request.SearchTerm}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Status))
+        {
+            filters.Add($"Status: {request.Status}");
+        }
+
+        if (request.CategoryId.HasValue)
+        {
+            filters.Add($"Category ID: {request.CategoryId}");
+        }
+
+        if (request.BrandId.HasValue)
+        {
+            filters.Add($"Brand ID: {request.BrandId}");
+        }
+
+        if (request.PriceRangeId.HasValue)
+        {
+            filters.Add($"Price range ID: {request.PriceRangeId}");
+        }
+
+        if (request.MaterialId.HasValue)
+        {
+            filters.Add($"Material ID: {request.MaterialId}");
+        }
+
+        if (request.AgeId.HasValue)
+        {
+            filters.Add($"Age ID: {request.AgeId}");
+        }
+
+        if (request.OriginId.HasValue)
+        {
+            filters.Add($"Origin ID: {request.OriginId}");
+        }
+
+        if (request.LowStockOnly)
+        {
+            filters.Add("Low stock only");
+        }
+
+        if (dateFrom.HasValue || dateTo.HasValue)
+        {
+            var field = string.Equals(request.DateField, "updatedat", StringComparison.OrdinalIgnoreCase)
+                ? "Updated"
+                : "Created";
+            var fromText = dateFrom.HasValue ? dateFrom.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "Any";
+            var toText = dateTo.HasValue ? dateTo.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "Any";
+            filters.Add($"{field} date: {fromText} - {toText}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.SortBy))
+        {
+            var direction = request.SortDesc ? "DESC" : "ASC";
+            filters.Add($"Sort: {request.SortBy} {direction}");
+        }
+
+        return filters;
+    }
+
+    private static InventoryReportFileDto BuildCsvReport(IReadOnlyCollection<InventoryReportItemDto> items)
+    {
+        var builder = new StringBuilder();
+        var headers = new[]
+        {
+            "ProductId",
+            "ProductName",
+            "Category",
+            "Brand",
+            "ProductStatus",
+            "Status",
+            "Price",
+            "DiscountedPrice",
+            "DiscountPercent",
+            "PromotionType",
+            "Quantity",
+            "StockThreshold",
+            "LowStock",
+            "InventoryValue",
+            "SoldQuantity",
+            "ReviewCount",
+            "AverageRating",
+            "CreatedAt",
+            "UpdatedAt"
+        };
+
+        builder.AppendLine(string.Join(",", headers));
+
+        foreach (var item in items)
+        {
+            var row = new[]
+            {
+                item.ProductId.ToString(CultureInfo.InvariantCulture),
+                EscapeCsv(item.ProductName),
+                EscapeCsv(item.CategoryName),
+                EscapeCsv(item.BrandName),
+                EscapeCsv(item.ProductStatus),
+                EscapeCsv(item.Status),
+                item.Price.ToString(CultureInfo.InvariantCulture),
+                item.DiscountedPrice?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+                item.DiscountPercent?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+                EscapeCsv(item.PromotionType),
+                item.Quantity.ToString(CultureInfo.InvariantCulture),
+                item.StockThreshold.ToString(CultureInfo.InvariantCulture),
+                item.LowStock ? "Yes" : "No",
+                item.InventoryValue.ToString(CultureInfo.InvariantCulture),
+                item.SoldQuantity.ToString(CultureInfo.InvariantCulture),
+                item.ReviewCount.ToString(CultureInfo.InvariantCulture),
+                item.AverageRating?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+                item.CreatedAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
+                item.UpdatedAt?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? string.Empty
+            };
+
+            builder.AppendLine(string.Join(",", row));
+        }
+
+        return new InventoryReportFileDto
+        {
+            Content = Encoding.UTF8.GetBytes(builder.ToString()),
+            ContentType = "text/csv",
+            FileName = "inventory-report.csv"
+        };
+    }
+
+    private static InventoryReportFileDto BuildXlsxReport(
+        IReadOnlyCollection<InventoryReportItemDto> items,
+        InventoryReportSummaryDto summary,
+        DateTime generatedAt,
+        IReadOnlyCollection<string> filters)
+    {
+        using var workbook = new XLWorkbook();
+        var summarySheet = workbook.AddWorksheet("Summary");
+        summarySheet.Cell("A1").Value = "Inventory Report";
+        summarySheet.Cell("A1").Style.Font.Bold = true;
+        summarySheet.Cell("A2").Value = "Generated at";
+        summarySheet.Cell("B2").Value = generatedAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+
+        summarySheet.Cell("A4").Value = "Total products";
+        summarySheet.Cell("B4").Value = summary.TotalProducts;
+        summarySheet.Cell("A5").Value = "Total quantity";
+        summarySheet.Cell("B5").Value = summary.TotalQuantity;
+        summarySheet.Cell("A6").Value = "Total inventory value";
+        summarySheet.Cell("B6").Value = summary.TotalInventoryValue;
+        summarySheet.Cell("A7").Value = "Low stock count";
+        summarySheet.Cell("B7").Value = summary.LowStockCount;
+        summarySheet.Cell("A8").Value = "Out of stock count";
+        summarySheet.Cell("B8").Value = summary.OutOfStockCount;
+
+        if (filters.Count > 0)
+        {
+            summarySheet.Cell("A10").Value = "Filters";
+            summarySheet.Cell("A10").Style.Font.Bold = true;
+            var row = 11;
+            foreach (var filter in filters)
+            {
+                summarySheet.Cell(row, 1).Value = filter;
+                row++;
+            }
+        }
+
+        summarySheet.Columns().AdjustToContents();
+
+        var dataSheet = workbook.AddWorksheet("Data");
+        var headers = new[]
+        {
+            "ProductId",
+            "ProductName",
+            "Category",
+            "Brand",
+            "ProductStatus",
+            "Status",
+            "Price",
+            "DiscountedPrice",
+            "DiscountPercent",
+            "PromotionType",
+            "Quantity",
+            "StockThreshold",
+            "LowStock",
+            "InventoryValue",
+            "SoldQuantity",
+            "ReviewCount",
+            "AverageRating",
+            "CreatedAt",
+            "UpdatedAt"
+        };
+
+        for (var i = 0; i < headers.Length; i++)
+        {
+            dataSheet.Cell(1, i + 1).Value = headers[i];
+            dataSheet.Cell(1, i + 1).Style.Font.Bold = true;
+            dataSheet.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#F1F5F9");
+        }
+
+        var rowIndex = 2;
+        foreach (var item in items)
+        {
+            dataSheet.Cell(rowIndex, 1).Value = item.ProductId;
+            dataSheet.Cell(rowIndex, 2).Value = item.ProductName;
+            dataSheet.Cell(rowIndex, 3).Value = item.CategoryName;
+            dataSheet.Cell(rowIndex, 4).Value = item.BrandName ?? string.Empty;
+            dataSheet.Cell(rowIndex, 5).Value = item.ProductStatus;
+            dataSheet.Cell(rowIndex, 6).Value = item.Status;
+            dataSheet.Cell(rowIndex, 7).Value = item.Price;
+            dataSheet.Cell(rowIndex, 8).Value = item.DiscountedPrice;
+            dataSheet.Cell(rowIndex, 9).Value = item.DiscountPercent;
+            dataSheet.Cell(rowIndex, 10).Value = item.PromotionType ?? string.Empty;
+            dataSheet.Cell(rowIndex, 11).Value = item.Quantity;
+            dataSheet.Cell(rowIndex, 12).Value = item.StockThreshold;
+            dataSheet.Cell(rowIndex, 13).Value = item.LowStock ? "Yes" : "No";
+            dataSheet.Cell(rowIndex, 14).Value = item.InventoryValue;
+            dataSheet.Cell(rowIndex, 15).Value = item.SoldQuantity;
+            dataSheet.Cell(rowIndex, 16).Value = item.ReviewCount;
+            dataSheet.Cell(rowIndex, 17).Value = item.AverageRating;
+            dataSheet.Cell(rowIndex, 18).Value = item.CreatedAt;
+            dataSheet.Cell(rowIndex, 19).Value = item.UpdatedAt;
+            rowIndex++;
+        }
+
+        dataSheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+
+        return new InventoryReportFileDto
+        {
+            Content = stream.ToArray(),
+            ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            FileName = "inventory-report.xlsx"
+        };
+    }
+
+    private static InventoryReportFileDto BuildPdfReport(
+        IReadOnlyCollection<InventoryReportItemDto> items,
+        InventoryReportSummaryDto summary,
+        DateTime generatedAt,
+        IReadOnlyCollection<string> filters)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4.Landscape());
+                page.Margin(28);
+                page.PageColor(Colors.White);
+                page.DefaultTextStyle(x => x.FontSize(9));
+
+                page.Header().Element(header => BuildPdfHeader(header, generatedAt));
+                page.Content().Element(content => BuildPdfContent(content, items, summary, filters));
+                page.Footer().AlignRight().Text(text =>
+                {
+                    text.Span("Page ");
+                    text.CurrentPageNumber();
+                    text.Span(" of ");
+                    text.TotalPages();
+                });
+            });
+        });
+
+        return new InventoryReportFileDto
+        {
+            Content = document.GeneratePdf(),
+            ContentType = "application/pdf",
+            FileName = "inventory-report.pdf"
+        };
+    }
+
+    private static void BuildPdfHeader(IContainer container, DateTime generatedAt)
+    {
+        container.Row(row =>
+        {
+            row.RelativeItem().Column(column =>
+            {
+                column.Item().Text("ToyStore").FontSize(18).SemiBold().FontColor("#0F172A");
+                column.Item().Text("Inventory Report").FontSize(12).FontColor("#475569");
+            });
+
+            row.ConstantItem(220).Column(column =>
+            {
+                column.Item().Text("Generated at").FontSize(9).FontColor("#64748B");
+                column.Item().Text(generatedAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture))
+                    .FontSize(10)
+                    .FontColor("#0F172A");
+            });
+        });
+    }
+
+    private static void BuildPdfContent(
+        IContainer container,
+        IReadOnlyCollection<InventoryReportItemDto> items,
+        InventoryReportSummaryDto summary,
+        IReadOnlyCollection<string> filters)
+    {
+        container.Column(column =>
+        {
+            column.Spacing(12);
+
+            column.Item().Element(summaryContainer => BuildPdfSummary(summaryContainer, summary));
+
+            if (filters.Count > 0)
+            {
+                column.Item().Element(filterContainer => BuildPdfFilters(filterContainer, filters));
+            }
+
+            column.Item().Element(tableContainer => BuildPdfTable(tableContainer, items));
+        });
+    }
+
+    private static void BuildPdfSummary(IContainer container, InventoryReportSummaryDto summary)
+    {
+        container.Row(row =>
+        {
+            row.Spacing(10);
+            BuildPdfSummaryCard(row.RelativeItem(), "Total products", summary.TotalProducts.ToString(CultureInfo.InvariantCulture));
+            BuildPdfSummaryCard(row.RelativeItem(), "Total quantity", summary.TotalQuantity.ToString(CultureInfo.InvariantCulture));
+            BuildPdfSummaryCard(row.RelativeItem(), "Inventory value", MoneyHelper.FormatVND(summary.TotalInventoryValue));
+            BuildPdfSummaryCard(row.RelativeItem(), "Low stock", summary.LowStockCount.ToString(CultureInfo.InvariantCulture));
+            BuildPdfSummaryCard(row.RelativeItem(), "Out of stock", summary.OutOfStockCount.ToString(CultureInfo.InvariantCulture));
+        });
+    }
+
+    private static void BuildPdfSummaryCard(IContainer container, string label, string value)
+    {
+        container.Border(1).BorderColor(Colors.Grey.Lighten3).Padding(8).Column(column =>
+        {
+            column.Item().Text(label).FontSize(9).FontColor("#64748B");
+            column.Item().Text(value).FontSize(12).SemiBold().FontColor("#0F172A");
+        });
+    }
+
+    private static void BuildPdfFilters(IContainer container, IReadOnlyCollection<string> filters)
+    {
+        container.Border(1).BorderColor(Colors.Grey.Lighten3).Padding(8).Column(column =>
+        {
+            column.Item().Text("Filters").FontSize(10).SemiBold().FontColor("#0F172A");
+            foreach (var filter in filters)
+            {
+                column.Item().Text(filter).FontSize(9).FontColor("#475569");
+            }
+        });
+    }
+
+    private static void BuildPdfTable(IContainer container, IReadOnlyCollection<InventoryReportItemDto> items)
+    {
+        container.Table(table =>
+        {
+            table.ColumnsDefinition(columns =>
+            {
+                columns.ConstantColumn(36);
+                columns.RelativeColumn(2);
+                columns.RelativeColumn(1.4f);
+                columns.RelativeColumn(1.2f);
+                columns.RelativeColumn(1.1f);
+                columns.RelativeColumn(1.2f);
+                columns.RelativeColumn(1.2f);
+                columns.RelativeColumn(1.1f);
+                columns.RelativeColumn(1.1f);
+                columns.RelativeColumn(0.9f);
+                columns.RelativeColumn(1.0f);
+                columns.RelativeColumn(1.0f);
+                columns.RelativeColumn(1.1f);
+                columns.RelativeColumn(1.1f);
+                columns.RelativeColumn(1.2f);
+            });
+
+            table.Header(header =>
+            {
+                header.Cell().Element(PdfHeaderCellStyle).Text("ID");
+                header.Cell().Element(PdfHeaderCellStyle).Text("Product");
+                header.Cell().Element(PdfHeaderCellStyle).Text("Category");
+                header.Cell().Element(PdfHeaderCellStyle).Text("Brand");
+                header.Cell().Element(PdfHeaderCellStyle).Text("Status");
+                header.Cell().Element(PdfHeaderCellStyle).Text("Price");
+                header.Cell().Element(PdfHeaderCellStyle).Text("Sale Price");
+                header.Cell().Element(PdfHeaderCellStyle).Text("Discount");
+                header.Cell().Element(PdfHeaderCellStyle).Text("Promo");
+                header.Cell().Element(PdfHeaderCellStyle).Text("Qty");
+                header.Cell().Element(PdfHeaderCellStyle).Text("Threshold");
+                header.Cell().Element(PdfHeaderCellStyle).Text("Low Stock");
+                header.Cell().Element(PdfHeaderCellStyle).Text("Value");
+                header.Cell().Element(PdfHeaderCellStyle).Text("Sold");
+                header.Cell().Element(PdfHeaderCellStyle).Text("Updated");
+            });
+
+            foreach (var item in items)
+            {
+                table.Cell().Element(PdfBodyCellStyle).Text(item.ProductId.ToString(CultureInfo.InvariantCulture));
+                table.Cell().Element(PdfBodyCellStyle).Text(item.ProductName);
+                table.Cell().Element(PdfBodyCellStyle).Text(item.CategoryName);
+                table.Cell().Element(PdfBodyCellStyle).Text(item.BrandName ?? "-");
+                table.Cell().Element(PdfBodyCellStyle).Text(item.ProductStatus);
+                table.Cell().Element(PdfBodyCellStyle).Text(MoneyHelper.FormatVND(item.Price));
+                table.Cell().Element(PdfBodyCellStyle).Text(item.DiscountedPrice.HasValue
+                    ? MoneyHelper.FormatVND(item.DiscountedPrice.Value)
+                    : "-");
+                table.Cell().Element(PdfBodyCellStyle).Text(item.DiscountPercent.HasValue
+                    ? $"{item.DiscountPercent.Value}%"
+                    : "-");
+                table.Cell().Element(PdfBodyCellStyle).Text(item.PromotionType ?? "-");
+                table.Cell().Element(PdfBodyCellStyle).Text(item.Quantity.ToString(CultureInfo.InvariantCulture));
+                table.Cell().Element(PdfBodyCellStyle).Text(item.StockThreshold.ToString(CultureInfo.InvariantCulture));
+                table.Cell().Element(PdfBodyCellStyle).Text(item.LowStock ? "Yes" : "No");
+                table.Cell().Element(PdfBodyCellStyle).Text(MoneyHelper.FormatVND(item.InventoryValue));
+                table.Cell().Element(PdfBodyCellStyle).Text(item.SoldQuantity.ToString(CultureInfo.InvariantCulture));
+                table.Cell().Element(PdfBodyCellStyle).Text(item.UpdatedAt?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "-");
+            }
+        });
+    }
+
+    private static IContainer PdfHeaderCellStyle(IContainer container)
+    {
+        return container
+            .DefaultTextStyle(x => x.SemiBold().FontColor("#0F172A").FontSize(9))
+            .PaddingVertical(6)
+            .PaddingHorizontal(4)
+            .Background(Colors.Grey.Lighten3)
+            .BorderBottom(1)
+            .BorderColor(Colors.Grey.Lighten2);
+    }
+
+    private static IContainer PdfBodyCellStyle(IContainer container)
+    {
+        return container
+            .PaddingVertical(4)
+            .PaddingHorizontal(4)
+            .BorderBottom(1)
+            .BorderColor(Colors.Grey.Lighten4);
+    }
+
+    private static string EscapeCsv(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        var needsQuotes = value.Contains(',') || value.Contains('"') || value.Contains('\n') || value.Contains('\r');
+        var escaped = value.Replace("\"", "\"\"");
+        return needsQuotes ? $"\"{escaped}\"" : escaped;
     }
 
     private async Task<Dictionary<string, string[]>> ValidateCreateProductReferencesAsync(

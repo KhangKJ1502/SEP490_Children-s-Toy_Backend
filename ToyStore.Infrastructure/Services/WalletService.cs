@@ -1,15 +1,18 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using AutoMapper;
 using BCryptNet = BCrypt.Net.BCrypt;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs.Wallets;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
+using ToyStore.Infrastructure.Options;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -25,19 +28,24 @@ public class WalletService : IWalletService
     private const string ForgotOtpPrefix = "wallet:pin:forgot:";
     private const string ForgotOtpCooldownPrefix = "wallet:pin:forgot:cooldown:";
     private const string ForgotOtpVerifiedPrefix = "wallet:pin:forgot:verified:";
+    private const string TopUpVerifyPrefix = "wallet:topup:verify:";
+    private const string TopUpAttemptPrefix = "wallet:topup:attempt:";
 
     private static readonly TimeSpan PinLockDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan OtpExpiry = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan OtpCooldown = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan TopUpVerifyExpiry = TimeSpan.FromMinutes(10);
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUserService _currentUserService;
     private readonly IRedisService _redisService;
     private readonly IEmailService _emailService;
+    private readonly SePayOptions _sePayOptions;
     private readonly IMapper _mapper;
     private readonly ILogger<WalletService> _logger;
     private readonly IValidator<CreateWalletRequestDto> _createWalletValidator;
     private readonly IValidator<VerifyWalletPinRequestDto> _verifyPinValidator;
+    private readonly IValidator<CreateSePayTopUpQrRequestDto> _createSePayTopUpQrValidator;
     private readonly IValidator<ChangeWalletPinRequestDto> _changePinValidator;
     private readonly IValidator<VerifyForgotWalletPinOtpRequestDto> _verifyOtpValidator;
     private readonly IValidator<ResetForgotWalletPinRequestDto> _resetPinValidator;
@@ -47,10 +55,12 @@ public class WalletService : IWalletService
         ICurrentUserService currentUserService,
         IRedisService redisService,
         IEmailService emailService,
+        IOptions<SePayOptions> sePayOptions,
         IMapper mapper,
         ILogger<WalletService> logger,
         IValidator<CreateWalletRequestDto> createWalletValidator,
         IValidator<VerifyWalletPinRequestDto> verifyPinValidator,
+        IValidator<CreateSePayTopUpQrRequestDto> createSePayTopUpQrValidator,
         IValidator<ChangeWalletPinRequestDto> changePinValidator,
         IValidator<VerifyForgotWalletPinOtpRequestDto> verifyOtpValidator,
         IValidator<ResetForgotWalletPinRequestDto> resetPinValidator)
@@ -59,10 +69,12 @@ public class WalletService : IWalletService
         _currentUserService = currentUserService;
         _redisService = redisService;
         _emailService = emailService;
+        _sePayOptions = sePayOptions.Value;
         _mapper = mapper;
         _logger = logger;
         _createWalletValidator = createWalletValidator;
         _verifyPinValidator = verifyPinValidator;
+        _createSePayTopUpQrValidator = createSePayTopUpQrValidator;
         _changePinValidator = changePinValidator;
         _verifyOtpValidator = verifyOtpValidator;
         _resetPinValidator = resetPinValidator;
@@ -276,6 +288,16 @@ public class WalletService : IWalletService
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
+            string? topUpToken = null;
+            if (string.Equals(actionType, "TOP_UP", StringComparison.OrdinalIgnoreCase))
+            {
+                topUpToken = GenerateTopUpToken();
+                await _redisService.SetAsync(
+                    BuildTopUpVerifyKey(accountId, topUpToken),
+                    wallet.WalletId.ToString(),
+                    TopUpVerifyExpiry);
+            }
+
             return Result<VerifyWalletPinResponseDto>.Success(new VerifyWalletPinResponseDto
             {
                 WalletId = wallet.WalletId,
@@ -283,7 +305,8 @@ public class WalletService : IWalletService
                 IsVerified = true,
                 RemainingAttempts = MaxFailedAttempts,
                 LockedUntil = null,
-                WalletStatus = wallet.Status
+                WalletStatus = wallet.Status,
+                TopUpToken = topUpToken
             });
         }
 
@@ -330,6 +353,128 @@ public class WalletService : IWalletService
         var remainingAttempts = MaxFailedAttempts - activePin.FailedAttempts;
         return Result<VerifyWalletPinResponseDto>.BusinessError(
             $"Incorrect PIN. You have {remainingAttempts} attempt(s) remaining before temporary lock.");
+    }
+
+    public async Task<Result<SePayTopUpQrResponseDto>> CreateSePayTopUpQrAsync(
+        CreateSePayTopUpQrRequestDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var validation = await _createSePayTopUpQrValidator.ValidateAsync(dto, cancellationToken);
+        if (!validation.IsValid)
+        {
+            return validation.ToResult<SePayTopUpQrResponseDto>();
+        }
+
+        var accountId = _currentUserService.AccountId;
+        if (accountId <= 0)
+        {
+            return Result<SePayTopUpQrResponseDto>.Unauthorized("User is not authenticated.");
+        }
+
+        var wallet = await _unitOfWork.Wallets.GetByAccountIdAsync(accountId, cancellationToken);
+        if (wallet == null)
+        {
+            return Result<SePayTopUpQrResponseDto>.NotFound("Wallet");
+        }
+
+        if (IsFrozenOrClosed(wallet.Status) || !IsWalletActive(wallet.Status))
+        {
+            return Result<SePayTopUpQrResponseDto>.BusinessError("Wallet is not available for top-up.");
+        }
+
+        var verifyKey = BuildTopUpVerifyKey(accountId, dto.TopUpToken.Trim());
+        var verifyValue = await _redisService.GetAsync(verifyKey);
+        if (string.IsNullOrWhiteSpace(verifyValue))
+        {
+            return Result<SePayTopUpQrResponseDto>.BusinessError("Top-up PIN verification has expired. Please verify PIN again.");
+        }
+
+        if (!string.Equals(verifyValue, wallet.WalletId.ToString(), StringComparison.Ordinal))
+        {
+            return Result<SePayTopUpQrResponseDto>.Unauthorized("Invalid top-up verification token.");
+        }
+
+        var amount = decimal.Round(dto.Amount, 0, MidpointRounding.AwayFromZero);
+        var attemptCode = BuildTopUpAttemptCode(accountId);
+        var now = DateTime.UtcNow;
+        var expiresAt = now.AddMinutes(Math.Max(1, _sePayOptions.PaymentTtlMinutes));
+
+        var topUpAttempt = new WalletTopUpAttemptCache
+        {
+            AttemptCode = attemptCode,
+            AccountId = accountId,
+            WalletId = wallet.WalletId,
+            Amount = amount,
+            Status = "PENDING",
+            CreatedAt = now,
+            CompletedAt = null,
+            WalletTransactionId = null
+        };
+
+        await _redisService.SetAsync(
+            BuildTopUpAttemptKey(attemptCode),
+            JsonSerializer.Serialize(topUpAttempt),
+            TimeSpan.FromHours(24));
+
+        var qrImageUrl = BuildVietQrUrl(attemptCode, (long)amount);
+
+        return Result<SePayTopUpQrResponseDto>.Success(new SePayTopUpQrResponseDto
+        {
+            AttemptCode = attemptCode,
+            Amount = amount,
+            QrImageUrl = qrImageUrl,
+            ExpiresAt = expiresAt
+        });
+    }
+
+    public async Task<Result<SePayTopUpStatusResponseDto>> GetSePayTopUpStatusAsync(
+        string attemptCode,
+        CancellationToken cancellationToken = default)
+    {
+        var accountId = _currentUserService.AccountId;
+        if (accountId <= 0)
+        {
+            return Result<SePayTopUpStatusResponseDto>.Unauthorized("User is not authenticated.");
+        }
+
+        var normalizedAttemptCode = (attemptCode ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(normalizedAttemptCode)
+            || !normalizedAttemptCode.StartsWith("WLT", StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<SePayTopUpStatusResponseDto>.BusinessError("Invalid top-up attempt code.");
+        }
+
+        var raw = await _redisService.GetAsync(BuildTopUpAttemptKey(normalizedAttemptCode));
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return Result<SePayTopUpStatusResponseDto>.NotFound("Top-up attempt");
+        }
+
+        WalletTopUpAttemptCache? topUpAttempt;
+        try
+        {
+            topUpAttempt = JsonSerializer.Deserialize<WalletTopUpAttemptCache>(raw);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Top-up attempt cache parse failed for code {AttemptCode}", normalizedAttemptCode);
+            return Result<SePayTopUpStatusResponseDto>.Failure("INTERNAL_ERROR", "Top-up status data is invalid.");
+        }
+
+        if (topUpAttempt == null || topUpAttempt.AccountId != accountId)
+        {
+            return Result<SePayTopUpStatusResponseDto>.NotFound("Top-up attempt");
+        }
+
+        return Result<SePayTopUpStatusResponseDto>.Success(new SePayTopUpStatusResponseDto
+        {
+            AttemptCode = topUpAttempt.AttemptCode,
+            Amount = topUpAttempt.Amount,
+            Status = topUpAttempt.Status,
+            WalletTransactionId = topUpAttempt.WalletTransactionId,
+            CreatedAt = topUpAttempt.CreatedAt,
+            CompletedAt = topUpAttempt.CompletedAt
+        });
     }
 
     public async Task<Result> ChangeWalletPinAsync(
@@ -614,8 +759,51 @@ public class WalletService : IWalletService
 
     private static bool VerifyPin(string inputPin, string pinHash) => BCryptNet.Verify(inputPin, pinHash);
 
+    private static string GenerateTopUpToken()
+        => Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+
+    private static string BuildTopUpVerifyKey(int accountId, string topUpToken)
+        => $"{TopUpVerifyPrefix}{accountId}:{topUpToken}";
+
+    private static string BuildTopUpAttemptKey(string attemptCode)
+        => $"{TopUpAttemptPrefix}{attemptCode.ToUpperInvariant()}";
+
+    private static string BuildTopUpAttemptCode(int accountId)
+    {
+        _ = accountId;
+        var bytes = RandomNumberGenerator.GetBytes(6);
+        var uid = Convert.ToHexString(bytes).ToLowerInvariant();
+        return $"WLT{uid}";
+    }
+
+    private string BuildVietQrUrl(string attemptCode, long amount)
+    {
+        var p = new System.Collections.Specialized.NameValueCollection
+        {
+            ["acc"] = _sePayOptions.AccountNumber,
+            ["bank"] = _sePayOptions.BankCode,
+            ["amount"] = amount.ToString(),
+            ["des"] = attemptCode
+        };
+
+        var qs = string.Join("&", p.AllKeys.Select(k => $"{k}={Uri.EscapeDataString(p[k]!)}"));
+        return $"https://qr.sepay.vn/img?{qs}";
+    }
+
     private static string GenerateOtpCode()
     {
         return RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+    }
+
+    private sealed class WalletTopUpAttemptCache
+    {
+        public string AttemptCode { get; set; } = string.Empty;
+        public int AccountId { get; set; }
+        public int WalletId { get; set; }
+        public decimal Amount { get; set; }
+        public string Status { get; set; } = "PENDING";
+        public int? WalletTransactionId { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime? CompletedAt { get; set; }
     }
 }

@@ -20,6 +20,27 @@ public class ProductProfile : Profile
             .ForMember(dest => dest.DiscountPercent, opt => opt.MapFrom(src => GetDiscountPercent(src)))
             .ForMember(dest => dest.PromotionType, opt => opt.MapFrom(src => GetPromotionType(src)));
 
+        CreateMap<Product, InventoryReportItemDto>()
+            .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.CategoryName))
+            .ForMember(dest => dest.BrandName, opt => opt.MapFrom(src => src.Brand != null ? src.Brand.BrandName : null))
+            .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.IsDeleted ? "Inactive" : "Active"))
+            .ForMember(dest => dest.DiscountedPrice, opt => opt.MapFrom(src => GetDiscountedPrice(src)))
+            .ForMember(dest => dest.DiscountPercent, opt => opt.MapFrom(src => GetDiscountPercent(src)))
+            .ForMember(dest => dest.PromotionType, opt => opt.MapFrom(src => GetPromotionType(src)))
+            .ForMember(dest => dest.InventoryValue, opt => opt.MapFrom(src => src.Price * src.Quantity))
+            .ForMember(dest => dest.LowStock, opt => opt.MapFrom(src => src.Quantity <= src.StockThreshold))
+            .ForMember(dest => dest.AverageRating, opt => opt.MapFrom(src =>
+                src.ReviewProducts
+                    .Where(r => !r.IsDeleted && r.ModerationStatus == "Approved")
+                    .Select(r => (double?)r.Rating)
+                    .Average()))
+            .ForMember(dest => dest.ReviewCount, opt => opt.MapFrom(src =>
+                src.ReviewProducts.Count(r => !r.IsDeleted && r.ModerationStatus == "Approved")))
+            .ForMember(dest => dest.SoldQuantity, opt => opt.MapFrom(src =>
+                src.OrderDetails
+                    .Where(od => !od.Order.IsDeleted && od.Order.CancelledAt == null)
+                    .Sum(od => (int?)od.Quantity) ?? 0));
+
         CreateMap<Product, ProductDto>()
             .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.CategoryName))
             .ForMember(dest => dest.BrandName, opt => opt.MapFrom(src => src.Brand != null ? src.Brand.BrandName : null))

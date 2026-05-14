@@ -145,4 +145,18 @@ public class ProductsController : ControllerBase
 
         return result.ToActionResult();
     }
+
+    [HttpPost("inventory-report")]
+    public async Task<ActionResult<InventoryReportFileDto>> ExportInventoryReport(
+        [FromBody] InventoryReportRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _productService.ExportInventoryReportAsync(request, cancellationToken);
+        if (!result.IsSuccess || result.Data == null)
+        {
+            return result.ToActionResult();
+        }
+
+        return File(result.Data.Content, result.Data.ContentType, result.Data.FileName);
+    }
 }

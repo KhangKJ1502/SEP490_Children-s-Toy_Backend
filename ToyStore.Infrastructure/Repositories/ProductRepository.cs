@@ -134,6 +134,8 @@ public class ProductRepository : IProductRepository
         {
             ("name", true) => query.OrderByDescending(x => x.ProductName),
             ("name", false) => query.OrderBy(x => x.ProductName),
+            ("productname", true) => query.OrderByDescending(x => x.ProductName),
+            ("productname", false) => query.OrderBy(x => x.ProductName),
             ("price", true) => query.OrderByDescending(x => x.Price),
             ("price", false) => query.OrderBy(x => x.Price),
             ("quantity", true) => query.OrderByDescending(x => x.Quantity),
@@ -254,6 +256,153 @@ public class ProductRepository : IProductRepository
         }
 
         return query.CountAsync(cancellationToken);
+    }
+
+    public async Task<List<Product>> GetInventoryReportAsync(
+        string? sortBy = null,
+        bool sortDesc = false,
+        string? searchTerm = null,
+        short? categoryId = null,
+        int? brandId = null,
+        byte? priceRangeId = null,
+        short? materialId = null,
+        byte? ageId = null,
+        byte? originId = null,
+        string? status = null,
+        bool lowStockOnly = false,
+        DateTime? dateFrom = null,
+        DateTime? dateTo = null,
+        string? dateField = null,
+        CancellationToken cancellationToken = default)
+    {
+        IQueryable<Product> query = _context.Products
+            .AsNoTrackingWithIdentityResolution()
+            .Include(x => x.Category)
+            .Include(x => x.Brand)
+            .Include(x => x.ProductDetail)
+                .ThenInclude(d => d!.Material)
+            .Include(x => x.ProductDetail)
+                .ThenInclude(d => d!.Age)
+            .Include(x => x.ProductDetail)
+                .ThenInclude(d => d!.Origin)
+            .Include(x => x.ProductPromotions)
+                .ThenInclude(pp => pp.Promotion)
+                    .ThenInclude(p => p.PromotionTimeSlots)
+            .Include(x => x.PromotionProductSlots)
+                .ThenInclude(pps => pps.TimeSlot)
+                    .ThenInclude(ts => ts.Promotion)
+            .Include(x => x.ReviewProducts)
+            .Include(x => x.OrderDetails)
+                .ThenInclude(od => od.Order)
+            .AsQueryable();
+
+        if (categoryId.HasValue)
+        {
+            query = query.Where(x => x.CategoryId == categoryId.Value);
+        }
+
+        if (brandId.HasValue)
+        {
+            query = query.Where(x => x.BrandId.HasValue && x.BrandId.Value == brandId.Value);
+        }
+
+        if (priceRangeId.HasValue)
+        {
+            query = query.Where(x => x.PriceRangeId.HasValue && x.PriceRangeId.Value == priceRangeId.Value);
+        }
+
+        if (materialId.HasValue)
+        {
+            query = query.Where(x => x.ProductDetail != null
+                && x.ProductDetail.MaterialId.HasValue
+                && x.ProductDetail.MaterialId.Value == materialId.Value);
+        }
+
+        if (ageId.HasValue)
+        {
+            query = query.Where(x => x.ProductDetail != null
+                && x.ProductDetail.AgeId.HasValue
+                && x.ProductDetail.AgeId.Value == ageId.Value);
+        }
+
+        if (originId.HasValue)
+        {
+            query = query.Where(x => x.ProductDetail != null
+                && x.ProductDetail.OriginId.HasValue
+                && x.ProductDetail.OriginId.Value == originId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            query = query.Where(x => x.ProductStatus == status);
+        }
+
+        if (lowStockOnly)
+        {
+            query = query.Where(x => x.Quantity <= x.StockThreshold);
+        }
+
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            query = query.Where(x =>
+                x.ProductName.Contains(searchTerm) ||
+                x.Category.CategoryName.Contains(searchTerm) ||
+                (x.Brand != null && x.Brand.BrandName.Contains(searchTerm)));
+        }
+
+        if (dateFrom.HasValue || dateTo.HasValue)
+        {
+            var field = dateField?.Trim().ToLowerInvariant();
+            var from = dateFrom;
+            var to = dateTo;
+
+            if (string.Equals(field, "updatedat", StringComparison.OrdinalIgnoreCase))
+            {
+                if (from.HasValue)
+                {
+                    query = query.Where(x => x.UpdatedAt.HasValue && x.UpdatedAt.Value >= from.Value);
+                }
+
+                if (to.HasValue)
+                {
+                    query = query.Where(x => x.UpdatedAt.HasValue && x.UpdatedAt.Value <= to.Value);
+                }
+            }
+            else
+            {
+                if (from.HasValue)
+                {
+                    query = query.Where(x => x.CreatedAt >= from.Value);
+                }
+
+                if (to.HasValue)
+                {
+                    query = query.Where(x => x.CreatedAt <= to.Value);
+                }
+            }
+        }
+
+        query = (sortBy?.Trim().ToLowerInvariant(), sortDesc) switch
+        {
+            ("name", true) => query.OrderByDescending(x => x.ProductName),
+            ("name", false) => query.OrderBy(x => x.ProductName),
+            ("productname", true) => query.OrderByDescending(x => x.ProductName),
+            ("productname", false) => query.OrderBy(x => x.ProductName),
+            ("price", true) => query.OrderByDescending(x => x.Price),
+            ("price", false) => query.OrderBy(x => x.Price),
+            ("quantity", true) => query.OrderByDescending(x => x.Quantity),
+            ("quantity", false) => query.OrderBy(x => x.Quantity),
+            ("status", true) => query.OrderByDescending(x => x.ProductStatus),
+            ("status", false) => query.OrderBy(x => x.ProductStatus),
+            ("createdat", true) => query.OrderByDescending(x => x.CreatedAt),
+            ("createdat", false) => query.OrderBy(x => x.CreatedAt),
+            ("updatedat", true) => query.OrderByDescending(x => x.UpdatedAt),
+            ("updatedat", false) => query.OrderBy(x => x.UpdatedAt),
+            (_, true) => query.OrderByDescending(x => x.ProductId),
+            _ => query.OrderBy(x => x.ProductId)
+        };
+
+        return await query.ToListAsync(cancellationToken);
     }
 
     public Task<Product?> GetByIdAsync(int productId, CancellationToken cancellationToken = default)

@@ -61,4 +61,11 @@ public interface IProductService
     /// Lay cac lookup data cho Product (SuperCategories, Categories, Brands, PriceRanges, Materials, Ages, Sexes, Origins).
     /// </summary>
     Task<Result<ProductLookupsDto>> GetProductLookupsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Xuat bao cao ton kho san pham.
+    /// </summary>
+    Task<Result<InventoryReportFileDto>> ExportInventoryReportAsync(
+        InventoryReportRequestDto request,
+        CancellationToken cancellationToken = default);
 }
