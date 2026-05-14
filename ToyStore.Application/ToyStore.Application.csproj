@@ -2,9 +2,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ToyStore.Domain\ToyStore.Domain.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="AutoMapper" Version="16.1.1" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
     <PackageReference Include="Google.Apis.Auth" Version="1.68.0" />
