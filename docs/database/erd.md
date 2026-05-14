@@ -1,7 +1,7 @@
 # Entity Relationship Diagram — ToyStore (SEP490)
 
-> **Cập nhật lần cuối:** 2026-05-09
-> **Schema version:** v3.2 — Notification BirthdayNotifiedYear on CustomerChildren
+> **Cập nhật lần cuối:** 2026-05-14
+> **Schema version:** v3.4 — Shift scheduling + auto assignment
 > **SQL script đầy đủ:** [`docs/database/schema.sql`](./schema.sql)
 
 ---
@@ -264,6 +264,59 @@ erDiagram
         datetime2 ChangedAt
         datetime2 CreateAt
         datetime2 UpdatedAt     "nullable"
+    }
+
+    ShiftTemplates {
+        tinyint    ShiftTemplateID PK
+        nvarchar50 ShiftName       UK
+        time       StartTime
+        time       EndTime
+        smallint   MaxOrdersPerShift
+        bit        IsActive
+        datetime2  CreatedAt
+        datetime2  UpdatedAt       "nullable"
+    }
+
+    WorkSchedules {
+        int       ScheduleID     PK
+        int       AccountID      FK
+        tinyint   ShiftTemplateID FK
+        date      WorkDate
+        varchar20 Status         "Scheduled|OnDuty|Completed|Absent|Cancelled"
+        int       CreatedBy      FK
+        datetime2 CreatedAt
+        datetime2 UpdatedAt      "nullable"
+    }
+
+    StaffShiftCapacity {
+        int       CapacityID  PK
+        int       ScheduleID  FK  UK
+        int       AccountID   FK
+        smallint  CurrentLoad
+        smallint  MaxLoad
+        datetime2 UpdatedAt   "nullable"
+    }
+
+    OrderAssignments {
+        int       AssignmentID PK
+        int       OrderID      FK
+        int       ScheduleID   FK
+        int       AccountID    FK
+        tinyint   RoleID       FK  "3=Staff|4=Merchandise"
+        bit       IsActive
+        datetime2 AssignedAt
+        int       AssignedBy   FK  "nullable"
+        nvarchar200 Notes         "nullable"
+    }
+
+    OrderQueue {
+        int       QueueID    PK
+        int       OrderID    FK  UK
+        datetime2 QueuedAt
+        varchar50 Reason
+        int       AssignedBy FK  "nullable"
+        datetime2 ResolvedAt "nullable"
+        bit       IsResolved
     }
 
     %% ════════════════════════════════
@@ -568,6 +621,18 @@ erDiagram
     OrderStatusHistory   }o--||  Orders               : "lịch sử trạng thái"
     OrderStatusHistory   }o--||  StatusOrders         : "trạng thái mới"
     OrderStatusHistory   }o--o|  Accounts             : "thay đổi bởi (ChangedBy)"
+    WorkSchedules         }o--||  Accounts             : "nhân viên (AccountID)"
+    WorkSchedules         }o--||  Accounts             : "tạo bởi (CreatedBy)"
+    WorkSchedules         }o--||  ShiftTemplates       : "mẫu ca"
+    StaffShiftCapacity    ||--||  WorkSchedules        : "1-1 capacity"
+    StaffShiftCapacity    }o--||  Accounts             : "tải của nhân viên"
+    OrderAssignments      }o--||  Orders               : "phân công đơn"
+    OrderAssignments      }o--||  WorkSchedules        : "ca làm việc"
+    OrderAssignments      }o--||  Accounts             : "nhân viên"
+    OrderAssignments      }o--||  Roles                : "vai trò"
+    OrderAssignments      }o--o|  Accounts             : "gán bởi (AssignedBy)"
+    OrderQueue            }o--||  Orders               : "đơn vào hàng chờ"
+    OrderQueue            }o--o|  Accounts             : "xử lý bởi (AssignedBy)"
 
     Cart                 ||--||  Accounts             : "giỏ hàng của user (1-1)"
     CartItems            }o--||  Cart                 : "item trong giỏ"
@@ -621,45 +686,47 @@ erDiagram
 
 ## Tổng quan bảng theo module
 
-| Module | Bảng |
-|---|---|
-| 👤 User Management | `Roles`, `Accounts`, `BlockReasons`, `UserBlockHistory`, `Addresses` |
-| 🧸 Product Catalog | `SuperCategories`, `Categories`, `Brands`, `Materials`, `Ages`, `Sexes`, `Origins`, `PriceRanges`, `Products`, `ProductDetails`, `ProductImages`, `Promotions` |
-| 📦 Order Management | `StatusOrders`, `Orders`, `OrderDetails`, `OrderStatusHistory` |
-| 🛒 Shopping | `Cart`, `CartItems`, `Wishlists` |
-| 🏷️ Vouchers | `VoucherTypes`, `Vouchers`, `OrderVouchers`, `VoucherUsageLogs` |
-| 📝 Blog & Content | `BlogCategories`, `BlogPosts`, `BlogPostCategories`, `Banners` |
-| ⭐ Reviews | `ReviewProducts`, `ReviewProductImages`, `ReviewProductReplies`, `ReviewProductReactions` |
-| 💳 Payment & Wallet | `Wallets`, `WalletTransactions`, `PaymentHistory`, `OrderRefunds` |
-| 🔔 Notification & Chat | `Notification.Templates`, `Notification.Deliveries`, `ChatConversations`, `ChatMessages` |
-| 🤖 AI/System | `Interaction.Events`, `Recommendation.ItemSimilarities`, `System.DomainEventOutbox`, `System.BackgroundJobs` |
+| Module                 | Bảng                                                                                                                                                           |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 👤 User Management     | `Roles`, `Accounts`, `BlockReasons`, `UserBlockHistory`, `Addresses`                                                                                           |
+| 🧸 Product Catalog     | `SuperCategories`, `Categories`, `Brands`, `Materials`, `Ages`, `Sexes`, `Origins`, `PriceRanges`, `Products`, `ProductDetails`, `ProductImages`, `Promotions` |
+| 📦 Order Management    | `StatusOrders`, `Orders`, `OrderDetails`, `OrderStatusHistory`, `OrderAssignments`, `OrderQueue`                                                               |
+| 🕒 Shift Scheduling    | `ShiftTemplates`, `WorkSchedules`, `StaffShiftCapacity`                                                                                                        |
+| 🛒 Shopping            | `Cart`, `CartItems`, `Wishlists`                                                                                                                               |
+| 🏷️ Vouchers            | `VoucherTypes`, `Vouchers`, `OrderVouchers`, `VoucherUsageLogs`                                                                                                |
+| 📝 Blog & Content      | `BlogCategories`, `BlogPosts`, `BlogPostCategories`, `Banners`                                                                                                 |
+| ⭐ Reviews             | `ReviewProducts`, `ReviewProductImages`, `ReviewProductReplies`, `ReviewProductReactions`                                                                      |
+| 💳 Payment & Wallet    | `Wallets`, `WalletTransactions`, `PaymentHistory`, `OrderRefunds`                                                                                              |
+| 🔔 Notification & Chat | `Notification.Templates`, `Notification.Deliveries`, `ChatConversations`, `ChatMessages`                                                                       |
+| 🤖 AI/System           | `Interaction.Events`, `Recommendation.ItemSimilarities`, `System.DomainEventOutbox`, `System.BackgroundJobs`                                                   |
 
 ---
 
 ## Các Trigger quan trọng
 
-| Trigger | Bảng | Tác dụng |
-|---|---|---|
-| `TR_OrderDetails_SyncSubTotal` | `OrderDetails` | Auto-sync `Orders.SubTotal` khi thêm/sửa/xóa item |
-| `TR_OrderVouchers_SyncDiscount` | `OrderVouchers` | Auto-sync `Orders.VoucherDiscountAmount` |
-| `TR_Orders_CalculateTotalAmount` | `Orders` | Auto-calc `TotalAmount = SubTotal - Discount + Shipping` |
-| `TR_Products_SyncStatusWithQuantity` | `Products` | Auto Active↔OutOfStock khi Quantity thay đổi |
-| `TR_Promotions_SyncStatusWithDates` | `Promotions` | Auto Scheduled→Active→Expired theo ngày |
-| `TR_Vouchers_SyncStatusWithDates` | `Vouchers` | Auto sync Status + Quantity |
-| `TR_VoucherUsageLogs_DecreaseQuantity` | `VoucherUsageLogs` | Auto giảm `Vouchers.Quantity` khi dùng |
-| `TR_ReviewProducts_ValidateProductInOrder` | `ReviewProducts` | Chỉ review sản phẩm đã mua & đã giao |
-| `TR_VoucherUsageLogs_ValidateMaxUsage` | `VoucherUsageLogs` | Giới hạn `MaxUsagePerUser` |
+| Trigger                                    | Bảng               | Tác dụng                                                 |
+| ------------------------------------------ | ------------------ | -------------------------------------------------------- |
+| `TR_OrderDetails_SyncSubTotal`             | `OrderDetails`     | Auto-sync `Orders.SubTotal` khi thêm/sửa/xóa item        |
+| `TR_OrderVouchers_SyncDiscount`            | `OrderVouchers`    | Auto-sync `Orders.VoucherDiscountAmount`                 |
+| `TR_Orders_CalculateTotalAmount`           | `Orders`           | Auto-calc `TotalAmount = SubTotal - Discount + Shipping` |
+| `TR_Products_SyncStatusWithQuantity`       | `Products`         | Auto Active↔OutOfStock khi Quantity thay đổi             |
+| `TR_Promotions_SyncStatusWithDates`        | `Promotions`       | Auto Scheduled→Active→Expired theo ngày                  |
+| `TR_Vouchers_SyncStatusWithDates`          | `Vouchers`         | Auto sync Status + Quantity                              |
+| `TR_VoucherUsageLogs_DecreaseQuantity`     | `VoucherUsageLogs` | Auto giảm `Vouchers.Quantity` khi dùng                   |
+| `TR_ReviewProducts_ValidateProductInOrder` | `ReviewProducts`   | Chỉ review sản phẩm đã mua & đã giao                     |
+| `TR_VoucherUsageLogs_ValidateMaxUsage`     | `VoucherUsageLogs` | Giới hạn `MaxUsagePerUser`                               |
+| `TR_WorkSchedules_CreateCapacity`          | `WorkSchedules`    | Auto tạo `StaffShiftCapacity` khi tạo ca                 |
 
 ---
 
 ## Ghi chú Delete Behavior (các quan hệ chính)
 
-| FK | Delete Behavior | Ghi chú |
-|---|---|---|
-| `Products.CategoryID` | NO ACTION | Không xoá Category còn Product |
-| `Orders.AccountID` | NO ACTION | Không xoá Account còn Order |
-| `OrderDetails.OrderID` | NO ACTION | OrderDetails không cascade |
-| `OrderDetails.ProductID` | NO ACTION | Không xoá Product trong OrderDetail |
-| `CartItems.CartID/ProductID` | NO ACTION | |
-| `Wishlists.AccountID/ProductID` | NO ACTION | |
-| `ReviewProducts.OrderID` | NO ACTION | |
+| FK                              | Delete Behavior | Ghi chú                             |
+| ------------------------------- | --------------- | ----------------------------------- |
+| `Products.CategoryID`           | NO ACTION       | Không xoá Category còn Product      |
+| `Orders.AccountID`              | NO ACTION       | Không xoá Account còn Order         |
+| `OrderDetails.OrderID`          | NO ACTION       | OrderDetails không cascade          |
+| `OrderDetails.ProductID`        | NO ACTION       | Không xoá Product trong OrderDetail |
+| `CartItems.CartID/ProductID`    | NO ACTION       |                                     |
+| `Wishlists.AccountID/ProductID` | NO ACTION       |                                     |
+| `ReviewProducts.OrderID`        | NO ACTION       |                                     |

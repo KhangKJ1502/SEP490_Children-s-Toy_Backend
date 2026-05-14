@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using ToyStore.Domain.Entities;
 
 namespace ToyStore.API.Extensions;
 
@@ -15,7 +14,7 @@ public static class ResultToActionResultExtensions
     {
         if (result.IsSuccess)
             return new OkObjectResult(result.Data);
-            
+
         return result.ErrorCode switch
         {
             "NOT_FOUND" => new NotFoundObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)),
@@ -30,7 +29,7 @@ public static class ResultToActionResultExtensions
             _ => new BadRequestObjectResult(new ErrorResponse(result.ErrorCode ?? "ERROR", result.ErrorMessage!))
         };
     }
-    
+
     /// <summary>
     /// Converts Result<T> to ActionResult with custom success status.
     /// </summary>
@@ -38,10 +37,10 @@ public static class ResultToActionResultExtensions
     {
         if (result.IsSuccess)
             return new CreatedResult(location, result.Data);
-            
+
         return result.ToActionResult();
     }
-    
+
     /// <summary>
     /// Converts Result to appropriate ActionResult.
     /// </summary>
@@ -49,7 +48,7 @@ public static class ResultToActionResultExtensions
     {
         if (result.IsSuccess)
             return new OkResult();
-            
+
         return result.ErrorCode switch
         {
             "NOT_FOUND" => new NotFoundObjectResult(new ErrorResponse(result.ErrorCode, result.ErrorMessage!)),
@@ -64,7 +63,7 @@ public static class ResultToActionResultExtensions
             _ => new BadRequestObjectResult(new ErrorResponse(result.ErrorCode ?? "ERROR", result.ErrorMessage!))
         };
     }
-    
+
     /// <summary>
     /// Converts Result to NoContent result on success.
     /// </summary>
@@ -72,7 +71,7 @@ public static class ResultToActionResultExtensions
     {
         if (result.IsSuccess)
             return new NoContentResult();
-            
+
         return result.ToActionResult();
     }
 }

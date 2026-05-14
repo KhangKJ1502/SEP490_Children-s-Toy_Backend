@@ -18,6 +18,8 @@ using ToyStore.Application.DTOs.Profiles;
 using ToyStore.Application.DTOs.Reviews;
 using ToyStore.Application.DTOs.Templates;
 using ToyStore.Application.DTOs.Wallets;
+using ToyStore.Application.DTOs.Shifts;
+using ToyStore.Application.DTOs.Assignments;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Application.Mappings;
@@ -35,6 +37,8 @@ using ToyStore.Application.Validators.Profiles;
 using ToyStore.Application.Validators.Reviews;
 using ToyStore.Application.Validators.Templates;
 using ToyStore.Application.Validators.Wallets;
+using ToyStore.Application.Validators.Shifts;
+using ToyStore.Application.Validators.Assignments;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using ToyStore.Application;
 using ToyStore.Application.Interfaces.Notifications;
@@ -90,6 +94,7 @@ public static class DependencyInjection
             cfg.AddProfile<RefundProfile>();
             cfg.AddProfile<CustomerProfile>();
             cfg.AddProfile<WalletProfile>();
+            cfg.AddProfile<ShiftSchedulingProfile>();
         });
 
         services.AddScoped<IValidator<CreateBrandDto>, CreateBrandValidator>();
@@ -142,6 +147,14 @@ public static class DependencyInjection
         services.AddScoped<IValidator<VerifyForgotWalletPinOtpRequestDto>, VerifyForgotWalletPinOtpRequestValidator>();
         services.AddScoped<IValidator<ResetForgotWalletPinRequestDto>, ResetForgotWalletPinRequestValidator>();
 
+        services.AddScoped<IValidator<CreateShiftTemplateDto>, CreateShiftTemplateValidator>();
+        services.AddScoped<IValidator<UpdateShiftTemplateDto>, UpdateShiftTemplateValidator>();
+        services.AddScoped<IValidator<CreateWorkScheduleDto>, CreateWorkScheduleValidator>();
+        services.AddScoped<IValidator<UpdateWorkScheduleDto>, UpdateWorkScheduleValidator>();
+        services.AddScoped<IValidator<AssignQueueOrderRequestDto>, AssignQueueOrderRequestValidator>();
+        services.AddScoped<IValidator<ReassignOrderRequestDto>, ReassignOrderRequestValidator>();
+        services.AddScoped<IValidator<UpdateShiftCapacityDto>, UpdateShiftCapacityValidator>();
+
         services.AddScoped<IVoucherRepository, VoucherRepository>();
         services.AddScoped<IVoucherService, VoucherService>();
 
@@ -170,6 +183,11 @@ public static class DependencyInjection
         services.AddScoped<IRefundImageRepository, RefundImageRepository>();
         services.AddScoped<IWalletTransactionRepository, WalletTransactionRepository>();
         services.AddScoped<IWalletRepository, WalletRepository>();
+        services.AddScoped<IShiftTemplateRepository, ShiftTemplateRepository>();
+        services.AddScoped<IWorkScheduleRepository, WorkScheduleRepository>();
+        services.AddScoped<IStaffShiftCapacityRepository, StaffShiftCapacityRepository>();
+        services.AddScoped<IOrderAssignmentRepository, OrderAssignmentRepository>();
+        services.AddScoped<IOrderQueueRepository, OrderQueueRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ISuperCategoryService, SuperCategoryService>();
@@ -186,6 +204,9 @@ public static class DependencyInjection
         services.AddScoped<IReviewService, ReviewService>();
         services.AddScoped<IRefundService, RefundService>();
         services.AddScoped<IWalletService, WalletService>();
+        services.AddScoped<IShiftTemplateService, ShiftTemplateService>();
+        services.AddScoped<IWorkScheduleService, WorkScheduleService>();
+        services.AddScoped<IShiftAssignmentService, ShiftAssignmentService>();
 
         // Resolver business object
         services.AddScoped<IBusinessObjectResolver, VoucherResolver>();

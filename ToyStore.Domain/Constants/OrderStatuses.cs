@@ -15,6 +15,7 @@ public static class OrderStatuses
     public const string Delivered  = "Delivered";
     public const string Completed  = "Completed";
     public const string Cancelled  = "Cancelled";
+    public const string Refunded   = "Refunded";
 
     /// <summary>
     /// Cac trang thai Staff co the thay duoc theo mac dinh (chua loc bo sung).
@@ -39,29 +40,4 @@ public static class OrderStatuses
     public static readonly IReadOnlyCollection<string> CancellableStatuses =
         [Pending, Confirmed];
 
-    /// <summary>
-    /// Mapping GHN status sang trang thai don hang.
-    /// </summary>
-    public static readonly IReadOnlyDictionary<string, string?> GhnStatusMap =
-        new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["ready_to_pick"]              = null,
-            ["picking"]                    = null,
-            ["cancel"]                     = null,
-            ["money_collect_picking"]      = null,
-            ["delivering"]                 = Delivering,
-            ["money_collect_delivering"]   = Delivering,
-            ["delivered"]                  = Delivered,
-            ["delivery_fail"]              = null,
-            ["waiting_to_return"]          = null,
-            ["return"]                     = null,
-            ["return_transporting"]        = null,
-            ["return_sorting"]             = null,
-            ["returning"]                  = null,
-            ["return_fail"]                = null,
-            ["returned"]                   = null,
-            ["exception"]                  = null,
-            ["lost"]                       = null,
-            ["damage"]                     = null,
-        };
 }

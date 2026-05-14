@@ -21,12 +21,12 @@ public class AutoCompleteOrderJob : BackgroundService
     private readonly TimeSpan _interval = TimeSpan.FromHours(1);
 
     public AutoCompleteOrderJob(
-        IServiceProvider services, 
+        IServiceProvider services,
         ILogger<AutoCompleteOrderJob> logger,
         ITimeProvider timeProvider)
     {
-        _services     = services;
-        _logger       = logger;
+        _services = services;
+        _logger = logger;
         _timeProvider = timeProvider;
     }
 
@@ -43,9 +43,10 @@ public class AutoCompleteOrderJob : BackgroundService
 
     private async Task RunAsync(CancellationToken ct)
     {
-        using var scope  = _services.CreateScope();
-        var db           = scope.ServiceProvider.GetRequiredService<SEP490ToyStoreContext>();
-        var dispatcher   = scope.ServiceProvider.GetRequiredService<INotificationDispatcher>();
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SEP490ToyStoreContext>();
+        var dispatcher = scope.ServiceProvider.GetRequiredService<INotificationDispatcher>();
+        var lifecycleService = scope.ServiceProvider.GetRequiredService<IOrderLifecycleService>();
 
         bool success = true;
         string? message = null;
@@ -64,27 +65,30 @@ public class AutoCompleteOrderJob : BackgroundService
 
             foreach (var order in ordersToComplete)
             {
-                order.StatusId    = 7; // Completed
-                order.CompletedAt = _timeProvider.UtcNow;
-                order.UpdatedAt   = _timeProvider.UtcNow;
+                // Gọi lifecycle service để xử lý status + release capacity
+                var result = await lifecycleService.CompleteOrderAsync(order.OrderId, ct);
+                if (!result.IsSuccess)
+                {
+                    _logger.LogWarning("Failed to complete order {OrderId} in job: {Error}", order.OrderId, result.ErrorMessage);
+                    continue;
+                }
 
-                // Bell-only: auto-completion, customer didn't initiate
+                // Bell-only notification
                 await dispatcher.DispatchAsync(new NotificationContext
                 {
                     RecipientAccountId = order.AccountId,
-                    RecipientType      = RecipientTypes.Customer,
-                    NotificationType   = NotificationTypes.Order,
-                    Title              = "Đơn hàng đã hoàn thành",
-                    Message            = $"Đơn {order.OrderCode} đã được tự động hoàn thành sau 7 ngày nhận hàng",
-                    SendBell           = true,
-                    SendEmail          = false,
-                    TemplateCode       = NotificationTemplates.OrderDelivered,
-                    ActionTarget       = $"/orders/{order.OrderId}",
-                    IdempotencyKey     = $"order.completed:auto:{order.OrderId}",
+                    RecipientType = RecipientTypes.Customer,
+                    NotificationType = NotificationTypes.Order,
+                    Title = "Đơn hàng đã hoàn thành",
+                    Message = $"Đơn {order.OrderCode} đã được tự động hoàn thành sau 7 ngày nhận hàng",
+                    SendBell = true,
+                    SendEmail = false,
+                    TemplateCode = NotificationTemplates.OrderDelivered,
+                    ActionTarget = $"/orders/{order.OrderId}",
+                    IdempotencyKey = $"order.completed:auto:{order.OrderId}",
                 }, ct);
             }
 
-            await db.SaveChangesAsync(ct);
             message = $"Auto-completed {ordersToComplete.Count} orders";
         }
         catch (Exception ex)

@@ -41,6 +41,11 @@ public interface IUnitOfWork : IDisposable
     IRefundImageRepository RefundImages { get; }
     IWalletRepository Wallets { get; }
     IWalletTransactionRepository WalletTransactions { get; }
+    IShiftTemplateRepository ShiftTemplates { get; }
+    IWorkScheduleRepository WorkSchedules { get; }
+    IStaffShiftCapacityRepository StaffShiftCapacities { get; }
+    IOrderAssignmentRepository OrderAssignments { get; }
+    IOrderQueueRepository OrderQueues { get; }
 
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

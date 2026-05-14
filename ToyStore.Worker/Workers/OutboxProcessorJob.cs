@@ -47,7 +47,7 @@ public class OutboxProcessorJob : BackgroundService
         using var scope   = _services.CreateScope();
         var db            = scope.ServiceProvider.GetRequiredService<SEP490ToyStoreContext>();
         var handlers      = scope.ServiceProvider.GetServices<IOutboxEventHandler>()
-                              .ToDictionary(h => h.EventType, StringComparer.OrdinalIgnoreCase);
+                              .ToLookup(h => h.EventType, StringComparer.OrdinalIgnoreCase);
 
         var lockId = Guid.NewGuid();
         var now    = _timeProvider.UtcNow;
@@ -73,7 +73,8 @@ public class OutboxProcessorJob : BackgroundService
 
         foreach (var ev in batch)
         {
-            if (!handlers.TryGetValue(ev.EventType, out var handler))
+            var matchingHandlers = handlers[ev.EventType].ToList();
+            if (matchingHandlers.Count == 0)
             {
                 _logger.LogDebug("No handler for OutboxEvent EventType={EventType}", ev.EventType);
                 ev.ProcessedOn = _timeProvider.UtcNow;
@@ -90,13 +91,16 @@ public class OutboxProcessorJob : BackgroundService
                     ev.Payload,
                     ev.OccurredOn);
 
-                await handler.HandleAsync(data, ct);
+                foreach (var handler in matchingHandlers)
+                {
+                    await handler.HandleAsync(data, ct);
+                }
 
                 ev.ProcessedOn = _timeProvider.UtcNow;
                 ev.LastError   = null;
                 _logger.LogInformation(
-                    "Outbox event processed. EventType={EventType} EventId={EventId}",
-                    ev.EventType, ev.EventId);
+                    "Outbox event processed. EventType={EventType} EventId={EventId} Handlers={Count}",
+                    ev.EventType, ev.EventId, matchingHandlers.Count);
             }
             catch (Exception ex)
             {
