@@ -1,3 +1,4 @@
+
 /* =================================================================
    E-COMMERCE DATABASE SCHEMA (OPTIMIZED FULL VERSION + AI MODERATION)
    Platform: SQL Server | Version: 3.2
@@ -460,8 +461,8 @@ CREATE TABLE [Orders] (
     /* ── v3.2: thêm 'COD_PENDING' ── */
     [PaymentStatus]         VARCHAR(20)   NOT NULL DEFAULT 'PENDING'
         CONSTRAINT [CK_Orders_PaymentStatus]
-        CHECK ([PaymentStatus] IN ('PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED', 'COD_PENDING')),
-    [PaymentCode]           VARCHAR(50)   NULL UNIQUE,
+        CHECK ([PaymentStatus] IN ('PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED', 'COD_PENDING','CANCELLED')),
+    [PaymentCode]           VARCHAR(50)   NULL,
     [PaidAt]                DATETIME2(0)  NULL,
     [SubTotal]              DECIMAL(12,0) NOT NULL,
     [VoucherDiscountAmount] DECIMAL(12,0) NOT NULL DEFAULT 0,
@@ -732,14 +733,15 @@ CREATE TABLE [Vouchers] (
     [DiscountType]       VARCHAR(10) NOT NULL CHECK ([DiscountType] IN ('FIXED', 'PERCENTAGE')),
     [DiscountValue]      DECIMAL(12,2) NOT NULL CHECK ([DiscountValue] > 0),
     [MaxDiscountCap]     DECIMAL(12,0) NULL,
-    [DiscountTarget]     VARCHAR(20) NOT NULL CHECK ([DiscountTarget] IN ('ORDER_TOTAL', 'SHIPPING_FEE')),
+    [DiscountTarget]     VARCHAR(20) NOT NULL CHECK ([DiscountTarget] IN ('ORDER_TOTAL', 'SHIPPING_FEE', 'FINAL_PRICE')),
     [MinOrderAmount]     DECIMAL(12,0) NULL CHECK ([MinOrderAmount] >= 0),
     [TotalQuantity]      INT NULL CHECK ([TotalQuantity] > 0),
     [UsedQuantity]       INT NOT NULL DEFAULT 0 CHECK ([UsedQuantity] >= 0),
     [MaxUsagePerUser]    SMALLINT NULL DEFAULT 1,
     [StartDate]          DATETIME2(0) NOT NULL,
     [EndDate]            DATETIME2(0) NOT NULL,
-    [Status]             VARCHAR(15) NOT NULL CHECK ([Status] IN ('Scheduled', 'Active', 'Inactive', 'Expired')),
+    [Status]             VARCHAR(15) NOT NULL CHECK ([Status] IN ('Scheduled', 'Active', 'Inactive', 'Expired', 'Pending', 'Rejected')),
+    [Reason]             NVARCHAR(500) NULL,
     [ImageURL]           VARCHAR(500) NULL,
     [IsDeleted]          BIT NOT NULL DEFAULT 0,
     [CreatedAt]          DATETIME2(0) NOT NULL DEFAULT GETDATE(),
@@ -756,10 +758,12 @@ GO
 CREATE TABLE [OrderVouchers] (
     [OrderID]               INT NOT NULL,
     [VoucherID]             INT NOT NULL,
+    [VoucherTarget]         VARCHAR(20) NULL,
     [DiscountAmountApplied] DECIMAL(12,0) NOT NULL CHECK ([DiscountAmountApplied] >= 0),
     CONSTRAINT [PK_OrderVouchers]          PRIMARY KEY ([OrderID], [VoucherID]),
     CONSTRAINT [FK_OrderVouchers_Orders]   FOREIGN KEY ([OrderID])   REFERENCES [Orders]([OrderID]),
-    CONSTRAINT [FK_OrderVouchers_Vouchers] FOREIGN KEY ([VoucherID]) REFERENCES [Vouchers]([VoucherID])
+    CONSTRAINT [FK_OrderVouchers_Vouchers] FOREIGN KEY ([VoucherID]) REFERENCES [Vouchers]([VoucherID]),
+    CONSTRAINT [CK_OrderVouchers_VoucherTarget] CHECK ([VoucherTarget] IN ('ORDER_TOTAL', 'SHIPPING_FEE'))
 );
 GO
 
@@ -1312,7 +1316,7 @@ CREATE TABLE [PaymentHistory] (
     [WalletTransactionID] INT NULL,
     [PaymentStatus]       VARCHAR(20) NOT NULL
         CONSTRAINT [CK_PaymentHistory_PaymentStatus]
-        CHECK ([PaymentStatus] IN ('PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED', 'COD_PENDING')),
+        CHECK ([PaymentStatus] IN ('PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED', 'COD_PENDING','CANCELLED')),
     [PaymentMethod]       VARCHAR(20) NOT NULL
         CHECK ([PaymentMethod] IN ('SE_PAY', 'WALLET', 'BANK_TRANSFER', 'SHIP_COD')), 
     [TransactionCode]     VARCHAR(100) NULL,
@@ -2025,176 +2029,6 @@ GO
 CREATE NONCLUSTERED INDEX [IX_ReviewBlogs_BlogPost]
 ON [ReviewBlogs]([BlogPostID], [IsDeleted])
 INCLUDE ([Comment], [CreatedAt]);
-GO
-
-/* =============================================
-   12. STORED PROCEDURES (SHIFT ASSIGNMENT)
-============================================= */
-CREATE OR ALTER PROCEDURE [dbo].[sp_AutoAssignOrder]
-    @OrderID    INT,
-    @AssignedBy INT = NULL
-AS
-BEGIN
-    SET NOCOUNT ON;
-    SET XACT_ABORT ON;
-
-    DECLARE @StaffScheduleID INT = NULL;
-    DECLARE @MerchScheduleID INT = NULL;
-    DECLARE @StaffAccountID  INT = NULL;
-    DECLARE @MerchAccountID  INT = NULL;
-    DECLARE @QueueReason     VARCHAR(50) = NULL;
-    DECLARE @Now             DATETIME2(0) = GETDATE();
-    DECLARE @Today           DATE    = CAST(@Now AS DATE);
-    DECLARE @NowTime         TIME(0) = CAST(@Now AS TIME(0));
-    DECLARE @StaffRoleId     TINYINT = 3;
-    DECLARE @MerchRoleId     TINYINT = 4;
-
-    BEGIN TRANSACTION;
-
-    SELECT TOP 1
-        @StaffScheduleID = ssc.[ScheduleID],
-        @StaffAccountID  = ssc.[AccountID]
-    FROM [StaffShiftCapacity] ssc WITH (UPDLOCK, ROWLOCK)
-    JOIN [WorkSchedules]  ws  ON ws.[ScheduleID]      = ssc.[ScheduleID]
-    JOIN [ShiftTemplates] st  ON st.[ShiftTemplateID] = ws.[ShiftTemplateID]
-    JOIN [Accounts]       a   ON a.[AccountID]        = ssc.[AccountID]
-    WHERE ws.[Status]    = 'OnDuty'
-      AND ws.[WorkDate]  = @Today
-      AND st.[StartTime] <= @NowTime
-      AND st.[EndTime]   >= @NowTime
-      AND a.[RoleID]     = @StaffRoleId
-      AND ssc.[CurrentLoad] < ssc.[MaxLoad]
-    ORDER BY ssc.[CurrentLoad] ASC, ssc.[ScheduleID] ASC;
-
-    SELECT TOP 1
-        @MerchScheduleID = ssc.[ScheduleID],
-        @MerchAccountID  = ssc.[AccountID]
-    FROM [StaffShiftCapacity] ssc WITH (UPDLOCK, ROWLOCK)
-    JOIN [WorkSchedules]  ws  ON ws.[ScheduleID]      = ssc.[ScheduleID]
-    JOIN [ShiftTemplates] st  ON st.[ShiftTemplateID] = ws.[ShiftTemplateID]
-    JOIN [Accounts]       a   ON a.[AccountID]        = ssc.[AccountID]
-    WHERE ws.[Status]    = 'OnDuty'
-      AND ws.[WorkDate]  = @Today
-      AND st.[StartTime] <= @NowTime
-      AND st.[EndTime]   >= @NowTime
-      AND a.[RoleID]     = @MerchRoleId
-      AND ssc.[CurrentLoad] < ssc.[MaxLoad]
-    ORDER BY ssc.[CurrentLoad] ASC, ssc.[ScheduleID] ASC;
-
-    IF @StaffScheduleID IS NULL OR @MerchScheduleID IS NULL
-    BEGIN
-        SET @QueueReason =
-            CASE
-                WHEN @StaffScheduleID IS NULL AND @MerchScheduleID IS NULL THEN 'BOTH_FULL'
-                WHEN @StaffScheduleID IS NULL THEN
-                    CASE WHEN EXISTS(
-                        SELECT 1 FROM WorkSchedules ws
-                        JOIN Accounts a ON a.AccountID = ws.AccountID
-                        WHERE ws.Status = 'OnDuty' AND a.RoleID = @StaffRoleId
-                    ) THEN 'ALL_STAFF_FULL' ELSE 'NO_STAFF_ON_DUTY' END
-                ELSE
-                    CASE WHEN EXISTS(
-                        SELECT 1 FROM WorkSchedules ws
-                        JOIN Accounts a ON a.AccountID = ws.AccountID
-                        WHERE ws.Status = 'OnDuty' AND a.RoleID = @MerchRoleId
-                    ) THEN 'ALL_MERCH_FULL' ELSE 'NO_MERCH_ON_DUTY' END
-            END;
-
-        IF NOT EXISTS (SELECT 1 FROM [OrderQueue] WHERE [OrderID] = @OrderID AND [IsResolved] = 0)
-        BEGIN
-            INSERT INTO [OrderQueue] ([OrderID], [Reason]) VALUES (@OrderID, @QueueReason);
-        END
-
-        COMMIT TRANSACTION;
-
-        SELECT 'QUEUED' AS [Result], @QueueReason AS [Reason], NULL AS [StaffAccountID], NULL AS [MerchAccountID];
-        RETURN;
-    END;
-
-    INSERT INTO [OrderAssignments] ([OrderID], [ScheduleID], [AccountID], [RoleID], [AssignedBy])
-    VALUES
-        (@OrderID, @StaffScheduleID, @StaffAccountID, @StaffRoleId, @AssignedBy),
-        (@OrderID, @MerchScheduleID, @MerchAccountID, @MerchRoleId, @AssignedBy);
-
-    UPDATE [StaffShiftCapacity]
-    SET [CurrentLoad] = [CurrentLoad] + 1, [UpdatedAt] = @Now
-    WHERE [ScheduleID] IN (@StaffScheduleID, @MerchScheduleID);
-
-    COMMIT TRANSACTION;
-
-    SELECT 'ASSIGNED' AS [Result], NULL AS [Reason], @StaffAccountID AS [StaffAccountID], @MerchAccountID AS [MerchAccountID];
-END;
-GO
-
-CREATE OR ALTER PROCEDURE [dbo].[sp_ReleaseOrderCapacity]
-    @OrderID INT
-AS
-BEGIN
-    SET NOCOUNT ON;
-    SET XACT_ABORT ON;
-
-    BEGIN TRANSACTION;
-
-    UPDATE ssc
-    SET ssc.[CurrentLoad] = CASE WHEN ssc.[CurrentLoad] > 0 THEN ssc.[CurrentLoad] - 1 ELSE 0 END,
-        ssc.[UpdatedAt]   = GETDATE()
-    FROM [StaffShiftCapacity] ssc
-    JOIN [OrderAssignments] oa ON oa.[ScheduleID] = ssc.[ScheduleID]
-    WHERE oa.[OrderID]   = @OrderID
-      AND oa.[IsActive]  = 1;
-
-    COMMIT TRANSACTION;
-
-    SELECT @@ROWCOUNT AS [RowsAffected];
-END;
-GO
-
-CREATE OR ALTER PROCEDURE [dbo].[sp_ReassignOrder]
-    @OrderID        INT,
-    @RoleID         TINYINT,
-    @NewScheduleID  INT,
-    @AssignedBy     INT,
-    @Notes          NVARCHAR(200) = NULL
-AS
-BEGIN
-    SET NOCOUNT ON;
-    SET XACT_ABORT ON;
-
-    DECLARE @OldScheduleID INT;
-
-    BEGIN TRANSACTION;
-
-    SELECT @OldScheduleID = [ScheduleID]
-    FROM [OrderAssignments]
-    WHERE [OrderID] = @OrderID AND [RoleID] = @RoleID AND [IsActive] = 1;
-
-    IF @OldScheduleID IS NULL
-    BEGIN
-        ROLLBACK TRANSACTION;
-        RAISERROR('No active assignment found for this Order and Role', 16, 1);
-        RETURN;
-    END;
-
-    UPDATE [OrderAssignments]
-    SET [IsActive] = 0
-    WHERE [OrderID] = @OrderID AND [RoleID] = @RoleID AND [IsActive] = 1;
-
-    UPDATE [StaffShiftCapacity]
-    SET [CurrentLoad] = CASE WHEN [CurrentLoad] > 0 THEN [CurrentLoad] - 1 ELSE 0 END,
-        [UpdatedAt]   = GETDATE()
-    WHERE [ScheduleID] = @OldScheduleID;
-
-    INSERT INTO [OrderAssignments] ([OrderID], [ScheduleID], [AccountID], [RoleID], [AssignedBy], [Notes])
-    SELECT @OrderID, @NewScheduleID, ws.[AccountID], @RoleID, @AssignedBy, @Notes
-    FROM [WorkSchedules] ws
-    WHERE ws.[ScheduleID] = @NewScheduleID;
-
-    UPDATE [StaffShiftCapacity]
-    SET [CurrentLoad] = [CurrentLoad] + 1, [UpdatedAt] = GETDATE()
-    WHERE [ScheduleID] = @NewScheduleID;
-
-    COMMIT TRANSACTION;
-END;
 GO
 
 CREATE NONCLUSTERED INDEX [IX_ReviewBlogReplies_Review]
