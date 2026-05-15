@@ -13,7 +13,7 @@ public class CustomerOrderListItemDto
     public string PaymentMethod { get; set; } = string.Empty;
     public string PaymentStatus { get; set; } = string.Empty;
     public int TotalItems { get; set; }
-    public CustomerOrderListItemProductDto? Item { get; set; }
+    public List<CustomerOrderListItemProductDto> Items { get; set; } = new();
 }
 
 public class CustomerOrderListItemProductDto

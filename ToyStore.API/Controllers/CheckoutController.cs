@@ -33,7 +33,9 @@ public class CheckoutController : ControllerBase
         CancellationToken ct)
     {
         var accountId = _currentUser.AccountId;
-        var result = await _checkout.PreviewAsync(accountId, query.AddressId, query.VoucherCode, query.Items, ct);
+        var orderVoucher = query.OrderVoucherCode ?? query.VoucherCode;
+        var shippingVoucher = query.ShippingVoucherCode;
+        var result = await _checkout.PreviewAsync(accountId, query.AddressId, orderVoucher, shippingVoucher, query.Items, ct);
         return result.ToActionResult();
     }
 
@@ -70,6 +72,10 @@ public class CheckoutController : ControllerBase
 public class CheckoutPreviewQueryDto
 {
     public int AddressId { get; set; }
+    public string? OrderVoucherCode { get; set; }
+    public string? ShippingVoucherCode { get; set; }
+
+    /// <summary>Legacy single voucher code (mapped to OrderVoucherCode).</summary>
     public string? VoucherCode { get; set; }
 
     /// <summary>Các dòng đặt (khớp giỏ đã chọn). Null = preview toàn bộ giỏ.</summary>

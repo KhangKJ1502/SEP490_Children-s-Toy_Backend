@@ -142,15 +142,12 @@ public class SePayWebhookService : ISePayWebhookService
         await _uow.BeginTransactionAsync(ct);
         try
         {
-            // 5a. Trừ stock (SE_PAY trừ stock tại đây vì không trừ lúc tạo order)
+            // 5a. Stock đã được trừ khi tạo đơn (SE_PAY reserve tại confirm); chỉ cần chuyển Flash Sale Reserved → Sold
             foreach (var detail in order.OrderDetails)
             {
-                // Trừ stock chung
-                await _uow.Products.AdjustStockAsync(detail.ProductId, -detail.Quantity, ct);
-
-                // Nếu là Flash Sale: chuyển từ Reserved sang Sold
                 if (detail.SlotProductId.HasValue)
                 {
+                    // Chuyển từ ReservedQuantity sang SoldQuantity
                     await _uow.Orders.AdjustFlashSaleStockAsync(detail.SlotProductId.Value, (int)detail.Quantity, -(int)detail.Quantity, ct);
                 }
             }
@@ -232,6 +229,15 @@ public class SePayWebhookService : ISePayWebhookService
                             overpayAmount, order.AccountId, order.OrderCode);
                     }
                 }
+            }
+
+            // 5g. Xóa CartItems đã thanh toán (SE_PAY giữ cart đến webhook PAID)
+            var cart = await _uow.Carts.GetByAccountIdWithItemsAsync(order.AccountId, ct);
+            if (cart is not null)
+            {
+                var paidProductIds = order.OrderDetails.Select(d => d.ProductId).ToHashSet();
+                foreach (var ci in cart.CartItems.Where(i => i.RemovedAt == null && paidProductIds.Contains(i.ProductId)))
+                    ci.RemovedAt = now;
             }
 
             await _uow.SaveChangesAsync(ct);

@@ -12,7 +12,8 @@ public interface ICheckoutService
     Task<Result<CheckoutPreviewResponseDto>> PreviewAsync(
         int accountId,
         int addressId,
-        string? voucherCode,
+        string? orderVoucherCode,
+        string? shippingVoucherCode,
         IReadOnlyList<CheckoutConfirmItemDto>? itemsSubset,
         CancellationToken cancellationToken = default);
 

@@ -376,10 +376,18 @@ public class CartService : ICartService
             var isReadOnlyStatus = IsCartItemReadOnlyStatus(product.ProductStatus);
             if (!isReadOnlyStatus && item.Quantity > product.Quantity)
             {
-                item.Quantity = (short)product.Quantity;
-                item.UpdatedAt = now;
-                _unitOfWork.Carts.UpdateItem(item);
-                modified = true;
+                // Only adjust quantity if the product still has some stock (> 0).
+                // If product.Quantity is 0, we don't update item.Quantity to 0 because:
+                // 1. It violates the database CHECK constraint (Quantity >= 1).
+                // 2. We want to keep the item in the cart (e.g. during SE_PAY pending payment) 
+                //    so the user can see it's out of stock or reserved, rather than it just disappearing.
+                if (product.Quantity > 0)
+                {
+                    item.Quantity = (short)product.Quantity;
+                    item.UpdatedAt = now;
+                    _unitOfWork.Carts.UpdateItem(item);
+                    modified = true;
+                }
             }
 
             var latestPrice = isReadOnlyStatus

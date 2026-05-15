@@ -10,14 +10,14 @@ namespace ToyStore.Worker.Workers;
 
 /// <summary>
 /// Scans orders pending payment for more than 24h and alerts staff.
-/// Runs every 15 minutes.
+/// Runs every 5 minutes.
 /// </summary>
 public class PaymentOverdueJob : BackgroundService
 {
     private readonly IServiceProvider _services;
     private readonly ILogger<PaymentOverdueJob> _logger;
     private readonly ITimeProvider _timeProvider;
-    private readonly TimeSpan _interval = TimeSpan.FromMinutes(15);
+    private readonly TimeSpan _interval = TimeSpan.FromMinutes(5);
 
     public PaymentOverdueJob(
         IServiceProvider services, 

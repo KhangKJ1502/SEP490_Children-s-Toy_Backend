@@ -29,8 +29,8 @@ public class RefundService : IRefundService
         if (order.StatusId != (byte)OrderStatus.Delivered)
             return Result<RefundDto>.BusinessError("Order must be in Delivered status to request a refund.");
 
-        if (order.DeliveredAt == null || (DateTime.UtcNow - order.DeliveredAt.Value).TotalDays > 7)
-            return Result<RefundDto>.BusinessError("Refund request must be made within 7 days of delivery.");
+        if (order.DeliveredAt == null || (DateTime.UtcNow - order.DeliveredAt.Value).TotalDays > 3)
+            return Result<RefundDto>.BusinessError("Yêu cầu hoàn trả phải được thực hiện trong vòng 3 ngày kể từ khi giao hàng thành công.");
 
         var existingRefunds = await _unitOfWork.Refunds.GetAdminRefundsAsync(new AdminRefundFilterDto { OrderId = dto.OrderId, PageSize = 100 }, cancellationToken);
 
