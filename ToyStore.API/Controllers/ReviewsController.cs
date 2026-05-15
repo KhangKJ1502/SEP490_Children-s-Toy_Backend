@@ -61,5 +61,33 @@ public class ReviewsController : ControllerBase
         return result.ToActionResult();
     }
 
+    /// <summary>
+    /// Lấy danh sách sản phẩm chưa đánh giá của khách hàng.
+    /// GET /api/reviews/unreviewed
+    /// </summary>
+    [Authorize(Roles = "Customer")]
+    [HttpGet("unreviewed")]
+    public async Task<ActionResult<PaginatedResponse<UnreviewedProductDto>>> GetUnreviewed(
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 10,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _reviewService.GetUnreviewedProductsAsync(pageNumber, pageSize, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Lấy danh sách đánh giá của khách hàng.
+    /// GET /api/reviews/me
+    /// </summary>
+    [Authorize(Roles = "Customer")]
+    [HttpGet("me")]
+    public async Task<ActionResult<PaginatedResponse<MyReviewDto>>> GetMyReviews(
+        [FromQuery] MyReviewQueryDto query,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _reviewService.GetMyReviewsAsync(query, cancellationToken);
+        return result.ToActionResult();
+    }
 
 }

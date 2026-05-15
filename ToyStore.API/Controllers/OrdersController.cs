@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ToyStore.API.Extensions;
+using ToyStore.Application.DTOs;
+using ToyStore.Application.DTOs.Orders;
 using ToyStore.Application.Interfaces.Services;
 
 namespace ToyStore.API.Controllers;
@@ -17,6 +19,32 @@ public class OrdersController : ControllerBase
     {
         _orderService = orderService;
         _currentUser = currentUser;
+    }
+
+    /// <summary>
+    /// Danh sach don hang cua customer.
+    /// GET /api/orders
+    /// </summary>
+    [HttpGet]
+    public async Task<ActionResult<PaginatedResponse<CustomerOrderListItemDto>>> GetOrders(
+        [FromQuery] CustomerOrderQueryDto query,
+        CancellationToken ct)
+    {
+        var result = await _orderService.GetListAsync(query, _currentUser.AccountId, ct);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Chi tiet don hang cua customer.
+    /// GET /api/orders/{orderId}
+    /// </summary>
+    [HttpGet("{orderId:int}")]
+    public async Task<ActionResult<CustomerOrderDetailDto>> GetDetail(
+        int orderId,
+        CancellationToken ct)
+    {
+        var result = await _orderService.GetDetailAsync(orderId, _currentUser.AccountId, ct);
+        return result.ToActionResult();
     }
 
     /// <summary>

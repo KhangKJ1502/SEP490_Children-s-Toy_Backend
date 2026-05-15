@@ -159,6 +159,8 @@ public class RefundService : IRefundService
             return Result<RefundDto>.NotFound("Refund", refundId);
 
         var order = await _unitOfWork.Orders.GetByIdForUpdateAsync(refund.OrderId, cancellationToken);
+        if (order == null)
+            return Result<RefundDto>.NotFound("Order", refund.OrderId);
 
         // Status transition validations
         if (refund.RefundStatus == RefundStatuses.Requested)

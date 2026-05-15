@@ -32,6 +32,8 @@ builder.Services.AddHostedService<PaymentOverdueJob>();
 builder.Services.AddHostedService<BackInStockJob>();
 builder.Services.AddHostedService<CampaignSchedulerJob>();
 builder.Services.AddHostedService<AutoCompleteOrderJob>();
+builder.Services.AddHostedService<ShiftLifecycleJob>();
+builder.Services.AddHostedService<OrderQueueRetryJob>();
 
 // Campaign sender (uses ICampaignNotificationService — not direct DB bulk-insert)
 builder.Services.AddHostedService<CampaignSenderWorker>();

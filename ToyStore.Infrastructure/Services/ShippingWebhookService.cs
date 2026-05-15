@@ -6,6 +6,7 @@ using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
 using ToyStore.Domain.Entities;
+using ToyStore.Domain.Enums;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -19,28 +20,34 @@ public class ShippingWebhookService : IShippingWebhookService
     private readonly IDomainEventPublisher _eventPublisher;
     private readonly ILogger<ShippingWebhookService> _logger;
     private readonly ITimeProvider _timeProvider;
+    private readonly IOrderLifecycleService _orderLifecycle;
+    private readonly IShippingStatusMapper _statusMapper;
 
-    // Map GHN status → notification event type
+    // Map provider status → notification event type
     private static readonly Dictionary<string, string?> WebhookEventMap = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["picked_up"]          = NotificationEventTypes.MerchPickedUp,
-        ["delivering"]         = NotificationEventTypes.OrderDelivering,
-        ["delivered"]          = NotificationEventTypes.OrderDelivered,
-        ["delivery_failed"]    = NotificationEventTypes.OrderDeliveryFailed,
-        ["return"]             = NotificationEventTypes.OrderReturning,
-        ["returned"]           = NotificationEventTypes.MerchReturned,
+        [ShippingStatuses.Picked]                = NotificationEventTypes.MerchPickedUp,
+        [ShippingStatuses.Delivering]            = NotificationEventTypes.OrderDelivering,
+        [ShippingStatuses.Delivered]             = NotificationEventTypes.OrderDelivered,
+        [ShippingStatuses.DeliveryFail]          = NotificationEventTypes.OrderDeliveryFailed,
+        [ShippingStatuses.Return]                = NotificationEventTypes.OrderReturning,
+        [ShippingStatuses.Returned]              = NotificationEventTypes.MerchReturned,
     };
 
     public ShippingWebhookService(
         IUnitOfWork unitOfWork,
         IDomainEventPublisher eventPublisher,
         ILogger<ShippingWebhookService> logger,
-        ITimeProvider timeProvider)
+        ITimeProvider timeProvider,
+        IOrderLifecycleService orderLifecycle,
+        IShippingStatusMapper statusMapper)
     {
         _unitOfWork     = unitOfWork;
         _eventPublisher = eventPublisher;
         _logger         = logger;
         _timeProvider   = timeProvider;
+        _orderLifecycle = orderLifecycle;
+        _statusMapper   = statusMapper;
     }
 
     public async Task HandleAsync(
@@ -103,10 +110,10 @@ public class ShippingWebhookService : IShippingWebhookService
                 tx.UpdatedAt = now;
 
                 // Map sang trang thai don hang
-                if (OrderStatuses.GhnStatusMap.TryGetValue(newStatus, out var mappedOrderStatus)
-                    && mappedOrderStatus is not null)
+                var targetStatus = _statusMapper.MapToInternalStatus(newStatus);
+                if (targetStatus.HasValue)
                 {
-                    await UpdateOrderStatusAsync(tx.Order, mappedOrderStatus, now, cancellationToken);
+                    await UpdateOrderStatusAsync(tx.Order, targetStatus.Value, now, cancellationToken);
                 }
 
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -145,10 +152,38 @@ public class ShippingWebhookService : IShippingWebhookService
 
     private async Task UpdateOrderStatusAsync(
         Order order,
-        string targetStatusName,
+        OrderStatus targetStatus,
         DateTime now,
         CancellationToken cancellationToken)
     {
+        // LUỒNG B: Sử dụng OrderLifecycleService cho các case đặc biệt
+        if (targetStatus == OrderStatus.Delivered)
+        {
+            var result = await _orderLifecycle.DeliverOrderAsync(order.OrderId, cancellationToken);
+            if (!result.IsSuccess)
+            {
+                _logger.LogWarning("Failed to mark order {OrderId} as delivered via lifecycle service: {Error}", order.OrderId, result.ErrorMessage);
+            }
+            return;
+        }
+
+        if (targetStatus == OrderStatus.Cancelled)
+        {
+            // Use internal cancel logic (restores stock, releases capacity, etc.)
+            var result = await _orderLifecycle.CancelOrderInternalAsync(
+                order, 
+                $"Auto-cancelled from shipping webhook: {order.Status?.StatusName ?? "Unknown"}", 
+                0, // System/Auto
+                cancellationToken);
+
+            if (!result.IsSuccess)
+            {
+                _logger.LogWarning("Failed to cancel order {OrderId} via lifecycle service: {Error}", order.OrderId, result.ErrorMessage);
+            }
+            return;
+        }
+
+        var targetStatusName = targetStatus.ToString();
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
 
         if (!statusMap.TryGetValue(targetStatusName, out var targetStatusId))
@@ -157,15 +192,13 @@ public class ShippingWebhookService : IShippingWebhookService
             return;
         }
 
-        // Khong ghi de neu don da o trang thai do hoac trang thai sau
-        if (order.StatusId == targetStatusId)
+        // Khong ghi de neu don da o trang thai do hoac trang thai sau (simple progressive check)
+        // Note: order.StatusId is byte, targetStatusId is also byte.
+        if (order.StatusId >= targetStatusId && order.StatusId != (byte)OrderStatus.Cancelled)
             return;
 
         order.StatusId  = targetStatusId;
         order.UpdatedAt = now;
-
-        if (targetStatusName == OrderStatuses.Delivered)
-            order.DeliveredAt = now;
 
         await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
         {

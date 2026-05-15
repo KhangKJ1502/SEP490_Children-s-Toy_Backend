@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.Common.Models;
+using ToyStore.Application.Constants;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
+using ToyStore.Domain.Constants;
 using ToyStore.Domain.Entities;
 
 namespace ToyStore.Infrastructure.Services;
@@ -12,15 +14,18 @@ public class OrderLifecycleService : IOrderLifecycleService
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<OrderLifecycleService> _logger;
     private readonly ITimeProvider _timeProvider;
+    private readonly IShiftAssignmentService _shiftAssignmentService;
 
     public OrderLifecycleService(
         IUnitOfWork unitOfWork,
         ILogger<OrderLifecycleService> logger,
-        ITimeProvider timeProvider)
+        ITimeProvider timeProvider,
+        IShiftAssignmentService shiftAssignmentService)
     {
-        _unitOfWork   = unitOfWork;
-        _logger       = logger;
+        _unitOfWork = unitOfWork;
+        _logger = logger;
         _timeProvider = timeProvider;
+        _shiftAssignmentService = shiftAssignmentService;
     }
 
     public async Task<Result> CancelOrderInternalAsync(Order order, string reason, int cancelledByAccountId, CancellationToken cancellationToken = default)
@@ -88,7 +93,7 @@ public class OrderLifecycleService : IOrderLifecycleService
                     // Restore items that were removed around the time the order was created
                     foreach (var ci in cart.CartItems.Where(i => i.RemovedAt.HasValue && productIdsInOrder.Contains(i.ProductId)))
                     {
-                        if (ci.RemovedAt >= order.CreatedAt.AddMinutes(-5)) 
+                        if (ci.RemovedAt >= order.CreatedAt.AddMinutes(-5))
                         {
                             ci.RemovedAt = null;
                         }
@@ -97,24 +102,33 @@ public class OrderLifecycleService : IOrderLifecycleService
             }
 
             // 5. Update order status
-            order.StatusId     = cancelledId;
-            order.CancelledAt  = now;
+            order.StatusId = cancelledId;
+            order.CancelledAt = now;
             order.CancelReason = reason;
 
             await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
             {
-                OrderId   = order.OrderId,
-                StatusId  = cancelledId,
-                ChangedBy = cancelledByAccountId,
-                Note      = $"Order cancelled: {reason}",
+                OrderId = order.OrderId,
+                StatusId = cancelledId,
+                ChangedBy = cancelledByAccountId == 0 ? null : cancelledByAccountId,
+                Note = $"Order cancelled: {reason}",
                 CreatedAt = now
             }, cancellationToken);
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-            _logger.LogInformation("Order {OrderId} cancelled by {AccountId}. Reason: {Reason}", 
+            _logger.LogInformation("Order {OrderId} cancelled by {AccountId}. Reason: {Reason}",
                 order.OrderId, cancelledByAccountId, reason);
+
+            try
+            {
+                await _shiftAssignmentService.ReleaseCapacityAsync(order.OrderId, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to release capacity for cancelled order {OrderId}", order.OrderId);
+            }
 
             return Result.Success();
         }
@@ -123,6 +137,106 @@ public class OrderLifecycleService : IOrderLifecycleService
             await _unitOfWork.RollbackTransactionAsync(cancellationToken);
             _logger.LogError(ex, "Failed to cancel order {OrderId}", order.OrderId);
             throw;
+        }
+    }
+
+    public async Task<Result> CompleteOrderAsync(int orderId, CancellationToken cancellationToken = default)
+    {
+        var order = await _unitOfWork.Orders.GetByIdForUpdateAsync(orderId, cancellationToken);
+        if (order is null) return Result.NotFound("Order", orderId);
+
+        var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
+        if (!statusMap.TryGetValue(OrderStatuses.Completed, out var completedId))
+            return Result.Failure("INTERNAL_ERROR", "Status 'Completed' not found.");
+
+        if (order.StatusId == completedId) return Result.Success();
+
+        var now = _timeProvider.UtcNow;
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            order.StatusId = completedId;
+            order.CompletedAt = now;
+            order.UpdatedAt = now;
+
+            await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
+            {
+                OrderId = order.OrderId,
+                StatusId = completedId,
+                ChangedBy = null,
+                Note = "Order completed",
+                CreatedAt = now
+            }, cancellationToken);
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            // LUỒNG B: Release capacity
+            await TryReleaseCapacityAsync(orderId, cancellationToken);
+
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Failed to complete order {OrderId}", orderId);
+            throw;
+        }
+    }
+
+    public async Task<Result> DeliverOrderAsync(int orderId, CancellationToken cancellationToken = default)
+    {
+        var order = await _unitOfWork.Orders.GetByIdForUpdateAsync(orderId, cancellationToken);
+        if (order is null) return Result.NotFound("Order", orderId);
+
+        var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
+        if (!statusMap.TryGetValue(OrderStatuses.Delivered, out var deliveredId))
+            return Result.Failure("INTERNAL_ERROR", "Status 'Delivered' not found.");
+
+        if (order.StatusId == deliveredId) return Result.Success();
+
+        var now = _timeProvider.UtcNow;
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            order.StatusId = deliveredId;
+            order.DeliveredAt = now;
+            order.UpdatedAt = now;
+
+            await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
+            {
+                OrderId = order.OrderId,
+                StatusId = deliveredId,
+                ChangedBy = null,
+                Note = "Order marked as delivered",
+                CreatedAt = now
+            }, cancellationToken);
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            // LUỒNG B: Release capacity
+            await TryReleaseCapacityAsync(orderId, cancellationToken);
+
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Failed to mark order {OrderId} as delivered", orderId);
+            throw;
+        }
+    }
+
+    private async Task TryReleaseCapacityAsync(int orderId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _shiftAssignmentService.ReleaseCapacityAsync(orderId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to release capacity for order {OrderId}", orderId);
         }
     }
 }

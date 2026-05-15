@@ -16,7 +16,7 @@ public class OrderRepository : IOrderRepository
 
     public OrderRepository(SEP490ToyStoreContext context, ITimeProvider timeProvider)
     {
-        _context      = context;
+        _context = context;
         _timeProvider = timeProvider;
     }
 
@@ -45,6 +45,25 @@ public class OrderRepository : IOrderRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<List<Order>> GetCustomerPagedAsync(
+        int accountId,
+        IReadOnlyCollection<string>? statusNames,
+        int pageNumber,
+        int pageSize,
+        string? keyword,
+        DateTime? fromDate,
+        DateTime? toDate,
+        CancellationToken cancellationToken = default)
+    {
+        var query = BuildCustomerQuery(accountId, statusNames, keyword, fromDate, toDate);
+
+        return await query
+            .OrderByDescending(o => o.OrderDate)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<int> CountAdminAsync(
         IReadOnlyCollection<string> allowedStatusNames,
         int? statusId,
@@ -59,6 +78,18 @@ public class OrderRepository : IOrderRepository
             allowedStatusNames, statusId, assignedToMe,
             currentAccountId, keyword, fromDate, toDate);
 
+        return await query.CountAsync(cancellationToken);
+    }
+
+    public async Task<int> CountCustomerAsync(
+        int accountId,
+        IReadOnlyCollection<string>? statusNames,
+        string? keyword,
+        DateTime? fromDate,
+        DateTime? toDate,
+        CancellationToken cancellationToken = default)
+    {
+        var query = BuildCustomerQuery(accountId, statusNames, keyword, fromDate, toDate);
         return await query.CountAsync(cancellationToken);
     }
 
@@ -84,6 +115,29 @@ public class OrderRepository : IOrderRepository
                 .ThenInclude(h => h.Status)
             .Include(o => o.ShippingProviderTransactions.OrderByDescending(t => t.CreatedAt))
             .FirstOrDefaultAsync(o => o.OrderId == orderId && !o.IsDeleted, cancellationToken);
+    }
+
+    public async Task<Order?> GetByIdForCustomerAsync(
+        int orderId,
+        int accountId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _context.Orders
+            .AsNoTracking()
+            .Include(o => o.Status)
+            .Include(o => o.OrderDetails)
+                .ThenInclude(d => d.Product)
+                    .ThenInclude(p => p.Category)
+            .Include(o => o.OrderStatusHistories.OrderBy(h => h.CreatedAt))
+                .ThenInclude(h => h.Status)
+            .Include(o => o.OrderStatusHistories)
+                .ThenInclude(h => h.ChangedByNavigation)
+            .Include(o => o.ShippingProviderTransactions.OrderByDescending(t => t.CreatedAt))
+            .FirstOrDefaultAsync(o =>
+                o.OrderId == orderId
+                && o.AccountId == accountId
+                && !o.IsDeleted,
+                cancellationToken);
     }
 
     public async Task<Order?> GetByIdForUpdateAsync(int orderId, CancellationToken cancellationToken = default)
@@ -271,6 +325,48 @@ public class OrderRepository : IOrderRepository
                 o.OrderCode.Contains(kw) ||
                 o.ShippingName.Contains(kw) ||
                 o.ShippingPhone.Contains(kw));
+        }
+
+        if (fromDate.HasValue)
+        {
+            query = query.Where(o => o.OrderDate >= fromDate.Value);
+        }
+
+        if (toDate.HasValue)
+        {
+            var endOfDay = toDate.Value.Date.AddDays(1).AddTicks(-1);
+            query = query.Where(o => o.OrderDate <= endOfDay);
+        }
+
+        return query;
+    }
+
+    private IQueryable<Order> BuildCustomerQuery(
+        int accountId,
+        IReadOnlyCollection<string>? statusNames,
+        string? keyword,
+        DateTime? fromDate,
+        DateTime? toDate)
+    {
+        IQueryable<Order> query = _context.Orders
+            .AsNoTracking()
+            .Include(o => o.Status)
+            .Include(o => o.OrderDetails)
+                .ThenInclude(d => d.Product)
+                    .ThenInclude(p => p.Category)
+            .Where(o => o.AccountId == accountId && !o.IsDeleted);
+
+        if (statusNames is { Count: > 0 })
+        {
+            query = query.Where(o => statusNames.Contains(o.Status.StatusName));
+        }
+
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            var kw = keyword.Trim();
+            query = query.Where(o =>
+                o.OrderCode.Contains(kw)
+                || o.OrderDetails.Any(d => d.ProductName.Contains(kw)));
         }
 
         if (fromDate.HasValue)

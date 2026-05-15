@@ -1,9 +1,23 @@
+using ToyStore.Application.DTOs;
+using ToyStore.Application.DTOs.Orders;
 using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Interfaces.Services;
 
 public interface IOrderCustomerService
 {
+    /// <summary>Danh sach don hang cua customer.</summary>
+    Task<Result<PaginatedResponse<CustomerOrderListItemDto>>> GetListAsync(
+        CustomerOrderQueryDto query,
+        int accountId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Chi tiet don hang cua customer.</summary>
+    Task<Result<CustomerOrderDetailDto>> GetDetailAsync(
+        int orderId,
+        int accountId,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Hủy đơn hàng (user hoặc admin).</summary>
     Task<Result<CancelOrderCustomerResponseDto>> CancelAsync(
         int orderId,

@@ -148,6 +148,96 @@ public class ReviewRepository : IReviewRepository
         await _context.ReviewModerationLogs.AddAsync(log, cancellationToken);
     }
 
+    // --- Customer My Reviews ---
+
+    public async Task<List<OrderDetail>> GetUnreviewedProductsAsync(int accountId, int pageNumber, int pageSize, CancellationToken cancellationToken = default)
+    {
+        var cutoffDate = DateTime.UtcNow.AddDays(-20);
+        return await _context.OrderDetails
+            .AsNoTracking()
+            .Include(od => od.Order)
+                .ThenInclude(o => o.Status)
+            .Where(od => !od.Order.IsDeleted &&
+                         od.Order.AccountId == accountId &&
+                         od.Order.Status.StatusName == "Completed" &&
+                         od.Order.CompletedAt >= cutoffDate &&
+                         !_context.ReviewProducts.Any(r => !r.IsDeleted && 
+                                                           r.AccountId == accountId && 
+                                                           r.OrderId == od.OrderId && 
+                                                           r.ProductId == od.ProductId))
+            .OrderByDescending(od => od.Order.CompletedAt)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<int> GetUnreviewedProductsCountAsync(int accountId, CancellationToken cancellationToken = default)
+    {
+        var cutoffDate = DateTime.UtcNow.AddDays(-20);
+        return await _context.OrderDetails
+            .AsNoTracking()
+            .Where(od => !od.Order.IsDeleted &&
+                         od.Order.AccountId == accountId &&
+                         od.Order.Status.StatusName == "Completed" &&
+                         od.Order.CompletedAt >= cutoffDate &&
+                         !_context.ReviewProducts.Any(r => !r.IsDeleted && 
+                                                           r.AccountId == accountId && 
+                                                           r.OrderId == od.OrderId && 
+                                                           r.ProductId == od.ProductId))
+            .CountAsync(cancellationToken);
+    }
+
+    public async Task<List<ReviewProduct>> GetMyReviewsPagedAsync(
+        int accountId,
+        int pageNumber,
+        int pageSize,
+        string? sortBy,
+        bool sortDesc,
+        string? moderationStatus,
+        CancellationToken cancellationToken = default)
+    {
+        var query = BuildMyReviewsQuery(accountId, moderationStatus);
+
+        // Sorting
+        query = sortBy?.ToLower() switch
+        {
+            "rating" => sortDesc ? query.OrderByDescending(r => r.Rating) : query.OrderBy(r => r.Rating),
+            _ => sortDesc ? query.OrderByDescending(r => r.CreatedAt) : query.OrderBy(r => r.CreatedAt) // Default
+        };
+
+        return await query
+            .Include(r => r.Product)
+                .ThenInclude(p => p.ProductImage)
+            .Include(r => r.Order)
+            .Include(r => r.ReviewProductImages.Where(i => !i.IsDeleted))
+            .Include(r => r.StaffReviewProductReplies.Where(reply => !reply.IsDeleted))
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<int> GetMyReviewsCountAsync(
+        int accountId,
+        string? moderationStatus,
+        CancellationToken cancellationToken = default)
+    {
+        return await BuildMyReviewsQuery(accountId, moderationStatus).CountAsync(cancellationToken);
+    }
+
+    private IQueryable<ReviewProduct> BuildMyReviewsQuery(int accountId, string? moderationStatus)
+    {
+        var query = _context.ReviewProducts
+            .AsNoTracking()
+            .Where(r => !r.IsDeleted && r.AccountId == accountId);
+
+        if (!string.IsNullOrWhiteSpace(moderationStatus))
+        {
+            query = query.Where(r => r.ModerationStatus == moderationStatus);
+        }
+
+        return query;
+    }
+
     // --- Admin / Staff ---
 
     public async Task<List<ReviewProduct>> GetAdminPagedAsync(

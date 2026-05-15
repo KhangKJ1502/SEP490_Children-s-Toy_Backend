@@ -11,8 +11,15 @@ public interface IOrderLifecycleService
     /// <summary>
     /// Thực hiện hủy đơn hàng (internal logic).
     /// </summary>
-    /// <param name="order">Đơn hàng cần hủy (nên include đầy đủ OrderDetails).</param>
-    /// <param name="reason">Lý do hủy.</param>
-    /// <param name="cancelledByAccountId">ID người thực hiện hủy.</param>
     Task<Result> CancelOrderInternalAsync(Order order, string reason, int cancelledByAccountId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Hoàn thành đơn hàng (internal logic).
+    /// </summary>
+    Task<Result> CompleteOrderAsync(int orderId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Đánh dấu đơn hàng là đã giao (internal logic).
+    /// </summary>
+    Task<Result> DeliverOrderAsync(int orderId, CancellationToken cancellationToken = default);
 }

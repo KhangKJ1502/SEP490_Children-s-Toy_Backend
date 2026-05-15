@@ -2,9 +2,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ToyStore.Domain\ToyStore.Domain.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="AutoMapper" Version="16.1.1" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
     <PackageReference Include="Google.Apis.Auth" Version="1.68.0" />
@@ -15,6 +12,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Global using: Result<T> nằm ở ToyStore.Application.Common.Models -->
+    <Using Include="ToyStore.Application.Common.Models" />
+  </ItemGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />

@@ -17,13 +17,13 @@ public class OrderStatusWorker : BackgroundService
     private readonly TimeSpan _interval = TimeSpan.FromMinutes(5);
 
     public OrderStatusWorker(
-        IServiceProvider serviceProvider, 
+        IServiceProvider serviceProvider,
         ILogger<OrderStatusWorker> logger,
         ITimeProvider timeProvider)
     {
         _serviceProvider = serviceProvider;
-        _logger          = logger;
-        _timeProvider    = timeProvider;
+        _logger = logger;
+        _timeProvider = timeProvider;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -51,6 +51,7 @@ public class OrderStatusWorker : BackgroundService
     {
         using var scope = _serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<SEP490ToyStoreContext>();
+        var lifecycleService = scope.ServiceProvider.GetRequiredService<IOrderLifecycleService>();
 
         _logger.LogInformation("Checking for pending orders to auto-cancel");
 
@@ -58,6 +59,7 @@ public class OrderStatusWorker : BackgroundService
         var cutoff = _timeProvider.UtcNow.AddHours(-24);
 
         var staleOrders = await context.Orders
+            .Include(o => o.OrderDetails)
             .Where(o => o.PaymentStatus == "PENDING"
                      && !o.IsDeleted
                      && o.CreatedAt < cutoff)
@@ -69,30 +71,26 @@ public class OrderStatusWorker : BackgroundService
             return;
         }
 
-        // Lấy StatusID cho "Cancelled"
-        var cancelledStatus = await context.StatusOrders
-            .FirstOrDefaultAsync(s => s.StatusName == "Cancelled", cancellationToken);
-
-        if (cancelledStatus == null)
-        {
-            _logger.LogWarning("StatusOrder 'Cancelled' not found in DB — skipping auto-cancel");
-            return;
-        }
-
         foreach (var order in staleOrders)
         {
+            // Cập nhật PaymentStatus trước khi gọi lifecycle (vì lifecycle check PaymentStatus để restore stock)
             order.PaymentStatus = "FAILED";
-            order.StatusId = cancelledStatus.StatusId;
-            order.CancelledAt = _timeProvider.UtcNow;
-            order.CancelReason = "Payment timeout — auto cancelled after 24 hours";
-            order.UpdatedAt = _timeProvider.UtcNow;
 
-            _logger.LogInformation(
-                "Auto-cancelled Order {OrderCode} (payment timeout)",
-                order.OrderCode);
+            var result = await lifecycleService.CancelOrderInternalAsync(
+                order,
+                "Payment timeout — auto cancelled after 24 hours",
+                0, // System/Auto
+                cancellationToken);
+
+            if (result.IsSuccess)
+            {
+                _logger.LogInformation("Auto-cancelled Order {OrderCode} (payment timeout)", order.OrderCode);
+            }
+            else
+            {
+                _logger.LogWarning("Failed to auto-cancel order {OrderId}: {Error}", order.OrderId, result.ErrorMessage);
+            }
         }
-
-        await context.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
             "Auto-cancelled {Count} stale orders",

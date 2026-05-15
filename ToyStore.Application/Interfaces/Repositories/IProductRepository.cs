@@ -119,6 +119,26 @@ public interface IProductRepository
     Task<List<Product>> GetByIdsAsync(IEnumerable<int> productIds, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Lay danh sach Product cho bao cao ton kho.
+    /// </summary>
+    Task<List<Product>> GetInventoryReportAsync(
+        string? sortBy = null,
+        bool sortDesc = false,
+        string? searchTerm = null,
+        short? categoryId = null,
+        int? brandId = null,
+        byte? priceRangeId = null,
+        short? materialId = null,
+        byte? ageId = null,
+        byte? originId = null,
+        string? status = null,
+        bool lowStockOnly = false,
+        DateTime? dateFrom = null,
+        DateTime? dateTo = null,
+        string? dateField = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Lay danh sach PriceRange.
     /// </summary>
     Task<List<PriceRange>> GetPriceRangesAsync(CancellationToken cancellationToken = default);
