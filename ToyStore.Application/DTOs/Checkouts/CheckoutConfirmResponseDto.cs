@@ -36,6 +36,8 @@ public class CheckoutPreviewResponseDto
     public decimal SubTotal { get; set; }
     public decimal ShippingFee { get; set; }
     public decimal DiscountAmount { get; set; }
+    public decimal OrderDiscountAmount { get; set; }
+    public decimal ShippingDiscountAmount { get; set; }
     public decimal TotalAmount { get; set; }
     public int TotalWeightGrams { get; set; }
     public DateTime? EstimatedDeliveryTime { get; set; }

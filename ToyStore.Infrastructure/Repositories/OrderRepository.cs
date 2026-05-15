@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
+using ToyStore.Domain.Constants;
 using ToyStore.Domain.Entities;
 using ToyStore.Infrastructure.Data;
 
@@ -338,6 +339,12 @@ public class OrderRepository : IOrderRepository
             query = query.Where(o => o.OrderDate <= endOfDay);
         }
 
+        if (!statusId.HasValue && string.IsNullOrWhiteSpace(keyword))
+        {
+            // Chỉ ẩn các đơn SE_PAY chưa thanh toán (rác). Các đơn COD/Wallet dù bị Hủy vẫn hiện để theo dõi.
+            query = query.Where(o => !(o.PaymentMethod == "SE_PAY" && o.PaymentStatus != "PAID"));
+        }
+
         return query;
     }
 
@@ -359,6 +366,19 @@ public class OrderRepository : IOrderRepository
         if (statusNames is { Count: > 0 })
         {
             query = query.Where(o => statusNames.Contains(o.Status.StatusName));
+
+            // Nếu đang xem tab Bị hủy, chỉ hiện SHIP_COD (ẩn rác SE_PAY)
+            if (statusNames.Contains(OrderStatuses.Cancelled))
+            {
+                query = query.Where(o => o.Status.StatusName != OrderStatuses.Cancelled
+                                      || o.PaymentMethod == "SHIP_COD");
+            }
+        }
+        else
+        {
+            // Mặc định ẩn các đơn SE_PAY bị hủy hoặc chưa thanh toán (rác). Chỉ hiện COD bị hủy.
+            query = query.Where(o => !(o.Status.StatusName == OrderStatuses.Cancelled && o.PaymentMethod != "SHIP_COD")
+                                  && (o.PaymentMethod != "SE_PAY" || o.PaymentStatus == "PAID"));
         }
 
         if (!string.IsNullOrWhiteSpace(keyword))

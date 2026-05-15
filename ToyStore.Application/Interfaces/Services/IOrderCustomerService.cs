@@ -74,4 +74,5 @@ public class OrderPaymentStatusDto
     public string OrderCode { get; set; } = string.Empty;
     public string PaymentStatus { get; set; } = string.Empty;
     public DateTime? PaidAt { get; set; }
+    public DateTime? ExpiresAt { get; set; }
 }

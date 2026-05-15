@@ -47,15 +47,15 @@ public class CheckoutService : ICheckoutService
         ILogger<CheckoutService> logger,
         ITimeProvider timeProvider)
     {
-        _uow            = uow;
-        _db             = db;
-        _ghnClient      = ghnClient;
-        _ghnOpts        = ghnOpts.Value;
-        _sePayOpts      = sePayOpts.Value;
-        _shopAddr       = shopAddr.Value;
+        _uow = uow;
+        _db = db;
+        _ghnClient = ghnClient;
+        _ghnOpts = ghnOpts.Value;
+        _sePayOpts = sePayOpts.Value;
+        _shopAddr = shopAddr.Value;
         _eventPublisher = eventPublisher;
-        _logger         = logger;
-        _timeProvider   = timeProvider;
+        _logger = logger;
+        _timeProvider = timeProvider;
     }
 
     // ── Preview ───────────────────────────────────────────────────────────────
@@ -63,7 +63,8 @@ public class CheckoutService : ICheckoutService
     public async Task<Result<CheckoutPreviewResponseDto>> PreviewAsync(
         int accountId,
         int addressId,
-        string? voucherCode,
+        string? orderVoucherCode,
+        string? shippingVoucherCode,
         IReadOnlyList<CheckoutConfirmItemDto>? itemsSubset,
         CancellationToken cancellationToken = default)
     {
@@ -113,13 +114,12 @@ public class CheckoutService : ICheckoutService
             }
         }
 
-        // Tính voucher discount
-        decimal discountAmount = 0;
-        if (!string.IsNullOrWhiteSpace(voucherCode))
+        if (!string.IsNullOrWhiteSpace(orderVoucherCode)
+            && !string.IsNullOrWhiteSpace(shippingVoucherCode)
+            && orderVoucherCode.Equals(shippingVoucherCode, StringComparison.OrdinalIgnoreCase))
         {
-            var voucherResult = await CalculateVoucherDiscountAsync(voucherCode, accountId, subTotal, cancellationToken);
-            if (voucherResult.IsSuccess)
-                discountAmount = voucherResult.Data;
+            return Result<CheckoutPreviewResponseDto>.BusinessError(
+                "Không thể áp dụng cùng một mã voucher cho cả đơn hàng và vận chuyển.");
         }
 
         // Gọi GHN fee — không block checkout nếu fail
@@ -142,15 +142,52 @@ public class CheckoutService : ICheckoutService
             if (ldResult.IsSuccess) estimatedDelivery = ldResult.Data!.EstimatedDeliveryTime;
         }
 
-        // Discount không vượt subTotal
-        discountAmount = Math.Min(discountAmount, subTotal);
-        var totalAmount = subTotal + shippingFee - discountAmount;
+        // Tính voucher discount
+        decimal orderDiscount = 0;
+        decimal shippingDiscount = 0;
+
+        if (!string.IsNullOrWhiteSpace(orderVoucherCode))
+        {
+            var voucherResult = await CalculateVoucherDiscountAsync(
+                orderVoucherCode,
+                accountId,
+                subTotal,
+                subTotal,
+                "ORDER_TOTAL",
+                cancellationToken);
+            if (!voucherResult.IsSuccess)
+                return Result<CheckoutPreviewResponseDto>.BusinessError(voucherResult.ErrorMessage ?? "Voucher không hợp lệ.");
+            orderDiscount = voucherResult.Data;
+        }
+
+        if (!string.IsNullOrWhiteSpace(shippingVoucherCode))
+        {
+            if (shippingFee <= 0)
+                return Result<CheckoutPreviewResponseDto>.BusinessError("Phí vận chuyển chưa sẵn sàng để áp voucher.");
+
+            var voucherResult = await CalculateVoucherDiscountAsync(
+                shippingVoucherCode,
+                accountId,
+                subTotal,
+                shippingFee,
+                "SHIPPING_FEE",
+                cancellationToken);
+            if (!voucherResult.IsSuccess)
+                return Result<CheckoutPreviewResponseDto>.BusinessError(voucherResult.ErrorMessage ?? "Voucher không hợp lệ.");
+            shippingDiscount = voucherResult.Data;
+        }
+
+        var totalBeforeDiscount = subTotal + shippingFee;
+        var discountAmount = Math.Min(orderDiscount + shippingDiscount, totalBeforeDiscount);
+        var totalAmount = Math.Max(totalBeforeDiscount - discountAmount, 0m);
 
         return Result<CheckoutPreviewResponseDto>.Success(new CheckoutPreviewResponseDto
         {
             SubTotal = subTotal,
             ShippingFee = shippingFee,
             DiscountAmount = discountAmount,
+            OrderDiscountAmount = orderDiscount,
+            ShippingDiscountAmount = shippingDiscount,
             TotalAmount = totalAmount,
             TotalWeightGrams = totalWeightGrams,
             EstimatedDeliveryTime = estimatedDelivery,
@@ -215,44 +252,92 @@ public class CheckoutService : ICheckoutService
         decimal subTotal = request.Items.Sum(i => PriceHelper.ResolveCurrentPrice(productMap[i.ProductId], _timeProvider.UtcNow) * (int)i.Quantity);
         int totalWeightGrams = request.Items.Sum(i => _sePayOpts.DefaultItemWeightGrams * (int)i.Quantity);
 
+        // Validate confirm items against active cart (phòng client gửi items không có trong giỏ)
+        var activeCart = await _uow.Carts.GetByAccountIdWithItemsAsync(accountId, cancellationToken);
+        if (activeCart is not null)
+        {
+            var activeCartProductIds = activeCart.CartItems
+                .Where(ci => ci.RemovedAt == null)
+                .Select(ci => ci.ProductId)
+                .ToHashSet();
+            var invalidItems = request.Items
+                .Where(i => !activeCartProductIds.Contains(i.ProductId))
+                .Select(i => $"ProductId {i.ProductId}")
+                .ToList();
+            if (invalidItems.Count > 0)
+                return Result<CheckoutConfirmResponseDto>.BusinessError(
+                    $"Sản phẩm không tồn tại trong giỏ hàng: {string.Join(", ", invalidItems)}.");
+        }
+
         // Lấy phí ship thật
         var feeReq = BuildFeeRequest(address, Math.Max(totalWeightGrams, 1));
         var feeResult = await _ghnClient.GetFeeAsync(feeReq, cancellationToken);
-        decimal shippingFee = feeResult.IsSuccess ? feeResult.Data!.Fee : 0m;
-        int resolvedServiceId = feeResult.IsSuccess ? feeResult.Data!.ServiceId : 0;
+        if (!feeResult.IsSuccess)
+            return Result<CheckoutConfirmResponseDto>.BusinessError("Không thể tính phí vận chuyển. Vui lòng thử lại.");
+        decimal shippingFee = feeResult.Data!.Fee;
+        int resolvedServiceId = feeResult.Data!.ServiceId;
         DateTime? estimatedDelivery = null;
-        if (feeResult.IsSuccess)
+        var ldReq = new LeadtimeRequestDTO
         {
-            var ldReq = new LeadtimeRequestDTO
-            {
-                FromDistrictId = _ghnOpts.FromDistrictId,
-                FromWardCode = _ghnOpts.FromWardCode,
-                ToDistrictId = address.DistrictId ?? 0,
-                ToWardCode = address.WardCode ?? string.Empty,
-                ServiceId = resolvedServiceId
-            };
-            var ldResult = await _ghnClient.GetLeadtimeAsync(ldReq, cancellationToken);
-            if (ldResult.IsSuccess) estimatedDelivery = ldResult.Data!.EstimatedDeliveryTime;
+            FromDistrictId = _ghnOpts.FromDistrictId,
+            FromWardCode = _ghnOpts.FromWardCode,
+            ToDistrictId = address.DistrictId ?? 0,
+            ToWardCode = address.WardCode ?? string.Empty,
+            ServiceId = resolvedServiceId
+        };
+        var ldResult = await _ghnClient.GetLeadtimeAsync(ldReq, cancellationToken);
+        if (ldResult.IsSuccess) estimatedDelivery = ldResult.Data!.EstimatedDeliveryTime;
+
+        // Voucher: validate + tính discount (tách order/shipping)
+        var orderVoucherCode = request.OrderVoucherCode ?? request.VoucherCode;
+        var shippingVoucherCode = request.ShippingVoucherCode;
+
+        if (!string.IsNullOrWhiteSpace(orderVoucherCode)
+            && !string.IsNullOrWhiteSpace(shippingVoucherCode)
+            && orderVoucherCode.Equals(shippingVoucherCode, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<CheckoutConfirmResponseDto>.BusinessError(
+                "Không thể áp dụng cùng một mã voucher cho cả đơn hàng và vận chuyển.");
         }
 
-        // Voucher: validate + tính discount
-        decimal discountAmount = Math.Min(request.VoucherDiscountAmount, subTotal);
-        Voucher? voucher = null;
-        if (!string.IsNullOrWhiteSpace(request.VoucherCode))
+        decimal orderDiscount = 0;
+        decimal shippingDiscount = 0;
+        Voucher? orderVoucher = null;
+        Voucher? shippingVoucher = null;
+
+        if (!string.IsNullOrWhiteSpace(orderVoucherCode))
         {
-            voucher = await _uow.Vouchers.GetByCodeAsync(request.VoucherCode, cancellationToken);
-            if (voucher is null)
+            orderVoucher = await _uow.Vouchers.GetByCodeAsync(orderVoucherCode, cancellationToken);
+            if (orderVoucher is null)
                 return Result<CheckoutConfirmResponseDto>.BusinessError("Mã voucher không tồn tại.");
 
-            var voucherCheck = await ValidateVoucherAsync(voucher, accountId, subTotal, cancellationToken);
+            var voucherCheck = await ValidateVoucherAsync(orderVoucher, accountId, subTotal, "ORDER_TOTAL", cancellationToken);
             if (!string.IsNullOrEmpty(voucherCheck))
                 return Result<CheckoutConfirmResponseDto>.BusinessError(voucherCheck);
 
-            discountAmount = Math.Min(CalculateDiscount(voucher, subTotal), subTotal);
+            orderDiscount = Math.Min(CalculateDiscount(orderVoucher, subTotal), subTotal);
         }
 
-        // TotalAmount = SubTotal + ShippingFee - Discount; floor = ShippingFee
-        var totalAmount = Math.Max(subTotal + shippingFee - discountAmount, shippingFee);
+        if (!string.IsNullOrWhiteSpace(shippingVoucherCode))
+        {
+            if (shippingFee <= 0)
+                return Result<CheckoutConfirmResponseDto>.BusinessError("Phí vận chuyển chưa sẵn sàng để áp voucher.");
+
+            shippingVoucher = await _uow.Vouchers.GetByCodeAsync(shippingVoucherCode, cancellationToken);
+            if (shippingVoucher is null)
+                return Result<CheckoutConfirmResponseDto>.BusinessError("Mã voucher không tồn tại.");
+
+            var voucherCheck = await ValidateVoucherAsync(shippingVoucher, accountId, subTotal, "SHIPPING_FEE", cancellationToken);
+            if (!string.IsNullOrEmpty(voucherCheck))
+                return Result<CheckoutConfirmResponseDto>.BusinessError(voucherCheck);
+
+            shippingDiscount = Math.Min(CalculateDiscount(shippingVoucher, shippingFee), shippingFee);
+        }
+
+        var discountAmount = orderDiscount + shippingDiscount;
+
+        // TotalAmount = SubTotal + ShippingFee - Discount
+        var totalAmount = Math.Max(subTotal + shippingFee - discountAmount, 0m);
         var orderCode = GenerateOrderCode();
         var now = _timeProvider.UtcNow;
 
@@ -309,8 +394,9 @@ public class CheckoutService : ICheckoutService
                     CreatedAt = now
                 }, cancellationToken);
 
-                // Trừ stock chung (chỉ cho COD ngay lúc tạo; WALLET trừ sau khi check ví; SE_PAY trừ khi webhook PAID)
-                if (payMethod == PayMethodCod)
+                // Trừ stock chung ngay lúc tạo đơn cho cả COD và SE_PAY (reserve tránh oversell)
+                // WALLET trừ sau khi kiểm tra số dư ví thành công (bên dưới)
+                if (payMethod == PayMethodCod || payMethod == PayMethodSepay)
                 {
                     var affected = await _db.Database.ExecuteSqlRawAsync(
                         "UPDATE Products SET Quantity = Quantity - {0} WHERE ProductID = {1} AND Quantity >= {0} AND ProductStatus = 'Active'",
@@ -352,30 +438,24 @@ public class CheckoutService : ICheckoutService
             }
 
             // Voucher: tăng UsedQuantity + insert VoucherUsageLogs
-            if (voucher is not null)
+            if (orderVoucher is not null && orderDiscount > 0)
             {
-                var voucherAffected = await _db.Database.ExecuteSqlRawAsync(
-                    "UPDATE Vouchers SET UsedQuantity = UsedQuantity + 1 WHERE VoucherID = {0} AND (TotalQuantity IS NULL OR UsedQuantity + 1 <= TotalQuantity)",
-                    new object[] { voucher.VoucherId },
-                    cancellationToken);
-                if (voucherAffected == 0)
+                var err = await ApplyVoucherUsageAsync(orderVoucher, order.OrderId, accountId, orderDiscount, "ORDER_TOTAL", cancellationToken);
+                if (!string.IsNullOrEmpty(err))
                 {
                     await _uow.RollbackTransactionAsync(cancellationToken);
-                    return Result<CheckoutConfirmResponseDto>.BusinessError("Voucher đã hết lượt sử dụng.");
+                    return Result<CheckoutConfirmResponseDto>.BusinessError(err);
                 }
-                await _db.VoucherUsageLogs.AddAsync(new VoucherUsageLog
+            }
+
+            if (shippingVoucher is not null && shippingDiscount > 0)
+            {
+                var err = await ApplyVoucherUsageAsync(shippingVoucher, order.OrderId, accountId, shippingDiscount, "SHIPPING_FEE", cancellationToken);
+                if (!string.IsNullOrEmpty(err))
                 {
-                    VoucherId = voucher.VoucherId,
-                    AccountId = accountId,
-                    OrderId = order.OrderId,
-                    UsedAt = now
-                }, cancellationToken);
-                await _db.OrderVouchers.AddAsync(new OrderVoucher
-                {
-                    OrderId = order.OrderId,
-                    VoucherId = voucher.VoucherId,
-                    DiscountAmountApplied = discountAmount
-                }, cancellationToken);
+                    await _uow.RollbackTransactionAsync(cancellationToken);
+                    return Result<CheckoutConfirmResponseDto>.BusinessError(err);
+                }
             }
 
             // Insert OrderStatusHistory
@@ -384,17 +464,21 @@ public class CheckoutService : ICheckoutService
                 OrderId = order.OrderId,
                 StatusId = pendingStatusId,
                 ChangedBy = accountId,
-                Note = "Đơn hàng được tạo",
+                Note = "Order placed successfully",
                 CreatedAt = now
             }, cancellationToken);
 
             // Xóa CartItems đã checkout
-            var cart = await _uow.Carts.GetByAccountIdWithItemsAsync(accountId, cancellationToken);
-            if (cart is not null)
+            // SE_PAY: giữ cart đến khi webhook PAID (tránh giỏ trống khi user bỏ QR chưa thanh toán)
+            if (payMethod != PayMethodSepay)
             {
-                var checkedOutProductIds = request.Items.Select(i => i.ProductId).ToHashSet();
-                foreach (var ci in cart.CartItems.Where(i => i.RemovedAt == null && checkedOutProductIds.Contains(i.ProductId)))
-                    ci.RemovedAt = now;
+                var cart = await _uow.Carts.GetByAccountIdWithItemsAsync(accountId, cancellationToken);
+                if (cart is not null)
+                {
+                    var checkedOutProductIds = request.Items.Select(i => i.ProductId).ToHashSet();
+                    foreach (var ci in cart.CartItems.Where(i => i.RemovedAt == null && checkedOutProductIds.Contains(i.ProductId)))
+                        ci.RemovedAt = now;
+                }
             }
 
             // ── Nhánh thanh toán ──────────────────────────────────────────
@@ -481,7 +565,7 @@ public class CheckoutService : ICheckoutService
                     OrderId = order.OrderId,
                     StatusId = confirmedStatusId,
                     ChangedBy = null,
-                    Note = "Auto-confirmed: wallet payment",
+                    Note = "Auto-confirmed: Wallet payment",
                     CreatedAt = now
                 }, cancellationToken);
             }
@@ -574,6 +658,9 @@ public class CheckoutService : ICheckoutService
         if (order.PaymentStatus == "PAID")
             return Result<RetryPaymentResponseDto>.BusinessError("Đơn hàng đã được thanh toán.");
 
+        if (order.CancelledAt.HasValue)
+            return Result<RetryPaymentResponseDto>.BusinessError("Đơn hàng đã bị hủy, không thể tạo QR mới.");
+
         if (order.PaymentStatus is "EXPIRED" or "CANCELLED" or "FAILED")
             return Result<RetryPaymentResponseDto>.BusinessError($"Đơn hàng ở trạng thái {order.PaymentStatus}, không thể tạo QR mới.");
 
@@ -637,21 +724,34 @@ public class CheckoutService : ICheckoutService
 
 
     private async Task<Result<decimal>> CalculateVoucherDiscountAsync(
-        string voucherCode, int accountId, decimal subTotal, CancellationToken ct)
+        string voucherCode,
+        int accountId,
+        decimal orderSubTotal,
+        decimal baseAmount,
+        string expectedTarget,
+        CancellationToken ct)
     {
         var voucher = await _uow.Vouchers.GetByCodeAsync(voucherCode, ct);
         if (voucher is null) return Result<decimal>.NotFound("Voucher");
-        var err = await ValidateVoucherAsync(voucher, accountId, subTotal, ct);
+        var err = await ValidateVoucherAsync(voucher, accountId, orderSubTotal, expectedTarget, ct);
         if (!string.IsNullOrEmpty(err)) return Result<decimal>.BusinessError(err);
-        return Result<decimal>.Success(CalculateDiscount(voucher, subTotal));
+        if (baseAmount <= 0) return Result<decimal>.BusinessError("Số tiền áp dụng voucher không hợp lệ.");
+        return Result<decimal>.Success(CalculateDiscount(voucher, baseAmount));
     }
 
-    private async Task<string?> ValidateVoucherAsync(Voucher v, int accountId, decimal subTotal, CancellationToken ct)
+    private async Task<string?> ValidateVoucherAsync(
+        Voucher v,
+        int accountId,
+        decimal orderSubTotal,
+        string expectedTarget,
+        CancellationToken ct)
     {
         var now = _timeProvider.UtcNow;
         if (v.Status != "Active" || v.IsDeleted) return "Voucher không hợp lệ.";
         if (now < v.StartDate || now > v.EndDate) return "Voucher hết hạn.";
-        if (v.MinOrderAmount.HasValue && subTotal < v.MinOrderAmount.Value)
+        if (!v.DiscountTarget.Equals(expectedTarget, StringComparison.OrdinalIgnoreCase))
+            return "Voucher không áp dụng cho mục này.";
+        if (v.MinOrderAmount.HasValue && orderSubTotal < v.MinOrderAmount.Value)
             return $"Đơn hàng tối thiểu {v.MinOrderAmount:N0}₫ để dùng voucher này.";
         if (v.TotalQuantity.HasValue && v.UsedQuantity >= v.TotalQuantity.Value)
             return "Voucher đã hết lượt sử dụng.";
@@ -664,15 +764,49 @@ public class CheckoutService : ICheckoutService
         return null;
     }
 
-    private static decimal CalculateDiscount(Voucher v, decimal subTotal)
+    private static decimal CalculateDiscount(Voucher v, decimal baseAmount)
     {
         decimal discount = v.DiscountType switch
         {
-            "PERCENTAGE" => subTotal * v.DiscountValue / 100m,
+            "PERCENTAGE" => baseAmount * v.DiscountValue / 100m,
             _ => v.DiscountValue
         };
         if (v.MaxDiscountCap.HasValue) discount = Math.Min(discount, v.MaxDiscountCap.Value);
-        return Math.Min(discount, subTotal);
+        return Math.Min(discount, baseAmount);
+    }
+
+    private async Task<string?> ApplyVoucherUsageAsync(
+        Voucher voucher,
+        int orderId,
+        int accountId,
+        decimal discountAmount,
+        string voucherTarget,
+        CancellationToken ct)
+    {
+        var voucherAffected = await _db.Database.ExecuteSqlRawAsync(
+            "UPDATE Vouchers SET UsedQuantity = UsedQuantity + 1 WHERE VoucherID = {0} AND (TotalQuantity IS NULL OR UsedQuantity + 1 <= TotalQuantity)",
+            new object[] { voucher.VoucherId },
+            ct);
+        if (voucherAffected == 0)
+            return "Voucher đã hết lượt sử dụng.";
+
+        await _db.VoucherUsageLogs.AddAsync(new VoucherUsageLog
+        {
+            VoucherId = voucher.VoucherId,
+            AccountId = accountId,
+            OrderId = orderId,
+            UsedAt = _timeProvider.UtcNow
+        }, ct);
+
+        await _db.OrderVouchers.AddAsync(new OrderVoucher
+        {
+            OrderId = orderId,
+            VoucherId = voucher.VoucherId,
+            DiscountAmountApplied = discountAmount,
+            VoucherTarget = voucherTarget
+        }, ct);
+
+        return null;
     }
 
     private FeeRequestDTO BuildFeeRequest(Address address, int weightGrams) => new()
