@@ -1,5 +1,6 @@
 using AutoMapper;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Constants;
@@ -9,6 +10,7 @@ using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
 using ToyStore.Domain.Entities;
 using ToyStore.Domain.Enums;
+using ToyStore.Infrastructure.Options;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -26,6 +28,7 @@ public class OrderCustomerService : IOrderCustomerService
     private readonly IOrderLifecycleService _orderLifecycle;
     private readonly IMapper _mapper;
     private readonly IShippingStatusMapper _statusMapper;
+    private readonly SePayOptions _sePayOptions;
 
     private static readonly HashSet<string> NonCancellableGhnStatuses =
         new(StringComparer.OrdinalIgnoreCase)
@@ -39,7 +42,8 @@ public class OrderCustomerService : IOrderCustomerService
         ITimeProvider timeProvider,
         IOrderLifecycleService orderLifecycle,
         IMapper mapper,
-        IShippingStatusMapper statusMapper)
+        IShippingStatusMapper statusMapper,
+        IOptions<SePayOptions> sePayOptions)
     {
         _uow = uow;
         _ghnClient = ghnClient;
@@ -49,6 +53,7 @@ public class OrderCustomerService : IOrderCustomerService
         _orderLifecycle = orderLifecycle;
         _mapper = mapper;
         _statusMapper = statusMapper;
+        _sePayOptions = sePayOptions.Value;
     }
 
 
@@ -131,6 +136,13 @@ public class OrderCustomerService : IOrderCustomerService
             return Result<CancelOrderCustomerResponseDto>.UnprocessableEntity(
                 $"Không thể hủy đơn ở trạng thái '{order.Status.StatusName}'.");
 
+        // SHIP COD rule: Chỉ được hủy khi chưa confirmed (tức là chỉ được hủy khi đang Pending)
+        if (!isAdmin && order.PaymentMethod == "SHIP_COD" && order.Status.StatusName == OrderStatuses.Confirmed)
+        {
+            return Result<CancelOrderCustomerResponseDto>.UnprocessableEntity(
+                "Đơn hàng COD đã được xác nhận, không thể tự hủy. Vui lòng liên hệ hỗ trợ.");
+        }
+
         if (order.CancelledAt.HasValue)
             return Result<CancelOrderCustomerResponseDto>.UnprocessableEntity("Đơn đã bị hủy.");
 
@@ -152,7 +164,7 @@ public class OrderCustomerService : IOrderCustomerService
             // TODO: Call GHN cancel API if available in IGhnClient
         }
 
-        var result = await _orderLifecycle.CancelOrderInternalAsync(order, reason ?? "Khách hàng hủy", actorAccountId ?? order.AccountId, cancellationToken);
+        var result = await _orderLifecycle.CancelOrderInternalAsync(order, reason ?? "Cancelled by customer", actorAccountId ?? order.AccountId, cancellationToken);
         if (!result.IsSuccess)
         {
             return Result<CancelOrderCustomerResponseDto>.Failure(result.ErrorCode!, result.ErrorMessage!);
@@ -223,12 +235,25 @@ public class OrderCustomerService : IOrderCustomerService
         if (!isAdmin && order.AccountId != accountId)
             return Result<OrderPaymentStatusDto>.Unauthorized("Bạn không có quyền xem thông tin đơn này.");
 
+        // Guard: nếu đơn SE_PAY đã bị cancel nhưng PaymentStatus chưa được cập nhật (dữ liệu cũ)
+        var effectivePaymentStatus = order.PaymentStatus;
+        if (order.PaymentMethod == "SE_PAY"
+            && order.CancelledAt.HasValue
+            && order.PaymentStatus == "PENDING")
+        {
+            effectivePaymentStatus = "CANCELLED";
+        }
+
         return Result<OrderPaymentStatusDto>.Success(new OrderPaymentStatusDto
         {
             OrderId = order.OrderId,
             OrderCode = order.OrderCode,
-            PaymentStatus = order.PaymentStatus,
-            PaidAt = order.PaidAt
+            PaymentStatus = effectivePaymentStatus,
+            PaidAt = order.PaidAt,
+            ExpiresAt = order.PaymentMethod == "SE_PAY"
+                ? DateTime.SpecifyKind(order.CreatedAt, DateTimeKind.Utc)
+                    .AddMinutes(_sePayOptions.PaymentTtlMinutes)
+                : null
         });
     }
 
@@ -242,7 +267,7 @@ public class OrderCustomerService : IOrderCustomerService
         return status.Trim().ToLowerInvariant() switch
         {
             "pending" => [OrderStatuses.Pending],
-            "shipping" => [OrderStatuses.Shipped, OrderStatuses.Processing],
+            "shipping" => [OrderStatuses.Confirmed, OrderStatuses.Shipped, OrderStatuses.Processing],
             "delivering" => [OrderStatuses.Delivering],
             "completed" => [OrderStatuses.Completed, OrderStatuses.Delivered],
             "cancelled" => [OrderStatuses.Cancelled],

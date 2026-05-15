@@ -29,8 +29,7 @@ public class OrdersProfile : Profile
         // Danh sach don hang (customer)
         CreateMap<Order, CustomerOrderListItemDto>()
             .ForMember(d => d.StatusName, opt => opt.MapFrom(s => s.Status.StatusName))
-            .ForMember(d => d.Item, opt => opt.MapFrom(s =>
-                s.OrderDetails.OrderBy(d => d.OrderDetailId).FirstOrDefault()))
+            .ForMember(d => d.Items, opt => opt.MapFrom(s => s.OrderDetails))
             .ForMember(d => d.TotalItems, opt => opt.MapFrom(s => s.OrderDetails.Count));
 
         // Chi tiet don hang (customer)

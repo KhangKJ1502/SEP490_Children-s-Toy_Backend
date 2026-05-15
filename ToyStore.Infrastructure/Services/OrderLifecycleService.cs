@@ -46,8 +46,9 @@ public class OrderLifecycleService : IOrderLifecycleService
         try
         {
             // 1. Restore stock
-            // Determine if products were already subtracted from main stock
-            bool productsSubtracted = (order.PaymentMethod != "SE_PAY" || order.PaymentStatus == "PAID");
+            // Stock is always deducted at confirm (COD, SE_PAY reserve, WALLET post-debit)
+            // Restore when order is not PAID (WALLET PAID already handled separately as REFUNDED)
+            bool productsSubtracted = order.PaymentStatus != "PAID";
 
             foreach (var detail in order.OrderDetails)
             {
@@ -60,15 +61,20 @@ public class OrderLifecycleService : IOrderLifecycleService
                 // Flash Sale Stock restoration
                 if (detail.SlotProductId.HasValue)
                 {
-                    if (order.PaymentStatus == "PAID" || (order.PaymentMethod != "SE_PAY"))
+                    if (order.PaymentStatus == "PAID")
                     {
-                        // Deducted from SoldQuantity
+                        // Deducted from SoldQuantity (webhook moved Reserved→Sold)
                         await _unitOfWork.Orders.AdjustFlashSaleStockAsync(detail.SlotProductId.Value, -detail.Quantity, 0, cancellationToken);
                     }
-                    else if (order.PaymentMethod == "SE_PAY" && order.PaymentStatus != "PAID")
+                    else if (order.PaymentMethod == "SE_PAY")
                     {
-                        // Deducted from ReservedQuantity
+                        // SE_PAY: stock reserved but not yet sold — release ReservedQuantity
                         await _unitOfWork.Orders.AdjustFlashSaleStockAsync(detail.SlotProductId.Value, 0, -detail.Quantity, cancellationToken);
+                    }
+                    else
+                    {
+                        // COD: deducted from SoldQuantity at confirm
+                        await _unitOfWork.Orders.AdjustFlashSaleStockAsync(detail.SlotProductId.Value, -detail.Quantity, 0, cancellationToken);
                     }
                 }
             }
@@ -76,21 +82,28 @@ public class OrderLifecycleService : IOrderLifecycleService
             // 2. Restore voucher
             await _unitOfWork.Orders.RestoreVoucherAsync(order.OrderId, cancellationToken);
 
-            // 3. Wallet refund
+            // 3. Wallet refund / SE_PAY payment status sync
             if (order.PaymentMethod == "WALLET" && order.PaymentStatus == "PAID")
             {
                 await _unitOfWork.Orders.RefundWalletAsync(order.AccountId, order.TotalAmount, order.OrderCode, cancellationToken);
                 order.PaymentStatus = "REFUNDED";
             }
+            else if (order.PaymentMethod == "SE_PAY" && order.PaymentStatus == "PENDING")
+            {
+                // System auto-cancel (timeout job) → EXPIRED; user/admin cancel → CANCELLED
+                order.PaymentStatus = cancelledByAccountId == 0 ? "EXPIRED" : "CANCELLED";
+            }
 
             // 4. Restore cart items if the order is cancelled before being paid/processed
-            if (order.PaymentStatus != "PAID")
+            // SE_PAY: cart was never removed at confirm (removed only on webhook PAID), no restore needed
+            // COD/WALLET: cart was removed at confirm; restore if unpaid
+            bool cartWasRemovedAtConfirm = order.PaymentMethod != "SE_PAY";
+            if (cartWasRemovedAtConfirm && order.PaymentStatus != "PAID")
             {
                 var cart = await _unitOfWork.Carts.GetByAccountIdWithRemovedItemsAsync(order.AccountId, cancellationToken);
                 if (cart != null)
                 {
                     var productIdsInOrder = order.OrderDetails.Select(d => d.ProductId).ToHashSet();
-                    // Restore items that were removed around the time the order was created
                     foreach (var ci in cart.CartItems.Where(i => i.RemovedAt.HasValue && productIdsInOrder.Contains(i.ProductId)))
                     {
                         if (ci.RemovedAt >= order.CreatedAt.AddMinutes(-5))
