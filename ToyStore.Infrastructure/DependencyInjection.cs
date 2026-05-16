@@ -238,7 +238,7 @@ public static class DependencyInjection
         services.AddScoped<IImageUploadService, CloudinaryImageUploadService>();
 
         // --- Vouchers ---
-        services.Configure<ToyStore.Application.Common.Models.VoucherRiskThresholds>(
+        services.Configure<VoucherRiskThresholds>(
             configuration.GetSection("Vouchers"));
 
         // --- GHN van chuyen ---

@@ -128,6 +128,7 @@ public class WalletService : IWalletService
         {
             WalletTransactionId = x.WalletTransactionId,
             RelatedOrderId = x.RelatedOrderId,
+            RelatedOrderCode = x.RelatedOrder?.OrderCode,
             TxnType = x.TxnType,
             Direction = x.Direction,
             Amount = x.Amount,

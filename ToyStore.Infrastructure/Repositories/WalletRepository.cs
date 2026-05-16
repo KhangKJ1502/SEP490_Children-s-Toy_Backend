@@ -93,6 +93,7 @@ public class WalletRepository : IWalletRepository
         CancellationToken cancellationToken = default)
     {
         return _context.WalletTransactions
+            .Include(x => x.RelatedOrder)
             .Where(x => x.WalletId == walletId)
             .OrderByDescending(x => x.CreatedAt)
             .Skip((pageNumber - 1) * pageSize)
