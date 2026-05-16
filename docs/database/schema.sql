@@ -727,7 +727,7 @@ GO
 CREATE TABLE [Vouchers] (
     [VoucherID]          INT IDENTITY(1,1) PRIMARY KEY,
     [CreatedBy]          INT NULL,
-    [VoucherCode]        VARCHAR(30) NOT NULL UNIQUE,
+    [VoucherCode]        VARCHAR(30) NOT NULL,
     [VoucherName]        NVARCHAR(255) NOT NULL,
     [VoucherDescription] NVARCHAR(255) NOT NULL,
     [DiscountType]       VARCHAR(10) NOT NULL CHECK ([DiscountType] IN ('FIXED', 'PERCENTAGE')),
@@ -753,6 +753,9 @@ CREATE TABLE [Vouchers] (
     CONSTRAINT [CK_Vouchers_DateRange] CHECK ([StartDate] < [EndDate]),
     CONSTRAINT [CK_Vouchers_Quantity]  CHECK ([TotalQuantity] IS NULL OR [UsedQuantity] <= [TotalQuantity])
 );
+GO
+
+CREATE UNIQUE INDEX [UQ_Vouchers_Code_Active] ON [Vouchers]([VoucherCode]) WHERE [IsDeleted] = 0;
 GO
 
 CREATE TABLE [OrderVouchers] (

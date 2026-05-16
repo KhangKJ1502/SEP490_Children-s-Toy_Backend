@@ -14,6 +14,7 @@ public class VoucherListDto
     public DateTime StartDate { get; set; }
     public DateTime EndDate { get; set; }
     public string Status { get; set; } = string.Empty;
+    public string? Reason { get; set; }
     public string? ImageUrl { get; set; }
     public int? TotalQuantity { get; set; }
     public int UsedQuantity { get; set; }

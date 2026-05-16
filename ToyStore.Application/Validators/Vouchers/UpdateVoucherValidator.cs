@@ -109,6 +109,7 @@ public class UpdateVoucherValidator : AbstractValidator<UpdateVoucherDto>
                || dto.StartDate.HasValue
                || dto.EndDate.HasValue
                || dto.Status is not null
+               || dto.Reason is not null
                || dto.IsDeleted.HasValue;
     }
 

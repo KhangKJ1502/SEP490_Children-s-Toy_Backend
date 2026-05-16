@@ -14,14 +14,17 @@ internal static class VoucherValidatorConstants
     internal static readonly HashSet<string> AllowedDiscountTargets = new(StringComparer.OrdinalIgnoreCase)
     {
         "ORDER_TOTAL",
-        "SHIPPING_FEE"
+        "SHIPPING_FEE",
+        "FINAL_PRICE"
     };
 
     internal static readonly HashSet<string> AllowedStatuses = new(StringComparer.OrdinalIgnoreCase)
     {
-        "Scheduled",
-        "Active",
-        "Inactive",
-        "Expired"
+        ToyStore.Domain.Constants.VoucherStatuses.Scheduled,
+        ToyStore.Domain.Constants.VoucherStatuses.Active,
+        ToyStore.Domain.Constants.VoucherStatuses.Inactive,
+        ToyStore.Domain.Constants.VoucherStatuses.Expired,
+        ToyStore.Domain.Constants.VoucherStatuses.Pending,
+        ToyStore.Domain.Constants.VoucherStatuses.Rejected
     };
 }
