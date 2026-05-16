@@ -69,11 +69,16 @@ public class ShippingWebhooksController : ControllerBase
             return Ok();
         }
 
-        // Xu ly bat dong bo — khong de loi lan ra HTTP response
-        _ = Task.Run(async () =>
+        // Xu ly dong bo de dam bao DbContext không bị dispose truoc khi xong
+        try
         {
-            await _webhookService.HandleAsync(provider, rawPayload, CancellationToken.None);
-        }, CancellationToken.None);
+            await _webhookService.HandleAsync(provider, rawPayload, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing shipping webhook from {Provider}", provider);
+            // Van tra ve Ok de shipper khong retry vo han
+        }
 
         return Ok();
     }

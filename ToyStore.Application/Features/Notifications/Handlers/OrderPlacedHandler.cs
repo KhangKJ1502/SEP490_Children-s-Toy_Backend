@@ -3,6 +3,7 @@ using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs.Notifications;
 using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Application.Interfaces.Services;
 
 namespace ToyStore.Application.Features.Notifications.Handlers;
 
@@ -12,13 +13,16 @@ public class OrderPlacedHandler : IOutboxEventHandler
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly INotificationDispatcher _dispatcher;
+    private readonly IShiftAssignmentService _assignmentService;
 
     public OrderPlacedHandler(
         IUnitOfWork unitOfWork,
-        INotificationDispatcher dispatcher)
+        INotificationDispatcher dispatcher,
+        IShiftAssignmentService assignmentService)
     {
         _unitOfWork = unitOfWork;
         _dispatcher = dispatcher;
+        _assignmentService = assignmentService;
     }
 
     public async Task HandleAsync(OutboxEventData ev, CancellationToken ct)
@@ -30,23 +34,27 @@ public class OrderPlacedHandler : IOutboxEventHandler
         var orderCode   = root.GetProperty("orderCode").GetString() ?? "";
         var totalAmount = root.TryGetProperty("totalAmount", out var ta) ? ta.GetDecimal() : 0;
 
+        await _assignmentService.AutoAssignOrderAsync(orderId, ct);
+
         var order = await _unitOfWork.Orders.GetByIdAsync(orderId, ct);
         if (order is null) return;
 
-        // Customer bell + email — ORDER notifications bypass preference check (spec §8 rule 6)
         await _dispatcher.DispatchAsync(new NotificationContext
         {
             RecipientAccountId = order.AccountId,
             RecipientType      = RecipientTypes.Customer,
             NotificationType   = NotificationTypes.Order,
-            Title              = "Order placed successfully",
-            Message            = $"Your order {orderCode} ({totalAmount:N0}₫) has been placed. We will process it shortly.",
-            SendBell           = true,
-            SendEmail          = true,
             TemplateCode       = NotificationTemplates.OrderPlaced,
-            ActionTarget       = $"/orders/{orderId}",
-            IdempotencyKey     = $"{EventType}:{orderId}:{order.AccountId}",
-            Payload            = new Dictionary<string, object>
+            Placeholders       = new Dictionary<string, string>
+            {
+                ["OrderCode"]   = orderCode,
+                ["TotalAmount"] = $"{totalAmount:N0}",
+            },
+            ReferenceId  = $"{orderId}",
+            SendBell     = true,
+            SendEmail    = true,
+            ActionTarget = $"/profile/orders/{orderId}",
+            Payload      = new Dictionary<string, object>
             {
                 ["orderId"]     = orderId,
                 ["orderCode"]   = orderCode,
@@ -54,9 +62,7 @@ public class OrderPlacedHandler : IOutboxEventHandler
             },
         }, ct);
 
-        // Staff bell — new pending order
         var staffAccounts = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
-
         foreach (var staff in staffAccounts)
         {
             await _dispatcher.DispatchAsync(new NotificationContext
@@ -64,13 +70,16 @@ public class OrderPlacedHandler : IOutboxEventHandler
                 RecipientAccountId = staff.AccountId,
                 RecipientType      = RecipientTypes.Staff,
                 NotificationType   = NotificationTypes.Order,
-                Title              = "New order received",
-                Message            = $"Order {orderCode} has just been placed and is waiting for confirmation.",
-                SendBell           = true,
-                SendEmail          = false,
                 TemplateCode       = NotificationTemplates.StaffNewOrder,
-                ActionTarget       = $"/admin/orders/{orderId}",
-                IdempotencyKey     = $"order.new_pending:{orderId}:{staff.AccountId}",
+                Placeholders       = new Dictionary<string, string>
+                {
+                    ["OrderCode"]   = orderCode,
+                    ["TotalAmount"] = $"{totalAmount:N0}",
+                },
+                ReferenceId  = $"{orderId}:{staff.AccountId}",
+                SendBell     = true,
+                SendEmail    = false,
+                ActionTarget = $"/admin/orders/{orderId}",
             }, ct);
         }
     }

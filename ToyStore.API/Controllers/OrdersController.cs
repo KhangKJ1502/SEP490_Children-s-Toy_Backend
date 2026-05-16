@@ -99,6 +99,19 @@ public class OrdersController : ControllerBase
             ct);
         return result.ToActionResult();
     }
+
+    /// <summary>
+    /// Xác nhận đã nhận hàng (Hoàn thành đơn hàng).
+    /// POST /api/orders/{orderId}/complete
+    /// </summary>
+    [HttpPost("{orderId:int}/complete")]
+    public async Task<ActionResult<string>> Complete(
+        int orderId,
+        CancellationToken ct)
+    {
+        var result = await _orderService.CompleteAsync(orderId, _currentUser.AccountId, ct);
+        return result.ToActionResult();
+    }
 }
 
 public class CancelOrderCustomerRequestDto

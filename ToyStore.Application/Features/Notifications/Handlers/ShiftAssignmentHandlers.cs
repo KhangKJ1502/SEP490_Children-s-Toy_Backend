@@ -44,8 +44,8 @@ public class OrderAutoAssignedHandler : IOutboxEventHandler
         using var doc = JsonDocument.Parse(ev.Payload);
         var root = doc.RootElement;
 
-        var orderId = root.GetProperty("orderId").GetInt32();
-        var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() : $"#{orderId}";
+        var orderId        = root.GetProperty("orderId").GetInt32();
+        var orderCode      = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
         var staffAccountId = root.TryGetProperty("staffAccountId", out var s) ? s.GetInt32() : 0;
         var merchAccountId = root.TryGetProperty("merchAccountId", out var m) ? m.GetInt32() : 0;
 
@@ -54,14 +54,17 @@ public class OrderAutoAssignedHandler : IOutboxEventHandler
             await _dispatcher.DispatchAsync(new NotificationContext
             {
                 RecipientAccountId = staffAccountId,
-                RecipientType = RecipientTypes.Staff,
-                NotificationType = NotificationTypes.Order,
-                Title = "New order assigned",
-                Message = $"Order {orderCode} has been assigned to you.",
-                SendBell = true,
-                SendEmail = false,
+                RecipientType      = RecipientTypes.Staff,
+                NotificationType   = NotificationTypes.Order,
+                TemplateCode       = NotificationTemplates.OrderAssigned,
+                Placeholders       = new Dictionary<string, string>
+                {
+                    ["OrderCode"] = orderCode,
+                },
+                ReferenceId  = $"{orderId}:{staffAccountId}",
+                SendBell     = true,
+                SendEmail    = false,
                 ActionTarget = $"/admin/orders/{orderId}",
-                IdempotencyKey = $"{EventType}:{orderId}:{staffAccountId}",
             }, ct);
         }
 
@@ -70,14 +73,17 @@ public class OrderAutoAssignedHandler : IOutboxEventHandler
             await _dispatcher.DispatchAsync(new NotificationContext
             {
                 RecipientAccountId = merchAccountId,
-                RecipientType = RecipientTypes.Staff,
-                NotificationType = NotificationTypes.Order,
-                Title = "New order assigned",
-                Message = $"Order {orderCode} has been assigned to you.",
-                SendBell = true,
-                SendEmail = false,
+                RecipientType      = RecipientTypes.Staff,
+                NotificationType   = NotificationTypes.Order,
+                TemplateCode       = NotificationTemplates.OrderAssigned,
+                Placeholders       = new Dictionary<string, string>
+                {
+                    ["OrderCode"] = orderCode,
+                },
+                ReferenceId  = $"{orderId}:{merchAccountId}",
+                SendBell     = true,
+                SendEmail    = false,
                 ActionTarget = $"/admin/orders/{orderId}",
-                IdempotencyKey = $"{EventType}:{orderId}:{merchAccountId}",
             }, ct);
         }
     }
@@ -101,9 +107,9 @@ public class OrderQueuedHandler : IOutboxEventHandler
         using var doc = JsonDocument.Parse(ev.Payload);
         var root = doc.RootElement;
 
-        var orderId = root.GetProperty("orderId").GetInt32();
-        var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() : $"#{orderId}";
-        var reason = root.TryGetProperty("reason", out var r) ? r.GetString() : "UNKNOWN";
+        var orderId   = root.GetProperty("orderId").GetInt32();
+        var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
+        var reason    = root.TryGetProperty("reason", out var r) ? r.GetString() ?? "UNKNOWN" : "UNKNOWN";
 
         var admins = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
         foreach (var admin in admins)
@@ -111,14 +117,18 @@ public class OrderQueuedHandler : IOutboxEventHandler
             await _dispatcher.DispatchAsync(new NotificationContext
             {
                 RecipientAccountId = admin.AccountId,
-                RecipientType = RecipientTypes.Admin,
-                NotificationType = NotificationTypes.System,
-                Title = "Order queued",
-                Message = $"Order {orderCode} is queued. Reason: {reason}.",
-                SendBell = true,
-                SendEmail = true,
+                RecipientType      = RecipientTypes.Admin,
+                NotificationType   = NotificationTypes.System,
+                TemplateCode       = NotificationTemplates.AdminOrderQueued,
+                Placeholders       = new Dictionary<string, string>
+                {
+                    ["OrderCode"] = orderCode,
+                    ["Reason"]    = reason,
+                },
+                ReferenceId  = $"{orderId}:{admin.AccountId}",
+                SendBell     = true,
+                SendEmail    = true,
                 ActionTarget = $"/admin/orders/{orderId}",
-                IdempotencyKey = $"{EventType}:{orderId}:{admin.AccountId}",
             }, ct);
         }
     }
@@ -158,20 +168,23 @@ public class ShiftStartedHandler : IOutboxEventHandler
         var root = doc.RootElement;
 
         var scheduleId = root.GetProperty("scheduleId").GetInt32();
-        var accountId = root.GetProperty("accountId").GetInt32();
-        var shiftName = root.TryGetProperty("shiftName", out var s) ? s.GetString() : "Shift";
+        var accountId  = root.GetProperty("accountId").GetInt32();
+        var shiftName  = root.TryGetProperty("shiftName", out var s) ? s.GetString() ?? "Work shift" : "Work shift";
 
         await _dispatcher.DispatchAsync(new NotificationContext
         {
             RecipientAccountId = accountId,
-            RecipientType = RecipientTypes.Staff,
-            NotificationType = NotificationTypes.System,
-            Title = "Shift started",
-            Message = $"Your shift '{shiftName}' has started.",
-            SendBell = true,
-            SendEmail = false,
+            RecipientType      = RecipientTypes.Staff,
+            NotificationType   = NotificationTypes.System,
+            TemplateCode       = NotificationTemplates.StaffShiftStarted,
+            Placeholders       = new Dictionary<string, string>
+            {
+                ["ShiftName"] = shiftName,
+            },
+            ReferenceId  = $"{scheduleId}:{accountId}",
+            SendBell     = true,
+            SendEmail    = false,
             ActionTarget = $"/admin/shifts/{scheduleId}",
-            IdempotencyKey = $"{EventType}:{scheduleId}:{accountId}",
         }, ct);
     }
 }
@@ -194,10 +207,10 @@ public class ShiftEndedWithPendingOrdersHandler : IOutboxEventHandler
         using var doc = JsonDocument.Parse(ev.Payload);
         var root = doc.RootElement;
 
-        var scheduleId = root.GetProperty("scheduleId").GetInt32();
-        var accountId = root.GetProperty("accountId").GetInt32();
-        var shiftName = root.TryGetProperty("shiftName", out var s) ? s.GetString() : "Shift";
-        var currentLoad = root.TryGetProperty("currentLoad", out var c) ? c.GetInt32() : 0;
+        var scheduleId   = root.GetProperty("scheduleId").GetInt32();
+        var accountId    = root.GetProperty("accountId").GetInt32();
+        var shiftName    = root.TryGetProperty("shiftName", out var s) ? s.GetString() ?? "Work shift" : "Work shift";
+        var currentLoad  = root.TryGetProperty("currentLoad", out var c) ? c.GetInt32() : 0;
 
         var admins = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
         foreach (var admin in admins)
@@ -205,14 +218,19 @@ public class ShiftEndedWithPendingOrdersHandler : IOutboxEventHandler
             await _dispatcher.DispatchAsync(new NotificationContext
             {
                 RecipientAccountId = admin.AccountId,
-                RecipientType = RecipientTypes.Admin,
-                NotificationType = NotificationTypes.System,
-                Title = "Shift ended with pending orders",
-                Message = $"Shift '{shiftName}' (Account #{accountId}) ended with {currentLoad} pending orders.",
-                SendBell = true,
-                SendEmail = true,
+                RecipientType      = RecipientTypes.Admin,
+                NotificationType   = NotificationTypes.System,
+                TemplateCode       = NotificationTemplates.AdminShiftEndedPending,
+                Placeholders       = new Dictionary<string, string>
+                {
+                    ["ShiftName"]   = shiftName,
+                    ["AccountId"]   = accountId.ToString(),
+                    ["CurrentLoad"] = currentLoad.ToString(),
+                },
+                ReferenceId  = $"{scheduleId}:{admin.AccountId}",
+                SendBell     = true,
+                SendEmail    = true,
                 ActionTarget = $"/admin/shifts/{scheduleId}",
-                IdempotencyKey = $"{EventType}:{scheduleId}:{admin.AccountId}",
             }, ct);
         }
     }

@@ -48,17 +48,17 @@ public static class DateTimeHelper
         var span = DateTime.UtcNow - date;
         
         if (span.TotalDays > 365)
-            return $"{(int)(span.TotalDays / 365)} năm trước";
+            return $"{(int)(span.TotalDays / 365)} years ago";
         if (span.TotalDays > 30)
-            return $"{(int)(span.TotalDays / 30)} tháng trước";
+            return $"{(int)(span.TotalDays / 30)} months ago";
         if (span.TotalDays > 1)
-            return $"{(int)span.TotalDays} ngày trước";
+            return $"{(int)span.TotalDays} days ago";
         if (span.TotalHours > 1)
-            return $"{(int)span.TotalHours} giờ trước";
+            return $"{(int)span.TotalHours} hours ago";
         if (span.TotalMinutes > 1)
-            return $"{(int)span.TotalMinutes} phút trước";
+            return $"{(int)span.TotalMinutes} minutes ago";
         
-        return "Vừa xong";
+        return "Just now";
     }
     
     /// <summary>

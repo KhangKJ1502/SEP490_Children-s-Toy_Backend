@@ -81,12 +81,14 @@ public class BirthdayNotificationJob : BackgroundService
                     RecipientAccountId = account.AccountId,
                     RecipientType      = RecipientTypes.Customer,
                     NotificationType   = NotificationTypes.Promotion,
-                    Title              = "Happy Birthday!",
-                    Message            = $"Happy Birthday, {account.AccountName}! We have a special gift just for you.",
-                    SendBell           = true,
-                    SendEmail          = true,
                     TemplateCode       = NotificationTemplates.BirthdayCustomer,
-                    IdempotencyKey     = $"birthday.customer:{account.AccountId}:{year}",
+                    Placeholders       = new Dictionary<string, string>
+                    {
+                        ["CustomerName"] = account.AccountName,
+                    },
+                    IdempotencyKey = $"birthday.customer:{account.AccountId}:{year}:WEB_BELL",
+                    SendBell       = true,
+                    SendEmail      = true,
                 }, ct);
             }
 
@@ -114,13 +116,15 @@ public class BirthdayNotificationJob : BackgroundService
                     RecipientAccountId = child.AccountId,
                     RecipientType      = RecipientTypes.Customer,
                     NotificationType   = NotificationTypes.Promotion,
-                    Title              = $"Happy Birthday, {childName}!",
-                    Message            = $"Today is {childName}'s birthday! We have a special gift for the little one.",
-                    SendBell           = true,
-                    SendEmail          = true,
                     TemplateCode       = NotificationTemplates.BirthdayChild,
-                    IdempotencyKey     = $"birthday.child:{child.ChildId}:{year}",
-                    Payload            = new Dictionary<string, object>
+                    Placeholders       = new Dictionary<string, string>
+                    {
+                        ["ChildName"] = childName,
+                    },
+                    IdempotencyKey = $"birthday.child:{child.ChildId}:{year}:WEB_BELL",
+                    SendBell       = true,
+                    SendEmail      = true,
+                    Payload        = new Dictionary<string, object>
                     {
                         ["childId"]   = child.ChildId,
                         ["childName"] = childName,

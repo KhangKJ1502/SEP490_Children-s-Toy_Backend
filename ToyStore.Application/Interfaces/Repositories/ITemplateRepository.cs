@@ -76,4 +76,10 @@ public interface ITemplateRepository
         string messageTemplate,
         bool isActive,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lay Template theo TemplateCode — chi lay khi IsActive = 1 va IsDeleted = 0.
+    /// Dung boi INotificationTemplateRenderer de render noi dung thong bao.
+    /// </summary>
+    Task<Template?> GetActiveByCodeAsync(string templateCode, CancellationToken cancellationToken = default);
 }

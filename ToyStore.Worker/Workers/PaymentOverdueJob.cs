@@ -76,12 +76,15 @@ public class PaymentOverdueJob : BackgroundService
                         RecipientAccountId = staffId,
                         RecipientType      = RecipientTypes.Staff,
                         NotificationType   = NotificationTypes.Order,
-                        Title              = "Đơn quá hạn thanh toán",
-                        Message            = $"Đơn {order.OrderCode} chờ thanh toán quá 24 giờ",
-                        SendBell           = true,
-                        SendEmail          = false,
                         TemplateCode       = NotificationTemplates.StaffNewOrder,
-                        IdempotencyKey     = $"order.payment_overdue:{order.OrderId}:{_timeProvider.UtcNow:yyyyMMddHH}:{staffId}",
+                        Placeholders       = new Dictionary<string, string>
+                        {
+                            ["OrderCode"]   = order.OrderCode,
+                            ["TotalAmount"] = "0",
+                        },
+                        ReferenceId  = $"overdue:{order.OrderId}:{_timeProvider.UtcNow:yyyyMMddHH}:{staffId}",
+                        SendBell     = true,
+                        SendEmail    = false,
                     }, ct);
                 }
             }

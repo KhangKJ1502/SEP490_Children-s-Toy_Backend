@@ -117,3 +117,21 @@ public class ConflictException : ApplicationException
         return new ConflictException($"A record with {field} '{value}' already exists.");
     }
 }
+
+/// <summary>
+/// Thrown khi TemplateCode không tìm thấy trong bảng [Notification].[Templates],
+/// hoặc template đang bị vô hiệu hóa (IsActive = 0 / IsDeleted = 1).
+/// Chạy docs/database/changes/notification_templates_full.sql để seed đủ template.
+/// </summary>
+public class TemplateNotFoundException : ApplicationException
+{
+    public string TemplateCode { get; }
+
+    public TemplateNotFoundException(string templateCode)
+        : base("TEMPLATE_NOT_FOUND",
+               $"Notification template '{templateCode}' not found or is inactive. " +
+               "Run notification_templates_full.sql to seed all required templates.")
+    {
+        TemplateCode = templateCode;
+    }
+}

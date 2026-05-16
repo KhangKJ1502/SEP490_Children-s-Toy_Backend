@@ -10,7 +10,7 @@ public static class MoneyHelper
     /// </summary>
     public static string FormatVND(decimal amount)
     {
-        return $"{amount:N0} ₫";
+        return $"{amount:N0} VND";
     }
     
     /// <summary>
@@ -27,11 +27,11 @@ public static class MoneyHelper
     public static string ToReadableVND(decimal amount)
     {
         if (amount >= 1_000_000_000)
-            return $"{amount / 1_000_000_000:0.#} tỷ";
+            return $"{amount / 1_000_000_000:0.#}B";
         if (amount >= 1_000_000)
-            return $"{amount / 1_000_000:0.#} triệu";
+            return $"{amount / 1_000_000:0.#}M";
         if (amount >= 1_000)
-            return $"{amount / 1_000:0.#} nghìn";
+            return $"{amount / 1_000:0.#}K";
         
         return FormatVND(amount);
     }

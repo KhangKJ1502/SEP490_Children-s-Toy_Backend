@@ -274,11 +274,19 @@ public static class DependencyInjection
             configuration.GetSection(WebhookOptions.SectionName));
 
         // ── Notification system ──────────────────────────────────────────────
-        // Application layer: dispatcher, handlers, preference checker
+        // Application layer: dispatcher, handlers, preference gate
         services.AddApplication();
 
-        // Email sender (SendGrid)
-        services.AddScoped<IEmailSender, SendGridEmailSender>();
+        // Template renderer (IMemoryCache required)
+        services.AddMemoryCache();
+        services.AddScoped<INotificationTemplateRenderer, NotificationTemplateRenderer>();
+
+        // Channels — đăng ký cả hai để IEnumerable<INotificationChannel> resolve đúng
+        services.AddScoped<INotificationChannel, WebBellChannel>();
+        services.AddScoped<INotificationChannel, EmailChannel>();
+
+        // Email sender (SMTP)
+        services.AddScoped<IEmailSender, SmtpNotificationEmailSender>();
 
         // Hub read service (Hub injects this instead of DbContext directly)
         services.AddScoped<INotificationReadService, NotificationReadService>();

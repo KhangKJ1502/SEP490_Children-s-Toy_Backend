@@ -9,6 +9,8 @@ public interface IOrderAssignmentRepository
 
     Task<List<OrderAssignment>> GetActiveAssignmentsAsync(int orderId, CancellationToken cancellationToken = default);
 
+    Task<List<OrderAssignment>> GetActiveAssignmentsForOrdersAsync(List<int> orderIds, CancellationToken cancellationToken = default);
+
     Task AddAsync(OrderAssignment assignment, CancellationToken cancellationToken = default);
 
     Task AddRangeAsync(IEnumerable<OrderAssignment> assignments, CancellationToken cancellationToken = default);

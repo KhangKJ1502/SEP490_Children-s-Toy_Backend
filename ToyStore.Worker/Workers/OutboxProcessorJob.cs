@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ToyStore.Application.Constants;
 using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Infrastructure.Data;
@@ -136,18 +137,21 @@ public class OutboxProcessorJob : BackgroundService
         Guid eventId,
         CancellationToken ct)
     {
-        // Fetch admin account IDs elsewhere; for simplicity use a broadcast approach
-        // The real implementation resolves admin accounts from DB
+        // Placeholder: broadcast to AccountId=1 (Admin). Real impl fetches admin IDs from DB.
         await dispatcher.DispatchAsync(new Application.DTOs.Notifications.NotificationContext
         {
-            RecipientAccountId = 1, // placeholder — replaced by AdminNotificationService
-            RecipientType      = Application.Constants.RecipientTypes.Admin,
-            NotificationType   = Application.Constants.NotificationTypes.System,
-            Title              = "Outbox event stuck",
-            Message            = $"Event {eventType} ({eventId}) reached max retry attempts",
-            SendBell           = true,
-            SendEmail          = true,
-            IdempotencyKey     = $"system.outbox_max_attempts:{eventId}",
+            RecipientAccountId = 1,
+            RecipientType      = RecipientTypes.Admin,
+            NotificationType   = NotificationTypes.System,
+            TemplateCode       = NotificationTemplates.AdminOutboxStuck,
+            Placeholders       = new Dictionary<string, string>
+            {
+                ["EventType"] = eventType,
+                ["EventId"]   = eventId.ToString(),
+            },
+            IdempotencyKey = $"system.outbox_max_attempts:{eventId}:WEB_BELL",
+            SendBell       = true,
+            SendEmail      = true,
         }, ct);
     }
 }

@@ -172,6 +172,13 @@ public class OrderLifecycleService : IOrderLifecycleService
             order.CompletedAt = now;
             order.UpdatedAt = now;
 
+            // Cập nhật trạng thái thanh toán cho đơn COD
+            if (order.PaymentMethod == "SHIP_COD" && order.PaymentStatus != "PAID")
+            {
+                order.PaymentStatus = "PAID";
+                order.PaidAt = now;
+            }
+
             await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
             {
                 OrderId = order.OrderId,
@@ -215,6 +222,13 @@ public class OrderLifecycleService : IOrderLifecycleService
             order.StatusId = deliveredId;
             order.DeliveredAt = now;
             order.UpdatedAt = now;
+
+            // Cập nhật trạng thái thanh toán cho đơn COD khi giao thành công
+            if (order.PaymentMethod == "SHIP_COD" && order.PaymentStatus != "PAID")
+            {
+                order.PaymentStatus = "PAID";
+                order.PaidAt = now;
+            }
 
             await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
             {

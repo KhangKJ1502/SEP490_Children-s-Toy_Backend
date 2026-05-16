@@ -21,6 +21,8 @@ public class AdminOrderListItemDto
     // Phan cong
     public int? AssignedToStaffId { get; set; }
     public string? AssignedToStaffName { get; set; }
+    public int? AssignedToMerchId { get; set; }
+    public string? AssignedToMerchName { get; set; }
 
     // Moc thoi gian
     public DateTime OrderDate { get; set; }

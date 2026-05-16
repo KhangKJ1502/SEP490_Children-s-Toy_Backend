@@ -79,12 +79,16 @@ public class FlashSaleActivationJob : BackgroundService
                     RecipientAccountId = accountId,
                     RecipientType      = RecipientTypes.Customer,
                     NotificationType   = NotificationTypes.Promotion,
-                    Title              = "Flash Sale has started!",
-                    Message            = $"{slot.Promotion.PromotionName} is happening right now!",
-                    SendBell           = true,
-                    SendEmail          = false,
                     TemplateCode       = NotificationTemplates.FlashSaleStarted,
-                    IdempotencyKey     = $"{eventKey}:{accountId}:WEB_BELL",
+                    Placeholders       = new Dictionary<string, string>
+                    {
+                        ["PromotionName"] = slot.Promotion.PromotionName,
+                        ["StartDate"]     = slot.StartAt.ToString("dd/MM/yyyy HH:mm"),
+                        ["EndDate"]       = slot.EndAt.ToString("dd/MM/yyyy HH:mm"),
+                    },
+                    IdempotencyKey = $"{eventKey}:{accountId}:WEB_BELL",
+                    SendBell       = true,
+                    SendEmail      = false,
                 }, ct);
             }
 
