@@ -7,6 +7,9 @@ using ToyStore.Application.DTOs.Vouchers;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Application.Validators.Vouchers;
+using ToyStore.Application.Common.Models;
+using Microsoft.Extensions.Options;
+using ToyStore.Domain.Constants;
 using ToyStore.Domain.Entities;
 namespace ToyStore.Infrastructure.Services;
 
@@ -21,6 +24,8 @@ public class VoucherService : IVoucherService
     private readonly IValidator<CreateVoucherDto> _createValidator;
     private readonly IValidator<UpdateVoucherDto> _updateValidator;
     private readonly ITimeProvider _timeProvider;
+    private readonly ICurrentUserService _currentUserService;
+    private readonly VoucherRiskThresholds _thresholds;
 
     public VoucherService(
         IUnitOfWork unitOfWork,
@@ -28,14 +33,18 @@ public class VoucherService : IVoucherService
         ILogger<VoucherService> logger,
         IValidator<CreateVoucherDto> createValidator,
         IValidator<UpdateVoucherDto> updateValidator,
-        ITimeProvider timeProvider)
+        ITimeProvider timeProvider,
+        ICurrentUserService currentUserService,
+        IOptions<VoucherRiskThresholds> thresholds)
     {
-        _unitOfWork      = unitOfWork;
-        _mapper          = mapper;
-        _logger          = logger;
-        _createValidator = createValidator;
-        _updateValidator = updateValidator;
-        _timeProvider    = timeProvider;
+        _unitOfWork         = unitOfWork;
+        _mapper             = mapper;
+        _logger             = logger;
+        _createValidator    = createValidator;
+        _updateValidator    = updateValidator;
+        _timeProvider       = timeProvider;
+        _currentUserService = currentUserService;
+        _thresholds         = thresholds.Value;
     }
 
     public async Task<Result<PaginatedResponse<VoucherListDto>>> GetVouchersAsync(
@@ -111,11 +120,52 @@ public class VoucherService : IVoucherService
         }
 
         var voucher = _mapper.Map<Voucher>(normalizedRequest);
-        voucher.CreatedBy = null;
+        voucher.CreatedBy = _currentUserService.AccountId;
         voucher.CreatedAt = _timeProvider.UtcNow;
         voucher.UpdatedAt = null;
         voucher.UsedQuantity = 0;
         voucher.IsDeleted = false;
+
+        // Apply Status Transition Rules
+        if (string.Equals(_currentUserService.RoleName, "Staff", StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.Equals(voucher.DiscountTarget, "FINAL_PRICE", StringComparison.OrdinalIgnoreCase))
+            {
+                voucher.Status = VoucherStatuses.Pending;
+            }
+            else if (string.Equals(voucher.DiscountType, "PERCENTAGE", StringComparison.OrdinalIgnoreCase))
+            {
+                if (voucher.MaxDiscountCap > _thresholds.MaxDiscountCap || 
+                   (voucher.MaxDiscountCap * (voucher.TotalQuantity ?? 1)) > _thresholds.MaxTotalDiscount)
+                {
+                    voucher.Status = VoucherStatuses.Pending;
+                }
+                else
+                {
+                    voucher.Status = VoucherStatuses.Scheduled;
+                }
+            }
+            else if (string.Equals(voucher.DiscountType, "FIXED", StringComparison.OrdinalIgnoreCase))
+            {
+                if (voucher.DiscountValue > _thresholds.MaxDiscountCap || 
+                   (voucher.DiscountValue * (voucher.TotalQuantity ?? 1)) > _thresholds.MaxTotalDiscount)
+                {
+                    voucher.Status = VoucherStatuses.Pending;
+                }
+                else
+                {
+                    voucher.Status = VoucherStatuses.Scheduled;
+                }
+            }
+            else
+            {
+                voucher.Status = VoucherStatuses.Scheduled;
+            }
+        }
+        else // Admin
+        {
+            voucher.Status = VoucherStatuses.Scheduled;
+        }
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
@@ -194,8 +244,71 @@ public class VoucherService : IVoucherService
         }
         else
         {
-            // Merge partial update vào entity hiện tại, AutoMapper chỉ ghi đè field != null
+            var oldStatus = existingVoucher.Status;
+
+            // Role-based logic before merge
+            if (string.Equals(_currentUserService.RoleName, "Staff", StringComparison.OrdinalIgnoreCase))
+            {
+                // Staff cannot explicitly set to Scheduled or Approved
+                if (string.Equals(normalizedRequest.Status, VoucherStatuses.Scheduled, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(normalizedRequest.Status, VoucherStatuses.Active, StringComparison.OrdinalIgnoreCase))
+                {
+                    normalizedRequest.Status = VoucherStatuses.Pending;
+                }
+
+                // If updating a Rejected voucher, it goes back to Pending automatically (unless emergency Inactive)
+                if (string.Equals(oldStatus, VoucherStatuses.Rejected, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!string.Equals(normalizedRequest.Status, VoucherStatuses.Inactive, StringComparison.OrdinalIgnoreCase))
+                    {
+                        normalizedRequest.Status = VoucherStatuses.Pending;
+                        normalizedRequest.Reason = null; // clear admin reason
+                    }
+                }
+                
+                // Staff cannot update Reason
+                normalizedRequest.Reason = null;
+            }
+            else if (string.Equals(_currentUserService.RoleName, "Admin", StringComparison.OrdinalIgnoreCase))
+            {
+                // Admin Rejecting must provide Reason
+                if (string.Equals(normalizedRequest.Status, VoucherStatuses.Rejected, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.IsNullOrWhiteSpace(normalizedRequest.Reason) && string.IsNullOrWhiteSpace(existingVoucher.Reason))
+                    {
+                        return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Reason is required when rejecting a voucher.");
+                    }
+                }
+                
+                // Admin Approving clears Reason
+                if (string.Equals(normalizedRequest.Status, VoucherStatuses.Scheduled, StringComparison.OrdinalIgnoreCase))
+                {
+                    normalizedRequest.Reason = null;
+                }
+            }
+
+            if (normalizedRequest.StartDate.HasValue && normalizedRequest.StartDate.Value != existingVoucher.StartDate)
+            {
+                if (normalizedRequest.StartDate.Value < _timeProvider.UtcNow.AddMinutes(9))
+                {
+                    return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Start date must be at least 10 minutes from now.");
+                }
+            }
+
+            // Merge partial update vào entity hiện tại, AutoMapper đã được cấu hình PreCondition để an toàn với nullable value types
             _mapper.Map(normalizedRequest, existingVoucher);
+
+            // Xử lý field Reason do AutoMapper có thể không set null được nếu property src null.
+            if (normalizedRequest.Reason == null && 
+                ((string.Equals(_currentUserService.RoleName, "Staff", StringComparison.OrdinalIgnoreCase) && !string.Equals(normalizedRequest.Status, VoucherStatuses.Inactive, StringComparison.OrdinalIgnoreCase)) ||
+                 (string.Equals(_currentUserService.RoleName, "Admin", StringComparison.OrdinalIgnoreCase) && string.Equals(normalizedRequest.Status, VoucherStatuses.Scheduled, StringComparison.OrdinalIgnoreCase))))
+            {
+                existingVoucher.Reason = null;
+            }
+            else if (normalizedRequest.Reason != null)
+            {
+                existingVoucher.Reason = normalizedRequest.Reason;
+            }
 
             // Chuẩn hoá lại các field string sau khi merge
             existingVoucher.VoucherCode = NormalizeCode(existingVoucher.VoucherCode);
@@ -206,7 +319,9 @@ public class VoucherService : IVoucherService
 
             // Validate toàn bộ dữ liệu sau merge
             var fullValidationRequest = MapToCreateDto(existingVoucher);
-            var fullValidationResult = await _createValidator.ValidateAsync(fullValidationRequest, cancellationToken);
+            var context = new ValidationContext<CreateVoucherDto>(fullValidationRequest);
+            context.RootContextData["IsUpdate"] = true;
+            var fullValidationResult = await _createValidator.ValidateAsync(context, cancellationToken);
 
             if (!fullValidationResult.IsValid)
             {
@@ -307,6 +422,7 @@ public class VoucherService : IVoucherService
             StartDate = request.StartDate,
             EndDate = request.EndDate,
             Status = request.Status is null ? null : NormalizeStatus(request.Status),
+            Reason = request.Reason?.Trim(),
             IsDeleted = request.IsDeleted
         };
     }
