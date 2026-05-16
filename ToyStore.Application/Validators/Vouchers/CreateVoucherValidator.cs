@@ -55,6 +55,11 @@ public class CreateVoucherValidator : AbstractValidator<CreateVoucherDto>
             .GreaterThan(0).When(x => x.MaxDiscountCap.HasValue)
             .WithMessage("Max discount cap must be greater than 0 when provided.");
 
+        RuleFor(x => x.MaxDiscountCap)
+            .NotNull()
+            .When(x => IsPercentage(x.DiscountType))
+            .WithMessage("Max discount cap is required for percentage vouchers.");
+
         // MaxDiscountCap chỉ áp dụng cho loại PERCENTAGE
         RuleFor(x => x.MaxDiscountCap)
             .Null()
@@ -74,7 +79,10 @@ public class CreateVoucherValidator : AbstractValidator<CreateVoucherDto>
             .WithMessage("Max usage per user must be greater than or equal to 1 when provided.");
 
         RuleFor(x => x.StartDate)
-            .NotEqual(default(DateTime)).WithMessage("Start date is required.");
+            .NotEqual(default(DateTime)).WithMessage("Start date is required.")
+            .Must(d => d >= DateTime.UtcNow.AddMinutes(9))
+            .When((x, ctx) => !ctx.RootContextData.ContainsKey("IsUpdate"))
+            .WithMessage("Start date must be at least 10 minutes from now.");
 
         RuleFor(x => x.EndDate)
             .NotEqual(default(DateTime)).WithMessage("End date is required.");
@@ -83,6 +91,11 @@ public class CreateVoucherValidator : AbstractValidator<CreateVoucherDto>
         RuleFor(x => x)
             .Must(x => x.StartDate < x.EndDate)
             .WithMessage("Start date must be earlier than end date.");
+
+        // DiscountValue không được vượt MinOrderAmount đối với loại FIXED
+        RuleFor(x => x)
+            .Must(x => !IsFixed(x.DiscountType) || !x.MinOrderAmount.HasValue || x.DiscountValue <= x.MinOrderAmount.Value)
+            .WithMessage("Discount value cannot be greater than the minimum order amount for fixed vouchers.");
 
         // MaxUsagePerUser không được vượt TotalQuantity
         RuleFor(x => x)
