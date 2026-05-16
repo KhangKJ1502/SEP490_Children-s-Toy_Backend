@@ -4,7 +4,10 @@ public class WalletTransactionDto
 {
     public int WalletTransactionId { get; set; }
 
+
     public int? RelatedOrderId { get; set; }
+
+    public string? RelatedOrderCode { get; set; }
 
     public string TxnType { get; set; } = null!;
 
