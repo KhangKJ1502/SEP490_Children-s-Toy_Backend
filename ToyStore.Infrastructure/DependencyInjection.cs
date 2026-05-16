@@ -147,6 +147,7 @@ public static class DependencyInjection
         services.AddScoped<IValidator<ChangeWalletPinRequestDto>, ChangeWalletPinRequestValidator>();
         services.AddScoped<IValidator<VerifyForgotWalletPinOtpRequestDto>, VerifyForgotWalletPinOtpRequestValidator>();
         services.AddScoped<IValidator<ResetForgotWalletPinRequestDto>, ResetForgotWalletPinRequestValidator>();
+        services.AddScoped<IValidator<UpdateWalletStatusDto>, UpdateWalletStatusValidator>();
 
         services.AddScoped<IValidator<CreateShiftTemplateDto>, CreateShiftTemplateValidator>();
         services.AddScoped<IValidator<UpdateShiftTemplateDto>, UpdateShiftTemplateValidator>();
@@ -205,6 +206,7 @@ public static class DependencyInjection
         services.AddScoped<IReviewService, ReviewService>();
         services.AddScoped<IRefundService, RefundService>();
         services.AddScoped<IWalletService, WalletService>();
+        services.AddScoped<IAdminWalletService, AdminWalletService>();
         services.AddScoped<IShiftTemplateService, ShiftTemplateService>();
         services.AddScoped<IWorkScheduleService, WorkScheduleService>();
         services.AddScoped<IShiftAssignmentService, ShiftAssignmentService>();
