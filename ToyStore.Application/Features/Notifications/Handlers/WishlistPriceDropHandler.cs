@@ -6,10 +6,6 @@ using ToyStore.Application.Interfaces.Repositories;
 
 namespace ToyStore.Application.Features.Notifications.Handlers;
 
-/// <summary>
-/// Notifies customers when a product on their wishlist is on promotion (price drop).
-/// Triggered by FlashSaleActivationJob or PromotionService when a promotion goes active.
-/// </summary>
 public class WishlistPriceDropHandler : IOutboxEventHandler
 {
     public string EventType => NotificationEventTypes.WishlistPriceDrop;
@@ -34,16 +30,16 @@ public class WishlistPriceDropHandler : IOutboxEventHandler
         var root = doc.RootElement;
 
         var productId   = root.GetProperty("productId").GetInt32();
-        var productName = root.TryGetProperty("productName", out var pn) ? pn.GetString() : "Product";
+        var productName = root.TryGetProperty("productName", out var pn) ? pn.GetString() ?? "Product" : "Product";
         var salePrice   = root.TryGetProperty("salePrice", out var sp) ? sp.GetDecimal() : 0;
 
-        // Get all accounts that wishlisted this product
         var wishlists = await _unitOfWork.Wishlists.GetByProductIdAsync(productId, ct);
 
         foreach (var wishlist in wishlists)
         {
             var accountId = wishlist.AccountId;
 
+            // Kiểm tra Promotions preference thủ công vì handler biết context
             if (!await _prefChecker.CanSendAsync(accountId, PreferenceKeys.Promotions, ct))
                 continue;
 
@@ -52,16 +48,20 @@ public class WishlistPriceDropHandler : IOutboxEventHandler
                 RecipientAccountId = accountId,
                 RecipientType      = RecipientTypes.Customer,
                 NotificationType   = NotificationTypes.Promotion,
-                Title              = "Price drop on your wishlist!",
-                Message            = $"\"{productName}\" is now on sale at {salePrice:N0}₫. Grab it before it's gone!",
-                SendBell           = true,
-                SendEmail          = false,
-                ActionTarget       = $"/products/{productId}",
-                IdempotencyKey     = $"{EventType}:{ev.AggregateId}:{accountId}",
-                Payload            = new Dictionary<string, object>
+                TemplateCode       = NotificationTemplates.WishlistPriceDrop,
+                Placeholders       = new Dictionary<string, string>
                 {
-                    ["productId"]   = productId,
-                    ["salePrice"]   = salePrice,
+                    ["ProductName"] = productName,
+                    ["Price"]       = $"{salePrice:N0}",
+                },
+                ReferenceId  = $"{ev.AggregateId}:{accountId}",
+                SendBell     = true,
+                SendEmail    = false,
+                ActionTarget = $"/products/{productId}",
+                Payload      = new Dictionary<string, object>
+                {
+                    ["productId"] = productId,
+                    ["salePrice"] = salePrice,
                 },
             }, ct);
         }

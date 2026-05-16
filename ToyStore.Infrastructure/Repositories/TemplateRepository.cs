@@ -212,4 +212,12 @@ public class TemplateRepository : ITemplateRepository
 
         return entity;
     }
+
+    public Task<Template?> GetActiveByCodeAsync(string templateCode, CancellationToken cancellationToken = default)
+    {
+        return _context.Templates
+            .AsNoTracking()
+            .Where(x => x.TemplateCode == templateCode && x.IsActive && !x.IsDeleted)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
 }

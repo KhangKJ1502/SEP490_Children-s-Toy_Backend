@@ -4,33 +4,83 @@ using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs.Notifications;
 using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
-using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Services.Notifications;
 
+/// <summary>
+/// Orchestrator chính của hệ thống thông báo.
+/// Luồng: render template → kiểm tra preferences → idempotency → gửi qua từng channel.
+/// </summary>
 public class NotificationDispatcher : INotificationDispatcher
 {
     private readonly IUnitOfWork _unitOfWork;
-    private readonly INotificationHubService _hub;
+    private readonly INotificationTemplateRenderer _renderer;
+    private readonly INotificationPreferencesGate _prefsGate;
+    private readonly IEnumerable<INotificationChannel> _channels;
     private readonly ILogger<NotificationDispatcher> _logger;
 
     public NotificationDispatcher(
         IUnitOfWork unitOfWork,
-        INotificationHubService hub,
+        INotificationTemplateRenderer renderer,
+        INotificationPreferencesGate prefsGate,
+        IEnumerable<INotificationChannel> channels,
         ILogger<NotificationDispatcher> logger)
     {
         _unitOfWork = unitOfWork;
-        _hub        = hub;
+        _renderer   = renderer;
+        _prefsGate  = prefsGate;
+        _channels   = channels;
         _logger     = logger;
     }
 
     public async Task DispatchAsync(NotificationContext context, CancellationToken ct = default)
     {
+        // Bước 1: Render template — nếu Title đã có (campaign pre-render) thì dùng luôn
+        string title;
+        string message;
+
+        if (context.Title is not null && context.Message is not null)
+        {
+            // Campaign path: đã render sẵn, dùng luôn
+            title   = context.Title;
+            message = context.Message;
+        }
+        else if (context.TemplateCode is not null)
+        {
+            try
+            {
+                (title, message) = await _renderer.RenderAsync(
+                    context.TemplateCode, context.Placeholders, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Template render failed. TemplateCode={Code} AccountID={Id}",
+                    context.TemplateCode, context.RecipientAccountId);
+                return;
+            }
+        }
+        else
+        {
+            _logger.LogWarning(
+                "NotificationContext has neither TemplateCode nor pre-rendered Title/Message. AccountID={Id}",
+                context.RecipientAccountId);
+            return;
+        }
+
+        // Bước 2: Chuẩn bị payload JSON
+        var payloadJson = context.Payload is not null
+            ? JsonSerializer.Serialize(context.Payload)
+            : "{}";
+
+        // Bước 3: Gửi qua từng kênh được bật
         if (context.SendBell)
-            await DispatchBellAsync(context, ct);
+            await SendViaChannelAsync(
+                NotificationChannels.WebBell, context, title, message, payloadJson, ct);
 
         if (context.SendEmail)
-            await DispatchEmailAsync(context, ct);
+            await SendViaChannelAsync(
+                NotificationChannels.Email, context, title, message, payloadJson, ct);
     }
 
     public async Task DispatchBulkAsync(IEnumerable<NotificationContext> contexts, CancellationToken ct = default)
@@ -39,121 +89,70 @@ public class NotificationDispatcher : INotificationDispatcher
             await DispatchAsync(ctx, ct);
     }
 
-    private async Task DispatchBellAsync(NotificationContext context, CancellationToken ct)
+    private async Task SendViaChannelAsync(
+        string channelName,
+        NotificationContext context,
+        string title,
+        string message,
+        string payloadJson,
+        CancellationToken ct)
     {
-        var bellKey = context.IdempotencyKey is not null
-            ? $"{context.IdempotencyKey}:{NotificationChannels.WebBell}"
-            : null;
+        // Kiểm tra UserPreferences
+        if (!await _prefsGate.CanSendAsync(context.RecipientAccountId, channelName, context.NotificationType, ct))
+            return;
 
-        if (bellKey is not null && await _unitOfWork.Deliveries.ExistsByIdempotencyKeyAsync(bellKey, ct))
+        // Xây dựng IdempotencyKey
+        // Ưu tiên: key rõ ràng từ context → key tự động từ ReferenceId → null (không idempotent)
+        string? idempotencyKey;
+        if (context.IdempotencyKey is not null)
         {
-            _logger.LogInformation("Bell notification already dispatched. IdempotencyKey={Key}", bellKey);
+            idempotencyKey = $"{context.IdempotencyKey}:{channelName}";
+        }
+        else if (context.ReferenceId is not null)
+        {
+            idempotencyKey = $"{context.TemplateCode}:{context.RecipientAccountId}:{context.ReferenceId}:{channelName}";
+        }
+        else
+        {
+            idempotencyKey = null;
+        }
+
+        // Kiểm tra idempotency
+        if (idempotencyKey is not null &&
+            await _unitOfWork.Deliveries.ExistsByIdempotencyKeyAsync(idempotencyKey, ct))
+        {
+            _logger.LogInformation(
+                "Notification already sent (idempotent). Key={Key}", idempotencyKey);
             return;
         }
 
-        var delivery = new Delivery
+        // Tìm channel implementation
+        var channel = _channels.FirstOrDefault(c =>
+            c.Channel.Equals(channelName, StringComparison.OrdinalIgnoreCase));
+
+        if (channel is null)
+        {
+            _logger.LogWarning("No INotificationChannel registered for '{Channel}'.", channelName);
+            return;
+        }
+
+        var request = new NotificationDeliveryRequest
         {
             AccountId        = context.RecipientAccountId,
             RecipientType    = context.RecipientType,
-            Channel          = NotificationChannels.WebBell,
             NotificationType = context.NotificationType,
-            Title            = context.Title,
-            Message          = context.Message,
-            Payload          = context.Payload is not null
-                               ? JsonSerializer.Serialize(context.Payload)
-                               : "{}",
-            Status           = NotificationStatuses.Unread,
-            TemplateCode     = context.TemplateCode,
+            Channel          = channelName,
+            Title            = title,
+            Message          = message,
+            TemplateCode     = context.TemplateCode,   // may be null for campaign-only path
+            IdempotencyKey   = idempotencyKey,
+            PayloadJson      = payloadJson,
             ImageUrl         = context.ImageUrl,
             ActionType       = context.ActionType,
             ActionTarget     = context.ActionTarget,
-            IdempotencyKey   = bellKey,
             CampaignId       = context.CampaignId,
-            CreatedAt        = DateTime.Now,
         };
 
-        try
-        {
-            _unitOfWork.Deliveries.Add(delivery);
-            await _unitOfWork.SaveChangesAsync(ct);
-            _logger.LogInformation(
-                "Bell notification dispatched. DeliveryID={DeliveryId} IdempotencyKey={Key}",
-                delivery.DeliveryId, bellKey);
-        }
-        catch (Exception ex)
-        {
-            _unitOfWork.Detach(delivery);
-            // Note: In a real Clean Architecture, we'd have a specific exception for unique constraints
-            // from the repository layer. For now, we log and skip to maintain idempotency behavior.
-            _logger.LogWarning(ex, "Could not dispatch bell notification. It might be a duplicate. IdempotencyKey={Key}", bellKey);
-            return;
-        }
-
-        var unreadCount = await _unitOfWork.Deliveries.CountAsync(
-            context.RecipientAccountId, 
-            NotificationChannels.WebBell, 
-            NotificationStatuses.Unread, ct);
-
-        _ = _hub.PushToUserAsync(context.RecipientAccountId, new BellNotificationDto
-        {
-            DeliveryId       = delivery.DeliveryId,
-            NotificationType = context.NotificationType,
-            Title            = context.Title,
-            Message          = context.Message,
-            ImageUrl         = context.ImageUrl,
-            ActionType       = context.ActionType,
-            ActionTarget     = context.ActionTarget,
-            CreatedAt        = delivery.CreatedAt,
-            UnreadCount      = unreadCount,
-        }, ct);
-    }
-
-    private async Task DispatchEmailAsync(NotificationContext context, CancellationToken ct)
-    {
-        var emailKey = context.IdempotencyKey is not null
-            ? $"{context.IdempotencyKey}:{NotificationChannels.Email}"
-            : null;
-
-        if (emailKey is not null && await _unitOfWork.Deliveries.ExistsByIdempotencyKeyAsync(emailKey, ct))
-        {
-            _logger.LogInformation("Email notification already queued. IdempotencyKey={Key}", emailKey);
-            return;
-        }
-
-        var emailDelivery = new Delivery
-        {
-            AccountId        = context.RecipientAccountId,
-            RecipientType    = context.RecipientType,
-            Channel          = NotificationChannels.Email,
-            NotificationType = context.NotificationType,
-            Title            = context.Title,
-            Message          = context.Message,
-            Payload          = context.Payload is not null
-                               ? JsonSerializer.Serialize(context.Payload)
-                               : "{}",
-            Status           = NotificationStatuses.Unread,
-            EmailStatus      = EmailStatuses.Pending,
-            TemplateCode     = context.TemplateCode,
-            ImageUrl         = context.ImageUrl,
-            ActionType       = context.ActionType,
-            ActionTarget     = context.ActionTarget,
-            IdempotencyKey   = emailKey,
-            CampaignId       = context.CampaignId,
-            CreatedAt        = DateTime.Now,
-        };
-
-        try
-        {
-            _unitOfWork.Deliveries.Add(emailDelivery);
-            await _unitOfWork.SaveChangesAsync(ct);
-            _logger.LogInformation(
-                "Email notification queued. DeliveryID={DeliveryId} IdempotencyKey={Key}",
-                emailDelivery.DeliveryId, emailKey);
-        }
-        catch (Exception ex)
-        {
-            _unitOfWork.Detach(emailDelivery);
-            _logger.LogWarning(ex, "Could not queue email notification. It might be a duplicate. IdempotencyKey={Key}", emailKey);
-        }
+        await channel.SendAsync(request, ct);
     }
 }

@@ -18,8 +18,8 @@ public class BlogPostResolver : IBusinessObjectResolver
 
     public IReadOnlyList<PlaceholderInfoDto> AvailablePlaceholders =>
     [
-        new() { Token = "{{BlogTitle}}",  Description = "Tieu de bai blog" },
-        new() { Token = "{{BlogPostId}}", Description = "ID bai blog" }
+        new() { Token = "{{BlogTitle}}",  Description = "Blog post title" },
+        new() { Token = "{{BlogPostId}}", Description = "Blog post ID" }
     ];
 
     public async Task<ResolvedReferenceDto?> ResolveAsync(int referenceId, CancellationToken cancellationToken = default)

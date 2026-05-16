@@ -24,26 +24,28 @@ public class RefundRequestHandler : IOutboxEventHandler
         var root = doc.RootElement;
 
         var refundId     = root.GetProperty("refundId").GetInt32();
-        var orderCode    = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() : "";
-        var customerName = root.TryGetProperty("customerName", out var cn) ? cn.GetString() : "Customer";
+        var orderCode    = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? "" : "";
+        var customerName = root.TryGetProperty("customerName", out var cn) ? cn.GetString() ?? "Customer" : "Customer";
 
         var staffs = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
 
         foreach (var staff in staffs)
         {
-            var staffId = staff.AccountId;
             await _dispatcher.DispatchAsync(new NotificationContext
             {
-                RecipientAccountId = staffId,
+                RecipientAccountId = staff.AccountId,
                 RecipientType      = RecipientTypes.Staff,
                 NotificationType   = NotificationTypes.Order,
-                Title              = "New refund request",
-                Message            = $"{customerName} has requested a refund for order {orderCode}.",
-                SendBell           = true,
-                SendEmail          = false,
                 TemplateCode       = NotificationTemplates.StaffRefundRequest,
-                ActionTarget       = $"/admin/refunds/{refundId}",
-                IdempotencyKey     = $"{EventType}:{refundId}:{staffId}",
+                Placeholders       = new Dictionary<string, string>
+                {
+                    ["CustomerName"] = customerName,
+                    ["OrderCode"]    = orderCode,
+                },
+                ReferenceId  = $"{refundId}:{staff.AccountId}",
+                SendBell     = true,
+                SendEmail    = false,
+                ActionTarget = $"/admin/refunds/{refundId}",
             }, ct);
         }
     }
@@ -65,25 +67,30 @@ public class ReviewNeedsModerationHandler : IOutboxEventHandler
     {
         using var doc = JsonDocument.Parse(ev.Payload);
         var root = doc.RootElement;
-        var reviewId = root.GetProperty("reviewId").GetInt32();
+
+        var reviewId    = root.GetProperty("reviewId").GetInt32();
+        var productName = root.TryGetProperty("productName", out var pn) ? pn.GetString() ?? $"#{reviewId}" : $"#{reviewId}";
+        var rating      = root.TryGetProperty("rating", out var r) ? r.GetInt32().ToString() : "?";
 
         var staffs = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
 
         foreach (var staff in staffs)
         {
-            var staffId = staff.AccountId;
             await _dispatcher.DispatchAsync(new NotificationContext
             {
-                RecipientAccountId = staffId,
+                RecipientAccountId = staff.AccountId,
                 RecipientType      = RecipientTypes.Staff,
                 NotificationType   = NotificationTypes.System,
-                Title              = "Review requires manual moderation",
-                Message            = "A product review has been flagged for manual moderation.",
-                SendBell           = true,
-                SendEmail          = false,
                 TemplateCode       = NotificationTemplates.StaffReviewModeration,
-                ActionTarget       = $"/admin/reviews/{reviewId}",
-                IdempotencyKey     = $"{EventType}:{reviewId}:{staffId}",
+                Placeholders       = new Dictionary<string, string>
+                {
+                    ["ProductName"] = productName,
+                    ["Rating"]      = rating,
+                },
+                ReferenceId  = $"{reviewId}:{staff.AccountId}",
+                SendBell     = true,
+                SendEmail    = false,
+                ActionTarget = $"/admin/reviews/{reviewId}",
             }, ct);
         }
     }
@@ -105,27 +112,31 @@ public class ReviewLowRatingHandler : IOutboxEventHandler
     {
         using var doc = JsonDocument.Parse(ev.Payload);
         var root = doc.RootElement;
+
         var reviewId  = root.GetProperty("reviewId").GetInt32();
         var rating    = root.TryGetProperty("rating", out var r) ? r.GetInt32() : 0;
         var productId = root.TryGetProperty("productId", out var p) ? p.GetInt32() : 0;
+        var productName = root.TryGetProperty("productName", out var pn) ? pn.GetString() ?? $"#{productId}" : $"#{productId}";
 
         var staffs = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
 
         foreach (var staff in staffs)
         {
-            var staffId = staff.AccountId;
             await _dispatcher.DispatchAsync(new NotificationContext
             {
-                RecipientAccountId = staffId,
+                RecipientAccountId = staff.AccountId,
                 RecipientType      = RecipientTypes.Staff,
                 NotificationType   = NotificationTypes.System,
-                Title              = "Low rating review",
-                Message            = $"A customer left a {rating}-star review for product #{productId}. Please check.",
-                SendBell           = true,
-                SendEmail          = false,
                 TemplateCode       = NotificationTemplates.StaffLowRating,
-                ActionTarget       = $"/admin/reviews/{reviewId}",
-                IdempotencyKey     = $"{EventType}:{reviewId}:{staffId}",
+                Placeholders       = new Dictionary<string, string>
+                {
+                    ["ProductName"] = productName,
+                    ["Rating"]      = rating.ToString(),
+                },
+                ReferenceId  = $"{reviewId}:{staff.AccountId}",
+                SendBell     = true,
+                SendEmail    = false,
+                ActionTarget = $"/admin/reviews/{reviewId}",
             }, ct);
         }
     }
@@ -143,21 +154,24 @@ public class ReviewStaffRepliedHandler : IOutboxEventHandler
         using var doc = JsonDocument.Parse(ev.Payload);
         var root = doc.RootElement;
 
-        var reviewId  = root.GetProperty("reviewId").GetInt32();
-        var accountId = root.GetProperty("accountId").GetInt32();
+        var reviewId    = root.GetProperty("reviewId").GetInt32();
+        var accountId   = root.GetProperty("accountId").GetInt32();
+        var productName = root.TryGetProperty("productName", out var pn) ? pn.GetString() ?? "" : "";
 
         await _dispatcher.DispatchAsync(new NotificationContext
         {
             RecipientAccountId = accountId,
             RecipientType      = RecipientTypes.Customer,
             NotificationType   = NotificationTypes.Blog,
-            Title              = "The store replied to your review",
-            Message            = "A staff member has replied to your product review. Check it out!",
-            SendBell           = true,
-            SendEmail          = false,
             TemplateCode       = NotificationTemplates.ReviewStaffReplied,
-            ActionTarget       = $"/products/review/{reviewId}",
-            IdempotencyKey     = $"{EventType}:{reviewId}:{accountId}",
+            Placeholders       = new Dictionary<string, string>
+            {
+                ["ProductName"] = productName,
+            },
+            ReferenceId  = $"{reviewId}:{accountId}",
+            SendBell     = true,
+            SendEmail    = false,
+            ActionTarget = $"/products/review/{reviewId}",
         }, ct);
     }
 }
@@ -177,30 +191,29 @@ public class BlogCommentRepliedHandler : IOutboxEventHandler
         var accountId   = root.GetProperty("accountId").GetInt32();
         var replyBlogId = root.GetProperty("replyBlogId").GetInt32();
         var blogPostId  = root.TryGetProperty("blogPostId", out var b) ? b.GetInt32() : 0;
+        var blogTitle   = root.TryGetProperty("blogTitle", out var bt) ? bt.GetString() ?? "" : "";
 
         await _dispatcher.DispatchAsync(new NotificationContext
         {
             RecipientAccountId = accountId,
             RecipientType      = RecipientTypes.Customer,
             NotificationType   = NotificationTypes.Blog,
-            Title              = "Someone replied to your comment",
-            Message            = "Someone replied to your comment on the blog. Check it out!",
-            SendBell           = true,
-            SendEmail          = false,
             TemplateCode       = NotificationTemplates.BlogCommentReplied,
-            ActionTarget       = $"/blog/{blogPostId}#reply-{replyBlogId}",
-            IdempotencyKey     = $"{EventType}:{replyBlogId}:{accountId}",
+            Placeholders       = new Dictionary<string, string>
+            {
+                ["BlogTitle"] = blogTitle,
+            },
+            ReferenceId  = $"{replyBlogId}:{accountId}",
+            SendBell     = true,
+            SendEmail    = false,
+            ActionTarget = $"/blog/{blogPostId}#reply-{replyBlogId}",
         }, ct);
     }
 }
 
-/// <summary>
-/// Notifies staff when a customer requests order cancellation.
-/// </summary>
 public class StaffCancelRequestedHandler : IOutboxEventHandler
 {
     public string EventType => NotificationEventTypes.StaffCancelRequested;
-
     private readonly IUnitOfWork _unitOfWork;
     private readonly INotificationDispatcher _dispatcher;
 
@@ -215,9 +228,10 @@ public class StaffCancelRequestedHandler : IOutboxEventHandler
         using var doc = JsonDocument.Parse(ev.Payload);
         var root = doc.RootElement;
 
-        var orderId   = root.GetProperty("orderId").GetInt32();
-        var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() : $"#{orderId}";
-        var reason    = root.TryGetProperty("reason", out var r) ? r.GetString() : "";
+        var orderId      = root.GetProperty("orderId").GetInt32();
+        var orderCode    = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
+        var reason       = root.TryGetProperty("reason", out var r) ? r.GetString() ?? "" : "";
+        var customerName = root.TryGetProperty("customerName", out var cn) ? cn.GetString() ?? "Customer" : "Customer";
 
         var staffs = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
 
@@ -228,12 +242,17 @@ public class StaffCancelRequestedHandler : IOutboxEventHandler
                 RecipientAccountId = staff.AccountId,
                 RecipientType      = RecipientTypes.Staff,
                 NotificationType   = NotificationTypes.Order,
-                Title              = "Order cancellation",
-                Message            = $"Order {orderCode} has been cancelled. Reason: {reason}",
-                SendBell           = true,
-                SendEmail          = false,
-                ActionTarget       = $"/admin/orders/{orderId}",
-                IdempotencyKey     = $"{EventType}:{orderId}:{staff.AccountId}",
+                TemplateCode       = NotificationTemplates.StaffCancelRequest,
+                Placeholders       = new Dictionary<string, string>
+                {
+                    ["OrderCode"]    = orderCode,
+                    ["CustomerName"] = customerName,
+                    ["Reason"]       = reason,
+                },
+                ReferenceId  = $"{orderId}:{staff.AccountId}",
+                SendBell     = true,
+                SendEmail    = false,
+                ActionTarget = $"/admin/orders/{orderId}",
             }, ct);
         }
     }
@@ -242,7 +261,6 @@ public class StaffCancelRequestedHandler : IOutboxEventHandler
 public class StaffOrderAssignedHandler : IOutboxEventHandler
 {
     public string EventType => NotificationEventTypes.StaffOrderAssigned;
-
     private readonly INotificationDispatcher _dispatcher;
 
     public StaffOrderAssignedHandler(INotificationDispatcher dispatcher)
@@ -255,8 +273,8 @@ public class StaffOrderAssignedHandler : IOutboxEventHandler
         using var doc = JsonDocument.Parse(ev.Payload);
         var root = doc.RootElement;
 
-        var orderId        = root.GetProperty("orderId").GetInt32();
-        var orderCode      = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() : $"#{orderId}";
+        var orderId         = root.GetProperty("orderId").GetInt32();
+        var orderCode       = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
         var targetAccountId = root.GetProperty("targetAccountId").GetInt32();
 
         await _dispatcher.DispatchAsync(new NotificationContext
@@ -264,13 +282,139 @@ public class StaffOrderAssignedHandler : IOutboxEventHandler
             RecipientAccountId = targetAccountId,
             RecipientType      = RecipientTypes.Staff,
             NotificationType   = NotificationTypes.Order,
-            Title              = "New order assigned",
-            Message            = $"Order {orderCode} has been assigned to you by Admin.",
-            SendBell           = true,
-            SendEmail          = true,
             TemplateCode       = NotificationTemplates.StaffOrderAssigned,
-            ActionTarget       = $"/admin/orders/{orderId}",
-            IdempotencyKey     = $"{EventType}:{orderId}:{targetAccountId}",
+            Placeholders       = new Dictionary<string, string>
+            {
+                ["OrderCode"] = orderCode,
+            },
+            ReferenceId  = $"{orderId}:{targetAccountId}",
+            SendBell     = true,
+            SendEmail    = true,
+            ActionTarget = $"/admin/orders/{orderId}",
+        }, ct);
+    }
+}
+
+public class RefundApprovedHandler : IOutboxEventHandler
+{
+    public string EventType => NotificationEventTypes.RefundApproved;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly INotificationDispatcher _dispatcher;
+
+    public RefundApprovedHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
+    {
+        _unitOfWork = unitOfWork;
+        _dispatcher = dispatcher;
+    }
+
+    public async Task HandleAsync(OutboxEventData ev, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(ev.Payload);
+        var root = doc.RootElement;
+
+        var refundId   = root.GetProperty("refundId").GetInt32();
+        var orderCode  = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? "" : "";
+        var customerId = root.GetProperty("customerId").GetInt32();
+        var amount     = root.TryGetProperty("amount", out var am) ? am.GetDecimal() : 0;
+        var orderId    = root.TryGetProperty("orderId", out var oi) ? oi.GetInt32() : 0;
+
+        await _dispatcher.DispatchAsync(new NotificationContext
+        {
+            RecipientAccountId = customerId,
+            RecipientType      = RecipientTypes.Customer,
+            NotificationType   = NotificationTypes.Order,
+            TemplateCode       = NotificationTemplates.RefundApproved,
+            Placeholders       = new Dictionary<string, string>
+            {
+                ["OrderCode"] = orderCode,
+                ["Amount"]    = $"{amount:N0}",
+            },
+            ReferenceId  = $"{refundId}",
+            SendBell     = true,
+            SendEmail    = true,
+            ActionTarget = orderId > 0 ? $"/profile/orders/{orderId}" : "/refunds",
+        }, ct);
+    }
+}
+
+public class RefundRejectedHandler : IOutboxEventHandler
+{
+    public string EventType => NotificationEventTypes.RefundRejected;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly INotificationDispatcher _dispatcher;
+
+    public RefundRejectedHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
+    {
+        _unitOfWork = unitOfWork;
+        _dispatcher = dispatcher;
+    }
+
+    public async Task HandleAsync(OutboxEventData ev, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(ev.Payload);
+        var root = doc.RootElement;
+
+        var refundId   = root.GetProperty("refundId").GetInt32();
+        var orderCode  = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? "" : "";
+        var customerId = root.GetProperty("customerId").GetInt32();
+        var orderId    = root.TryGetProperty("orderId", out var oi) ? oi.GetInt32() : 0;
+
+        await _dispatcher.DispatchAsync(new NotificationContext
+        {
+            RecipientAccountId = customerId,
+            RecipientType      = RecipientTypes.Customer,
+            NotificationType   = NotificationTypes.Order,
+            TemplateCode       = NotificationTemplates.RefundRejected,
+            Placeholders       = new Dictionary<string, string>
+            {
+                ["OrderCode"] = orderCode,
+            },
+            ReferenceId  = $"{refundId}",
+            SendBell     = true,
+            SendEmail    = true,
+            ActionTarget = orderId > 0 ? $"/profile/orders/{orderId}" : "/refunds",
+        }, ct);
+    }
+}
+
+public class RefundCompletedHandler : IOutboxEventHandler
+{
+    public string EventType => NotificationEventTypes.RefundCompleted;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly INotificationDispatcher _dispatcher;
+
+    public RefundCompletedHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
+    {
+        _unitOfWork = unitOfWork;
+        _dispatcher = dispatcher;
+    }
+
+    public async Task HandleAsync(OutboxEventData ev, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(ev.Payload);
+        var root = doc.RootElement;
+
+        var refundId   = root.GetProperty("refundId").GetInt32();
+        var orderCode  = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? "" : "";
+        var customerId = root.GetProperty("customerId").GetInt32();
+        var amount     = root.TryGetProperty("amount", out var am) ? am.GetDecimal() : 0;
+        var orderId    = root.TryGetProperty("orderId", out var oi) ? oi.GetInt32() : 0;
+
+        await _dispatcher.DispatchAsync(new NotificationContext
+        {
+            RecipientAccountId = customerId,
+            RecipientType      = RecipientTypes.Customer,
+            NotificationType   = NotificationTypes.Order,
+            TemplateCode       = NotificationTemplates.RefundCompleted,
+            Placeholders       = new Dictionary<string, string>
+            {
+                ["OrderCode"] = orderCode,
+                ["Amount"]    = $"{amount:N0}",
+            },
+            ReferenceId  = $"{refundId}",
+            SendBell     = true,
+            SendEmail    = true,
+            ActionTarget = orderId > 0 ? $"/profile/orders/{orderId}" : "/refunds",
         }, ct);
     }
 }

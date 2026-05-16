@@ -6,12 +6,19 @@ using ToyStore.Infrastructure.Data;
 
 namespace ToyStore.Worker.Workers;
 
+/// <summary>
+/// Safety-net worker: gửi lại các email còn trạng thái Pending sau ít nhất 2 phút
+/// (EmailChannel đã cố gắng gửi ngay; những email vẫn Pending là do lỗi transient SMTP
+/// hoặc crash giữa chừng).
+/// Chạy mỗi 30 giây; chỉ lấy tối đa 50 email.
+/// </summary>
 public class EmailDispatchJob : BackgroundService
 {
     private readonly IServiceProvider _services;
     private readonly ILogger<EmailDispatchJob> _logger;
     private readonly ITimeProvider _timeProvider;
-    private readonly TimeSpan _interval = TimeSpan.FromSeconds(30);
+    private readonly TimeSpan _interval    = TimeSpan.FromSeconds(30);
+    private readonly TimeSpan _retryAfter  = TimeSpan.FromMinutes(2);
 
     public EmailDispatchJob(
         IServiceProvider services, 
@@ -25,7 +32,7 @@ public class EmailDispatchJob : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("EmailDispatchJob started");
+        _logger.LogInformation("EmailDispatchJob (safety-net) started");
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -48,17 +55,21 @@ public class EmailDispatchJob : BackgroundService
         var db            = scope.ServiceProvider.GetRequiredService<SEP490ToyStoreContext>();
         var emailSender   = scope.ServiceProvider.GetRequiredService<IEmailSender>();
 
+        // Chỉ retry những email vẫn Pending ít nhất _retryAfter để tránh race với EmailChannel
+        var cutoff = _timeProvider.UtcNow - _retryAfter;
+
         var pending = await db.Deliveries
             .Include(d => d.Account)
             .Where(d => d.Channel     == NotificationChannels.Email
-                     && d.EmailStatus == EmailStatuses.Pending)
+                     && d.EmailStatus == EmailStatuses.Pending
+                     && d.CreatedAt   <= cutoff)
             .OrderBy(d => d.CreatedAt)
             .Take(50)
             .ToListAsync(ct);
 
         if (pending.Count == 0) return;
 
-        _logger.LogInformation("EmailDispatchJob processing {Count} pending emails", pending.Count);
+        _logger.LogInformation("EmailDispatchJob retrying {Count} pending emails", pending.Count);
 
         foreach (var delivery in pending)
         {
@@ -76,7 +87,7 @@ public class EmailDispatchJob : BackgroundService
                 delivery.UpdatedAt   = _timeProvider.UtcNow;
 
                 _logger.LogInformation(
-                    "Email sent. DeliveryID={DeliveryId} To={Email}",
+                    "Email (retry) sent. DeliveryID={DeliveryId} To={Email}",
                     delivery.DeliveryId, delivery.Account.Email);
             }
             catch (Exception ex)
@@ -85,8 +96,8 @@ public class EmailDispatchJob : BackgroundService
                 delivery.UpdatedAt   = _timeProvider.UtcNow;
 
                 _logger.LogError(ex,
-                    "Email send failed. DeliveryID={DeliveryId} IdempotencyKey={Key}",
-                    delivery.DeliveryId, delivery.IdempotencyKey);
+                    "Email (retry) send failed. DeliveryID={DeliveryId}",
+                    delivery.DeliveryId);
             }
         }
 
@@ -96,7 +107,7 @@ public class EmailDispatchJob : BackgroundService
     private static string BuildHtmlBody(string title, string message, string? actionTarget)
     {
         var linkSection = actionTarget is not null
-            ? $"<p><a href=\"{actionTarget}\">View Details</a></p>"
+            ? $"<p><a href=\"{System.Net.WebUtility.HtmlEncode(actionTarget)}\">View details</a></p>"
             : string.Empty;
 
         return $"""

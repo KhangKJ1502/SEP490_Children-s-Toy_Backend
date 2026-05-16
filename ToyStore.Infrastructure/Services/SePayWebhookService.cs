@@ -252,9 +252,16 @@ public class SePayWebhookService : ISePayWebhookService
 
         _logger.LogInformation("SPX webhook processed: Order {Code} PAID", order.OrderCode);
 
+        var orderPayload = new { orderId = order.OrderId, orderCode = order.OrderCode };
         await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(),
             NotificationEventTypes.OrderConfirmed,
-            new { orderId = order.OrderId, orderCode = order.OrderCode },
+            orderPayload,
+            CancellationToken.None);
+
+        // Also notify Merchandise team to start packing
+        await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(),
+            NotificationEventTypes.MerchReadyToPack,
+            orderPayload,
             CancellationToken.None);
     }
 

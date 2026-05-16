@@ -166,6 +166,7 @@ DTOs/
  Notifications/
   BellNotificationDto.cs
   NotificationContext.cs
+  NotificationDeliveryRequest.cs
   NotificationListDto.cs
  Orders/
   AdminOrderDetailDto.cs
@@ -278,10 +279,9 @@ Features/Notifications/Handlers/
  AdminNotificationHandlers.cs
  MerchNotificationHandlers.cs
  OrderPlacedHandler.cs
- OrderStatusChangedHandler.cs
  PaymentNotificationHandler.cs
  ShiftAssignmentHandlers.cs
- ShippingWebhookHandler.cs
+ ShippingEventHandlers.cs
  StaffNotificationHandlers.cs
  VoucherNewHandler.cs
  WishlistPriceDropHandler.cs
@@ -290,10 +290,13 @@ Interfaces/Notifications/
  ICampaignNotificationService.cs
  IDomainEventPublisher.cs
  IEmailSender.cs
+ INotificationChannel.cs
  INotificationDispatcher.cs
  INotificationHandler.cs
  INotificationHubService.cs
+ INotificationPreferencesGate.cs
  INotificationReadService.cs
+ INotificationTemplateRenderer.cs
  IOutboxEventHandler.cs
  IUserPreferenceChecker.cs
 Interfaces/Repositories/
@@ -402,6 +405,7 @@ obj/Debug/net8.0/
 Services/Notifications/
  CampaignNotificationService.cs
  NotificationDispatcher.cs
+ NotificationPreferencesGate.cs
  UserPreferenceChecker.cs
 Services/ShippingStatusMapper.cs
 Validators/Accounts/

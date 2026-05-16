@@ -72,13 +72,16 @@ public class BackInStockJob : BackgroundService
                     RecipientAccountId = follower.AccountId,
                     RecipientType      = RecipientTypes.Customer,
                     NotificationType   = NotificationTypes.Stock,
-                    Title              = "Sản phẩm có hàng trở lại",
-                    Message            = $"'{follower.Product.ProductName}' đã có hàng. Mua ngay kẻo hết!",
-                    SendBell           = true,
-                    SendEmail          = true,
                     TemplateCode       = NotificationTemplates.ProductBackInStock,
-                    ActionTarget       = $"/products/{follower.ProductId}",
-                    IdempotencyKey     = $"product.back_in_stock:{follower.ProductId}:{follower.AccountId}",
+                    Placeholders       = new Dictionary<string, string>
+                    {
+                        ["ProductName"] = follower.Product.ProductName,
+                        ["Price"]       = $"{follower.Product.Price:N0}",
+                    },
+                    ReferenceId  = $"{follower.ProductId}:{follower.AccountId}",
+                    SendBell     = true,
+                    SendEmail    = true,
+                    ActionTarget = $"/products/{follower.ProductId}",
                 }, ct);
 
                 follower.NotifiedAt = _timeProvider.UtcNow;

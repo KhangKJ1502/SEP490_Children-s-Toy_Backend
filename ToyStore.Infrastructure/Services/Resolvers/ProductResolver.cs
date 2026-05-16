@@ -18,9 +18,9 @@ public class ProductResolver : IBusinessObjectResolver
 
     public IReadOnlyList<PlaceholderInfoDto> AvailablePlaceholders =>
     [
-        new() { Token = "{{ProductName}}", Description = "Ten san pham" },
-        new() { Token = "{{Price}}",       Description = "Gia ban (dinh dang tien te)" },
-        new() { Token = "{{ProductId}}",   Description = "ID san pham" }
+        new() { Token = "{{ProductName}}", Description = "Product name" },
+        new() { Token = "{{Price}}",       Description = "Selling price (formatted currency)" },
+        new() { Token = "{{ProductId}}",   Description = "Product ID" }
     ];
 
     public async Task<ResolvedReferenceDto?> ResolveAsync(int referenceId, CancellationToken cancellationToken = default)

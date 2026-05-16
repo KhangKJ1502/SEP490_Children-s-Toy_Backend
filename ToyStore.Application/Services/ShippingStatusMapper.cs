@@ -57,31 +57,31 @@ public class ShippingStatusMapper : IShippingStatusMapper
 
     public string GetStatusDescription(string? providerStatus)
     {
-        if (string.IsNullOrWhiteSpace(providerStatus)) return "Đang xử lý";
+        if (string.IsNullOrWhiteSpace(providerStatus)) return "Processing";
 
         return providerStatus.ToLowerInvariant() switch
         {
-            ShippingStatuses.ReadyToPick => "Chờ lấy hàng",
-            ShippingStatuses.Picking => "Đang lấy hàng",
-            ShippingStatuses.Picked => "Đã lấy hàng",
-            ShippingStatuses.Storing => "Đang nhập kho",
-            ShippingStatuses.Transporting => "Đang luân chuyển",
-            ShippingStatuses.Sorting => "Đang phân loại",
-            ShippingStatuses.Delivering => "Đang giao hàng",
-            ShippingStatuses.MoneyCollectDelivering => "Đang giao hàng và thu tiền",
-            ShippingStatuses.Delivered => "Giao hàng thành công",
-            ShippingStatuses.DeliveryFail => "Giao hàng thất bại",
-            ShippingStatuses.Cancel => "Đã hủy đơn vận chuyển",
-            ShippingStatuses.WaitingToReturn => "Chờ chuyển hoàn",
-            ShippingStatuses.Return => "Đang chuyển hoàn",
-            ShippingStatuses.Returned => "Đã chuyển hoàn",
-            ShippingStatuses.ReturnFail => "Chuyển hoàn thất bại",
-            ShippingStatuses.ReturnSorting => "Đang phân loại hoàn hàng",
-            ShippingStatuses.ReturnTransporting => "Đang luân chuyển hoàn hàng",
-            ShippingStatuses.Returning => "Đang trong quá trình hoàn hàng",
-            ShippingStatuses.Exception => "Đơn hàng gặp sự cố",
-            ShippingStatuses.Damage => "Hàng bị hư hỏng",
-            ShippingStatuses.Lost => "Hàng bị thất lạc",
+            ShippingStatuses.ReadyToPick => "Ready to pick",
+            ShippingStatuses.Picking => "Picking up",
+            ShippingStatuses.Picked => "Picked up",
+            ShippingStatuses.Storing => "Storing in warehouse",
+            ShippingStatuses.Transporting => "Transporting",
+            ShippingStatuses.Sorting => "Sorting",
+            ShippingStatuses.Delivering => "Out for delivery",
+            ShippingStatuses.MoneyCollectDelivering => "Delivering and collecting payment",
+            ShippingStatuses.Delivered => "Delivered successfully",
+            ShippingStatuses.DeliveryFail => "Delivery failed",
+            ShippingStatuses.Cancel => "Shipping cancelled",
+            ShippingStatuses.WaitingToReturn => "Waiting for return",
+            ShippingStatuses.Return => "Returning",
+            ShippingStatuses.Returned => "Returned",
+            ShippingStatuses.ReturnFail => "Return failed",
+            ShippingStatuses.ReturnSorting => "Return sorting",
+            ShippingStatuses.ReturnTransporting => "Return transporting",
+            ShippingStatuses.Returning => "In return process",
+            ShippingStatuses.Exception => "Delivery exception",
+            ShippingStatuses.Damage => "Damaged",
+            ShippingStatuses.Lost => "Lost",
             _ => providerStatus
         };
     }

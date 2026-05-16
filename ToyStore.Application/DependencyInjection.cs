@@ -15,14 +15,13 @@ public static class DependencyInjection
         services.AddScoped<INotificationDispatcher, NotificationDispatcher>();
         services.AddScoped<ICampaignNotificationService, CampaignNotificationService>();
         services.AddScoped<IUserPreferenceChecker, UserPreferenceChecker>();
+        services.AddScoped<INotificationPreferencesGate, NotificationPreferencesGate>();
 
         // Shipping status mapper
         services.AddScoped<IShippingStatusMapper, ShippingStatusMapper>();
 
         // Outbox Event Handlers
         services.AddScoped<IOutboxEventHandler, OrderPlacedHandler>();
-        services.AddScoped<IOutboxEventHandler, OrderStatusChangedHandler>();
-        services.AddScoped<IOutboxEventHandler, ShippingWebhookHandler>();
         services.AddScoped<IOutboxEventHandler, PaymentSuccessHandler>();
         services.AddScoped<IOutboxEventHandler, PaymentFailedHandler>();
         services.AddScoped<IOutboxEventHandler, WalletTopupHandler>();
@@ -50,6 +49,11 @@ public static class DependencyInjection
         services.AddScoped<IOutboxEventHandler, OrderPackingHandler>();
         services.AddScoped<IOutboxEventHandler, OrderShippedHandler>();
         services.AddScoped<IOutboxEventHandler, OrderCancelledHandler>();
+
+        // Refund lifecycle — customer notifications
+        services.AddScoped<IOutboxEventHandler, RefundApprovedHandler>();
+        services.AddScoped<IOutboxEventHandler, RefundRejectedHandler>();
+        services.AddScoped<IOutboxEventHandler, RefundCompletedHandler>();
 
         // Shipping webhook granular handlers
         services.AddScoped<IOutboxEventHandler, OrderDeliveringHandler>();

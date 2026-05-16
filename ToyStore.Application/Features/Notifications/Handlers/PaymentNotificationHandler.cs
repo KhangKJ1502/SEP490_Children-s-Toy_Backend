@@ -25,21 +25,25 @@ public class PaymentSuccessHandler : IOutboxEventHandler
 
         var accountId       = root.GetProperty("accountId").GetInt32();
         var orderId         = root.GetProperty("orderId").GetInt32();
-        var transactionCode = root.TryGetProperty("transactionCode", out var tc) ? tc.GetString() : "";
+        var transactionCode = root.TryGetProperty("transactionCode", out var tc) ? tc.GetString() ?? "" : "";
         var amount          = root.TryGetProperty("amount", out var amt) ? amt.GetDecimal() : 0;
+        var orderCode       = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
 
         await _dispatcher.DispatchAsync(new NotificationContext
         {
             RecipientAccountId = accountId,
             RecipientType      = RecipientTypes.Customer,
             NotificationType   = NotificationTypes.Order,
-            Title              = "Payment successful",
-            Message            = $"Payment of {amount:N0}₫ for your order was successful. Txn: {transactionCode}",
-            SendBell           = true,
-            SendEmail          = true,
             TemplateCode       = NotificationTemplates.PaymentSuccess,
-            ActionTarget       = $"/orders/{orderId}",
-            IdempotencyKey     = $"{EventType}:{orderId}:{accountId}",
+            Placeholders       = new Dictionary<string, string>
+            {
+                ["Amount"]    = $"{amount:N0}",
+                ["OrderCode"] = orderCode,
+            },
+            ReferenceId  = $"{orderId}",
+            SendBell     = true,
+            SendEmail    = true,
+            ActionTarget = $"/profile/orders/{orderId}",
         }, ct);
     }
 }
@@ -63,19 +67,24 @@ public class PaymentFailedHandler : IOutboxEventHandler
 
         var accountId = root.GetProperty("accountId").GetInt32();
         var orderId   = root.GetProperty("orderId").GetInt32();
+        var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
+        var amount    = root.TryGetProperty("amount", out var amt) ? amt.GetDecimal() : 0;
 
         await _dispatcher.DispatchAsync(new NotificationContext
         {
             RecipientAccountId = accountId,
             RecipientType      = RecipientTypes.Customer,
             NotificationType   = NotificationTypes.Order,
-            Title              = "Payment failed",
-            Message            = "Your payment was not successful. Please try again.",
-            SendBell           = true,
-            SendEmail          = true,
             TemplateCode       = NotificationTemplates.PaymentFailed,
-            ActionTarget       = $"/orders/{orderId}/payment",
-            IdempotencyKey     = $"{EventType}:{orderId}:{accountId}",
+            Placeholders       = new Dictionary<string, string>
+            {
+                ["Amount"]    = $"{amount:N0}",
+                ["OrderCode"] = orderCode,
+            },
+            ReferenceId  = $"{orderId}",
+            SendBell     = true,
+            SendEmail    = true,
+            ActionTarget = $"/profile/orders/{orderId}/payment",
         }, ct);
     }
 }
@@ -102,13 +111,16 @@ public class WalletTopupHandler : IOutboxEventHandler
             RecipientAccountId = accountId,
             RecipientType      = RecipientTypes.Customer,
             NotificationType   = NotificationTypes.Order,
-            Title              = "Wallet top-up successful",
-            Message            = $"Your wallet has been topped up with {amount:N0}₫. New balance: {balanceAfter:N0}₫",
-            SendBell           = true,
-            SendEmail          = true,
             TemplateCode       = NotificationTemplates.WalletTopup,
-            ActionTarget       = "/wallet",
-            IdempotencyKey     = $"{EventType}:{txnId}:{accountId}",
+            Placeholders       = new Dictionary<string, string>
+            {
+                ["Amount"]  = $"{amount:N0} VND",
+                ["Balance"] = $"{balanceAfter:N0} VND",
+            },
+            ReferenceId  = $"{txnId}",
+            SendBell     = true,
+            SendEmail    = true,
+            ActionTarget = "/wallet",
         }, ct);
     }
 }
@@ -128,19 +140,23 @@ public class WalletRefundHandler : IOutboxEventHandler
         var accountId   = root.GetProperty("accountId").GetInt32();
         var amount      = root.TryGetProperty("amount", out var a) ? a.GetDecimal() : 0;
         var walletTxnId = root.TryGetProperty("walletTransactionId", out var t) ? t.GetInt32() : 0;
+        var orderCode   = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? "" : "";
 
         await _dispatcher.DispatchAsync(new NotificationContext
         {
             RecipientAccountId = accountId,
             RecipientType      = RecipientTypes.Customer,
             NotificationType   = NotificationTypes.Order,
-            Title              = "Refund processed",
-            Message            = $"{amount:N0}₫ has been refunded to your wallet.",
-            SendBell           = true,
-            SendEmail          = true,
             TemplateCode       = NotificationTemplates.WalletRefund,
-            ActionTarget       = "/wallet",
-            IdempotencyKey     = $"{EventType}:{walletTxnId}:{accountId}",
+            Placeholders       = new Dictionary<string, string>
+            {
+                ["Amount"]    = $"{amount:N0}",
+                ["OrderCode"] = orderCode,
+            },
+            ReferenceId  = $"{walletTxnId}",
+            SendBell     = true,
+            SendEmail    = true,
+            ActionTarget = "/wallet",
         }, ct);
     }
 }

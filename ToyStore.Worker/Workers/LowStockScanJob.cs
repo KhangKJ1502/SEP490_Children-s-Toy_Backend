@@ -83,12 +83,15 @@ public class LowStockScanJob : BackgroundService
                         RecipientAccountId = merch.AccountId,
                         RecipientType      = RecipientTypes.Merchandise,
                         NotificationType   = NotificationTypes.Stock,
-                        Title              = "Sắp hết hàng",
-                        Message            = $"Sản phẩm '{product.ProductName}' chỉ còn {product.Quantity} cái (ngưỡng: {product.StockThreshold})",
-                        SendBell           = true,
-                        SendEmail          = false,
                         TemplateCode       = NotificationTemplates.MerchLowStock,
-                        IdempotencyKey     = $"product.low_stock:{product.ProductId}:{now:yyyyMMddHH}:{merch.AccountId}",
+                        Placeholders       = new Dictionary<string, string>
+                        {
+                            ["ProductName"] = product.ProductName,
+                            ["Quantity"]    = product.Quantity.ToString(),
+                        },
+                        ReferenceId  = $"{product.ProductId}:{now:yyyyMMddHH}:{merch.AccountId}",
+                        SendBell     = true,
+                        SendEmail    = false,
                     }, ct);
                 }
 
@@ -105,12 +108,14 @@ public class LowStockScanJob : BackgroundService
                         RecipientAccountId = merch.AccountId,
                         RecipientType      = RecipientTypes.Merchandise,
                         NotificationType   = NotificationTypes.Stock,
-                        Title              = "Hết hàng",
-                        Message            = $"Sản phẩm '{product.ProductName}' đã hết hàng",
-                        SendBell           = true,
-                        SendEmail          = true,
                         TemplateCode       = NotificationTemplates.MerchOutOfStock,
-                        IdempotencyKey     = $"product.out_of_stock:{product.ProductId}:{now:yyyyMMdd}:{merch.AccountId}",
+                        Placeholders       = new Dictionary<string, string>
+                        {
+                            ["ProductName"] = product.ProductName,
+                        },
+                        ReferenceId  = $"{product.ProductId}:{now:yyyyMMdd}:{merch.AccountId}",
+                        SendBell     = true,
+                        SendEmail    = true,
                     }, ct);
                 }
             }

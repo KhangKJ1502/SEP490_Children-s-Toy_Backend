@@ -18,10 +18,10 @@ public class SaleResolver : IBusinessObjectResolver
 
     public IReadOnlyList<PlaceholderInfoDto> AvailablePlaceholders =>
     [
-        new() { Token = "{{PromotionName}}", Description = "Ten chuong trinh sale" },
-        new() { Token = "{{StartDate}}",     Description = "Ngay bat dau (dd/MM/yyyy)" },
-        new() { Token = "{{EndDate}}",       Description = "Ngay ket thuc (dd/MM/yyyy)" },
-        new() { Token = "{{PromotionId}}",   Description = "ID chuong trinh" }
+        new() { Token = "{{PromotionName}}", Description = "Promotion campaign name" },
+        new() { Token = "{{StartDate}}",     Description = "Start date (dd/MM/yyyy)" },
+        new() { Token = "{{EndDate}}",       Description = "End date (dd/MM/yyyy)" },
+        new() { Token = "{{PromotionId}}",   Description = "Promotion ID" }
     ];
 
     public async Task<ResolvedReferenceDto?> ResolveAsync(int referenceId, CancellationToken cancellationToken = default)

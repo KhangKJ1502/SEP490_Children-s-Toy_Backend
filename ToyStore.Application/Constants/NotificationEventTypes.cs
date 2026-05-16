@@ -41,6 +41,9 @@ public static class NotificationEventTypes
     public const string StaffPaymentOverdue   = "order.payment_overdue";
     public const string StaffCancelRequested  = "order.cancel_requested";
     public const string RefundNewRequest      = "refund.new_request";
+    public const string RefundApproved        = "refund.approved";
+    public const string RefundRejected        = "refund.rejected";
+    public const string RefundCompleted       = "refund.completed";
     public const string ReviewNeedsModeration = "review.needs_moderation";
     public const string ReviewLowRating       = "review.low_rating";
     public const string StaffOrderAssigned    = "order.assigned";

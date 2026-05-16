@@ -58,9 +58,13 @@ DependencyInjection.cs
 Notifications/
  BackgroundJobTelemetry.cs
  DomainEventPublisher.cs
+ EmailChannel.cs
  NoOpNotificationHubService.cs
  NotificationReadService.cs
+ NotificationTemplateRenderer.cs
  SendGridEmailSender.cs
+ SmtpNotificationEmailSender.cs
+ WebBellChannel.cs
 obj/Debug/net8.0/
  .NETCoreApp,Version=v8.0.AssemblyAttributes.cs
  ToyStore.Infrastructure.AssemblyInfo.cs
