@@ -87,12 +87,18 @@ public class VoucherExpiryReminderJob : BackgroundService
                         RecipientAccountId = accountId,
                         RecipientType      = RecipientTypes.Customer,
                         NotificationType   = NotificationTypes.Promotion,
-                        Title              = "Voucher sắp hết hạn",
-                        Message            = $"Voucher {voucher.VoucherCode} sắp hết hạn vào {voucher.EndDate:dd/MM/yyyy}",
-                        SendBell           = true,
-                        SendEmail          = false,
                         TemplateCode       = NotificationTemplates.VoucherExpiring,
-                        IdempotencyKey     = $"voucher.expiring:{voucher.VoucherId}:{accountId}:{now:yyyyMMdd}",
+                        Placeholders       = new Dictionary<string, string>
+                        {
+                            ["VoucherCode"]  = voucher.VoucherCode,
+                            ["DiscountValue"] = voucher.DiscountType == "PERCENTAGE"
+                                                ? $"{voucher.DiscountValue:0.##}%"
+                                                : $"{voucher.DiscountValue:N0} VND",
+                            ["ExpiryDate"]   = voucher.EndDate.ToString("dd/MM/yyyy"),
+                        },
+                        IdempotencyKey = $"voucher.expiring:{voucher.VoucherId}:{accountId}:{now:yyyyMMdd}:WEB_BELL",
+                        SendBell       = true,
+                        SendEmail      = false,
                     }, ct);
 
                     count++;

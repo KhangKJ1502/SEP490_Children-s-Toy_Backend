@@ -6,10 +6,6 @@ using ToyStore.Application.Interfaces.Repositories;
 
 namespace ToyStore.Application.Features.Notifications.Handlers;
 
-/// <summary>
-/// Notifies customers when a new voucher campaign is created and distributed.
-/// Triggered when CampaignService dispatches a VOUCHER type campaign.
-/// </summary>
 public class VoucherNewHandler : IOutboxEventHandler
 {
     public string EventType => NotificationEventTypes.VoucherNew;
@@ -33,9 +29,9 @@ public class VoucherNewHandler : IOutboxEventHandler
         using var doc = JsonDocument.Parse(ev.Payload);
         var root = doc.RootElement;
 
-        var voucherCode  = root.TryGetProperty("voucherCode", out var vc) ? vc.GetString() : "";
-        var discountDesc = root.TryGetProperty("discountDesc", out var dd) ? dd.GetString() : "";
-        var expiryDate   = root.TryGetProperty("expiryDate", out var ed) ? ed.GetString() : "";
+        var voucherCode  = root.TryGetProperty("voucherCode", out var vc) ? vc.GetString() ?? "" : "";
+        var discountDesc = root.TryGetProperty("discountDesc", out var dd) ? dd.GetString() ?? "" : "";
+        var expiryDate   = root.TryGetProperty("expiryDate", out var ed) ? ed.GetString() ?? "" : "";
         var accountId    = root.TryGetProperty("accountId", out var aid) ? aid.GetInt32() : 0;
 
         if (accountId <= 0) return;
@@ -48,15 +44,21 @@ public class VoucherNewHandler : IOutboxEventHandler
             RecipientAccountId = accountId,
             RecipientType      = RecipientTypes.Customer,
             NotificationType   = NotificationTypes.Promotion,
-            Title              = "You have a new voucher!",
-            Message            = $"Voucher {voucherCode} — {discountDesc}. Valid until {expiryDate}.",
-            SendBell           = true,
-            SendEmail          = true,
-            ActionTarget       = "/vouchers",
-            IdempotencyKey     = $"{EventType}:{ev.AggregateId}:{accountId}",
-            Payload            = new Dictionary<string, object>
+            TemplateCode       = NotificationTemplates.VoucherNew,
+            Placeholders       = new Dictionary<string, string>
             {
-                ["voucherCode"] = voucherCode ?? "",
+                ["VoucherCode"]  = voucherCode,
+                ["DiscountValue"] = discountDesc,
+                ["DiscountType"]  = "",
+                ["ExpiryDate"]    = expiryDate,
+            },
+            ReferenceId  = $"{ev.AggregateId}:{accountId}",
+            SendBell     = true,
+            SendEmail    = true,
+            ActionTarget = "/vouchers",
+            Payload      = new Dictionary<string, object>
+            {
+                ["voucherCode"] = voucherCode,
             },
         }, ct);
     }

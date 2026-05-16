@@ -61,8 +61,8 @@ public class ShippingWebhookService : IShippingWebhookService
             using var doc = JsonDocument.Parse(rawPayload);
             var root = doc.RootElement;
 
-            var providerOrderCode = TryGetString(root, "order_code")
-                ?? TryGetString(root, "OrderCode");
+            var providerOrderCode = TryGetString(root, "OrderCode")
+                ?? TryGetString(root, "order_code");
 
             var newStatus = TryGetString(root, "status")
                 ?? TryGetString(root, "Status");
@@ -116,6 +116,18 @@ public class ShippingWebhookService : IShippingWebhookService
                     await UpdateOrderStatusAsync(tx.Order, targetStatus.Value, now, cancellationToken);
                 }
 
+                // Cập nhật trạng thái thanh toán sang PAID nếu là trạng thái đã thu tiền hoặc đã giao
+                if (tx.Order.PaymentMethod == "SHIP_COD" && tx.Order.PaymentStatus != "PAID")
+                {
+                    if (newStatus.Equals(ShippingStatuses.MoneyCollectDelivering, StringComparison.OrdinalIgnoreCase) ||
+                        newStatus.Equals(ShippingStatuses.Delivered, StringComparison.OrdinalIgnoreCase))
+                    {
+                        tx.Order.PaymentStatus = "PAID";
+                        tx.Order.PaidAt = now;
+                        _logger.LogInformation("Order {OrderCode} payment status updated to PAID via webhook status: {Status}", tx.Order.OrderCode, newStatus);
+                    }
+                }
+
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
@@ -124,10 +136,18 @@ public class ShippingWebhookService : IShippingWebhookService
                     provider, providerOrderCode, newStatus);
 
                 // Publish notification event for webhook status (fire-and-forget)
+                // Include orderCode in payload so handlers can display a human-readable order reference
                 if (WebhookEventMap.TryGetValue(newStatus, out var notifEventType) && notifEventType is not null)
                 {
                     _ = _eventPublisher.PublishAsync("Order", tx.OrderId.ToString(), notifEventType,
-                        new { orderId = tx.OrderId, providerStatus = newStatus, providerOrderCode }, CancellationToken.None);
+                        new
+                        {
+                            orderId           = tx.OrderId,
+                            orderCode         = tx.Order?.OrderCode ?? "",
+                            providerStatus    = newStatus,
+                            providerOrderCode
+                        },
+                        CancellationToken.None);
                 }
             }
             catch
@@ -169,17 +189,15 @@ public class ShippingWebhookService : IShippingWebhookService
 
         if (targetStatus == OrderStatus.Cancelled)
         {
-            // Use internal cancel logic (restores stock, releases capacity, etc.)
-            var result = await _orderLifecycle.CancelOrderInternalAsync(
-                order, 
-                $"Auto-cancelled from shipping webhook: {order.Status?.StatusName ?? "Unknown"}", 
-                0, // System/Auto
-                cancellationToken);
-
-            if (!result.IsSuccess)
-            {
-                _logger.LogWarning("Failed to cancel order {OrderId} via lifecycle service: {Error}", order.OrderId, result.ErrorMessage);
-            }
+            // NOTE: GHN "cancel" means the COURIER cancelled the shipment, NOT the customer.
+            // We should NOT auto-cancel the order (which restores stock) — instead mark it as DeliveryFail
+            // and let staff decide the next action (reshipping or manual cancellation).
+            // Only cancel the order if the webhook explicitly maps to a final "lost" or "damage" scenario.
+            // For now, log a warning and skip auto-cancellation.
+            _logger.LogWarning(
+                "Shipping webhook triggered Cancelled mapping for Order {OrderId} (provider status: {Status}). " +
+                "Auto-cancel skipped — staff should review and take manual action.",
+                order.OrderId, order.Status?.StatusName);
             return;
         }
 

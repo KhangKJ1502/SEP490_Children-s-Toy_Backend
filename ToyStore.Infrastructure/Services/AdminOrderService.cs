@@ -105,6 +105,31 @@ public class AdminOrderService : IAdminOrderService
             cancellationToken);
 
         var dtos = _mapper.Map<List<AdminOrderListItemDto>>(items);
+
+        if (dtos.Count > 0)
+        {
+            var orderIds = dtos.Select(x => x.OrderId).ToList();
+            var activeAssignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsForOrdersAsync(orderIds, cancellationToken);
+
+            foreach (var dto in dtos)
+            {
+                var assignments = activeAssignments.Where(a => a.OrderId == dto.OrderId).ToList();
+                var staffAssig = assignments.FirstOrDefault(a => a.RoleId == 3);
+                var merchAssig = assignments.FirstOrDefault(a => a.RoleId == 4);
+
+                if (staffAssig != null && staffAssig.Account != null)
+                {
+                    dto.AssignedToStaffId = staffAssig.AccountId;
+                    dto.AssignedToStaffName = staffAssig.Account.AccountName;
+                }
+                if (merchAssig != null && merchAssig.Account != null)
+                {
+                    dto.AssignedToMerchId = merchAssig.AccountId;
+                    dto.AssignedToMerchName = merchAssig.Account.AccountName;
+                }
+            }
+        }
+
         return Result<PaginatedResponse<AdminOrderListItemDto>>.Success(
             new PaginatedResponse<AdminOrderListItemDto>(dtos, count, pageNumber, pageSize));
     }
@@ -120,6 +145,22 @@ public class AdminOrderService : IAdminOrderService
             return Result<AdminOrderDetailDto>.NotFound("Order", orderId);
 
         var dto = _mapper.Map<AdminOrderDetailDto>(order);
+
+        var activeAssignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(orderId, cancellationToken);
+        var staffAssig = activeAssignments.FirstOrDefault(a => a.RoleId == 3);
+        var merchAssig = activeAssignments.FirstOrDefault(a => a.RoleId == 4);
+
+        if (staffAssig != null && staffAssig.Account != null)
+        {
+            dto.AssignedToStaffId = staffAssig.AccountId;
+            dto.AssignedToStaffName = staffAssig.Account.AccountName;
+        }
+        if (merchAssig != null && merchAssig.Account != null)
+        {
+            dto.AssignedToMerchId = merchAssig.AccountId;
+            dto.AssignedToMerchName = merchAssig.Account.AccountName;
+        }
+
         return Result<AdminOrderDetailDto>.Success(dto);
     }
 
@@ -621,6 +662,13 @@ public class AdminOrderService : IAdminOrderService
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
                 _logger.LogInformation("Order {OrderId} auto-confirmed after payment", orderId);
+
+                // Notify customer + merchandise team
+                var autoConfirmPayload = new { orderId = order.OrderId, orderCode = order.OrderCode };
+                await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(),
+                    NotificationEventTypes.OrderConfirmed, autoConfirmPayload, CancellationToken.None);
+                await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(),
+                    NotificationEventTypes.MerchReadyToPack, autoConfirmPayload, CancellationToken.None);
             }
             catch
             {

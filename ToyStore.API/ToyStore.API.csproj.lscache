@@ -63,6 +63,7 @@ Controllers/
  AdminOrdersController.cs
  AdminRefundsController.cs
  AdminReviewsController.cs
+ AdminWalletsController.cs
  AuthController.cs
  BrandsController.cs
  CampaignsController.cs

@@ -102,7 +102,7 @@ public class CampaignNotificationService : ICampaignNotificationService
                 Message            = message,
                 SendBell           = true,
                 SendEmail          = campaign.SourceType == "ADMIN",
-                TemplateCode       = campaign.TemplateCode,
+                TemplateCode       = campaign.TemplateCode,  // nullable — FK allows NULL in Deliveries
                 ImageUrl           = campaign.ImageUrl,
                 ActionType         = campaign.ActionType,
                 ActionTarget       = campaign.ActionTarget,
@@ -171,10 +171,10 @@ public class CampaignNotificationService : ICampaignNotificationService
                         vars["VoucherName"] = voucher.VoucherName;
                         vars["DiscountValue"] = voucher.DiscountType == "PERCENTAGE" 
                             ? $"{voucher.DiscountValue:0.##}%" 
-                            : $"{voucher.DiscountValue:N0}đ";
-                        vars["DiscountType"] = voucher.DiscountType == "PERCENTAGE" ? "giảm theo phần trăm" : "giảm thẳng";
-                        vars["MinOrderAmount"] = voucher.MinOrderAmount.HasValue ? $"{voucher.MinOrderAmount.Value:N0}đ" : "0đ";
-                        vars["MaxDiscountCap"] = voucher.MaxDiscountCap.HasValue ? $"{voucher.MaxDiscountCap.Value:N0}đ" : "Không giới hạn";
+                            : $"{voucher.DiscountValue:N0} VND";
+                        vars["DiscountType"] = voucher.DiscountType == "PERCENTAGE" ? "percentage discount" : "fixed discount";
+                        vars["MinOrderAmount"] = voucher.MinOrderAmount.HasValue ? $"{voucher.MinOrderAmount.Value:N0} VND" : "0 VND";
+                        vars["MaxDiscountCap"] = voucher.MaxDiscountCap.HasValue ? $"{voucher.MaxDiscountCap.Value:N0} VND" : "No limit";
                     }
                     break;
 
@@ -183,7 +183,7 @@ public class CampaignNotificationService : ICampaignNotificationService
                     if (product != null)
                     {
                         vars["ProductName"] = product.ProductName;
-                        vars["Price"] = $"{product.Price:N0}đ";
+                        vars["Price"] = $"{product.Price:N0} VND";
                     }
                     break;
 

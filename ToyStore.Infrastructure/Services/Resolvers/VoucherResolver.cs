@@ -18,11 +18,11 @@ public class VoucherResolver : IBusinessObjectResolver
 
     public IReadOnlyList<PlaceholderInfoDto> AvailablePlaceholders =>
     [
-        new() { Token = "{{VoucherCode}}",    Description = "Ma giam gia" },
-        new() { Token = "{{DiscountValue}}",  Description = "Gia tri giam (so)" },
-        new() { Token = "{{DiscountType}}",   Description = "Kieu giam gia (PERCENT / AMOUNT)" },
-        new() { Token = "{{ExpiryDate}}",     Description = "Han su dung (dd/MM/yyyy)" },
-        new() { Token = "{{VoucherName}}",    Description = "Ten voucher" }
+        new() { Token = "{{VoucherCode}}",    Description = "Voucher code" },
+        new() { Token = "{{DiscountValue}}",  Description = "Discount value (numeric)" },
+        new() { Token = "{{DiscountType}}",   Description = "Discount type (PERCENT / AMOUNT)" },
+        new() { Token = "{{ExpiryDate}}",     Description = "Expiry date (dd/MM/yyyy)" },
+        new() { Token = "{{VoucherName}}",    Description = "Voucher name" }
     ];
 
     public async Task<ResolvedReferenceDto?> ResolveAsync(int referenceId, CancellationToken cancellationToken = default)

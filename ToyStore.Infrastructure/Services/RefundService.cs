@@ -1,6 +1,8 @@
 using AutoMapper;
+using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Refunds;
+using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
@@ -12,11 +14,13 @@ public class RefundService : IRefundService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
+    private readonly IDomainEventPublisher _eventPublisher;
 
-    public RefundService(IUnitOfWork unitOfWork, IMapper mapper)
+    public RefundService(IUnitOfWork unitOfWork, IMapper mapper, IDomainEventPublisher eventPublisher)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
+        _eventPublisher = eventPublisher;
     }
 
     public async Task<Result<RefundDto>> CreateRefundAsync(int customerId, CreateRefundDto dto, CancellationToken cancellationToken = default)
@@ -30,7 +34,7 @@ public class RefundService : IRefundService
             return Result<RefundDto>.BusinessError("Order must be in Delivered status to request a refund.");
 
         if (order.DeliveredAt == null || (DateTime.UtcNow - order.DeliveredAt.Value).TotalDays > 3)
-            return Result<RefundDto>.BusinessError("Yêu cầu hoàn trả phải được thực hiện trong vòng 3 ngày kể từ khi giao hàng thành công.");
+            return Result<RefundDto>.BusinessError("Refund requests must be submitted within 3 days of successful delivery.");
 
         var existingRefunds = await _unitOfWork.Refunds.GetAdminRefundsAsync(new AdminRefundFilterDto { OrderId = dto.OrderId, PageSize = 100 }, cancellationToken);
 
@@ -75,6 +79,12 @@ public class RefundService : IRefundService
             }
 
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            // Notify staff about the new refund request
+            await _eventPublisher.PublishAsync("Refund", refund.RefundId.ToString(),
+                NotificationEventTypes.RefundNewRequest,
+                new { refundId = refund.RefundId, orderId = dto.OrderId, orderCode = order.OrderCode, customerId },
+                CancellationToken.None);
 
             var createdRefund = await _unitOfWork.Refunds.GetByIdAsync(refund.RefundId, cancellationToken);
             return Result<RefundDto>.Success(_mapper.Map<RefundDto>(createdRefund));
@@ -202,6 +212,31 @@ public class RefundService : IRefundService
             _unitOfWork.Refunds.Update(refund);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            // Notify customer about refund status change
+            var eventType = dto.Status switch
+            {
+                RefundStatuses.Approved  => NotificationEventTypes.RefundApproved,
+                RefundStatuses.Rejected  => NotificationEventTypes.RefundRejected,
+                RefundStatuses.Completed => NotificationEventTypes.RefundCompleted,
+                _                        => null
+            };
+
+            if (eventType is not null)
+            {
+                await _eventPublisher.PublishAsync("Refund", refundId.ToString(),
+                    eventType,
+                    new
+                    {
+                        refundId,
+                        orderId      = order.OrderId,
+                        orderCode    = order.OrderCode,
+                        customerId   = refund.CustomerId,
+                        status       = dto.Status,
+                        amount       = refund.ApprovedAmount,
+                    },
+                    CancellationToken.None);
+            }
 
             var updatedRefund = await _unitOfWork.Refunds.GetByIdAsync(refundId, cancellationToken);
             return Result<RefundDto>.Success(_mapper.Map<RefundDto>(updatedRefund));

@@ -329,11 +329,11 @@ public class CampaignService : ICampaignService
                 ReferenceType = r.ReferenceType,
                 DisplayName = r.ReferenceType switch
                 {
-                    "VOUCHER" => "Voucher giảm giá",
-                    "PRODUCT" => "Sản phẩm mới",
-                    "BLOG" => "Bài blog",
-                    "SALE" => "Chương trình sale",
-                    "OTHER" => "Khác",
+                    "VOUCHER" => "Voucher discount",
+                    "PRODUCT" => "New product",
+                    "BLOG" => "Blog post",
+                    "SALE" => "Sale promotion",
+                    "OTHER" => "Other",
                     _ => r.ReferenceType
                 },
                 Placeholders = r.AvailablePlaceholders.ToList()
@@ -345,7 +345,7 @@ public class CampaignService : ICampaignService
             list.Add(new ReferenceTypeDto
             {
                 ReferenceType = "OTHER",
-                DisplayName = "Khác",
+                DisplayName = "Other",
                 Placeholders = new List<PlaceholderInfoDto>()
             });
         }

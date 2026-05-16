@@ -9,7 +9,7 @@ using ToyStore.Infrastructure.Notifications;
 namespace ToyStore.Worker.Workers;
 
 /// <summary>
-/// Auto-completes orders 7 days after delivery when the customer hasn't confirmed.
+/// Auto-completes orders 3 days after delivery when the customer hasn't confirmed.
 /// Sends a bell notification only (customer initiated their own confirm — no notify needed for that).
 /// Runs every hour.
 /// </summary>
@@ -53,9 +53,9 @@ public class AutoCompleteOrderJob : BackgroundService
 
         try
         {
-            var cutoff = _timeProvider.UtcNow.AddDays(-7);
+            var cutoff = _timeProvider.UtcNow.AddDays(-3);
 
-            // StatusID=6 (Delivered), delivered more than 7 days ago, customer hasn't confirmed
+            // StatusID=6 (Delivered), delivered more than 3 days ago, customer hasn't confirmed
             var ordersToComplete = await db.Orders
                 .Where(o => o.StatusId == 6
                          && !o.IsDeleted
@@ -73,19 +73,20 @@ public class AutoCompleteOrderJob : BackgroundService
                     continue;
                 }
 
-                // Bell-only notification
                 await dispatcher.DispatchAsync(new NotificationContext
                 {
                     RecipientAccountId = order.AccountId,
-                    RecipientType = RecipientTypes.Customer,
-                    NotificationType = NotificationTypes.Order,
-                    Title = "Đơn hàng đã hoàn thành",
-                    Message = $"Đơn {order.OrderCode} đã được tự động hoàn thành sau 7 ngày nhận hàng",
-                    SendBell = true,
-                    SendEmail = false,
-                    TemplateCode = NotificationTemplates.OrderDelivered,
+                    RecipientType      = RecipientTypes.Customer,
+                    NotificationType   = NotificationTypes.Order,
+                    TemplateCode       = NotificationTemplates.OrderDelivered,
+                    Placeholders       = new Dictionary<string, string>
+                    {
+                        ["OrderCode"] = order.OrderCode,
+                    },
+                    ReferenceId  = $"auto:{order.OrderId}",
+                    SendBell     = true,
+                    SendEmail    = false,
                     ActionTarget = $"/orders/{order.OrderId}",
-                    IdempotencyKey = $"order.completed:auto:{order.OrderId}",
                 }, ct);
             }
 

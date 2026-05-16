@@ -39,6 +39,12 @@ public interface IOrderCustomerService
         int accountId,
         bool isAdmin,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Xác nhận đã nhận hàng (Hoàn thành đơn hàng).</summary>
+    Task<Result<string>> CompleteAsync(
+        int orderId,
+        int accountId,
+        CancellationToken cancellationToken = default);
 }
 
 public class CancelOrderCustomerResponseDto

@@ -245,7 +245,8 @@ public class OrderRepository : IOrderRepository
             Amount = amount,
             BalanceBefore = balanceBefore,
             BalanceAfter = wallet.Balance,
-            Method = "Wallet",
+            Method = "Internal",
+            Reason = $"Refund for order {transactionId}",
             IdempotencyKey = idempotencyKey,
             Status = "Completed",
             CreatedAt = now,
@@ -303,8 +304,8 @@ public class OrderRepository : IOrderRepository
             .Include(o => o.AssignedToStaff)
             .Where(o => !o.IsDeleted);
 
-        // Gioi han trang thai theo role neu khong co filter cu the
-        if (allowedStatusNames.Count > 0)
+        // Gioi han trang thai theo role neu khong phai dang xem "Don cua toi"
+        if (allowedStatusNames.Count > 0 && !assignedToMe)
         {
             query = query.Where(o => allowedStatusNames.Contains(o.Status.StatusName));
         }
@@ -316,7 +317,8 @@ public class OrderRepository : IOrderRepository
 
         if (assignedToMe)
         {
-            query = query.Where(o => o.AssignedToStaffId == currentAccountId);
+            query = query.Where(o => _context.OrderAssignments
+                .Any(oa => oa.OrderId == o.OrderId && oa.AccountId == currentAccountId && oa.IsActive));
         }
 
         if (!string.IsNullOrWhiteSpace(keyword))

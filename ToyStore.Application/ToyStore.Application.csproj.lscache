@@ -66,6 +66,7 @@ Common/
  Models/
   Result.cs
   ResultExtensions.cs
+  VoucherRiskThresholds.cs
 Constants/
  NotificationChannels.cs
  NotificationEventTypes.cs
@@ -166,6 +167,7 @@ DTOs/
  Notifications/
   BellNotificationDto.cs
   NotificationContext.cs
+  NotificationDeliveryRequest.cs
   NotificationListDto.cs
  Orders/
   AdminOrderDetailDto.cs
@@ -259,12 +261,15 @@ DTOs/
   VoucherDto.cs
   VoucherListDto.cs
  Wallets/
+  AdminWalletListDto.cs
+  AdminWalletQueryDto.cs
   ChangeWalletPinRequestDto.cs
   CreateSePayTopUpQrRequestDto.cs
   CreateWalletRequestDto.cs
   ResetForgotWalletPinRequestDto.cs
   SePayTopUpQrResponseDto.cs
   SePayTopUpStatusResponseDto.cs
+  UpdateWalletStatusDto.cs
   VerifyForgotWalletPinOtpRequestDto.cs
   VerifyWalletPinRequestDto.cs
   VerifyWalletPinResponseDto.cs
@@ -278,10 +283,9 @@ Features/Notifications/Handlers/
  AdminNotificationHandlers.cs
  MerchNotificationHandlers.cs
  OrderPlacedHandler.cs
- OrderStatusChangedHandler.cs
  PaymentNotificationHandler.cs
  ShiftAssignmentHandlers.cs
- ShippingWebhookHandler.cs
+ ShippingEventHandlers.cs
  StaffNotificationHandlers.cs
  VoucherNewHandler.cs
  WishlistPriceDropHandler.cs
@@ -290,10 +294,13 @@ Interfaces/Notifications/
  ICampaignNotificationService.cs
  IDomainEventPublisher.cs
  IEmailSender.cs
+ INotificationChannel.cs
  INotificationDispatcher.cs
  INotificationHandler.cs
  INotificationHubService.cs
+ INotificationPreferencesGate.cs
  INotificationReadService.cs
+ INotificationTemplateRenderer.cs
  IOutboxEventHandler.cs
  IUserPreferenceChecker.cs
 Interfaces/Repositories/
@@ -333,6 +340,7 @@ Interfaces/Services/
  IAddressService.cs
  IAdminDashboardService.cs
  IAdminOrderService.cs
+ IAdminWalletService.cs
  IAuthService.cs
  IBlogService.cs
  IBrandService.cs
@@ -402,6 +410,7 @@ obj/Debug/net8.0/
 Services/Notifications/
  CampaignNotificationService.cs
  NotificationDispatcher.cs
+ NotificationPreferencesGate.cs
  UserPreferenceChecker.cs
 Services/ShippingStatusMapper.cs
 Validators/Accounts/
@@ -502,6 +511,7 @@ Validators/
   CreateSePayTopUpQrRequestValidator.cs
   CreateWalletRequestValidator.cs
   ResetForgotWalletPinRequestValidator.cs
+  UpdateWalletStatusValidator.cs
   VerifyForgotWalletPinOtpRequestValidator.cs
   VerifyWalletPinRequestValidator.cs
 

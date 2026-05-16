@@ -107,7 +107,7 @@ public class OrderCustomerService : IOrderCustomerService
                 return Result<CustomerOrderDetailDto>.NotFound("Order", orderId);
             }
 
-            return Result<CustomerOrderDetailDto>.Unauthorized("Bạn không có quyền xem đơn hàng này.");
+            return Result<CustomerOrderDetailDto>.Unauthorized("You are not authorized to view this order.");
         }
 
         var dto = _mapper.Map<CustomerOrderDetailDto>(order);
@@ -129,22 +129,22 @@ public class OrderCustomerService : IOrderCustomerService
 
         // Ownership check
         if (!isAdmin && order.AccountId != actorAccountId)
-            return Result<CancelOrderCustomerResponseDto>.Unauthorized("Bạn không có quyền hủy đơn này.");
+            return Result<CancelOrderCustomerResponseDto>.Unauthorized("You are not authorized to cancel this order.");
 
         // Chỉ hủy khi trạng thái còn Pending hoặc Confirmed
         if (!OrderStatuses.CancellableStatuses.Contains(order.Status.StatusName))
             return Result<CancelOrderCustomerResponseDto>.UnprocessableEntity(
-                $"Không thể hủy đơn ở trạng thái '{order.Status.StatusName}'.");
+                $"Cannot cancel order in '{order.Status.StatusName}' status.");
 
         // SHIP COD rule: Chỉ được hủy khi chưa confirmed (tức là chỉ được hủy khi đang Pending)
         if (!isAdmin && order.PaymentMethod == "SHIP_COD" && order.Status.StatusName == OrderStatuses.Confirmed)
         {
             return Result<CancelOrderCustomerResponseDto>.UnprocessableEntity(
-                "Đơn hàng COD đã được xác nhận, không thể tự hủy. Vui lòng liên hệ hỗ trợ.");
+                "COD order has been confirmed and cannot be self-cancelled. Please contact support.");
         }
 
         if (order.CancelledAt.HasValue)
-            return Result<CancelOrderCustomerResponseDto>.UnprocessableEntity("Đơn đã bị hủy.");
+            return Result<CancelOrderCustomerResponseDto>.UnprocessableEntity("Order is already cancelled.");
 
         // Kiểm tra trạng thái GHN
         var shippingTxn = order.ShippingProviderTransactions.FirstOrDefault();
@@ -153,7 +153,7 @@ public class OrderCustomerService : IOrderCustomerService
             && NonCancellableGhnStatuses.Contains(shippingTxn.Status))
         {
             return Result<CancelOrderCustomerResponseDto>.UnprocessableEntity(
-                "Đơn đang giao, không thể hủy. Liên hệ hỗ trợ.");
+                "Order is out for delivery and cannot be cancelled. Please contact support.");
         }
 
         // Gọi GHN cancel nếu đã tạo đơn vận chuyển (ngoài transaction DB)
@@ -179,7 +179,7 @@ public class OrderCustomerService : IOrderCustomerService
             OrderId = order.OrderId,
             OrderCode = order.OrderCode,
             Status = OrderStatuses.Cancelled,
-            Message = "Hủy đơn hàng thành công."
+            Message = "Order cancelled successfully."
         });
     }
 
@@ -196,7 +196,7 @@ public class OrderCustomerService : IOrderCustomerService
             return Result<OrderTrackingDto>.NotFound("Order", orderId);
 
         if (!isAdmin && order.AccountId != accountId)
-            return Result<OrderTrackingDto>.Unauthorized("Bạn không có quyền xem thông tin đơn này.");
+            return Result<OrderTrackingDto>.Unauthorized("You are not authorized to view this order tracking.");
 
         var shippingTxn = order.ShippingProviderTransactions.FirstOrDefault();
 
@@ -233,7 +233,7 @@ public class OrderCustomerService : IOrderCustomerService
             return Result<OrderPaymentStatusDto>.NotFound("Order", orderId);
 
         if (!isAdmin && order.AccountId != accountId)
-            return Result<OrderPaymentStatusDto>.Unauthorized("Bạn không có quyền xem thông tin đơn này.");
+            return Result<OrderPaymentStatusDto>.Unauthorized("You are not authorized to view this order payment status.");
 
         // Guard: nếu đơn SE_PAY đã bị cancel nhưng PaymentStatus chưa được cập nhật (dữ liệu cũ)
         var effectivePaymentStatus = order.PaymentStatus;
@@ -255,6 +255,31 @@ public class OrderCustomerService : IOrderCustomerService
                     .AddMinutes(_sePayOptions.PaymentTtlMinutes)
                 : null
         });
+    }
+
+    public async Task<Result<string>> CompleteAsync(int orderId, int accountId, CancellationToken cancellationToken = default)
+    {
+        var order = await _uow.Orders.GetByIdAsync(orderId, cancellationToken);
+        if (order is null) return Result<string>.NotFound("Order", orderId);
+
+        if (order.AccountId != accountId)
+            return Result<string>.Unauthorized("You are not authorized to confirm this order.");
+
+        // Chỉ được xác nhận khi đơn ở trạng thái Delivered
+        if (order.StatusId != (byte)OrderStatus.Delivered)
+        {
+            return Result<string>.UnprocessableEntity("Receipt can only be confirmed after the order has been successfully delivered.");
+        }
+
+        var result = await _orderLifecycle.CompleteOrderAsync(orderId, cancellationToken);
+        if (!result.IsSuccess)
+            return Result<string>.Failure(result.ErrorCode!, result.ErrorMessage!);
+
+        // Publish event for notification (if needed, e.g. for points or stats)
+        await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), "order.completed",
+            new { orderId = order.OrderId, orderCode = order.OrderCode }, CancellationToken.None);
+
+        return Result<string>.Success("Order receipt confirmed successfully.");
     }
 
     private static IReadOnlyCollection<string>? MapCustomerStatusFilter(string? status)

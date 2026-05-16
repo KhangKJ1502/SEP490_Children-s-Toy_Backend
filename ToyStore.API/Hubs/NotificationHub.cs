@@ -78,7 +78,7 @@ public class NotificationHub : Hub
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Lỗi khi xử lý MarkAsRead cho DeliveryId {DeliveryId}, AccountId {AccountId}", deliveryId, accountIdInt);
+            _logger.LogError(ex, "Error processing MarkAsRead for DeliveryId {DeliveryId}, AccountId {AccountId}", deliveryId, accountIdInt);
         }
     }
 }

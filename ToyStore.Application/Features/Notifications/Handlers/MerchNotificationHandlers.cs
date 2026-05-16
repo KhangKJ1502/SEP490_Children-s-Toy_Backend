@@ -6,10 +6,6 @@ using ToyStore.Application.Interfaces.Repositories;
 
 namespace ToyStore.Application.Features.Notifications.Handlers;
 
-/// <summary>
-/// Notifies Merchandise team when an order is confirmed and ready to pack.
-/// RecipientType uses "STAFF" as the DB CHECK constraint covers CUSTOMER|ADMIN|STAFF only.
-/// </summary>
 public class MerchReadyToPackHandler : IOutboxEventHandler
 {
     public string EventType => NotificationEventTypes.MerchReadyToPack;
@@ -29,11 +25,9 @@ public class MerchReadyToPackHandler : IOutboxEventHandler
         var root = doc.RootElement;
 
         var orderId   = root.GetProperty("orderId").GetInt32();
-        var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() : $"#{orderId}";
+        var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
 
-        // RoleId 4 = Merchandise (adjust if your DB differs)
         var merch = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 4 }, ct);
-
         foreach (var m in merch)
         {
             await _dispatcher.DispatchAsync(new NotificationContext
@@ -41,21 +35,20 @@ public class MerchReadyToPackHandler : IOutboxEventHandler
                 RecipientAccountId = m.AccountId,
                 RecipientType      = RecipientTypes.Staff,
                 NotificationType   = NotificationTypes.Order,
-                Title              = "Order ready to pack",
-                Message            = $"Order {orderCode} has been confirmed and is ready to pack.",
-                SendBell           = true,
-                SendEmail          = false,
-                ActionTarget       = $"/admin/orders/{orderId}",
                 TemplateCode       = NotificationTemplates.MerchReadyToPack,
-                IdempotencyKey     = $"{EventType}:{orderId}:{m.AccountId}",
+                Placeholders       = new Dictionary<string, string>
+                {
+                    ["OrderCode"] = orderCode,
+                },
+                ReferenceId  = $"{orderId}:{m.AccountId}",
+                SendBell     = true,
+                SendEmail    = false,
+                ActionTarget = $"/admin/orders/{orderId}",
             }, ct);
         }
     }
 }
 
-/// <summary>
-/// Handles the order.confirmed event for the customer-facing bell/email notification.
-/// </summary>
 public class OrderConfirmedHandler : IOutboxEventHandler
 {
     public string EventType => NotificationEventTypes.OrderConfirmed;
@@ -75,7 +68,7 @@ public class OrderConfirmedHandler : IOutboxEventHandler
         var root = doc.RootElement;
 
         var orderId   = root.GetProperty("orderId").GetInt32();
-        var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() : $"#{orderId}";
+        var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
 
         var order = await _unitOfWork.Orders.GetByIdAsync(orderId, ct);
         if (order is null) return;
@@ -85,20 +78,19 @@ public class OrderConfirmedHandler : IOutboxEventHandler
             RecipientAccountId = order.AccountId,
             RecipientType      = RecipientTypes.Customer,
             NotificationType   = NotificationTypes.Order,
-            Title              = "Order confirmed",
-            Message            = $"Your order {orderCode} has been confirmed and is being prepared.",
-            SendBell           = true,
-            SendEmail          = false,
-            ActionTarget       = $"/orders/{orderId}",
             TemplateCode       = NotificationTemplates.OrderConfirmed,
-            IdempotencyKey     = $"{EventType}:{orderId}:{order.AccountId}",
+            Placeholders       = new Dictionary<string, string>
+            {
+                ["OrderCode"] = orderCode,
+            },
+            ReferenceId  = $"{orderId}",
+            SendBell     = true,
+            SendEmail    = false,
+            ActionTarget = $"/profile/orders/{orderId}",
         }, ct);
     }
 }
 
-/// <summary>
-/// Handles the order.packing event for the customer-facing bell notification.
-/// </summary>
 public class OrderPackingHandler : IOutboxEventHandler
 {
     public string EventType => NotificationEventTypes.OrderPacking;
@@ -118,7 +110,7 @@ public class OrderPackingHandler : IOutboxEventHandler
         var root = doc.RootElement;
 
         var orderId   = root.GetProperty("orderId").GetInt32();
-        var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() : $"#{orderId}";
+        var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
 
         var order = await _unitOfWork.Orders.GetByIdAsync(orderId, ct);
         if (order is null) return;
@@ -128,20 +120,19 @@ public class OrderPackingHandler : IOutboxEventHandler
             RecipientAccountId = order.AccountId,
             RecipientType      = RecipientTypes.Customer,
             NotificationType   = NotificationTypes.Order,
-            Title              = "Order is being packed",
-            Message            = $"Your order {orderCode} is being packed and will be shipped soon.",
-            SendBell           = true,
-            SendEmail          = false,
-            ActionTarget       = $"/orders/{orderId}",
             TemplateCode       = NotificationTemplates.OrderPacking,
-            IdempotencyKey     = $"{EventType}:{orderId}:{order.AccountId}",
+            Placeholders       = new Dictionary<string, string>
+            {
+                ["OrderCode"] = orderCode,
+            },
+            ReferenceId  = $"{orderId}",
+            SendBell     = true,
+            SendEmail    = false,
+            ActionTarget = $"/profile/orders/{orderId}",
         }, ct);
     }
 }
 
-/// <summary>
-/// Handles the order.shipped event for the customer-facing bell notification.
-/// </summary>
 public class OrderShippedHandler : IOutboxEventHandler
 {
     public string EventType => NotificationEventTypes.OrderShipped;
@@ -161,8 +152,8 @@ public class OrderShippedHandler : IOutboxEventHandler
         var root = doc.RootElement;
 
         var orderId        = root.GetProperty("orderId").GetInt32();
-        var orderCode      = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() : $"#{orderId}";
-        var trackingNumber = root.TryGetProperty("trackingNumber", out var tn) ? tn.GetString() : "";
+        var orderCode      = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
+        var trackingNumber = root.TryGetProperty("trackingNumber", out var tn) ? tn.GetString() ?? "" : "";
 
         var order = await _unitOfWork.Orders.GetByIdAsync(orderId, ct);
         if (order is null) return;
@@ -172,20 +163,20 @@ public class OrderShippedHandler : IOutboxEventHandler
             RecipientAccountId = order.AccountId,
             RecipientType      = RecipientTypes.Customer,
             NotificationType   = NotificationTypes.Order,
-            Title              = "Order shipped",
-            Message            = $"Your order {orderCode} has been handed to the carrier. Tracking: {trackingNumber}",
-            SendBell           = true,
-            SendEmail          = false,
             TemplateCode       = NotificationTemplates.OrderShipping,
-            ActionTarget       = $"/orders/{orderId}",
-            IdempotencyKey     = $"{EventType}:{orderId}:{order.AccountId}",
+            Placeholders       = new Dictionary<string, string>
+            {
+                ["OrderCode"]       = orderCode,
+                ["ShipperName"]     = trackingNumber,
+            },
+            ReferenceId  = $"{orderId}",
+            SendBell     = true,
+            SendEmail    = false,
+            ActionTarget = $"/profile/orders/{orderId}",
         }, ct);
     }
 }
 
-/// <summary>
-/// Handles the order.cancelled event for customer notification.
-/// </summary>
 public class OrderCancelledHandler : IOutboxEventHandler
 {
     public string EventType => NotificationEventTypes.OrderCancelled;
@@ -205,8 +196,8 @@ public class OrderCancelledHandler : IOutboxEventHandler
         var root = doc.RootElement;
 
         var orderId   = root.GetProperty("orderId").GetInt32();
-        var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() : $"#{orderId}";
-        var reason    = root.TryGetProperty("reason", out var r) ? r.GetString() : "";
+        var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
+        var reason    = root.TryGetProperty("reason", out var r) ? r.GetString() ?? "" : "";
 
         var order = await _unitOfWork.Orders.GetByIdAsync(orderId, ct);
         if (order is null) return;
@@ -216,13 +207,16 @@ public class OrderCancelledHandler : IOutboxEventHandler
             RecipientAccountId = order.AccountId,
             RecipientType      = RecipientTypes.Customer,
             NotificationType   = NotificationTypes.Order,
-            Title              = "Order cancelled",
-            Message            = $"Your order {orderCode} has been cancelled. Reason: {reason}",
-            SendBell           = true,
-            SendEmail          = true,
             TemplateCode       = NotificationTemplates.OrderCancelled,
-            ActionTarget       = $"/orders/{orderId}",
-            IdempotencyKey     = $"{EventType}:{orderId}:{order.AccountId}",
+            Placeholders       = new Dictionary<string, string>
+            {
+                ["OrderCode"]    = orderCode,
+                ["CancelReason"] = reason,
+            },
+            ReferenceId  = $"{orderId}",
+            SendBell     = true,
+            SendEmail    = true,
+            ActionTarget = $"/profile/orders/{orderId}",
         }, ct);
     }
 }

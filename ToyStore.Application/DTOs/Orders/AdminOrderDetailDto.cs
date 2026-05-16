@@ -43,6 +43,8 @@ public class AdminOrderDetailDto
     // Phan cong
     public int? AssignedToStaffId { get; set; }
     public string? AssignedToStaffName { get; set; }
+    public int? AssignedToMerchId { get; set; }
+    public string? AssignedToMerchName { get; set; }
 
     // Lich su trang thai
     public List<OrderStatusHistoryDto> StatusHistory { get; set; } = [];

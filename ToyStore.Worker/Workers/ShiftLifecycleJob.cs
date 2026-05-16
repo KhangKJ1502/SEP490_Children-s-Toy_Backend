@@ -48,9 +48,10 @@ public class ShiftLifecycleJob : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<SEP490ToyStoreContext>();
         var publisher = scope.ServiceProvider.GetRequiredService<IDomainEventPublisher>();
 
-        var now = _timeProvider.UtcNow;
-        var today = now.Date;
-        var nowTime = now.TimeOfDay;
+        var utcNow = _timeProvider.UtcNow;
+        var nowVn = utcNow.AddHours(7); // Khớp múi giờ VN
+        var today = nowVn.Date;
+        var nowTime = nowVn.TimeOfDay;
 
         var toStart = await db.WorkSchedules
             .Include(ws => ws.ShiftTemplate)
@@ -64,7 +65,7 @@ public class ShiftLifecycleJob : BackgroundService
             foreach (var schedule in toStart)
             {
                 schedule.Status = "OnDuty";
-                schedule.UpdatedAt = now;
+                schedule.UpdatedAt = utcNow;
             }
 
             await db.SaveChangesAsync(ct);
@@ -101,7 +102,7 @@ public class ShiftLifecycleJob : BackgroundService
         foreach (var schedule in toClose)
         {
             schedule.Status = "Completed";
-            schedule.UpdatedAt = now;
+            schedule.UpdatedAt = utcNow;
         }
 
         await db.SaveChangesAsync(ct);

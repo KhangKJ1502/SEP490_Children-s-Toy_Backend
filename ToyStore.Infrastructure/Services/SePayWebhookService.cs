@@ -220,6 +220,7 @@ public class SePayWebhookService : ISePayWebhookService
                             BalanceBefore = balanceBefore,
                             BalanceAfter = wallet.Balance,
                             Method = "BankTransfer",
+                            Reason = "Top up via Bank Transfer (SePay overpay)",
                             IdempotencyKey = idempotencyKey,
                             Status = "Completed",
                             CreatedAt = now,
@@ -252,9 +253,16 @@ public class SePayWebhookService : ISePayWebhookService
 
         _logger.LogInformation("SPX webhook processed: Order {Code} PAID", order.OrderCode);
 
+        var orderPayload = new { orderId = order.OrderId, orderCode = order.OrderCode };
         await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(),
             NotificationEventTypes.OrderConfirmed,
-            new { orderId = order.OrderId, orderCode = order.OrderCode },
+            orderPayload,
+            CancellationToken.None);
+
+        // Also notify Merchandise team to start packing
+        await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(),
+            NotificationEventTypes.MerchReadyToPack,
+            orderPayload,
             CancellationToken.None);
     }
 
@@ -484,6 +492,7 @@ public class SePayWebhookService : ISePayWebhookService
                     BalanceBefore = balanceBefore,
                     BalanceAfter = balanceAfter,
                     Method = "BankTransfer",
+                    Reason = "Top up via Bank Transfer (SePay)",
                     IdempotencyKey = idempotencyKey,
                     Status = "Completed",
                     CreatedAt = now,
