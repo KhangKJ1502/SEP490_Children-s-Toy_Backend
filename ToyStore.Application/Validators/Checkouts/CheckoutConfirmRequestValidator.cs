@@ -33,6 +33,18 @@ public class CheckoutConfirmRequestValidator : AbstractValidator<CheckoutConfirm
             .MaximumLength(500).WithMessage("Note must not exceed 500 characters.")
             .When(x => !string.IsNullOrWhiteSpace(x.Note));
 
+        RuleFor(x => x.OrderVoucherCode)
+            .MaximumLength(50).WithMessage("Order voucher code must not exceed 50 characters.")
+            .When(x => !string.IsNullOrWhiteSpace(x.OrderVoucherCode));
+
+        RuleFor(x => x.ShippingVoucherCode)
+            .MaximumLength(50).WithMessage("Shipping voucher code must not exceed 50 characters.")
+            .When(x => !string.IsNullOrWhiteSpace(x.ShippingVoucherCode));
+
+        RuleFor(x => x.VoucherCode)
+            .MaximumLength(50).WithMessage("Voucher code must not exceed 50 characters.")
+            .When(x => !string.IsNullOrWhiteSpace(x.VoucherCode));
+
         RuleFor(x => x.Items)
             .NotEmpty().WithMessage("Items are required.")
             .Must(items => items.Count <= 100).WithMessage("Items must not exceed 100.");

@@ -897,7 +897,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.HasIndex(e => new { e.AccountId, e.OrderDate }, "IX_Orders_UserHistory").IsDescending(false, true);
 
-            entity.HasIndex(e => e.PaymentCode, "UQ__Orders__106D3BA8DC390B6E").IsUnique();
+            entity.HasIndex(e => e.PaymentCode, "IX_Orders_PaymentCode");
 
             entity.HasIndex(e => e.OrderCode, "UQ__Orders__999B52290487CF36").IsUnique();
 
@@ -1145,6 +1145,9 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.OrderId).HasColumnName("OrderID");
             entity.Property(e => e.VoucherId).HasColumnName("VoucherID");
             entity.Property(e => e.DiscountAmountApplied).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.VoucherTarget)
+                .HasMaxLength(20)
+                .IsUnicode(false);
 
             entity.HasOne(d => d.Order).WithMany(p => p.OrderVouchers)
                 .HasForeignKey(d => d.OrderId)

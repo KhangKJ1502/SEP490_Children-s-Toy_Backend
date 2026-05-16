@@ -8,14 +8,14 @@ namespace ToyStore.Worker.Workers;
 
 /// <summary>
 /// Quét các đơn SE_PAY PENDING quá TTL và tự động hủy (restore stock + voucher).
-/// Chạy mỗi 5 phút.
+/// Chạy mỗi 1 phút.
 /// </summary>
 public class SePayExpiryJob : BackgroundService
 {
     private readonly IServiceProvider _services;
     private readonly ILogger<SePayExpiryJob> _logger;
     private readonly ITimeProvider _timeProvider;
-    private readonly TimeSpan _interval = TimeSpan.FromMinutes(5);
+    private readonly TimeSpan _interval = TimeSpan.FromMinutes(1);
 
     public SePayExpiryJob(
         IServiceProvider services, 
