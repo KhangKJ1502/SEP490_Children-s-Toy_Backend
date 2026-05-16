@@ -13,6 +13,20 @@ public interface IWalletRepository
 
     Task<WalletPin?> GetActivePinByWalletIdAsync(int walletId, CancellationToken cancellationToken = default);
 
+    Task<List<Wallet>> GetAdminPagedAsync(
+        int pageNumber,
+        int pageSize,
+        string? accountSearchTerm,
+        string? status,
+        CancellationToken cancellationToken = default);
+
+    Task<int> CountAdminAsync(
+        string? accountSearchTerm,
+        string? status,
+        CancellationToken cancellationToken = default);
+
+    Task<Wallet?> GetByIdWithAccountAsync(int walletId, CancellationToken cancellationToken = default);
+
     Task<Wallet> CreateAsync(Wallet wallet, CancellationToken cancellationToken = default);
 
     Task AddPinAsync(WalletPin walletPin, CancellationToken cancellationToken = default);

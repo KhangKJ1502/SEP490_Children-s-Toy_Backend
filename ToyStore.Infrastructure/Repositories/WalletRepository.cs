@@ -34,6 +34,35 @@ public class WalletRepository : IWalletRepository
             .FirstOrDefaultAsync(x => x.WalletId == walletId && x.IsActive, cancellationToken);
     }
 
+    public Task<List<Wallet>> GetAdminPagedAsync(
+        int pageNumber,
+        int pageSize,
+        string? accountSearchTerm,
+        string? status,
+        CancellationToken cancellationToken = default)
+    {
+        return BuildAdminQuery(accountSearchTerm, status)
+            .OrderByDescending(x => x.CreatedAt)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<int> CountAdminAsync(
+        string? accountSearchTerm,
+        string? status,
+        CancellationToken cancellationToken = default)
+    {
+        return BuildAdminQuery(accountSearchTerm, status).CountAsync(cancellationToken);
+    }
+
+    public Task<Wallet?> GetByIdWithAccountAsync(int walletId, CancellationToken cancellationToken = default)
+    {
+        return _context.Wallets
+            .Include(x => x.Account)
+            .FirstOrDefaultAsync(x => x.WalletId == walletId, cancellationToken);
+    }
+
     public async Task<Wallet> CreateAsync(Wallet wallet, CancellationToken cancellationToken = default)
     {
         await _context.Wallets.AddAsync(wallet, cancellationToken);
@@ -99,5 +128,27 @@ public class WalletRepository : IWalletRepository
             pin.UpdatedAt = now;
             _context.WalletPins.Update(pin);
         }
+    }
+
+    private IQueryable<Wallet> BuildAdminQuery(string? accountSearchTerm, string? status)
+    {
+        var query = _context.Wallets.Include(x => x.Account).AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(accountSearchTerm))
+        {
+            var term = accountSearchTerm.Trim();
+            query = query.Where(x =>
+                x.Account.AccountName.Contains(term)
+                || x.Account.Email.Contains(term)
+                || (x.Account.PhoneNumber != null && x.Account.PhoneNumber.Contains(term)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            var normalizedStatus = status.Trim();
+            query = query.Where(x => x.Status == normalizedStatus);
+        }
+
+        return query;
     }
 }
