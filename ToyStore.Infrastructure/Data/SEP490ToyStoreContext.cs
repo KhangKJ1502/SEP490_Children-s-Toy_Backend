@@ -2157,7 +2157,9 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.HasIndex(e => new { e.Status, e.StartDate, e.EndDate }, "IX_Vouchers_Worker");
 
-            entity.HasIndex(e => e.VoucherCode, "UQ__Vouchers__7F0ABCA9E259B30F").IsUnique();
+            entity.HasIndex(e => e.VoucherCode, "UQ_Vouchers_Code_Active")
+                .IsUnique()
+                .HasFilter("([IsDeleted]=(0))");
 
             entity.Property(e => e.VoucherId).HasColumnName("VoucherID");
             entity.Property(e => e.CreatedAt)
@@ -2178,6 +2180,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.Status)
                 .HasMaxLength(15)
                 .IsUnicode(false);
+            entity.Property(e => e.Reason).HasMaxLength(500);
             entity.Property(e => e.ImageUrl)
                 .HasMaxLength(500)
                 .IsUnicode(false)

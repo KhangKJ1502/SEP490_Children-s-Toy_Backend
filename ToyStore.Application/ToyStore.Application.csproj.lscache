@@ -66,6 +66,7 @@ Common/
  Models/
   Result.cs
   ResultExtensions.cs
+  VoucherRiskThresholds.cs
 Constants/
  NotificationChannels.cs
  NotificationEventTypes.cs
@@ -260,12 +261,15 @@ DTOs/
   VoucherDto.cs
   VoucherListDto.cs
  Wallets/
+  AdminWalletListDto.cs
+  AdminWalletQueryDto.cs
   ChangeWalletPinRequestDto.cs
   CreateSePayTopUpQrRequestDto.cs
   CreateWalletRequestDto.cs
   ResetForgotWalletPinRequestDto.cs
   SePayTopUpQrResponseDto.cs
   SePayTopUpStatusResponseDto.cs
+  UpdateWalletStatusDto.cs
   VerifyForgotWalletPinOtpRequestDto.cs
   VerifyWalletPinRequestDto.cs
   VerifyWalletPinResponseDto.cs
@@ -336,6 +340,7 @@ Interfaces/Services/
  IAddressService.cs
  IAdminDashboardService.cs
  IAdminOrderService.cs
+ IAdminWalletService.cs
  IAuthService.cs
  IBlogService.cs
  IBrandService.cs
@@ -506,6 +511,7 @@ Validators/
   CreateSePayTopUpQrRequestValidator.cs
   CreateWalletRequestValidator.cs
   ResetForgotWalletPinRequestValidator.cs
+  UpdateWalletStatusValidator.cs
   VerifyForgotWalletPinOtpRequestValidator.cs
   VerifyWalletPinRequestValidator.cs
 

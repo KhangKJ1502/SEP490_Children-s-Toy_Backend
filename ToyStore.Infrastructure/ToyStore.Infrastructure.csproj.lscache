@@ -111,6 +111,7 @@ Services/
  AddressService.cs
  AdminDashboardService.cs
  AdminOrderService.cs
+ AdminWalletService.cs
  AuthService.cs
  BlogService.cs
  BrandService.cs

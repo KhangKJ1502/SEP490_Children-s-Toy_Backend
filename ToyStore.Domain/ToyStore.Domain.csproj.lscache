@@ -57,6 +57,7 @@ Constants/
  OrderStatuses.cs
  PaymentStatuses.cs
  ShippingStatuses.cs
+ VoucherStatuses.cs
 Entities/
  Account.cs
  Address.cs
