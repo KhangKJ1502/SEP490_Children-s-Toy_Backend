@@ -232,13 +232,11 @@ public class SePayWebhookService : ISePayWebhookService
                 }
             }
 
-            // 5g. Xóa CartItems đã thanh toán (SE_PAY giữ cart đến webhook PAID)
+            // 5g. Xử lý CartItems đã thanh toán (SE_PAY giữ cart đến webhook PAID)
             var cart = await _uow.Carts.GetByAccountIdWithItemsAsync(order.AccountId, ct);
             if (cart is not null)
             {
-                var paidProductIds = order.OrderDetails.Select(d => d.ProductId).ToHashSet();
-                foreach (var ci in cart.CartItems.Where(i => i.RemovedAt == null && paidProductIds.Contains(i.ProductId)))
-                    ci.RemovedAt = now;
+                ApplyPaidOrderItemsToCart(cart, order.OrderDetails, now);
             }
 
             await _uow.SaveChangesAsync(ct);
@@ -737,6 +735,37 @@ public class SePayWebhookService : ISePayWebhookService
 
     private static string BuildTopUpAttemptKey(string attemptCode)
         => $"{TopUpAttemptPrefix}{attemptCode.ToUpperInvariant()}";
+
+    private static void ApplyPaidOrderItemsToCart(
+        Cart cart,
+        IEnumerable<OrderDetail> paidOrderDetails,
+        DateTime now)
+    {
+        var remainingByProductId = paidOrderDetails
+            .GroupBy(d => d.ProductId)
+            .ToDictionary(g => g.Key, g => g.Sum(d => (int)d.Quantity));
+
+        foreach (var cartItem in cart.CartItems.Where(i => i.RemovedAt == null))
+        {
+            if (!remainingByProductId.TryGetValue(cartItem.ProductId, out var remainingQty) || remainingQty <= 0)
+            {
+                continue;
+            }
+
+            var cartQty = (int)cartItem.Quantity;
+            if (cartQty > remainingQty)
+            {
+                cartItem.Quantity = (short)(cartQty - remainingQty);
+                cartItem.UpdatedAt = now;
+                remainingByProductId[cartItem.ProductId] = 0;
+                continue;
+            }
+
+            cartItem.RemovedAt = now;
+            cartItem.UpdatedAt = now;
+            remainingByProductId[cartItem.ProductId] = remainingQty - cartQty;
+        }
+    }
 
     private sealed class WalletTopUpAttemptCache
     {

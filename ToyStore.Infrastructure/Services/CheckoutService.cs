@@ -257,17 +257,34 @@ public class CheckoutService : ICheckoutService
         var activeCart = await _uow.Carts.GetByAccountIdWithItemsAsync(accountId, cancellationToken);
         if (activeCart is not null)
         {
-            var activeCartProductIds = activeCart.CartItems
+            var cartQtyByProductId = activeCart.CartItems
                 .Where(ci => ci.RemovedAt == null)
-                .Select(ci => ci.ProductId)
-                .ToHashSet();
-            var invalidItems = request.Items
-                .Where(i => !activeCartProductIds.Contains(i.ProductId))
-                .Select(i => $"ProductId {i.ProductId}")
+                .GroupBy(ci => ci.ProductId)
+                .ToDictionary(g => g.Key, g => g.Sum(ci => (int)ci.Quantity));
+
+            var requestedQtyByProductId = request.Items
+                .GroupBy(i => i.ProductId)
+                .ToDictionary(g => g.Key, g => g.Sum(i => (int)i.Quantity));
+
+            var missingProducts = requestedQtyByProductId.Keys
+                .Where(productId => !cartQtyByProductId.ContainsKey(productId))
+                .Select(productId => $"ProductId {productId}")
                 .ToList();
-            if (invalidItems.Count > 0)
+            if (missingProducts.Count > 0)
+            {
                 return Result<CheckoutConfirmResponseDto>.BusinessError(
-                    $"Products not found in cart: {string.Join(", ", invalidItems)}.");
+                    $"Products not found in cart: {string.Join(", ", missingProducts)}.");
+            }
+
+            var exceededItems = requestedQtyByProductId
+                .Where(kvp => kvp.Value > cartQtyByProductId[kvp.Key])
+                .Select(kvp => $"ProductId {kvp.Key} (requested {kvp.Value}, in cart {cartQtyByProductId[kvp.Key]})")
+                .ToList();
+            if (exceededItems.Count > 0)
+            {
+                return Result<CheckoutConfirmResponseDto>.BusinessError(
+                    $"Checkout quantity exceeds cart quantity: {string.Join(", ", exceededItems)}.");
+            }
         }
 
         // Lấy phí ship thật
@@ -469,16 +486,14 @@ public class CheckoutService : ICheckoutService
                 CreatedAt = now
             }, cancellationToken);
 
-            // Xóa CartItems đã checkout
+            // Xử lý CartItems đã checkout
             // SE_PAY: giữ cart đến khi webhook PAID (tránh giỏ trống khi user bỏ QR chưa thanh toán)
             if (payMethod != PayMethodSepay)
             {
                 var cart = await _uow.Carts.GetByAccountIdWithItemsAsync(accountId, cancellationToken);
                 if (cart is not null)
                 {
-                    var checkedOutProductIds = request.Items.Select(i => i.ProductId).ToHashSet();
-                    foreach (var ci in cart.CartItems.Where(i => i.RemovedAt == null && checkedOutProductIds.Contains(i.ProductId)))
-                        ci.RemovedAt = now;
+                    ApplyPurchasedItemsToCart(cart, request.Items, now);
                 }
             }
 
@@ -849,6 +864,37 @@ public class CheckoutService : ICheckoutService
         };
         var qs = string.Join("&", p.AllKeys.Select(k => $"{k}={Uri.EscapeDataString(p[k]!)}"));
         return $"https://qr.sepay.vn/img?{qs}";
+    }
+
+    private static void ApplyPurchasedItemsToCart(
+        Cart cart,
+        IEnumerable<CheckoutConfirmItemDto> purchasedItems,
+        DateTime now)
+    {
+        var remainingByProductId = purchasedItems
+            .GroupBy(i => i.ProductId)
+            .ToDictionary(g => g.Key, g => g.Sum(i => (int)i.Quantity));
+
+        foreach (var cartItem in cart.CartItems.Where(i => i.RemovedAt == null))
+        {
+            if (!remainingByProductId.TryGetValue(cartItem.ProductId, out var remainingQty) || remainingQty <= 0)
+            {
+                continue;
+            }
+
+            var cartQty = (int)cartItem.Quantity;
+            if (cartQty > remainingQty)
+            {
+                cartItem.Quantity = (short)(cartQty - remainingQty);
+                cartItem.UpdatedAt = now;
+                remainingByProductId[cartItem.ProductId] = 0;
+                continue;
+            }
+
+            cartItem.RemovedAt = now;
+            cartItem.UpdatedAt = now;
+            remainingByProductId[cartItem.ProductId] = remainingQty - cartQty;
+        }
     }
 
     private static bool IsUniqueViolation(DbUpdateException ex)
