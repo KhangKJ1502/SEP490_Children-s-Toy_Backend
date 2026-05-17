@@ -28,11 +28,10 @@ public class WalletsController : ControllerBase
 
     [HttpGet("transactions")]
     public async Task<ActionResult<PaginatedResponse<WalletTransactionDto>>> GetWalletTransactions(
-        [FromQuery] int pageNumber = 1,
-        [FromQuery] int pageSize = 10,
+        [FromQuery] WalletTransactionQueryDto query,
         CancellationToken cancellationToken = default)
     {
-        var result = await _walletService.GetWalletTransactionsAsync(pageNumber, pageSize, cancellationToken);
+        var result = await _walletService.GetWalletTransactionsAsync(query, cancellationToken);
         return result.ToActionResult();
     }
 
