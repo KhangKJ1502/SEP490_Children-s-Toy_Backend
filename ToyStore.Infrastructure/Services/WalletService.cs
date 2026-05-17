@@ -98,8 +98,7 @@ public class WalletService : IWalletService
     }
 
     public async Task<Result<PaginatedResponse<WalletTransactionDto>>> GetWalletTransactionsAsync(
-        int pageNumber = 1,
-        int pageSize = 10,
+        WalletTransactionQueryDto query,
         CancellationToken cancellationToken = default)
     {
         var accountId = _currentUserService.AccountId;
@@ -108,8 +107,9 @@ public class WalletService : IWalletService
             return Result<PaginatedResponse<WalletTransactionDto>>.Unauthorized("User is not authenticated.");
         }
 
-        pageNumber = Math.Max(1, pageNumber);
-        pageSize = Math.Clamp(pageSize, 1, 50);
+        query ??= new WalletTransactionQueryDto();
+        var pageNumber = Math.Max(1, query.PageNumber);
+        var pageSize = Math.Clamp(query.PageSize, 1, 50);
 
         var wallet = await _unitOfWork.Wallets.GetByAccountIdAsync(accountId, cancellationToken);
         if (wallet == null)
