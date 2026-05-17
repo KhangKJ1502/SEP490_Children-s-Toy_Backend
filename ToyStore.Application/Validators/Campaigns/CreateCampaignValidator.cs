@@ -14,7 +14,6 @@ public class CreateCampaignValidator : AbstractValidator<CreateCampaignDto>
     {
         RuleFor(x => x.CampaignName)
             .NotEmpty().WithMessage("Campaign name is required.")
-            .MinimumLength(3).WithMessage("Campaign name must be at least 3 characters.")
             .MaximumLength(255).WithMessage("Campaign name must not exceed 255 characters.");
 
         RuleFor(x => x.SourceType)
@@ -56,9 +55,8 @@ public class CreateCampaignValidator : AbstractValidator<CreateCampaignDto>
             .WithMessage("Template code is required unless both title and message overrides are provided.");
 
         RuleFor(x => x.ScheduledAt)
-            .GreaterThanOrEqualTo(DateTime.UtcNow.AddMinutes(-1))
-            .WithMessage("Scheduled time must not be in the past.")
-            .When(x => x.ScheduledAt.HasValue);
+            .Null()
+            .WithMessage("Do not set ScheduledAt when creating a campaign; use the schedule endpoint after approval.");
 
         RuleFor(x => x.EventKey)
             .MaximumLength(100).WithMessage("Event key must not exceed 100 characters.")

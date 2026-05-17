@@ -54,8 +54,8 @@ public class CampaignSchedulerJob : BackgroundService
             var due = await db.Campaigns
                 .Where(c => c.Status     == "Scheduled"
                          && !c.IsDeleted
-                         && c.ScheduledAt != null
-                         && c.ScheduledAt <= now)
+                         && c.CampaignSchedule != null
+                         && c.CampaignSchedule.ScheduledAt <= now)
                 .Select(c => c.CampaignId)
                 .ToListAsync(ct);
 

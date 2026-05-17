@@ -30,6 +30,16 @@ public class CampaignDto
 
     public DateTime? ScheduledAt { get; set; }
 
+    public DateTime? ValidFrom { get; set; }
+
+    public DateTime? ValidTo { get; set; }
+
+    public DateTime? ApprovedExpireAt { get; set; }
+
+    public byte RescheduleCount { get; set; }
+
+    public byte MaxRescheduleCount { get; set; }
+
     public string? EventKey { get; set; }
 
     public string? ImageUrl { get; set; }
@@ -38,7 +48,23 @@ public class CampaignDto
 
     public string? ActionTarget { get; set; }
 
-    public int CreatedByAccountId { get; set; }
+    public int? SubmittedByAccountId { get; set; }
+
+    public string? SubmittedByAccountName { get; set; }
+
+    public DateTime? SubmittedAt { get; set; }
+
+    public int? ReviewedByAccountId { get; set; }
+
+    public string? ReviewedByAccountName { get; set; }
+
+    public DateTime? ReviewedAt { get; set; }
+
+    public string? ReviewNote { get; set; }
+
+    public int? CreatedByAccountId { get; set; }
+
+    public string? CreatedByAccountName { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

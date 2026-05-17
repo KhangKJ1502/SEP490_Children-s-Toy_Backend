@@ -1,8 +1,11 @@
 using AutoMapper;
 using FluentValidation;
 using Microsoft.Extensions.Logging;
+using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Campaigns;
+using ToyStore.Application.DTOs.Notifications;
+using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
@@ -13,20 +16,26 @@ namespace ToyStore.Infrastructure.Services;
 public class CampaignService : ICampaignService
 {
     private static readonly HashSet<string> ValidStatuses =
-        ["Draft", "Scheduled", "Sending", "Sent", "Cancelled", "Failed"];
+        ["Draft", "PendingApproval", "Approved", "Rejected", "Scheduled", "Sending", "Sent", "Cancelled", "Failed"];
 
     private static readonly HashSet<string> ValidSourceTypes = ["ADMIN", "SYSTEM"];
     private static readonly HashSet<string> ValidSortFields = ["createdat", "name", "status"];
-    private static readonly HashSet<string> EditableStatuses = ["Draft", "Scheduled"];
-    private static readonly HashSet<string> ValidReferenceTypes = ["VOUCHER", "PRODUCT", "BLOG", "SALE", "OTHER"];
+    // Draft: moi tao, Rejected: bi tu choi co the chinh sua va submit lai
+    private static readonly HashSet<string> EditableStatuses = ["Draft", "Rejected"];
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<CampaignService> _logger;
     private readonly IMapper _mapper;
     private readonly IValidator<CreateCampaignDto> _createValidator;
     private readonly IValidator<UpdateCampaignDto> _updateValidator;
+    private readonly IValidator<ReviewCampaignDto> _reviewValidator;
+    private readonly IValidator<ScheduleCampaignDto> _scheduleValidator;
+    private readonly IValidator<RescheduleCampaignDto> _rescheduleValidator;
     private readonly BusinessObjectResolverFactory _resolverFactory;
     private readonly ITimeProvider _timeProvider;
+    private readonly ICampaignLifecycleRules _rules;
+    private readonly INotificationDispatcher _notificationDispatcher;
+    private readonly ICurrentUserService _currentUser;
 
     public CampaignService(
         IUnitOfWork unitOfWork,
@@ -34,22 +43,34 @@ public class CampaignService : ICampaignService
         IMapper mapper,
         IValidator<CreateCampaignDto> createValidator,
         IValidator<UpdateCampaignDto> updateValidator,
+        IValidator<ReviewCampaignDto> reviewValidator,
+        IValidator<ScheduleCampaignDto> scheduleValidator,
+        IValidator<RescheduleCampaignDto> rescheduleValidator,
         BusinessObjectResolverFactory resolverFactory,
-        ITimeProvider timeProvider)
+        ITimeProvider timeProvider,
+        ICampaignLifecycleRules rules,
+        INotificationDispatcher notificationDispatcher,
+        ICurrentUserService currentUser)
     {
-        _unitOfWork      = unitOfWork;
-        _logger          = logger;
-        _mapper          = mapper;
+        _unitOfWork = unitOfWork;
+        _logger = logger;
+        _mapper = mapper;
         _createValidator = createValidator;
         _updateValidator = updateValidator;
+        _reviewValidator = reviewValidator;
+        _scheduleValidator = scheduleValidator;
+        _rescheduleValidator = rescheduleValidator;
         _resolverFactory = resolverFactory;
-        _timeProvider    = timeProvider;
+        _timeProvider = timeProvider;
+        _rules = rules;
+        _notificationDispatcher = notificationDispatcher;
+        _currentUser = currentUser;
     }
-
-    // ── GET list ──────────────────────────────────────────────────────────────
 
     public async Task<Result<PaginatedResponse<CampaignListDto>>> GetCampaignsAsync(
         CampaignQueryDto query,
+        bool viewerIsAdmin,
+        int viewerAccountId,
         CancellationToken cancellationToken = default)
     {
         if (query.PageNumber < 1)
@@ -81,15 +102,15 @@ public class CampaignService : ICampaignService
             return Result<PaginatedResponse<CampaignListDto>>.Failure(
                 "VALIDATION_ERROR", "StartDate must be less than or equal to EndDate.");
 
-        var items = await _unitOfWork.Campaigns.GetPagedAsync(query, cancellationToken);
-        var totalCount = await _unitOfWork.Campaigns.CountAsync(query, cancellationToken);
+        var items = await _unitOfWork.Campaigns.GetPagedAsync(
+            query, viewerIsAdmin, viewerAccountId, cancellationToken);
+        var totalCount = await _unitOfWork.Campaigns.CountAsync(
+            query, viewerIsAdmin, viewerAccountId, cancellationToken);
         var mapped = _mapper.Map<List<CampaignListDto>>(items);
         var response = new PaginatedResponse<CampaignListDto>(mapped, totalCount, query.PageNumber, query.PageSize);
 
         return Result<PaginatedResponse<CampaignListDto>>.Success(response);
     }
-
-    // ── GET by ID ─────────────────────────────────────────────────────────────
 
     public async Task<Result<CampaignDto>> GetCampaignByIdAsync(
         int campaignId,
@@ -102,6 +123,9 @@ public class CampaignService : ICampaignService
         if (campaign is null)
             return Result<CampaignDto>.NotFound("Campaign", campaignId);
 
+        if (ShouldHideDraftCampaignFromCurrentAdminViewer(campaign))
+            return Result<CampaignDto>.NotFound("Campaign", campaignId);
+
         var dto = _mapper.Map<CampaignDto>(campaign);
 
         // Enrich with resolved reference data
@@ -111,8 +135,8 @@ public class CampaignService : ICampaignService
                 campaign.ReferenceType, campaign.ReferenceId.Value, cancellationToken);
         }
 
-       var tmpl = campaign.TemplateCodeNavigation;
-        dto.ResolvedTitle   = !string.IsNullOrWhiteSpace(campaign.TitleOverride)
+        var tmpl = campaign.TemplateCodeNavigation;
+        dto.ResolvedTitle = !string.IsNullOrWhiteSpace(campaign.TitleOverride)
             ? campaign.TitleOverride
             : tmpl?.TitleTemplate;
         dto.ResolvedMessage = !string.IsNullOrWhiteSpace(campaign.MessageOverride)
@@ -120,6 +144,25 @@ public class CampaignService : ICampaignService
             : tmpl?.MessageTemplate;
 
         return Result<CampaignDto>.Success(dto);
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<CampaignScheduleBoundsDto>> GetCampaignScheduleBoundsAsync(
+        int campaignId,
+        CancellationToken cancellationToken = default)
+    {
+        if (campaignId <= 0)
+            return Result<CampaignScheduleBoundsDto>.Failure(
+                "VALIDATION_ERROR", "Campaign ID must be greater than 0.");
+
+        var campaign = await _unitOfWork.Campaigns.GetByIdAsync(campaignId, cancellationToken);
+        if (campaign is null)
+            return Result<CampaignScheduleBoundsDto>.NotFound("Campaign", campaignId);
+
+        if (ShouldHideDraftCampaignFromCurrentAdminViewer(campaign))
+            return Result<CampaignScheduleBoundsDto>.NotFound("Campaign", campaignId);
+
+        return await _rules.GetScheduleSendWindowBoundsAsync(campaign, cancellationToken);
     }
 
     public async Task<Result<PaginatedResponse<CampaignDeliveryDto>>> GetCampaignDeliveriesAsync(
@@ -141,27 +184,29 @@ public class CampaignService : ICampaignService
         if (campaign is null)
             return Result<PaginatedResponse<CampaignDeliveryDto>>.NotFound("Campaign", campaignId);
 
+        if (ShouldHideDraftCampaignFromCurrentAdminViewer(campaign))
+            return Result<PaginatedResponse<CampaignDeliveryDto>>.NotFound("Campaign", campaignId);
+
         var totalCount = await _unitOfWork.Deliveries.CountByCampaignAsync(campaignId, status, cancellationToken);
         var items = await _unitOfWork.Deliveries.GetByCampaignPagedAsync(campaignId, pageNumber, pageSize, status, cancellationToken);
 
         var deliveryDtos = items.Select(d => new CampaignDeliveryDto
         {
-            DeliveryId  = d.DeliveryId,
-            AccountId   = d.AccountId,
+            DeliveryId = d.DeliveryId,
+            AccountId = d.AccountId,
             AccountName = d.Account.AccountName,
-            Email       = d.Account.Email,
-            Status      = d.Status,
-            Title       = d.Title,
-            Message     = d.Message,
-            ReadAt      = d.ReadAt,
-            CreatedAt   = d.CreatedAt
+            Email = d.Account.Email,
+            Status = d.Status,
+            Title = d.Title,
+            Message = d.Message,
+            ReadAt = d.ReadAt,
+            CreatedAt = d.CreatedAt
         }).ToList();
 
         var response = new PaginatedResponse<CampaignDeliveryDto>(deliveryDtos, totalCount, pageNumber, pageSize);
         return Result<PaginatedResponse<CampaignDeliveryDto>>.Success(response);
     }
 
-    // ── CREATE ────────────────────────────────────────────────────────────────
 
     public async Task<Result<CampaignDto>> CreateCampaignAsync(
         CreateCampaignDto dto,
@@ -176,23 +221,14 @@ public class CampaignService : ICampaignService
             return Result<CampaignDto>.ValidationFailure(errors);
         }
 
+        var lifecycleError = await _rules.ValidateCreateDtoAsync(dto, cancellationToken);
+        if (lifecycleError is not null)
+            return Result<CampaignDto>.Failure(lifecycleError.ErrorCode!, lifecycleError.ErrorMessage!);
+
         var isDuplicate = await _unitOfWork.Campaigns.ExistsByNameAsync(
             dto.CampaignName.Trim(), cancellationToken: cancellationToken);
         if (isDuplicate)
             return Result<CampaignDto>.Conflict("Campaign name already exists.");
-
-        if (!string.IsNullOrWhiteSpace(dto.TemplateCode))
-        {
-            var templateExists = await _unitOfWork.Templates.ExistsByCodeAsync(dto.TemplateCode.Trim(), cancellationToken);
-            if (!templateExists)
-                return Result<CampaignDto>.NotFound("Template", dto.TemplateCode);
-        }
-
-        if (!string.IsNullOrWhiteSpace(dto.ReferenceType))
-        {
-            var refCheck = await ValidateReferenceAsync(dto.ReferenceType, dto.ReferenceId, cancellationToken);
-            if (refCheck is not null) return refCheck;
-        }
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
@@ -214,7 +250,6 @@ public class CampaignService : ICampaignService
         }
     }
 
-    // ── UPDATE ────────────────────────────────────────────────────────────────
 
     public async Task<Result<CampaignDto>> UpdateCampaignAsync(
         UpdateCampaignDto dto,
@@ -229,37 +264,35 @@ public class CampaignService : ICampaignService
             return Result<CampaignDto>.ValidationFailure(errors);
         }
 
+        var upErr = await _rules.ValidateUpdateDtoAsync(dto, cancellationToken);
+        if (upErr is not null)
+            return Result<CampaignDto>.Failure(upErr.ErrorCode!, upErr.ErrorMessage!);
+
         var existing = await _unitOfWork.Campaigns.GetByIdAsync(dto.CampaignId, cancellationToken);
         if (existing is null)
             return Result<CampaignDto>.NotFound("Campaign", dto.CampaignId);
 
+        if (ShouldHideDraftCampaignFromCurrentAdminViewer(existing))
+            return Result<CampaignDto>.NotFound("Campaign", dto.CampaignId);
+
         if (!EditableStatuses.Contains(existing.Status))
             return Result<CampaignDto>.BusinessError(
-                $"Campaign cannot be edited in status '{existing.Status}'. Only Draft and Scheduled campaigns can be modified.");
+                $"Campaign cannot be edited in status '{existing.Status}'. Only Draft and Rejected campaigns can be modified.");
 
         var isDuplicate = await _unitOfWork.Campaigns.ExistsByNameAsync(
             dto.CampaignName.Trim(), dto.CampaignId, cancellationToken);
         if (isDuplicate)
             return Result<CampaignDto>.Conflict("Campaign name already exists.");
 
-        if (!string.IsNullOrWhiteSpace(dto.TemplateCode))
+        if (existing.Status == "Rejected")
         {
-            var templateExists = await _unitOfWork.Templates.ExistsByCodeAsync(dto.TemplateCode.Trim(), cancellationToken);
-            if (!templateExists)
-                return Result<CampaignDto>.NotFound("Template", dto.TemplateCode);
+            existing.Status = "Draft";
+            existing.ReviewNote = null;
+            existing.ReviewedByAccountId = null;
+            existing.ReviewedAt = null;
         }
 
-        if (!string.IsNullOrWhiteSpace(dto.ReferenceType))
-        {
-            var refCheck = await ValidateReferenceAsync(dto.ReferenceType, dto.ReferenceId, cancellationToken);
-            if (refCheck is not null) return refCheck;
-        }
-
-        // Apply fields
         existing.CampaignName = dto.CampaignName.Trim();
-        // Neu khong co ScheduledAt, gui ngay lap tuc: dat ScheduledAt = Now de Worker xu ly
-        existing.ScheduledAt = dto.ScheduledAt ?? _timeProvider.UtcNow;
-
         existing.TemplateCode = string.IsNullOrWhiteSpace(dto.TemplateCode) ? null : dto.TemplateCode.Trim();
         existing.ReferenceType = string.IsNullOrWhiteSpace(dto.ReferenceType) ? null : dto.ReferenceType.Trim().ToUpper();
         existing.ReferenceId = dto.ReferenceId;
@@ -269,9 +302,6 @@ public class CampaignService : ICampaignService
         existing.ImageUrl = string.IsNullOrWhiteSpace(dto.ImageUrl) ? null : dto.ImageUrl.Trim();
         existing.ActionType = string.IsNullOrWhiteSpace(dto.ActionType) ? null : dto.ActionType.Trim();
         existing.ActionTarget = string.IsNullOrWhiteSpace(dto.ActionTarget) ? null : dto.ActionTarget.Trim();
-
-        // Auto-transition to Scheduled (luon Scheduled de Worker xu ly)
-        existing.Status = "Scheduled";
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
@@ -293,32 +323,479 @@ public class CampaignService : ICampaignService
         }
     }
 
-    // ── CANCEL ────────────────────────────────────────────────────────────────
 
     public async Task<Result> CancelCampaignAsync(
         int campaignId,
+        int actorAccountId,
+        bool actorIsAdmin,
         CancellationToken cancellationToken = default)
     {
         if (campaignId <= 0)
             return Result.Failure("VALIDATION_ERROR", "Campaign ID must be greater than 0.");
 
-        var existing = await _unitOfWork.Campaigns.GetByIdAsync(campaignId, cancellationToken);
-        if (existing is null)
+        var campaign = await _unitOfWork.Campaigns.GetForUpdateAsync(campaignId, cancellationToken);
+        if (campaign is null)
             return Result.NotFound("Campaign", campaignId);
 
-        if (!EditableStatuses.Contains(existing.Status))
-            return Result.BusinessError(
-                $"Campaign cannot be cancelled in status '{existing.Status}'. Only Draft and Scheduled campaigns can be cancelled.");
+        var v = await _rules.ValidateCancelAsync(campaign, actorAccountId, actorIsAdmin, cancellationToken);
+        if (v.IsFailure) return v;
 
-        var cancelled = await _unitOfWork.Campaigns.CancelAsync(campaignId, cancellationToken);
-        if (!cancelled)
-            return Result.NotFound("Campaign", campaignId);
+        var now = _timeProvider.UtcNow;
 
-        _logger.LogInformation("Campaign {CampaignId} cancelled", campaignId);
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await _unitOfWork.Campaigns.MarkLiveReferenceSnapshotsStaleAsync(
+                campaignId, "Campaign cancelled", now, cancellationToken);
+
+            campaign.Status = "Cancelled";
+            campaign.UpdatedAt = now;
+            _unitOfWork.Campaigns.Update(campaign);
+
+            if (campaign.CampaignSchedule is not null)
+            {
+                campaign.CampaignSchedule.ExecutionStatus = "Cancelled";
+                campaign.CampaignSchedule.UpdatedAt = now;
+            }
+
+            await _unitOfWork.CampaignApprovalLogs.AddAsync(new CampaignApprovalLog
+            {
+                CampaignId = campaignId,
+                Action = "Cancelled",
+                ActorId = actorAccountId,
+                Note = null,
+                CreatedAt = now
+            }, cancellationToken);
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw;
+        }
+
+        _logger.LogInformation("Campaign {CampaignId} cancelled by {Actor}", campaignId, actorAccountId);
         return Result.Success();
     }
 
-    // ── REFERENCE TYPES ───────────────────────────────────────────────────────
+    public async Task<Result> SubmitCampaignForReviewAsync(
+        int campaignId,
+        int accountId,
+        CancellationToken cancellationToken = default)
+    {
+        if (campaignId <= 0 || accountId <= 0)
+            return Result.Failure("VALIDATION_ERROR", "Invalid campaign or account id.");
+
+        var campaign = await _unitOfWork.Campaigns.GetForUpdateAsync(campaignId, cancellationToken);
+        if (campaign is null)
+            return Result.NotFound("Campaign", campaignId);
+
+        var v = await _rules.ValidateSubmitAsync(campaign, accountId, cancellationToken);
+        if (v.IsFailure) return v;
+
+        var now = _timeProvider.UtcNow;
+
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            campaign.Status = "PendingApproval";
+            campaign.SubmittedByAccountId = accountId;
+            campaign.SubmittedAt = now;
+            campaign.UpdatedAt = now;
+            _unitOfWork.Campaigns.Update(campaign);
+
+            await _unitOfWork.CampaignApprovalLogs.AddAsync(new CampaignApprovalLog
+            {
+                CampaignId = campaignId,
+                Action = "Submitted",
+                ActorId = accountId,
+                Note = null,
+                CreatedAt = now
+            }, cancellationToken);
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw;
+        }
+
+        _logger.LogInformation("Campaign {CampaignId} submitted for review by {AccountId}", campaignId, accountId);
+        return Result.Success();
+    }
+
+
+    public async Task<Result> ReviewCampaignAsync(
+        int campaignId,
+        ReviewCampaignDto dto,
+        int accountId,
+        CancellationToken cancellationToken = default)
+    {
+        if (campaignId <= 0 || accountId <= 0)
+            return Result.Failure("VALIDATION_ERROR", "Invalid campaign or account id.");
+
+        var validation = await _reviewValidator.ValidateAsync(dto, cancellationToken);
+        if (!validation.IsValid)
+        {
+            var errors = validation.Errors
+                .GroupBy(x => x.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ErrorMessage).ToArray());
+            return Result.ValidationFailure(errors);
+        }
+
+        if (dto.Action is not ("Approved" or "Rejected"))
+            return Result.Failure("VALIDATION_ERROR", "Action must be Approved or Rejected.");
+
+        var campaign = await _unitOfWork.Campaigns.GetForUpdateAsync(campaignId, cancellationToken);
+        if (campaign is null)
+            return Result.NotFound("Campaign", campaignId);
+
+        var reviewerIsAdmin = string.Equals(_currentUser.RoleName, "Admin", StringComparison.OrdinalIgnoreCase);
+
+        if (dto.Action == "Rejected")
+        {
+            var rv = await _rules.ValidateRejectAsync(campaign, accountId, dto.ReviewNote, reviewerIsAdmin, cancellationToken);
+            if (rv.IsFailure) return rv;
+        }
+        else
+        {
+            var av = await _rules.ValidateApproveAsync(campaign, accountId, reviewerIsAdmin, cancellationToken);
+            if (av.IsFailure) return av;
+        }
+
+        var now = _timeProvider.UtcNow;
+
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            campaign.Status = dto.Action;
+            campaign.ReviewedByAccountId = accountId;
+            campaign.ReviewedAt = now;
+            campaign.ReviewNote = string.IsNullOrWhiteSpace(dto.ReviewNote) ? null : dto.ReviewNote.Trim();
+            campaign.UpdatedAt = now;
+
+            if (dto.Action == "Approved")
+                campaign.ApprovedExpireAt = now.AddDays(7);
+
+            _unitOfWork.Campaigns.Update(campaign);
+
+            await _unitOfWork.CampaignApprovalLogs.AddAsync(new CampaignApprovalLog
+            {
+                CampaignId = campaignId,
+                Action = dto.Action,
+                ActorId = accountId,
+                Note = campaign.ReviewNote,
+                CreatedAt = now
+            }, cancellationToken);
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw;
+        }
+
+        try
+        {
+            var notifyId = campaign.CreatedByAccountId ?? campaign.SubmittedByAccountId;
+            if (notifyId is int nid && nid > 0)
+            {
+                var (title, message) = dto.Action == "Approved"
+                    ? ("Campaign approved",
+                        $"Your campaign '{campaign.CampaignName}' was approved. Please schedule the send time before the deadline.")
+                    : ("Campaign rejected",
+                        $"Your campaign '{campaign.CampaignName}' was rejected. Reason: {campaign.ReviewNote}");
+
+                await _notificationDispatcher.DispatchAsync(new NotificationContext
+                {
+                    RecipientAccountId = nid,
+                    RecipientType = RecipientTypes.Staff,
+                    NotificationType = NotificationTypes.System,
+                    Title = title,
+                    Message = message,
+                    SendBell = true,
+                    SendEmail = false,
+                    IdempotencyKey = $"campaign-review:{campaignId}:{nid}:{dto.Action}:{now.Ticks}"
+                }, cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Campaign review notification failed for {CampaignId}", campaignId);
+        }
+
+        _logger.LogInformation("Campaign {CampaignId} {Action} by {AccountId}", campaignId, dto.Action, accountId);
+        return Result.Success();
+    }
+
+    public async Task<Result> RecallCampaignAsync(
+        int campaignId,
+        int accountId,
+        CancellationToken cancellationToken = default)
+    {
+        if (campaignId <= 0 || accountId <= 0)
+            return Result.Failure("VALIDATION_ERROR", "Invalid campaign or account id.");
+
+        var campaign = await _unitOfWork.Campaigns.GetForUpdateAsync(campaignId, cancellationToken);
+        if (campaign is null)
+            return Result.NotFound("Campaign", campaignId);
+
+        var v = await _rules.ValidateRecallAsync(campaign, accountId, cancellationToken);
+        if (v.IsFailure) return v;
+
+        var now = _timeProvider.UtcNow;
+
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            campaign.Status = "Draft";
+            campaign.SubmittedByAccountId = null;
+            campaign.SubmittedAt = null;
+            campaign.UpdatedAt = now;
+            _unitOfWork.Campaigns.Update(campaign);
+
+            await _unitOfWork.CampaignApprovalLogs.AddAsync(new CampaignApprovalLog
+            {
+                CampaignId = campaignId,
+                Action = "Recalled",
+                ActorId = accountId,
+                Note = null,
+                CreatedAt = now
+            }, cancellationToken);
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw;
+        }
+
+        _logger.LogInformation("Campaign {CampaignId} recalled by {AccountId}", campaignId, accountId);
+        return Result.Success();
+    }
+
+
+    public async Task<Result<ScheduleCampaignResultDto>> ScheduleCampaignAsync(
+        int campaignId,
+        ScheduleCampaignDto dto,
+        int accountId,
+        CancellationToken cancellationToken = default)
+    {
+        if (campaignId <= 0 || accountId <= 0)
+            return Result<ScheduleCampaignResultDto>.Failure("VALIDATION_ERROR", "Invalid campaign or account id.");
+
+        var validation = await _scheduleValidator.ValidateAsync(dto, cancellationToken);
+        if (!validation.IsValid)
+        {
+            var errors = validation.Errors
+                .GroupBy(x => x.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ErrorMessage).ToArray());
+            return Result<ScheduleCampaignResultDto>.ValidationFailure(errors);
+        }
+
+        if (!dto.ScheduledAt.HasValue)
+            return Result<ScheduleCampaignResultDto>.Failure(
+                ToyStore.Application.Campaigns.CampaignErrorCodes.ScheduledAtRequired,
+                "Scheduled time is required.");
+
+        var scheduledAt = dto.ScheduledAt.Value;
+        var warnings = new List<string>();
+
+        var campaign = await _unitOfWork.Campaigns.GetForUpdateAsync(campaignId, cancellationToken);
+        if (campaign is null)
+            return Result<ScheduleCampaignResultDto>.NotFound("Campaign", campaignId);
+
+        if (campaign.CampaignSchedule is not null)
+            return Result<ScheduleCampaignResultDto>.Conflict(
+                "Campaign already has a schedule. Use reschedule to change the send time.");
+
+        var sv = await _rules.ValidateScheduleAsync(
+            campaign, scheduledAt, dto.ValidFrom, dto.ValidTo, warnings, cancellationToken);
+        if (sv.IsFailure)
+            return Result<ScheduleCampaignResultDto>.Failure(sv.ErrorCode!, sv.ErrorMessage!);
+
+        var now = _timeProvider.UtcNow;
+
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            campaign.Status = "Scheduled";
+            campaign.ScheduledAt = scheduledAt;
+            campaign.ValidFrom = dto.ValidFrom;
+            campaign.ValidTo = dto.ValidTo;
+            campaign.RescheduleCount = 0;
+            campaign.UpdatedAt = now;
+            _unitOfWork.Campaigns.Update(campaign);
+
+            await _unitOfWork.CampaignSchedules.AddAsync(new CampaignSchedule
+            {
+                CampaignId = campaignId,
+                ScheduledBy = accountId,
+                ScheduledAt = scheduledAt,
+                ExecutionStatus = "Waiting",
+                AttemptCount = 0,
+                MaxAttemptCount = 3,
+                CreatedAt = now
+            }, cancellationToken);
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            var snap = await _rules.BuildLiveReferenceSnapshotAsync(campaign, cancellationToken);
+            if (snap is not null)
+            {
+                _unitOfWork.Campaigns.AddReferenceSnapshot(snap);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+            }
+
+            await _unitOfWork.Campaigns.AddCampaignScheduleLogAsync(new CampaignScheduleLog
+            {
+                CampaignId = campaignId,
+                ActorId = accountId,
+                Action = "Scheduled",
+                PreviousScheduledAt = null,
+                NewScheduledAt = scheduledAt,
+                Reason = null,
+                CreatedAt = now
+            }, cancellationToken);
+
+            await _unitOfWork.CampaignApprovalLogs.AddAsync(new CampaignApprovalLog
+            {
+                CampaignId = campaignId,
+                Action = "Scheduled",
+                ActorId = accountId,
+                Note = $"Scheduled at {scheduledAt:O}",
+                CreatedAt = now
+            }, cancellationToken);
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw;
+        }
+
+        _logger.LogInformation("Campaign {CampaignId} scheduled at {ScheduledAt}", campaignId, scheduledAt);
+        return Result<ScheduleCampaignResultDto>.Success(new ScheduleCampaignResultDto
+        {
+            WarningCodes = warnings.Count > 0 ? warnings : null
+        });
+    }
+
+    public async Task<Result<ScheduleCampaignResultDto>> RescheduleCampaignAsync(
+        int campaignId,
+        RescheduleCampaignDto dto,
+        int accountId,
+        CancellationToken cancellationToken = default)
+    {
+        if (campaignId <= 0 || accountId <= 0)
+            return Result<ScheduleCampaignResultDto>.Failure("VALIDATION_ERROR", "Invalid campaign or account id.");
+
+        var val = await _rescheduleValidator.ValidateAsync(dto, cancellationToken);
+        if (!val.IsValid)
+        {
+            var errors = val.Errors
+                .GroupBy(x => x.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ErrorMessage).ToArray());
+            return Result<ScheduleCampaignResultDto>.ValidationFailure(errors);
+        }
+
+        var warnings = new List<string>();
+        var campaign = await _unitOfWork.Campaigns.GetForUpdateAsync(campaignId, cancellationToken);
+        if (campaign is null)
+            return Result<ScheduleCampaignResultDto>.NotFound("Campaign", campaignId);
+
+        var oldAt = campaign.CampaignSchedule?.ScheduledAt;
+        var rv = await _rules.ValidateRescheduleAsync(campaign, dto.NewScheduledAt, dto.Reason, warnings, cancellationToken);
+        if (rv.IsFailure)
+            return Result<ScheduleCampaignResultDto>.Failure(rv.ErrorCode!, rv.ErrorMessage!);
+
+        var now = _timeProvider.UtcNow;
+
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await _unitOfWork.Campaigns.MarkLiveReferenceSnapshotsStaleAsync(
+                campaignId, "Rescheduled", now, cancellationToken);
+
+            campaign.ScheduledAt = dto.NewScheduledAt;
+            campaign.RescheduleCount++;
+            campaign.UpdatedAt = now;
+            _unitOfWork.Campaigns.Update(campaign);
+
+            if (campaign.CampaignSchedule is null)
+                throw new InvalidOperationException("CampaignSchedule missing for reschedule.");
+
+            campaign.CampaignSchedule.ScheduledAt = dto.NewScheduledAt;
+            campaign.CampaignSchedule.ExecutionStatus = "Waiting";
+            campaign.CampaignSchedule.AttemptCount = 0;
+            campaign.CampaignSchedule.LockedByJobId = null;
+            campaign.CampaignSchedule.LockedAt = null;
+            campaign.CampaignSchedule.UpdatedAt = now;
+
+            var snap = await _rules.BuildLiveReferenceSnapshotAsync(campaign, cancellationToken);
+            if (snap is not null)
+            {
+                _unitOfWork.Campaigns.AddReferenceSnapshot(snap);
+            }
+
+            await _unitOfWork.Campaigns.AddCampaignScheduleLogAsync(new CampaignScheduleLog
+            {
+                CampaignId = campaignId,
+                ActorId = accountId,
+                Action = "Rescheduled",
+                PreviousScheduledAt = oldAt,
+                NewScheduledAt = dto.NewScheduledAt,
+                Reason = dto.Reason,
+                CreatedAt = now
+            }, cancellationToken);
+
+            await _unitOfWork.CampaignApprovalLogs.AddAsync(new CampaignApprovalLog
+            {
+                CampaignId = campaignId,
+                Action = "Rescheduled",
+                ActorId = accountId,
+                Note = dto.Reason,
+                CreatedAt = now
+            }, cancellationToken);
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw;
+        }
+
+        _logger.LogInformation("Campaign {CampaignId} rescheduled to {At}", campaignId, dto.NewScheduledAt);
+        return Result<ScheduleCampaignResultDto>.Success(new ScheduleCampaignResultDto
+        {
+            WarningCodes = warnings.Count > 0 ? warnings : null
+        });
+    }
+
+    /// <summary>
+    /// Admin must not see or open another user's Draft until they submit for review.
+    /// </summary>
+    private bool ShouldHideDraftCampaignFromCurrentAdminViewer(Campaign campaign)
+    {
+        if (campaign.Status != "Draft")
+            return false;
+        if (!string.Equals(_currentUser.RoleName, "Admin", StringComparison.OrdinalIgnoreCase))
+            return false;
+        return campaign.CreatedByAccountId != _currentUser.AccountId;
+    }
+
 
     public Task<Result<List<ReferenceTypeDto>>> GetReferenceTypesAsync(
         CancellationToken cancellationToken = default)
@@ -351,37 +828,5 @@ public class CampaignService : ICampaignService
         }
 
         return Task.FromResult(Result<List<ReferenceTypeDto>>.Success(list));
-    }
-
-    // ── Private helpers ───────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Kiem tra ReferenceType hop le va ReferenceId co ton tai khong.
-    /// Tra ve Result loi neu co van de, null neu OK.
-    /// </summary>
-    private async Task<Result<CampaignDto>?> ValidateReferenceAsync(
-        string referenceType,
-        int? referenceId,
-        CancellationToken cancellationToken)
-    {
-        var upper = referenceType.Trim().ToUpper();
-        if (!ValidReferenceTypes.Contains(upper))
-            return Result<CampaignDto>.Failure(
-                "VALIDATION_ERROR",
-                $"Invalid referenceType '{referenceType}'. Allowed: {string.Join(", ", ValidReferenceTypes)}.");
-
-        if (!referenceId.HasValue || referenceId.Value <= 0)
-            return Result<CampaignDto>.Failure(
-                "VALIDATION_ERROR",
-                "ReferenceId is required and must be greater than 0 when ReferenceType is set.");
-
-        if (upper == "OTHER")
-            return null;
-
-        var resolved = await _resolverFactory.ResolveAsync(upper, referenceId.Value, cancellationToken);
-        if (resolved is null)
-            return Result<CampaignDto>.NotFound(upper, referenceId.Value);
-
-        return null;
     }
 }

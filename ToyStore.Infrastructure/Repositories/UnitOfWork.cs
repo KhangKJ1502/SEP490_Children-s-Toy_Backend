@@ -43,7 +43,9 @@ public class UnitOfWork : IUnitOfWork
         IWorkScheduleRepository workSchedules,
         IStaffShiftCapacityRepository staffShiftCapacities,
         IOrderAssignmentRepository orderAssignments,
-        IOrderQueueRepository orderQueues)
+        IOrderQueueRepository orderQueues,
+        ICampaignApprovalLogRepository campaignApprovalLogs,
+        ICampaignScheduleRepository campaignSchedules)
     {
         _context = context;
         Vouchers = vouchers;
@@ -75,6 +77,8 @@ public class UnitOfWork : IUnitOfWork
         StaffShiftCapacities = staffShiftCapacities;
         OrderAssignments = orderAssignments;
         OrderQueues = orderQueues;
+        CampaignApprovalLogs = campaignApprovalLogs;
+        CampaignSchedules = campaignSchedules;
     }
 
     public IVoucherRepository Vouchers { get; }
@@ -134,6 +138,10 @@ public class UnitOfWork : IUnitOfWork
     public IOrderAssignmentRepository OrderAssignments { get; }
 
     public IOrderQueueRepository OrderQueues { get; }
+
+    public ICampaignApprovalLogRepository CampaignApprovalLogs { get; }
+
+    public ICampaignScheduleRepository CampaignSchedules { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

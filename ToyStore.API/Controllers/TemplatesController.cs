@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ToyStore.API.Extensions;
 using ToyStore.Application.DTOs;
@@ -7,6 +8,7 @@ using ToyStore.Application.Interfaces.Services;
 namespace ToyStore.API.Controllers;
 
 [ApiController]
+[Authorize(Roles = "Admin,Staff,Merchandise")]
 [Route("api/[controller]")]
 public class TemplatesController : ControllerBase
 {

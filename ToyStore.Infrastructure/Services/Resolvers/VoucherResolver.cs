@@ -21,7 +21,7 @@ public class VoucherResolver : IBusinessObjectResolver
         new() { Token = "{{VoucherCode}}",    Description = "Voucher code" },
         new() { Token = "{{DiscountValue}}",  Description = "Discount value (numeric)" },
         new() { Token = "{{DiscountType}}",   Description = "Discount type (PERCENT / AMOUNT)" },
-        new() { Token = "{{ExpiryDate}}",     Description = "Expiry date (dd/MM/yyyy)" },
+        new() { Token = "{{ExpiryDate}}",     Description = "Expiry (dd/MM/yyyy HH:mm, giờ VN)" },
         new() { Token = "{{VoucherName}}",    Description = "Voucher name" }
     ];
 
@@ -48,11 +48,11 @@ public class VoucherResolver : IBusinessObjectResolver
             DefaultActionTarget = $"/vouchers/{voucher.VoucherCode}",
             Placeholders = new Dictionary<string, string>
             {
-                ["{{VoucherCode}}"]   = voucher.VoucherCode,
-                ["{{VoucherName}}"]   = voucher.VoucherName,
+                ["{{VoucherCode}}"] = voucher.VoucherCode,
+                ["{{VoucherName}}"] = voucher.VoucherName,
                 ["{{DiscountValue}}"] = voucher.DiscountValue.ToString("N0"),
-                ["{{DiscountType}}"]  = voucher.DiscountType,
-                ["{{ExpiryDate}}"]    = voucher.EndDate.ToString("dd/MM/yyyy")
+                ["{{DiscountType}}"] = voucher.DiscountType,
+                ["{{ExpiryDate}}"] = ReferenceDisplayTime.FormatVietnamDateTime(voucher.EndDate)
             }
         };
     }

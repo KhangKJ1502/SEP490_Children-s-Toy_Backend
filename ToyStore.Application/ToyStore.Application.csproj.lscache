@@ -112,6 +112,8 @@ DTOs/
   CampaignQueryDto.cs
   CreateCampaignDto.cs
   ReferenceTypeDto.cs
+  ReviewCampaignDto.cs
+  ScheduleCampaignDto.cs
   UpdateCampaignDto.cs
  Carts/
   AddToCartDto.cs
@@ -308,7 +310,9 @@ Interfaces/Repositories/
  IAddressRepository.cs
  IBlogRepository.cs
  IBrandRepository.cs
+ ICampaignApprovalLogRepository.cs
  ICampaignRepository.cs
+ ICampaignScheduleRepository.cs
  ICartRepository.cs
  ICategoryRepository.cs
  ICustomerChildRepository.cs
@@ -442,6 +446,8 @@ Validators/Brands/
  UpdateBrandValidator.cs
 Validators/Campaigns/
  CreateCampaignValidator.cs
+ ReviewCampaignValidator.cs
+ ScheduleCampaignValidator.cs
  UpdateCampaignValidator.cs
 Validators/Carts/
  AddToCartValidator.cs
