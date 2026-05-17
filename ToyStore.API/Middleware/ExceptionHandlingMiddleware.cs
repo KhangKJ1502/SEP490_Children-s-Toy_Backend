@@ -31,6 +31,22 @@ public class ExceptionHandlingMiddleware
     
     private async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
+        if (exception is OperationCanceledException)
+        {
+            _logger.LogInformation("Request was cancelled by the client (RequestAborted).");
+            if (!context.Response.HasStarted)
+            {
+                context.Response.StatusCode = 499; // 499 Client Closed Request
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync(JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    message = "Request was cancelled by the client."
+                }));
+            }
+            return;
+        }
+
         _logger.LogError(exception, "An unhandled exception occurred");
         
         var response = context.Response;

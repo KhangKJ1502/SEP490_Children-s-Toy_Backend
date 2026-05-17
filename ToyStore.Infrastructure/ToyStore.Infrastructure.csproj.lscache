@@ -79,7 +79,9 @@ Repositories/
  AddressRepository.cs
  BlogRepository.cs
  BrandRepository.cs
+ CampaignApprovalLogRepository.cs
  CampaignRepository.cs
+ CampaignScheduleRepository.cs
  CartRepository.cs
  CategoryRepository.cs
  CustomerChildRepository.cs

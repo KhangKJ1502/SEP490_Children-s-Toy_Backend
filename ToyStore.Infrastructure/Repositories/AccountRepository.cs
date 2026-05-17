@@ -274,4 +274,17 @@ public class AccountRepository : IAccountRepository
             .ToListAsync(cancellationToken);
     }
 
+    public Task<int> CountActiveCustomersByIdsAsync(
+        IReadOnlyCollection<int> accountIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (accountIds.Count == 0)
+            return Task.FromResult(0);
+
+        return _context.Accounts
+            .AsNoTracking()
+            .Where(a => accountIds.Contains(a.AccountId) && a.IsActive && !a.IsDeleted && a.RoleId == 1)
+            .CountAsync(cancellationToken);
+    }
+
 }

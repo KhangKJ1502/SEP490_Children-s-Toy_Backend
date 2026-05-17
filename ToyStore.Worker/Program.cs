@@ -12,7 +12,6 @@ builder.Services.AddInfrastructure(builder.Configuration);
 // Recommendation layer
 builder.Services.AddRecommendation();
 
-// ── Background workers / hosted services ────────────────────────────────────
 // Core system workers
 builder.Services.AddHostedService<OrderStatusWorker>();
 builder.Services.AddHostedService<PromotionStatusJob>();
@@ -31,12 +30,11 @@ builder.Services.AddHostedService<LowStockScanJob>();
 builder.Services.AddHostedService<PaymentOverdueJob>();
 builder.Services.AddHostedService<BackInStockJob>();
 builder.Services.AddHostedService<CampaignSchedulerJob>();
-builder.Services.AddHostedService<AutoCompleteOrderJob>();
+builder.Services.AddHostedService<CampaignApprovedExpireJob>();
+builder.Services.AddHostedService<CampaignReferenceRevalidationJob>();
+builder.Services.AddHostedService<CampaignStaleLockRecoveryJob>();
 builder.Services.AddHostedService<ShiftLifecycleJob>();
 builder.Services.AddHostedService<OrderQueueRetryJob>();
-
-// Campaign sender (uses ICampaignNotificationService — not direct DB bulk-insert)
-builder.Services.AddHostedService<CampaignSenderWorker>();
 
 // Checkout flow workers
 builder.Services.AddHostedService<SePayExpiryJob>();

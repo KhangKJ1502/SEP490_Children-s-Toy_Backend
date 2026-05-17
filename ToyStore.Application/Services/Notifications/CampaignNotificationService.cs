@@ -3,6 +3,7 @@ using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs.Notifications;
 using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Services.Notifications;
@@ -13,17 +14,23 @@ public class CampaignNotificationService : ICampaignNotificationService
     private readonly INotificationDispatcher _dispatcher;
     private readonly IUserPreferenceChecker _prefChecker;
     private readonly ILogger<CampaignNotificationService> _logger;
+    private readonly ICampaignLifecycleRules _lifecycleRules;
+    private readonly ITimeProvider _timeProvider;
 
     public CampaignNotificationService(
         IUnitOfWork unitOfWork,
         INotificationDispatcher dispatcher,
         IUserPreferenceChecker prefChecker,
-        ILogger<CampaignNotificationService> logger)
+        ILogger<CampaignNotificationService> logger,
+        ICampaignLifecycleRules lifecycleRules,
+        ITimeProvider timeProvider)
     {
-        _unitOfWork  = unitOfWork;
-        _dispatcher  = dispatcher;
-        _prefChecker = prefChecker;
-        _logger      = logger;
+        _unitOfWork       = unitOfWork;
+        _dispatcher       = dispatcher;
+        _prefChecker      = prefChecker;
+        _logger           = logger;
+        _lifecycleRules   = lifecycleRules;
+        _timeProvider     = timeProvider;
     }
 
     public async Task ProcessSystemCampaignAsync(
@@ -50,50 +57,89 @@ public class CampaignNotificationService : ICampaignNotificationService
 
     public async Task DispatchAdminCampaignAsync(int campaignId, CancellationToken ct = default)
     {
-        var campaign = await _unitOfWork.Campaigns.GetByIdWithDetailsAsync(campaignId, ct);
-
-        if (campaign is null)
+        var now = _timeProvider.UtcNow;
+        var preview = await _unitOfWork.Campaigns.GetByIdAsync(campaignId, ct);
+        if (preview is null)
         {
             _logger.LogWarning("Campaign not found. CampaignID={Id}", campaignId);
             return;
         }
 
-        if (campaign.Status is "Sent" or "Cancelled")
+        if (_lifecycleRules.ShouldSkipDispatch(preview, now, out var skipReason))
         {
-            _logger.LogWarning("Campaign {Id} is already {Status} — skipping", campaignId, campaign.Status);
+            _logger.LogDebug("Skip campaign {Id}: {Reason}", campaignId, skipReason);
+            return;
+        }
+
+        int jobId;
+        try
+        {
+            jobId = await _unitOfWork.Campaigns.GetBackgroundJobIdForCampaignLockAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Cannot resolve BackgroundJob id for campaign lock");
+            return;
+        }
+
+        if (!await _unitOfWork.Campaigns.TryAcquireDispatchLockAsync(campaignId, jobId, now, ct))
+            return;
+
+        var campaign = await _unitOfWork.Campaigns.GetForUpdateAsync(campaignId, ct);
+        if (campaign is null) return;
+
+        var dVal = await _lifecycleRules.ValidateDispatchAsync(campaign, ct);
+        if (dVal.IsFailure)
+        {
+            var actor = campaign.CreatedByAccountId
+                     ?? campaign.SubmittedByAccountId
+                     ?? (await _unitOfWork.Accounts.GetByIdAsync(1, ct))?.AccountId
+                     ?? 1;
+
+            await _unitOfWork.Campaigns.SystemCancelWithAuditAsync(
+                campaignId, dVal.ErrorMessage ?? "Dispatch validation failed", actor, now, ct);
             return;
         }
 
         campaign.Status    = "Sending";
-        campaign.UpdatedAt = DateTime.Now;
+        campaign.UpdatedAt = now;
         await _unitOfWork.SaveChangesAsync(ct);
 
-        var vars = await ResolveCampaignVariablesAsync(campaign, ct);
-        await DispatchCampaignAsync(campaign, vars, ct);
+        try
+        {
+            var vars = await ResolveCampaignVariablesAsync(campaign, ct);
+            var sent = await DispatchFanOutAsync(campaign, vars, ct);
+            await _unitOfWork.Campaigns.CompleteDispatchAsync(campaignId, sent, now, ct);
+            _logger.LogInformation("Campaign {Id} dispatched. Sent={Sent}", campaignId, sent);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Campaign {Id} dispatch failed", campaignId);
+            await _unitOfWork.Campaigns.HandleDispatchFailureAsync(campaignId, ex.Message, now, ct);
+        }
     }
 
-    private async Task DispatchCampaignAsync(
+    private async Task<int> DispatchFanOutAsync(
         Campaign campaign,
         Dictionary<string, string> vars,
         CancellationToken ct)
     {
         var (title, message) = ResolveContent(campaign, vars);
-
         var accountIds = await ResolveTargetAccountsAsync(campaign, ct);
         var notifType  = ResolveNotificationType(campaign.TemplateCode);
 
-        int sent = 0;
+        var sent = 0;
         foreach (var accountId in accountIds)
         {
-            if (notifType == NotificationTypes.Promotion)
-            {
-                if (!await _prefChecker.CanSendAsync(accountId, PreferenceKeys.Promotions, ct))
-                    continue;
-            }
+            if (!await PassesCampaignPreferencesAsync(campaign, accountId, notifType, ct))
+                continue;
+
+            var sendEmail = string.Equals(campaign.SourceType, "ADMIN", StringComparison.OrdinalIgnoreCase)
+                && await _prefChecker.CanReceiveEmailAsync(accountId, ct);
 
             var idempotencyBase = $"campaign:{campaign.CampaignId}:{accountId}";
 
-            var ctx = new NotificationContext
+            await _dispatcher.DispatchAsync(new NotificationContext
             {
                 RecipientAccountId = accountId,
                 RecipientType      = RecipientTypes.Customer,
@@ -101,26 +147,54 @@ public class CampaignNotificationService : ICampaignNotificationService
                 Title              = title,
                 Message            = message,
                 SendBell           = true,
-                SendEmail          = campaign.SourceType == "ADMIN",
-                TemplateCode       = campaign.TemplateCode,  // nullable — FK allows NULL in Deliveries
+                SendEmail          = sendEmail,
+                TemplateCode       = campaign.TemplateCode,
                 ImageUrl           = campaign.ImageUrl,
                 ActionType         = campaign.ActionType,
                 ActionTarget       = campaign.ActionTarget,
                 CampaignId         = campaign.CampaignId,
                 IdempotencyKey     = idempotencyBase,
-            };
+            }, ct);
 
-            await _dispatcher.DispatchAsync(ctx, ct);
             sent++;
         }
 
+        return sent;
+    }
+
+    private async Task<bool> PassesCampaignPreferencesAsync(
+        Campaign campaign,
+        int accountId,
+        string notifType,
+        CancellationToken ct)
+    {
+        if (string.Equals(campaign.ReferenceType, "VOUCHER", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(campaign.ReferenceType, "SALE", StringComparison.OrdinalIgnoreCase))
+            return await _prefChecker.CanSendAsync(accountId, PreferenceKeys.Promotions, ct);
+
+        if (string.Equals(campaign.ReferenceType, "BLOG", StringComparison.OrdinalIgnoreCase)
+            || notifType == NotificationTypes.Blog)
+            return await _prefChecker.CanSendAsync(accountId, PreferenceKeys.BlogAlerts, ct);
+
+        if (notifType == NotificationTypes.Stock)
+            return await _prefChecker.CanSendAsync(accountId, PreferenceKeys.StockAlerts, ct);
+
+        if (notifType == NotificationTypes.Promotion)
+            return await _prefChecker.CanSendAsync(accountId, PreferenceKeys.Promotions, ct);
+
+        return true;
+    }
+
+    private async Task DispatchCampaignAsync(
+        Campaign campaign,
+        Dictionary<string, string> vars,
+        CancellationToken ct)
+    {
+        var sent = await DispatchFanOutAsync(campaign, vars, ct);
         try
         {
             await _unitOfWork.Campaigns.MarkSentAsync(campaign.CampaignId, sent, ct);
-            
-            _logger.LogInformation(
-                "Campaign {Id} dispatched. Sent={Sent}",
-                campaign.CampaignId, sent);
+            _logger.LogInformation("Campaign {Id} dispatched. Sent={Sent}", campaign.CampaignId, sent);
         }
         catch (Exception ex)
         {

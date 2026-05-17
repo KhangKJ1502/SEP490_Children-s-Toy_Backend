@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using ToyStore.Application.Campaigns;
 
 namespace ToyStore.API.Extensions;
 
@@ -14,6 +15,10 @@ public static class ResultToActionResultExtensions
     {
         if (result.IsSuccess)
             return new OkObjectResult(result.Data);
+
+        var campaignHttp = CampaignErrorCodes.MapToHttpStatus(result.ErrorCode);
+        if (campaignHttp.HasValue)
+            return new ObjectResult(new ErrorResponse(result.ErrorCode!, result.ErrorMessage!)) { StatusCode = campaignHttp.Value };
 
         return result.ErrorCode switch
         {
@@ -48,6 +53,10 @@ public static class ResultToActionResultExtensions
     {
         if (result.IsSuccess)
             return new OkResult();
+
+        var campaignHttp = CampaignErrorCodes.MapToHttpStatus(result.ErrorCode);
+        if (campaignHttp.HasValue)
+            return new ObjectResult(new ErrorResponse(result.ErrorCode!, result.ErrorMessage!)) { StatusCode = campaignHttp.Value };
 
         return result.ErrorCode switch
         {

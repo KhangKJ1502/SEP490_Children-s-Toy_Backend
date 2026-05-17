@@ -23,9 +23,17 @@ public partial class Campaign
 
     public string TargetType { get; set; } = null!;
 
-    public string Status { get; set; } = null!;
+    public int? SubmittedByAccountId { get; set; }
 
-    public DateTime? ScheduledAt { get; set; }
+    public DateTime? SubmittedAt { get; set; }
+
+    public int? ReviewedByAccountId { get; set; }
+
+    public DateTime? ReviewedAt { get; set; }
+
+    public string? ReviewNote { get; set; }
+
+    public string Status { get; set; } = null!;
 
     public string? EventKey { get; set; }
 
@@ -34,6 +42,18 @@ public partial class Campaign
     public string? ActionType { get; set; }
 
     public string? ActionTarget { get; set; }
+
+    public DateTime? ValidFrom { get; set; }
+
+    public DateTime? ValidTo { get; set; }
+
+    public DateTime? ScheduledAt { get; set; }
+
+    public DateTime? ApprovedExpireAt { get; set; }
+
+    public byte RescheduleCount { get; set; }
+
+    public byte MaxRescheduleCount { get; set; }
 
     public bool IsDeleted { get; set; }
 
@@ -48,6 +68,18 @@ public partial class Campaign
     public virtual ICollection<CampaignTarget> CampaignTargets { get; set; } = new List<CampaignTarget>();
 
     public virtual Account? CreatedByAccount { get; set; }
+
+    public virtual Account? SubmittedByAccount { get; set; }
+
+    public virtual Account? ReviewedByAccount { get; set; }
+
+    public virtual ICollection<CampaignApprovalLog> CampaignApprovalLogs { get; set; } = new List<CampaignApprovalLog>();
+
+    public virtual CampaignSchedule? CampaignSchedule { get; set; }
+
+    public virtual ICollection<CampaignScheduleLog> CampaignScheduleLogs { get; set; } = new List<CampaignScheduleLog>();
+
+    public virtual ICollection<CampaignReferenceSnapshot> CampaignReferenceSnapshots { get; set; } = new List<CampaignReferenceSnapshot>();
 
     public virtual ICollection<Delivery> Deliveries { get; set; } = new List<Delivery>();
 

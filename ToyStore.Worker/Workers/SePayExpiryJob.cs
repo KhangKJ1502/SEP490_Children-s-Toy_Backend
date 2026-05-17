@@ -18,12 +18,12 @@ public class SePayExpiryJob : BackgroundService
     private readonly TimeSpan _interval = TimeSpan.FromMinutes(1);
 
     public SePayExpiryJob(
-        IServiceProvider services, 
+        IServiceProvider services,
         ILogger<SePayExpiryJob> logger,
         ITimeProvider timeProvider)
     {
-        _services     = services;
-        _logger       = logger;
+        _services = services;
+        _logger = logger;
         _timeProvider = timeProvider;
     }
 
@@ -39,12 +39,12 @@ public class SePayExpiryJob : BackgroundService
 
     private async Task RunAsync(CancellationToken ct)
     {
-        using var scope    = _services.CreateScope();
-        var db             = scope.ServiceProvider.GetRequiredService<SEP490ToyStoreContext>();
-        var sePayOpts      = scope.ServiceProvider.GetRequiredService<IOptions<SePayOptions>>().Value;
-        var orderService   = scope.ServiceProvider.GetRequiredService<IOrderCustomerService>();
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SEP490ToyStoreContext>();
+        var sePayOpts = scope.ServiceProvider.GetRequiredService<IOptions<SePayOptions>>().Value;
+        var orderService = scope.ServiceProvider.GetRequiredService<IOrderCustomerService>();
 
-        var ttl    = TimeSpan.FromMinutes(sePayOpts.PaymentTtlMinutes);
+        var ttl = TimeSpan.FromMinutes(sePayOpts.PaymentTtlMinutes);
         var cutoff = _timeProvider.UtcNow - ttl;
 
         // Lấy đơn SE_PAY PENDING quá TTL

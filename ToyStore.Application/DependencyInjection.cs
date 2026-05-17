@@ -4,6 +4,7 @@ using ToyStore.Application.Services.Notifications;
 using ToyStore.Application.Features.Notifications.Handlers;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Application.Services;
+using ToyStore.Application.Services.Campaigns;
 
 namespace ToyStore.Application;
 
@@ -16,6 +17,7 @@ public static class DependencyInjection
         services.AddScoped<ICampaignNotificationService, CampaignNotificationService>();
         services.AddScoped<IUserPreferenceChecker, UserPreferenceChecker>();
         services.AddScoped<INotificationPreferencesGate, NotificationPreferencesGate>();
+        services.AddScoped<ICampaignLifecycleRules, CampaignLifecycleRules>();
 
         // Shipping status mapper
         services.AddScoped<IShippingStatusMapper, ShippingStatusMapper>();

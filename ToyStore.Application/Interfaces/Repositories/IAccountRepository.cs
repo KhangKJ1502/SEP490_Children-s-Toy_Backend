@@ -116,4 +116,9 @@ public interface IAccountRepository
     /// Get all active, non-deleted customer accounts.
     /// </summary>
     Task<List<Account>> GetActiveCustomersAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Count customer accounts (non-deleted, active) in the given id set.
+    /// </summary>
+    Task<int> CountActiveCustomersByIdsAsync(IReadOnlyCollection<int> accountIds, CancellationToken cancellationToken = default);
 }

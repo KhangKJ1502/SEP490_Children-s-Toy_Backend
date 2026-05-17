@@ -40,4 +40,16 @@ public class UserPreferenceChecker : IUserPreferenceChecker
 
         return allowed;
     }
+
+    public async Task<bool> CanReceiveEmailAsync(int accountId, CancellationToken ct = default)
+    {
+        var prefs = await _unitOfWork.UserPreferences.GetByAccountIdAsync(accountId, ct);
+        return prefs is null || prefs.EmailOptIn;
+    }
+
+    public async Task<bool> CanReceiveWebPushAsync(int accountId, CancellationToken ct = default)
+    {
+        var prefs = await _unitOfWork.UserPreferences.GetByAccountIdAsync(accountId, ct);
+        return prefs is null || prefs.WebPushOptIn;
+    }
 }
