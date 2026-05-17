@@ -170,14 +170,25 @@ public class AdminBlogsController : ControllerBase
 
         var allowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            ".jpg", ".jpeg", ".png", ".webp", ".gif"
+            ".jpg", ".jpeg", ".png", ".webp"
+        };
+
+        var allowedMimeTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "image/jpeg", "image/png", "image/webp"
         };
 
         var extension = Path.GetExtension(file.FileName);
         if (string.IsNullOrWhiteSpace(extension) || !allowedExtensions.Contains(extension))
         {
             _logger.LogWarning("Upload thumbnail failed: unsupported extension {Extension}.", extension);
-            return BadRequest(new { code = "VALIDATION_ERROR", message = "Only JPG, JPEG, PNG, WEBP, GIF are supported." });
+            return BadRequest(new { code = "VALIDATION_ERROR", message = "Only JPG, JPEG, PNG, WEBP are supported." });
+        }
+
+        if (string.IsNullOrWhiteSpace(file.ContentType) || !allowedMimeTypes.Contains(file.ContentType))
+        {
+            _logger.LogWarning("Upload thumbnail failed: unsupported mime type {MimeType}.", file.ContentType);
+            return BadRequest(new { code = "VALIDATION_ERROR", message = "Only image/jpeg, image/png, image/webp are supported." });
         }
 
         await using var stream = file.OpenReadStream();
