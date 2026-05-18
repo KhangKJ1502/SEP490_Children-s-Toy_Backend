@@ -30,11 +30,11 @@ public class RefundService : IRefundService
             return Result<RefundDto>.NotFound("Order", dto.OrderId);
 
         // Validations
-        if (order.StatusId != (byte)OrderStatus.Delivered)
-            return Result<RefundDto>.BusinessError("Order must be in Delivered status to request a refund.");
+        if (order.StatusId != (byte)OrderStatus.Completed)
+            return Result<RefundDto>.BusinessError("Order must be in Completed status to request a refund.");
 
-        if (order.DeliveredAt == null || (DateTime.UtcNow - order.DeliveredAt.Value).TotalDays > 3)
-            return Result<RefundDto>.BusinessError("Refund requests must be submitted within 3 days of successful delivery.");
+        if (order.CompletedAt == null || (DateTime.UtcNow - order.CompletedAt.Value).TotalDays > 3)
+            return Result<RefundDto>.BusinessError("Refund requests must be submitted within 3 days of order completion.");
 
         var existingRefunds = await _unitOfWork.Refunds.GetAdminRefundsAsync(new AdminRefundFilterDto { OrderId = dto.OrderId, PageSize = 100 }, cancellationToken);
 

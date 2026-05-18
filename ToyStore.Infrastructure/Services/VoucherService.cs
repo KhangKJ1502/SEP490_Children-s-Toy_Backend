@@ -280,9 +280,25 @@ public class VoucherService : IVoucherService
                     }
                 }
                 
-                // Admin Approving clears Reason
+                // Admin Approving clears Reason and calculates dynamic status
                 if (string.Equals(normalizedRequest.Status, VoucherStatuses.Scheduled, StringComparison.OrdinalIgnoreCase))
                 {
+                    var now = _timeProvider.UtcNow;
+                    
+                    if (existingVoucher.EndDate <= now)
+                    {
+                        return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Cannot approve a voucher that has already expired. Please reject it or ask staff to update the dates.");
+                    }
+                    
+                    if (existingVoucher.StartDate <= now)
+                    {
+                        normalizedRequest.Status = VoucherStatuses.Active;
+                    }
+                    else
+                    {
+                        normalizedRequest.Status = VoucherStatuses.Scheduled;
+                    }
+                    
                     normalizedRequest.Reason = null;
                 }
             }
