@@ -487,7 +487,7 @@ public class ReviewService : IReviewService
             // Log cho Review
             await _unitOfWork.Reviews.AddModerationLogAsync(new ReviewModerationLog
             {
-                TargetType = "Review",
+                TargetType = "Text",
                 ReviewId = reviewId,
                 ModeratorType = "Staff",
                 ModeratedBy = staffId,
@@ -651,7 +651,7 @@ public class ReviewService : IReviewService
 
         await _unitOfWork.Reviews.AddModerationLogAsync(new ReviewModerationLog
         {
-            TargetType = "Review",
+            TargetType = "Text",
             ReviewId = review.ReviewId,
             ModeratorType = "AI",
             Action = "Approved",
