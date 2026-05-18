@@ -23,6 +23,13 @@ public class RefundsController : ControllerBase
         _currentUserService = currentUserService;
     }
 
+    [HttpGet("reasons")]
+    public async Task<ActionResult<ApiResponse<List<RefundReasonDto>>>> GetRefundReasons(CancellationToken cancellationToken = default)
+    {
+        var reasons = await _refundService.GetRefundReasonsAsync(cancellationToken);
+        return Ok(ApiResponse<List<RefundReasonDto>>.Ok(reasons));
+    }
+
     [HttpPost]
     public async Task<ActionResult<RefundDto>> CreateRefund(
         [FromBody] CreateRefundDto dto,
