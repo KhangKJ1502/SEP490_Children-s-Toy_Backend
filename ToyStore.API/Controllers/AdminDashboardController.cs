@@ -71,4 +71,29 @@ public class AdminDashboardController : ControllerBase
         var result = await _dashboardService.GetOrderRateStatisticsAsync(filter, cancellationToken);
         return result.ToActionResult();
     }
+
+    [HttpGet("products/top-5-best-sellers")]
+    public async Task<ActionResult<DashboardTopSellingProductsDto>> GetTop5BestSellingProducts(
+        CancellationToken cancellationToken)
+    {
+        var result = await _dashboardService.GetTopSellingProductsAsync(5, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpGet("products/slow-moving")]
+    public async Task<ActionResult<DashboardSlowMovingProductsDto>> GetSlowMovingProducts(
+        [FromQuery] int limit = 5,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _dashboardService.GetSlowMovingProductsAsync(limit, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpGet("products/total-count")]
+    public async Task<ActionResult<DashboardTotalProductsDto>> GetTotalProducts(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _dashboardService.GetTotalProductsAsync(cancellationToken);
+        return result.ToActionResult();
+    }
 }
