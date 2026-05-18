@@ -70,6 +70,8 @@ Entities/
  BlogPostStat.cs
  Brand.cs
  Campaign.cs
+ CampaignApprovalLog.cs
+ CampaignSchedule.cs
  CampaignStat.cs
  CampaignTarget.cs
  Cart.cs

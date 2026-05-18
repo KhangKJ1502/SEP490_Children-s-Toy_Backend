@@ -73,7 +73,7 @@ public class OrderStatusWorker : BackgroundService
 
         foreach (var order in staleOrders)
         {
-            // Cập nhật PaymentStatus trước khi gọi lifecycle (vì lifecycle check PaymentStatus để restore stock)
+
             order.PaymentStatus = "FAILED";
 
             var result = await lifecycleService.CancelOrderInternalAsync(

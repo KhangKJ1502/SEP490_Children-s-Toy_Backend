@@ -5,7 +5,7 @@ namespace ToyStore.Infrastructure.Services.Resolvers;
 
 /// <summary>
 /// Factory tra ve IBusinessObjectResolver phu hop theo ReferenceType.
-/// Duoc inject vao CampaignService va CampaignSenderWorker.
+/// Duoc inject vao CampaignService.
 /// </summary>
 public class BusinessObjectResolverFactory
 {

@@ -42,6 +42,14 @@ public partial class SEP490ToyStoreContext : DbContext
 
     public virtual DbSet<CampaignTarget> CampaignTargets { get; set; }
 
+    public virtual DbSet<CampaignApprovalLog> CampaignApprovalLogs { get; set; }
+
+    public virtual DbSet<CampaignSchedule> CampaignSchedules { get; set; }
+
+    public virtual DbSet<CampaignScheduleLog> CampaignScheduleLogs { get; set; }
+
+    public virtual DbSet<CampaignReferenceSnapshot> CampaignReferenceSnapshots { get; set; }
+
     public virtual DbSet<Cart> Carts { get; set; }
 
     public virtual DbSet<CartItem> CartItems { get; set; }
@@ -423,9 +431,25 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<Campaign>(entity =>
         {
-            entity.HasKey(e => e.CampaignId).HasName("PK__Campaign__3F5E8D79C9B67042");
+            entity.HasKey(e => e.CampaignId).HasName("PK_Campaigns");
 
-            entity.ToTable("Campaigns", "Notification");
+            entity.ToTable("Campaigns", "Notification", t =>
+            {
+                t.HasCheckConstraint("CK_Campaigns_SourceType", "[SourceType] IN ('ADMIN', 'SYSTEM')");
+                t.HasCheckConstraint("CK_Campaigns_TargetType", "[TargetType] IN ('ALL', 'INDIVIDUAL', 'ROLE')");
+                t.HasCheckConstraint("CK_Campaigns_ReferenceType", "[ReferenceType] IN ('VOUCHER', 'PRODUCT', 'BLOG', 'SALE', 'OTHER')");
+                t.HasCheckConstraint("CK_Campaigns_Status", "[Status] IN ('Draft', 'PendingApproval', 'Approved', 'Rejected', 'Scheduled', 'Sending', 'Sent', 'Cancelled', 'Failed')");
+                t.HasCheckConstraint("CK_Campaigns_AdminRequiresCreator", "[SourceType] = 'SYSTEM' OR [CreatedByAccountID] IS NOT NULL");
+                t.HasCheckConstraint("CK_Campaigns_MustHaveContent", "[TemplateCode] IS NOT NULL OR ([TitleOverride] IS NOT NULL AND [MessageOverride] IS NOT NULL)");
+                t.HasCheckConstraint("CK_Campaigns_ReferenceConsistency", "([ReferenceType] IS NULL AND [ReferenceID] IS NULL) OR ([ReferenceType] IS NOT NULL AND [ReferenceID] IS NOT NULL)");
+                t.HasCheckConstraint("CK_Campaigns_RejectedNeedsNote", "[Status] <> 'Rejected' OR [ReviewNote] IS NOT NULL");
+                t.HasCheckConstraint("CK_Campaigns_ValidRange", "[ValidFrom] IS NULL OR [ValidTo] IS NULL OR [ValidFrom] < [ValidTo]");
+                t.HasCheckConstraint("CK_Campaigns_ScheduledAtInRange", "[ScheduledAt] IS NULL OR [ValidFrom] IS NULL OR [ValidTo] IS NULL OR ([ScheduledAt] >= [ValidFrom] AND [ScheduledAt] <= [ValidTo])");
+                t.HasCheckConstraint("CK_Campaigns_ScheduledAtConsistency", "[ScheduledAt] IS NULL OR [Status] IN ('Scheduled', 'Sending', 'Sent', 'Cancelled', 'Failed')");
+                t.HasCheckConstraint("CK_Campaigns_ApprovedExpireConsistency", "[ApprovedExpireAt] IS NULL OR [ReviewedAt] IS NULL OR [ApprovedExpireAt] > [ReviewedAt]");
+                t.HasCheckConstraint("CK_Campaigns_ApprovedExpireOnlyAfterApprove", "[ApprovedExpireAt] IS NULL OR [Status] IN ('Approved', 'Scheduled', 'Sending', 'Sent', 'Cancelled', 'Failed')");
+                t.HasCheckConstraint("CK_Campaigns_RescheduleNotExceedMax", "[RescheduleCount] <= [MaxRescheduleCount]");
+            });
 
             entity.Property(e => e.CampaignId).HasColumnName("CampaignID");
             entity.Property(e => e.ActionTarget).HasMaxLength(500);
@@ -433,7 +457,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.CampaignName).HasMaxLength(255);
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
-                .HasDefaultValueSql("(getdate())");
+                .HasDefaultValueSql("GETUTCDATE()");
             entity.Property(e => e.CreatedByAccountId).HasColumnName("CreatedByAccountID");
             entity.Property(e => e.EventKey)
                 .HasMaxLength(100)
@@ -444,13 +468,17 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasMaxLength(20)
                 .IsUnicode(false);
             entity.Property(e => e.ReferenceId).HasColumnName("ReferenceID");
-            entity.Property(e => e.ScheduledAt).HasPrecision(0);
+            entity.Property(e => e.SubmittedByAccountId).HasColumnName("SubmittedByAccountID");
+            entity.Property(e => e.SubmittedAt).HasPrecision(0);
+            entity.Property(e => e.ReviewedByAccountId).HasColumnName("ReviewedByAccountID");
+            entity.Property(e => e.ReviewedAt).HasPrecision(0);
+            entity.Property(e => e.ReviewNote).HasMaxLength(500);
             entity.Property(e => e.SourceType)
                 .HasMaxLength(10)
                 .IsUnicode(false)
                 .HasDefaultValue("ADMIN");
             entity.Property(e => e.Status)
-                .HasMaxLength(15)
+                .HasMaxLength(20)
                 .IsUnicode(false)
                 .HasDefaultValue("Draft");
             entity.Property(e => e.TargetType)
@@ -462,16 +490,218 @@ public partial class SEP490ToyStoreContext : DbContext
                 .IsUnicode(false);
             entity.Property(e => e.TitleOverride).HasMaxLength(255);
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
+            entity.Property(e => e.ValidFrom).HasPrecision(0);
+            entity.Property(e => e.ValidTo).HasPrecision(0);
+            entity.Property(e => e.ScheduledAt).HasPrecision(0);
+            entity.Property(e => e.ApprovedExpireAt).HasPrecision(0);
+            entity.Property(e => e.RescheduleCount).HasDefaultValue((byte)0);
+            entity.Property(e => e.MaxRescheduleCount).HasDefaultValue((byte)3);
+
+            entity.HasIndex(e => e.EventKey, "UQ_Campaigns_EventKey_Active")
+                .IsUnique()
+                .HasFilter("[EventKey] IS NOT NULL AND [IsDeleted] = 0");
+
+            entity.HasIndex(e => new { e.Status, e.CreatedAt }, "IX_Campaigns_Status")
+                .IsDescending(false, true)
+                .HasFilter("[IsDeleted] = 0");
+
+            entity.HasIndex(e => new { e.Status, e.SubmittedAt }, "IX_Campaigns_PendingApproval")
+                .IncludeProperties(e => new { e.CampaignId, e.CampaignName, e.SubmittedByAccountId })
+                .HasFilter("[Status] = 'PendingApproval' AND [IsDeleted] = 0");
+
+            entity.HasIndex(e => new { e.Status, e.ApprovedExpireAt }, "IX_Campaigns_ApprovedExpired")
+                .IncludeProperties(e => new { e.CampaignId, e.SubmittedByAccountId, e.CreatedByAccountId })
+                .HasFilter("[Status] = 'Approved' AND [IsDeleted] = 0");
+
+            entity.HasIndex(e => new { e.Status, e.ReferenceType, e.ScheduledAt }, "IX_Campaigns_ScheduledWithRef")
+                .IncludeProperties(e => new { e.CampaignId, e.ReferenceId, e.ValidTo })
+                .HasFilter("[Status] = 'Scheduled' AND [ReferenceType] IS NOT NULL AND [IsDeleted] = 0");
 
             entity.HasOne(d => d.CreatedByAccount).WithMany(p => p.Campaigns)
                 .HasForeignKey(d => d.CreatedByAccountId)
                 .HasConstraintName("FK_Campaigns_Accounts");
+
+            entity.HasOne(d => d.SubmittedByAccount).WithMany(p => p.CampaignSubmittedByAccounts)
+                .HasForeignKey(d => d.SubmittedByAccountId)
+                .HasConstraintName("FK_Campaigns_SubmittedBy");
+
+            entity.HasOne(d => d.ReviewedByAccount).WithMany(p => p.CampaignReviewedByAccounts)
+                .HasForeignKey(d => d.ReviewedByAccountId)
+                .HasConstraintName("FK_Campaigns_ReviewedBy");
 
             entity.HasOne(d => d.TemplateCodeNavigation).WithMany(p => p.Campaigns)
                 .HasPrincipalKey(p => p.TemplateCode)
                 .HasForeignKey(d => d.TemplateCode)
                 .HasConstraintName("FK_Campaigns_Templates");
         });
+
+        modelBuilder.Entity<CampaignApprovalLog>(entity =>
+        {
+            entity.HasKey(e => e.LogId);
+
+            entity.ToTable("CampaignApprovalLogs", "Notification", t =>
+            {
+                t.HasCheckConstraint("CK_CAL_Action", "[Action] IN ('Submitted', 'Approved', 'Rejected', 'Recalled', 'Scheduled', 'Rescheduled', 'Cancelled', 'Overridden')");
+                t.HasCheckConstraint("CK_CAL_RejectedNeedsNote", "[Action] <> 'Rejected' OR [Note] IS NOT NULL");
+            });
+
+            entity.Property(e => e.LogId).HasColumnName("LogID");
+            entity.Property(e => e.CampaignId).HasColumnName("CampaignID");
+            entity.Property(e => e.Action)
+                .HasMaxLength(20)
+                .IsUnicode(false);
+            entity.Property(e => e.ActorId).HasColumnName("ActorID");
+            entity.Property(e => e.Note).HasMaxLength(500);
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("GETUTCDATE()");
+
+            entity.HasIndex(e => new { e.CampaignId, e.CreatedAt }, "IX_CAL_Campaign")
+                .IsDescending(false, true)
+                .IncludeProperties(e => new { e.Action, e.ActorId });
+
+            entity.HasIndex(e => new { e.Action, e.CreatedAt }, "IX_CAL_PendingSubmissions")
+                .IncludeProperties(e => new { e.CampaignId, e.ActorId })
+                .HasFilter("[Action] = 'Submitted'");
+
+            entity.HasOne(d => d.Campaign).WithMany(p => p.CampaignApprovalLogs)
+                .HasForeignKey(d => d.CampaignId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_CAL_Campaigns");
+
+            entity.HasOne(d => d.Actor).WithMany(p => p.CampaignApprovalLogs)
+                .HasForeignKey(d => d.ActorId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_CAL_Actor");
+        });
+
+        modelBuilder.Entity<CampaignSchedule>(entity =>
+        {
+            entity.HasKey(e => e.ScheduleId);
+
+            entity.ToTable("CampaignSchedules", "Notification", t =>
+            {
+                t.HasCheckConstraint("CK_CS_ExecutionStatus", "[ExecutionStatus] IN ('Waiting', 'Dispatched', 'Done', 'Failed', 'Cancelled')");
+                t.HasCheckConstraint("CK_CS_LockConsistency", "([LockedByJobID] IS NULL) = ([LockedAt] IS NULL)");
+                t.HasCheckConstraint("CK_CS_ExecutedAtConsistency", "[ExecutionStatus] IN ('Done', 'Failed') OR [ExecutedAt] IS NULL");
+                t.HasCheckConstraint("CK_CS_AttemptNotExceedMax", "[AttemptCount] <= [MaxAttemptCount]");
+            });
+
+            entity.HasIndex(e => e.CampaignId, "UQ_CampaignSchedules_CampaignID").IsUnique();
+
+            entity.Property(e => e.ScheduleId).HasColumnName("ScheduleID");
+            entity.Property(e => e.CampaignId).HasColumnName("CampaignID");
+            entity.Property(e => e.ScheduledBy).HasColumnName("ScheduledBy");
+            entity.Property(e => e.ScheduledAt).HasPrecision(0);
+            entity.Property(e => e.LockedByJobId).HasColumnName("LockedByJobID");
+            entity.Property(e => e.LockedAt).HasPrecision(0);
+            entity.Property(e => e.ExecutionStatus)
+                .HasMaxLength(20)
+                .IsUnicode(false)
+                .HasDefaultValue("Waiting");
+            entity.Property(e => e.AttemptCount).HasDefaultValue((byte)0);
+            entity.Property(e => e.MaxAttemptCount).HasDefaultValue((byte)3);
+            entity.Property(e => e.LastError).HasMaxLength(500);
+            entity.Property(e => e.ExecutedAt).HasPrecision(0);
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("GETUTCDATE()");
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
+
+            entity.HasIndex(e => new { e.ExecutionStatus, e.ScheduledAt }, "IX_CS_Waiting")
+                .IncludeProperties(e => new { e.CampaignId, e.AttemptCount, e.MaxAttemptCount })
+                .HasFilter("[ExecutionStatus] = 'Waiting'");
+
+            entity.HasIndex(e => new { e.ExecutionStatus, e.LockedAt }, "IX_CS_StaleLock")
+                .IncludeProperties(e => new { e.CampaignId, e.LockedByJobId })
+                .HasFilter("[ExecutionStatus] = 'Dispatched'");
+
+            entity.HasOne(d => d.Campaign).WithOne(p => p.CampaignSchedule)
+                .HasForeignKey<CampaignSchedule>(d => d.CampaignId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_CS_Campaigns");
+
+            entity.HasOne(d => d.ScheduledByNavigation).WithMany(p => p.CampaignSchedules)
+                .HasForeignKey(d => d.ScheduledBy)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_CS_ScheduledBy");
+
+            entity.HasOne(d => d.LockedByJob).WithMany(p => p.CampaignSchedules)
+                .HasForeignKey(d => d.LockedByJobId)
+                .HasConstraintName("FK_CS_Jobs");
+        });
+
+        modelBuilder.Entity<CampaignScheduleLog>(entity =>
+        {
+            entity.HasKey(e => e.LogId);
+            
+            entity.ToTable("CampaignScheduleLogs", "Notification", t =>
+            {
+                t.HasCheckConstraint("CK_CSL_Action", "[Action] IN ('Scheduled', 'Rescheduled')");
+                t.HasCheckConstraint("CK_CSL_ActionConsistency", "([Action] = 'Scheduled' AND [PreviousScheduledAt] IS NULL) OR ([Action] = 'Rescheduled' AND [PreviousScheduledAt] IS NOT NULL)");
+            });
+
+            entity.Property(e => e.LogId).HasColumnName("LogID");
+            entity.Property(e => e.CampaignId).HasColumnName("CampaignID");
+            entity.Property(e => e.ActorId).HasColumnName("ActorID");
+            entity.Property(e => e.Action).HasMaxLength(15).IsUnicode(false);
+            entity.Property(e => e.PreviousScheduledAt).HasPrecision(0);
+            entity.Property(e => e.NewScheduledAt).HasPrecision(0);
+            entity.Property(e => e.Reason).HasMaxLength(200);
+            entity.Property(e => e.CreatedAt).HasPrecision(0).HasDefaultValueSql("GETUTCDATE()");
+
+            entity.HasIndex(e => new { e.CampaignId, e.CreatedAt }, "IX_CSL_Campaign")
+                .IsDescending(false, true)
+                .IncludeProperties(e => new { e.ActorId, e.Action, e.NewScheduledAt, e.PreviousScheduledAt });
+
+            entity.HasOne(d => d.Campaign).WithMany(p => p.CampaignScheduleLogs)
+                .HasForeignKey(d => d.CampaignId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_CSL_Campaigns");
+
+            entity.HasOne(d => d.Actor).WithMany(p => p.CampaignScheduleLogs)
+                .HasForeignKey(d => d.ActorId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_CSL_Actor");
+        });
+
+        modelBuilder.Entity<CampaignReferenceSnapshot>(entity =>
+        {
+            entity.HasKey(e => e.SnapshotId);
+            
+            entity.ToTable("CampaignReferenceSnapshots", "Notification", t =>
+            {
+                t.HasCheckConstraint("CK_CRS_ReferenceType", "[ReferenceType] IN ('VOUCHER', 'PRODUCT', 'BLOG', 'SALE', 'OTHER')");
+                t.HasCheckConstraint("CK_CRS_DateRange", "[EntityStartDate] IS NULL OR [EntityEndDate] > [EntityStartDate]");
+                t.HasCheckConstraint("CK_CRS_StaleConsistency", "[IsStale] = 0 OR ([StaleReason] IS NOT NULL AND [StaleDetectedAt] IS NOT NULL)");
+            });
+
+            entity.Property(e => e.SnapshotId).HasColumnName("SnapshotID");
+            entity.Property(e => e.CampaignId).HasColumnName("CampaignID");
+            entity.Property(e => e.ReferenceType).HasMaxLength(20).IsUnicode(false);
+            entity.Property(e => e.ReferenceId).HasColumnName("ReferenceID");
+            entity.Property(e => e.EntityStatus).HasMaxLength(20).IsUnicode(false);
+            entity.Property(e => e.EntityStartDate).HasPrecision(0);
+            entity.Property(e => e.EntityEndDate).HasPrecision(0);
+            entity.Property(e => e.IsStale).HasDefaultValue(false);
+            entity.Property(e => e.StaleReason).HasMaxLength(200);
+            entity.Property(e => e.StaleDetectedAt).HasPrecision(0);
+            entity.Property(e => e.SnapshotAt).HasPrecision(0).HasDefaultValueSql("GETUTCDATE()");
+
+            entity.HasIndex(e => e.CampaignId, "UQ_CRS_OneLiveSnapshotPerCampaign")
+                .IsUnique()
+                .HasFilter("[IsStale] = 0");
+
+            entity.HasIndex(e => new { e.IsStale, e.EntityEndDate }, "IX_CRS_RevalidationJob")
+                .IncludeProperties(e => new { e.CampaignId, e.ReferenceType, e.ReferenceId, e.EntityStatus })
+                .HasFilter("[IsStale] = 0");
+
+            entity.HasOne(d => d.Campaign).WithMany(p => p.CampaignReferenceSnapshots)
+                .HasForeignKey(d => d.CampaignId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_CRS_Campaigns");
+        });
+
 
         modelBuilder.Entity<CampaignStat>(entity =>
         {

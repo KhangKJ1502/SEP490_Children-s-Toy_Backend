@@ -46,7 +46,8 @@ public interface IUnitOfWork : IDisposable
     IStaffShiftCapacityRepository StaffShiftCapacities { get; }
     IOrderAssignmentRepository OrderAssignments { get; }
     IOrderQueueRepository OrderQueues { get; }
-
+    ICampaignApprovalLogRepository CampaignApprovalLogs { get; }
+    ICampaignScheduleRepository CampaignSchedules { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     void Detach<T>(T entity) where T : class;

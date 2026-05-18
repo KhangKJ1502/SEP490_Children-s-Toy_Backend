@@ -13,6 +13,8 @@ public interface ICampaignRepository
     /// </summary>
     Task<List<Campaign>> GetPagedAsync(
         CampaignQueryDto query,
+        bool forAdminList = false,
+        int viewerAccountId = 0,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -20,6 +22,8 @@ public interface ICampaignRepository
     /// </summary>
     Task<int> CountAsync(
         CampaignQueryDto query,
+        bool forAdminList = false,
+        int viewerAccountId = 0,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -33,8 +37,63 @@ public interface ICampaignRepository
     Task<Campaign?> GetByIdWithDetailsAsync(int campaignId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Tim SYSTEM Campaign theo EventKey.
+    /// Tim Campaign theo ID cho cap nhat (tracking), kem targets, template, schedule, snapshots.
     /// </summary>
+    Task<Campaign?> GetForUpdateAsync(int campaignId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lay JobID bat ky (FK) dung khi lock CampaignSchedules.
+    /// </summary>
+    Task<int> GetBackgroundJobIdForCampaignLockAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Atomic lock: Waiting + chua lock -> Dispatched.
+    /// </summary>
+    Task<bool> TryAcquireDispatchLockAsync(
+        int campaignId,
+        int backgroundJobId,
+        DateTime utcNow,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Recover stale Dispatched locks (job crash).
+    /// </summary>
+    Task<int> RecoverStaleDispatchLocksAsync(TimeSpan lockOlderThan, DateTime utcNow, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Danh dau snapshot dang live la stale.
+    /// </summary>
+    Task MarkLiveReferenceSnapshotsStaleAsync(
+        int campaignId,
+        string reason,
+        DateTime staleAt,
+        CancellationToken cancellationToken = default);
+
+    void AddReferenceSnapshot(CampaignReferenceSnapshot snapshot);
+
+    /// <summary>
+    /// Dispatch thanh cong: schedule Done, campaign Sent, stat.
+    /// </summary>
+    Task CompleteDispatchAsync(int campaignId, int totalSent, DateTime utcNow, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Dispatch loi: tang AttemptCount, Failed hoac Waiting+unlock.
+    /// </summary>
+    Task HandleDispatchFailureAsync(
+        int campaignId,
+        string error,
+        DateTime utcNow,
+        CancellationToken cancellationToken = default);
+
+    Task SystemCancelWithAuditAsync(
+        int campaignId,
+        string approvalLogNote,
+        int actorAccountId,
+        DateTime utcNow,
+        CancellationToken cancellationToken = default);
+
+    Task<List<int>> ListApprovedExpiredCampaignIdsAsync(DateTime utcNow, CancellationToken cancellationToken = default);
+
     Task<Campaign?> GetByEventKeyAsync(string eventKey, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -58,6 +117,8 @@ public interface ICampaignRepository
         Campaign campaign,
         List<CreateCampaignTargetDto> newTargets,
         CancellationToken cancellationToken = default);
+
+    Task AddCampaignScheduleLogAsync(CampaignScheduleLog log, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Huy Campaign (chuyen Status sang Cancelled). Tra ve false neu khong tim thay.
@@ -84,4 +145,9 @@ public interface ICampaignRepository
     /// Bulk insert cac ban ghi Delivery.
     /// </summary>
     Task CreateDeliveriesAsync(List<Delivery> deliveries, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Danh dau trang thai entity Campaign la Modified trong DbContext (dung voi IUnitOfWork.SaveChangesAsync).
+    /// </summary>
+    void Update(Campaign campaign);
 }

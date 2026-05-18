@@ -5,7 +5,6 @@ using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs.Products;
 using ToyStore.Application.DTOs.Profiles;
 using ToyStore.Application.Interfaces.Services;
-using ToyStore.Domain.Entities;
 
 namespace ToyStore.API.Controllers;
 
@@ -15,11 +14,16 @@ namespace ToyStore.API.Controllers;
 public class ProfileCustomerController : ControllerBase
 {
     private readonly IProfileService _profileService;
+    private readonly ICustomerNotificationPreferencesService _notificationPreferencesService;
     private readonly IImageUploadService _imageUploadService;
 
-    public ProfileCustomerController(IProfileService profileService, IImageUploadService imageUploadService)
+    public ProfileCustomerController(
+        IProfileService profileService,
+        ICustomerNotificationPreferencesService notificationPreferencesService,
+        IImageUploadService imageUploadService)
     {
         _profileService = profileService;
+        _notificationPreferencesService = notificationPreferencesService;
         _imageUploadService = imageUploadService;
     }
 
@@ -85,6 +89,23 @@ public class ProfileCustomerController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var result = await _profileService.ChangeMyCustomerPasswordAsync(dto, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpGet("me/notification-preferences")]
+    public async Task<ActionResult<CustomerNotificationPreferencesDto>> GetMyNotificationPreferences(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _notificationPreferencesService.GetMyAsync(cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpPut("me/notification-preferences")]
+    public async Task<ActionResult<CustomerNotificationPreferencesDto>> UpdateMyNotificationPreferences(
+        [FromBody] UpdateCustomerNotificationPreferencesDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _notificationPreferencesService.UpdateMyAsync(dto, cancellationToken);
         return result.ToActionResult();
     }
 }

@@ -43,6 +43,16 @@ public partial class Account
 
     public virtual ICollection<Campaign> Campaigns { get; set; } = new List<Campaign>();
 
+    public virtual ICollection<Campaign> CampaignSubmittedByAccounts { get; set; } = new List<Campaign>();
+
+    public virtual ICollection<Campaign> CampaignReviewedByAccounts { get; set; } = new List<Campaign>();
+
+    public virtual ICollection<CampaignApprovalLog> CampaignApprovalLogs { get; set; } = new List<CampaignApprovalLog>();
+
+    public virtual ICollection<CampaignScheduleLog> CampaignScheduleLogs { get; set; } = new List<CampaignScheduleLog>();
+
+    public virtual ICollection<CampaignSchedule> CampaignSchedules { get; set; } = new List<CampaignSchedule>();
+
     public virtual ICollection<BlogPostReaction> BlogPostReactions { get; set; } = new List<BlogPostReaction>();
 
     public virtual Cart? Cart { get; set; }

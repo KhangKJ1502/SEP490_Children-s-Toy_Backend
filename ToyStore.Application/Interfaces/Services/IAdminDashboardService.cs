@@ -28,4 +28,15 @@ public interface IAdminDashboardService
     Task<Result<DashboardOrderRateStatisticsDto>> GetOrderRateStatisticsAsync(
         DashboardTimeFilterDto filter,
         CancellationToken cancellationToken = default);
+
+    Task<Result<DashboardTopSellingProductsDto>> GetTopSellingProductsAsync(
+        int limit,
+        CancellationToken cancellationToken = default);
+
+    Task<Result<DashboardSlowMovingProductsDto>> GetSlowMovingProductsAsync(
+        int limit,
+        CancellationToken cancellationToken = default);
+
+    Task<Result<DashboardTotalProductsDto>> GetTotalProductsAsync(
+        CancellationToken cancellationToken = default);
 }

@@ -9,8 +9,7 @@ public interface IWalletService
     Task<Result<WalletDto>> GetMyWalletAsync(CancellationToken cancellationToken = default);
 
     Task<Result<PaginatedResponse<WalletTransactionDto>>> GetWalletTransactionsAsync(
-        int pageNumber = 1,
-        int pageSize = 10,
+        WalletTransactionQueryDto query,
         CancellationToken cancellationToken = default);
 
     Task<Result<WalletDto>> CreateWalletWithPinAsync(

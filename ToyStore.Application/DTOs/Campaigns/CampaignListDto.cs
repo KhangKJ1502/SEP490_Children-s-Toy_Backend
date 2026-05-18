@@ -20,9 +20,13 @@ public class CampaignListDto
 
     public string? ReferenceType { get; set; }
 
-    public int CreatedByAccountId { get; set; }
+    public int? CreatedByAccountId { get; set; }
 
     public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }
+
+    public byte RescheduleCount { get; set; }
+
+    public byte MaxRescheduleCount { get; set; }
 }

@@ -117,6 +117,9 @@ public static class DependencyInjection
         services.AddScoped<IValidator<UpdateCampaignDto>, UpdateCampaignValidator>();
         services.AddScoped<IValidator<ChangePasswordDto>, ChangePasswordValidator>();
         services.AddScoped<IValidator<UpdateCampaignDto>, UpdateCampaignValidator>();
+        services.AddScoped<IValidator<ReviewCampaignDto>, ReviewCampaignValidator>();
+        services.AddScoped<IValidator<ScheduleCampaignDto>, ScheduleCampaignValidator>();
+        services.AddScoped<IValidator<RescheduleCampaignDto>, RescheduleCampaignValidator>();
 
         // Validator Google OAuth
         services.AddScoped<IValidator<GoogleLoginDto>, GoogleLoginValidator>();
@@ -172,6 +175,8 @@ public static class DependencyInjection
         services.AddScoped<IProductRepository, ProductRepository>();
         services.AddScoped<ITemplateRepository, TemplateRepository>();
         services.AddScoped<ICampaignRepository, CampaignRepository>();
+        services.AddScoped<ICampaignApprovalLogRepository, CampaignApprovalLogRepository>();
+        services.AddScoped<ICampaignScheduleRepository, CampaignScheduleRepository>();
         services.AddScoped<IAddressRepository, AddressRepository>();
         services.AddScoped<ICustomerChildRepository, CustomerChildRepository>();
         services.AddScoped<ICartRepository, CartRepository>();
@@ -227,6 +232,7 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IProfileService, ProfileService>();
+        services.AddScoped<ICustomerNotificationPreferencesService, CustomerNotificationPreferencesService>();
         services.AddScoped<IHealthService, HealthService>();
         services.AddScoped<IAdminOrderService, AdminOrderService>();
         services.AddScoped<IAdminDashboardService, AdminDashboardService>();

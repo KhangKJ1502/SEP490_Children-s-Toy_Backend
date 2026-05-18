@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ToyStore.API.Extensions;
 using ToyStore.Application.DTOs;
@@ -9,19 +11,23 @@ namespace ToyStore.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class CampaignsController : ControllerBase
 {
     private readonly ICampaignService _campaignService;
     private readonly IImageUploadService _imageUploadService;
+    private readonly ICurrentUserService _currentUserService;
     private readonly ILogger<CampaignsController> _logger;
 
     public CampaignsController(
         ICampaignService campaignService,
         IImageUploadService imageUploadService,
+        ICurrentUserService currentUserService,
         ILogger<CampaignsController> logger)
     {
         _campaignService = campaignService;
         _imageUploadService = imageUploadService;
+        _currentUserService = currentUserService;
         _logger = logger;
     }
 
@@ -54,7 +60,11 @@ public class CampaignsController : ControllerBase
             SortDesc = sortDesc
         };
 
-        var result = await _campaignService.GetCampaignsAsync(query, cancellationToken);
+        var accountId = GetAccountId();
+        if (accountId is null) return Unauthorized();
+
+        var viewerIsAdmin = User.IsInRole("Admin");
+        var result = await _campaignService.GetCampaignsAsync(query, viewerIsAdmin, accountId.Value, cancellationToken);
         return result.ToActionResult();
     }
 
@@ -79,6 +89,18 @@ public class CampaignsController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var result = await _campaignService.GetCampaignByIdAsync(campaignId, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Khung giờ gửi hợp lệ (UTC) cho form lên lịch — tính từ rule hệ thống và voucher/sale/product gắn vào.
+    /// </summary>
+    [HttpGet("{campaignId:int}/schedule-bounds")]
+    public async Task<ActionResult<CampaignScheduleBoundsDto>> GetCampaignScheduleBounds(
+        [FromRoute] int campaignId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _campaignService.GetCampaignScheduleBoundsAsync(campaignId, cancellationToken);
         return result.ToActionResult();
     }
 
@@ -124,19 +146,25 @@ public class CampaignsController : ControllerBase
     }
 
     /// <summary>
-    /// Tao moi Campaign.
+    /// Tao moi Campaign (Status = Draft).
     /// </summary>
     [HttpPost]
     public async Task<ActionResult<CampaignDto>> CreateCampaign(
         [FromBody] CreateCampaignDto dto,
         CancellationToken cancellationToken = default)
     {
+        var accountId = GetAccountId();
+        if (accountId.HasValue)
+        {
+            dto.CreatedByAccountId = accountId.Value;
+        }
+
         var result = await _campaignService.CreateCampaignAsync(dto, cancellationToken);
         return result.ToCreatedResult($"api/campaigns/{result.Data?.CampaignId}");
     }
 
     /// <summary>
-    /// Cap nhat Campaign. Chi cho phep khi Status la Draft hoac Scheduled.
+    /// Cap nhat Campaign. Chi cho phep khi Status la Draft hoac Rejected.
     /// </summary>
     [HttpPut("{campaignId:int}")]
     public async Task<ActionResult<CampaignDto>> UpdateCampaign(
@@ -150,14 +178,106 @@ public class CampaignsController : ControllerBase
     }
 
     /// <summary>
-    /// Huy Campaign. Chi cho phep khi Status la Draft hoac Scheduled.
+    /// Huy Campaign.
     /// </summary>
     [HttpPost("{campaignId:int}/cancel")]
     public async Task<ActionResult> CancelCampaign(
         [FromRoute] int campaignId,
         CancellationToken cancellationToken = default)
     {
-        var result = await _campaignService.CancelCampaignAsync(campaignId, cancellationToken);
+        var accountId = GetAccountId();
+        if (accountId is null) return Unauthorized();
+
+        var isAdmin = User.IsInRole("Admin");
+        var result = await _campaignService.CancelCampaignAsync(
+            campaignId, accountId.Value, isAdmin, cancellationToken);
         return result.ToNoContentResult();
+    }
+
+    /// <summary>
+    /// Staff gui Campaign de Admin xet duyet. Campaign phai dang o trang thai Draft.
+    /// </summary>
+    [HttpPost("{campaignId:int}/submit")]
+    public async Task<ActionResult> SubmitCampaign(
+        [FromRoute] int campaignId,
+        CancellationToken cancellationToken = default)
+    {
+        var accountId = GetAccountId();
+        if (accountId is null) return Unauthorized();
+
+        var result = await _campaignService.SubmitCampaignForReviewAsync(
+            campaignId, accountId.Value, cancellationToken);
+        return result.ToNoContentResult();
+    }
+
+    /// <summary>
+    /// Admin duyet hoac tu choi Campaign. Campaign phai dang o trang thai PendingApproval.
+    /// </summary>
+    [HttpPost("{campaignId:int}/review")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> ReviewCampaign(
+        [FromRoute] int campaignId,
+        [FromBody] ReviewCampaignDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var accountId = GetAccountId();
+        if (accountId is null) return Unauthorized();
+
+        var result = await _campaignService.ReviewCampaignAsync(
+            campaignId, dto, accountId.Value, cancellationToken);
+        return result.ToNoContentResult();
+    }
+
+    /// <summary>
+    /// Staff dat lich gui Campaign. Campaign phai duoc Admin duyet truoc (Status = Approved).
+    /// </summary>
+    [HttpPost("{campaignId:int}/schedule")]
+    public async Task<ActionResult<ScheduleCampaignResultDto>> ScheduleCampaign(
+        [FromRoute] int campaignId,
+        [FromBody] ScheduleCampaignDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var accountId = GetAccountId();
+        if (accountId is null) return Unauthorized();
+
+        var result = await _campaignService.ScheduleCampaignAsync(
+            campaignId, dto, accountId.Value, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    /// <summary>Staff rut lui khi dang cho duyet.</summary>
+    [HttpPost("{campaignId:int}/recall")]
+    public async Task<ActionResult> RecallCampaign(
+        [FromRoute] int campaignId,
+        CancellationToken cancellationToken = default)
+    {
+        var accountId = GetAccountId();
+        if (accountId is null) return Unauthorized();
+
+        var result = await _campaignService.RecallCampaignAsync(campaignId, accountId.Value, cancellationToken);
+        return result.ToNoContentResult();
+    }
+
+    /// <summary>Doi lich khi da Scheduled.</summary>
+    [HttpPost("{campaignId:int}/reschedule")]
+    public async Task<ActionResult<ScheduleCampaignResultDto>> RescheduleCampaign(
+        [FromRoute] int campaignId,
+        [FromBody] RescheduleCampaignDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var accountId = GetAccountId();
+        if (accountId is null) return Unauthorized();
+
+        var result = await _campaignService.RescheduleCampaignAsync(campaignId, dto, accountId.Value, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    // ── Private helpers ────────────────────────────────────────────────────────
+
+    private int? GetAccountId()
+    {
+        var claim = User.FindFirst("AccountID")?.Value
+                 ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        return int.TryParse(claim, out var id) ? id : null;
     }
 }
