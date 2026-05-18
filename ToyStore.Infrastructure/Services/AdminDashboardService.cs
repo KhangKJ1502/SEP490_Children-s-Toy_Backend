@@ -348,6 +348,89 @@ public class AdminDashboardService : IAdminDashboardService
         });
     }
 
+    public async Task<Result<DashboardTopSellingProductsDto>> GetTopSellingProductsAsync(
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        var resolvedLimit = ResolveTopLimit(limit);
+
+        var products = await BuildValidSoldOrderDetailsQuery()
+            .GroupBy(od => new
+            {
+                od.ProductId,
+                ProductName = od.Product.ProductName,
+                ImageUrl = od.Product.ProductImage != null
+                    ? od.Product.ProductImage.ImageUrl
+                    : od.ProductImage
+            })
+            .Select(g => new DashboardTopSellingProductItemDto
+            {
+                ProductId = g.Key.ProductId,
+                ProductName = g.Key.ProductName,
+                ImageUrl = g.Key.ImageUrl,
+                TotalSold = g.Sum(x => (int)x.Quantity),
+                Revenue = g.Sum(x => x.LineTotal ?? 0m)
+            })
+            .OrderByDescending(x => x.TotalSold)
+            .ThenByDescending(x => x.Revenue)
+            .ThenBy(x => x.ProductName)
+            .Take(resolvedLimit)
+            .ToListAsync(cancellationToken);
+
+        return Result<DashboardTopSellingProductsDto>.Success(new DashboardTopSellingProductsDto
+        {
+            Limit = resolvedLimit,
+            TotalItems = products.Count,
+            Products = products
+        });
+    }
+
+    public async Task<Result<DashboardSlowMovingProductsDto>> GetSlowMovingProductsAsync(
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        var resolvedLimit = ResolveSlowMovingLimit(limit);
+        var nowUtc = _timeProvider.UtcNow;
+
+        var products = await _context.Products
+            .AsNoTracking()
+            .Where(p => !p.IsDeleted && p.Quantity > 0)
+            .OrderBy(p => p.CreatedAt)
+            .ThenBy(p => p.ProductId)
+            .Select(p => new DashboardSlowMovingProductItemDto
+            {
+                ProductId = p.ProductId,
+                ProductName = p.ProductName,
+                ImageUrl = p.ProductImage != null ? p.ProductImage.ImageUrl : null,
+                QuantityInStock = p.Quantity,
+                StockedAt = p.CreatedAt,
+                DaysInStock = EF.Functions.DateDiffDay(p.CreatedAt, nowUtc)
+            })
+            .Take(resolvedLimit)
+            .ToListAsync(cancellationToken);
+
+        return Result<DashboardSlowMovingProductsDto>.Success(new DashboardSlowMovingProductsDto
+        {
+            Limit = resolvedLimit,
+            TotalItems = products.Count,
+            Products = products
+        });
+    }
+
+    public async Task<Result<DashboardTotalProductsDto>> GetTotalProductsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var totalProducts = await _context.Products
+            .AsNoTracking()
+            .Where(p => !p.IsDeleted)
+            .CountAsync(cancellationToken);
+
+        return Result<DashboardTotalProductsDto>.Success(new DashboardTotalProductsDto
+        {
+            TotalProducts = totalProducts
+        });
+    }
+
     private IQueryable<Order> BuildRevenueQuery(DashboardTimeRangeInternalDto range)
     {
         string[] validRevenueStatuses = [OrderStatuses.Delivered, OrderStatuses.Completed];
@@ -358,6 +441,40 @@ public class AdminDashboardService : IAdminDashboardService
             .Where(o => validRevenueStatuses.Contains(o.Status.StatusName))
             .Where(o => (o.CompletedAt ?? o.DeliveredAt ?? o.PaidAt ?? o.OrderDate) >= range.StartUtc
                 && (o.CompletedAt ?? o.DeliveredAt ?? o.PaidAt ?? o.OrderDate) < range.EndUtcExclusive);
+    }
+
+    private IQueryable<OrderDetail> BuildValidSoldOrderDetailsQuery()
+    {
+        string[] finalOrderStatuses = [OrderStatuses.Delivered, OrderStatuses.Completed];
+        string[] invalidOrderStatuses = [OrderStatuses.Cancelled, OrderStatuses.Refunded];
+
+        return _context.OrderDetails
+            .AsNoTracking()
+            .Where(od => !od.Order.IsDeleted && !od.Product.IsDeleted)
+            .Where(od =>
+                (od.Order.PaymentStatus == PaymentStatuses.Paid
+                 || finalOrderStatuses.Contains(od.Order.Status.StatusName))
+                && !invalidOrderStatuses.Contains(od.Order.Status.StatusName));
+    }
+
+    private static int ResolveTopLimit(int requestedLimit)
+    {
+        if (requestedLimit <= 0)
+        {
+            return 10;
+        }
+
+        return Math.Min(requestedLimit, 50);
+    }
+
+    private static int ResolveSlowMovingLimit(int requestedLimit)
+    {
+        if (requestedLimit <= 0)
+        {
+            return 5;
+        }
+
+        return Math.Min(requestedLimit, 50);
     }
 
     private Result<DashboardTimeRangePairDto> ResolveRangePair(DashboardTimeFilterDto filter)
