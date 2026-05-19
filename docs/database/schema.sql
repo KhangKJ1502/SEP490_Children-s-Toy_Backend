@@ -892,10 +892,12 @@ CREATE TABLE [ReviewProductImages] (
     [ReviewProductImageID] INT IDENTITY(1,1) PRIMARY KEY,
     [ReviewProductID]      INT NOT NULL,
     [ImageURL]             VARCHAR(500) NOT NULL,
-    [ModerationStatus] VARCHAR(20) NOT NULL DEFAULT 'Pending'
+    [ModerationStatus]     VARCHAR(20) NOT NULL DEFAULT 'Pending'
         CONSTRAINT [CK_ReviewProductImages_ModerationStatus] CHECK (
             [ModerationStatus] IN ('Pending', 'Approved', 'Rejected', 'ManualReview')
         ),
+    [PHash]                VARCHAR(64)  NULL,
+    [AIRawResult]          NVARCHAR(MAX) NULL,
     [IsDeleted]            BIT NOT NULL DEFAULT 0,
     [CreatedAt]            DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [UpdatedAt]            DATETIME2(0) NULL,
@@ -1574,18 +1576,19 @@ GO
 CREATE TABLE [Notification].[UserPreferences] (
     [PreferenceID] INT IDENTITY(1,1) PRIMARY KEY,
     [AccountID]    INT NOT NULL UNIQUE,
-    [EmailOptIn]   BIT NOT NULL DEFAULT 1, 
-    [WebPushOptIn] BIT NOT NULL DEFAULT 0, 
-    [OrderUpdates] BIT NOT NULL DEFAULT 1, 
-    [Promotions]   BIT NOT NULL DEFAULT 1, 
-    [StockAlerts]  BIT NOT NULL DEFAULT 1, 
+    [EmailOptIn]   BIT NOT NULL DEFAULT 1,
+    [WebPushOptIn] BIT NOT NULL DEFAULT 0,
+    [OrderUpdates] BIT NOT NULL DEFAULT 1,
+    [Promotions]   BIT NOT NULL DEFAULT 1,
+    [StockAlerts]  BIT NOT NULL DEFAULT 1,
     [BlogAlerts]   BIT NOT NULL DEFAULT 1,
     [UpdatedAt]    DATETIME2(0) NULL,
     CONSTRAINT [FK_UserPreferences_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [dbo].[Accounts]([AccountID])
 );
 GO
-
-CREATE TRIGGER [TR_Accounts_InitPreferences]
+ 
+-- [FIX-02] CREATE OR ALTER để idempotent
+CREATE OR ALTER TRIGGER [TR_Accounts_InitPreferences]
 ON [dbo].[Accounts]
 AFTER INSERT
 AS
@@ -1595,142 +1598,446 @@ BEGIN
     SELECT [AccountID] FROM inserted;
 END;
 GO
-
+ 
 CREATE TABLE [Notification].[Campaigns] (
-    [CampaignID]         INT IDENTITY(1,1) NOT NULL,
-    [CampaignName]       NVARCHAR(255)     NOT NULL,
-    [TemplateCode]       VARCHAR(50)       NULL,
-    [TitleOverride]      NVARCHAR(255)     NULL,
-    [MessageOverride]    NVARCHAR(500)     NULL,
-    [SourceType]         VARCHAR(10)       NOT NULL DEFAULT 'ADMIN',
-    [TargetType]         VARCHAR(10)       NOT NULL DEFAULT 'ALL',
-    [ReferenceType]      VARCHAR(20)       NULL,     
-    [ReferenceID]        INT               NULL,
-    [Status]             VARCHAR(15)       NOT NULL DEFAULT 'Draft',
-    [ScheduledAt]        DATETIME2(0)      NULL,
-    [EventKey]           VARCHAR(100)      NULL,
-    [ImageUrl]           NVARCHAR(500)     NULL,
-    [ActionType]         NVARCHAR(20)      NULL,
-    [ActionTarget]       NVARCHAR(500)     NULL,
-    [IsDeleted]          BIT               NOT NULL DEFAULT 0,
-    [CreatedByAccountID] INT               NULL,    
-    [CreatedAt]          DATETIME2(0)      NOT NULL DEFAULT GETDATE(),
-    [UpdatedAt]          DATETIME2(0)      NULL,
+    [CampaignID]           INT           IDENTITY(1,1) NOT NULL,
+    [CampaignName]         NVARCHAR(255) NOT NULL,
+    [TemplateCode]         VARCHAR(50)   NULL,
+    [TitleOverride]        NVARCHAR(255) NULL,
+    [MessageOverride]      NVARCHAR(500) NULL,
+    [SourceType]           VARCHAR(10)   NOT NULL DEFAULT 'ADMIN',
+    [TargetType]           VARCHAR(10)   NOT NULL DEFAULT 'ALL',
+    [ReferenceType]        VARCHAR(20)   NULL,
+    [ReferenceID]          INT           NULL,
+    [SubmittedByAccountID] INT           NULL,
+    [SubmittedAt]          DATETIME2(0)  NULL,
+    [ReviewedByAccountID]  INT           NULL,
+    [ReviewedAt]           DATETIME2(0)  NULL,
+    [ReviewNote]           NVARCHAR(500) NULL,
+    [Status]               VARCHAR(20)   NOT NULL DEFAULT 'Draft',
+    [EventKey]             VARCHAR(100)  NULL,
+    [ImageUrl]             NVARCHAR(500) NULL,
+    [ActionType]           NVARCHAR(20)  NULL,
+    [ActionTarget]         NVARCHAR(500) NULL,
+ 
+    [ValidFrom]            DATETIME2(0)  NULL,
+    [ValidTo]              DATETIME2(0)  NULL,
+    [ScheduledAt]          DATETIME2(0)  NULL,
+    [ApprovedExpireAt]     DATETIME2(0)  NULL,
+    [RescheduleCount]      TINYINT       NOT NULL DEFAULT 0,
+    [MaxRescheduleCount]   TINYINT       NOT NULL DEFAULT 3,
+ 
+    [IsDeleted]            BIT           NOT NULL DEFAULT 0,
+    [CreatedByAccountID]   INT           NULL,
+    [CreatedAt]            DATETIME2(0)  NOT NULL DEFAULT GETUTCDATE(),
+    [UpdatedAt]            DATETIME2(0)  NULL,
+ 
     CONSTRAINT [PK_Campaigns] PRIMARY KEY ([CampaignID]),
-    CONSTRAINT [CK_Campaigns_SourceType] CHECK ([SourceType] IN ('ADMIN', 'SYSTEM')),
-    CONSTRAINT [CK_Campaigns_TargetType] CHECK ([TargetType] IN ('ALL', 'INDIVIDUAL', 'ROLE')),
-    CONSTRAINT [CK_Campaigns_ReferenceType] CHECK ([ReferenceType] IN ('VOUCHER', 'PRODUCT', 'BLOG', 'SALE', 'OTHER')),
-    CONSTRAINT [CK_Campaigns_Status] CHECK ([Status] IN ('Draft', 'Scheduled', 'Sending', 'Sent', 'Cancelled', 'Failed')),
-    CONSTRAINT [CK_Campaigns_AdminRequiresCreator] CHECK ([SourceType] = 'SYSTEM' OR [CreatedByAccountID] IS NOT NULL),
-    CONSTRAINT [CK_Campaigns_ScheduledRequiresTime] CHECK ([Status] <> 'Scheduled' OR [ScheduledAt] IS NOT NULL),
-    CONSTRAINT [CK_Campaigns_MustHaveContent] CHECK (
-        [TemplateCode] IS NOT NULL OR ([TitleOverride] IS NOT NULL AND [MessageOverride] IS NOT NULL)
-    ),
-    CONSTRAINT [CK_Campaigns_ReferenceConsistency] CHECK (
-        ([ReferenceType] IS NULL AND [ReferenceID] IS NULL) OR ([ReferenceType] IS NOT NULL AND [ReferenceID] IS NOT NULL)
-    ),
-    CONSTRAINT [FK_Campaigns_Templates] FOREIGN KEY ([TemplateCode])       REFERENCES [Notification].[Templates]([TemplateCode]),
-    CONSTRAINT [FK_Campaigns_Accounts]  FOREIGN KEY ([CreatedByAccountID]) REFERENCES [dbo].[Accounts]([AccountID])
+ 
+    /* Nguồn tạo */
+    CONSTRAINT [CK_Campaigns_SourceType]
+        CHECK ([SourceType] IN ('ADMIN', 'SYSTEM')),
+ 
+    /* Loại target */
+    CONSTRAINT [CK_Campaigns_TargetType]
+        CHECK ([TargetType] IN ('ALL', 'INDIVIDUAL', 'ROLE')),
+ 
+    /* Loại entity tham chiếu */
+    CONSTRAINT [CK_Campaigns_ReferenceType]
+        CHECK ([ReferenceType] IS NULL
+               OR [ReferenceType] IN ('VOUCHER', 'PRODUCT', 'BLOG', 'SALE', 'OTHER')),
+ 
+    /* Vòng đời status */
+    CONSTRAINT [CK_Campaigns_Status]
+        CHECK ([Status] IN (
+            'Draft', 'PendingApproval', 'Approved', 'Rejected',
+            'Scheduled', 'Sending', 'Sent', 'Cancelled', 'Failed'
+        )),
+ 
+    /* ADMIN campaign bắt buộc có người tạo, SYSTEM thì không */
+    CONSTRAINT [CK_Campaigns_AdminRequiresCreator]
+        CHECK ([SourceType] = 'SYSTEM' OR [CreatedByAccountID] IS NOT NULL),
+ 
+    /* Phải có nội dung: template HOẶC title+message tùy chỉnh */
+    CONSTRAINT [CK_Campaigns_MustHaveContent]
+        CHECK (
+            [TemplateCode] IS NOT NULL
+            OR ([TitleOverride] IS NOT NULL AND [MessageOverride] IS NOT NULL)
+        ),
+ 
+    /* ReferenceType và ReferenceID phải cùng NULL hoặc cùng có giá trị */
+    CONSTRAINT [CK_Campaigns_ReferenceConsistency]
+        CHECK (
+            ([ReferenceType] IS NULL AND [ReferenceID] IS NULL)
+            OR ([ReferenceType] IS NOT NULL AND [ReferenceID] IS NOT NULL)
+        ),
+ 
+
+    CONSTRAINT [CK_Campaigns_RejectedNeedsNote]
+        CHECK ([Status] <> 'Rejected' OR [ReviewNote] IS NOT NULL),
+ 
+    CONSTRAINT [CK_Campaigns_ValidRange]
+        CHECK ([ValidFrom] IS NULL OR [ValidTo] IS NULL OR [ValidFrom] < [ValidTo]),
+ 
+    CONSTRAINT [CK_Campaigns_ScheduledAtInRange]
+        CHECK (
+            [ScheduledAt] IS NULL
+            OR [ValidFrom] IS NULL
+            OR [ValidTo]   IS NULL
+            OR ([ScheduledAt] >= [ValidFrom] AND [ScheduledAt] <= [ValidTo])
+        ),
+ 
+    CONSTRAINT [CK_Campaigns_ScheduledAtConsistency]
+        CHECK (
+            [ScheduledAt] IS NULL
+            OR [Status] IN ('Scheduled', 'Sending', 'Sent', 'Cancelled', 'Failed')
+        ),
+ 
+    CONSTRAINT [CK_Campaigns_ApprovedExpireConsistency]
+        CHECK (
+            [ApprovedExpireAt] IS NULL
+            OR [ReviewedAt]    IS NULL
+            OR [ApprovedExpireAt] > [ReviewedAt]
+        ),
+ 
+    CONSTRAINT [CK_Campaigns_ApprovedExpireOnlyAfterApprove]
+        CHECK (
+            [ApprovedExpireAt] IS NULL
+            OR [Status] IN ('Approved', 'Scheduled', 'Sending', 'Sent', 'Cancelled', 'Failed')
+        ),
+ 
+    /* RescheduleCount không vượt MaxRescheduleCount */
+    CONSTRAINT [CK_Campaigns_RescheduleNotExceedMax]
+        CHECK ([RescheduleCount] <= [MaxRescheduleCount]),
+ 
+    CONSTRAINT [FK_Campaigns_Templates]
+        FOREIGN KEY ([TemplateCode]) REFERENCES [Notification].[Templates]([TemplateCode]),
+    CONSTRAINT [FK_Campaigns_Accounts]
+        FOREIGN KEY ([CreatedByAccountID]) REFERENCES [dbo].[Accounts]([AccountID]),
+    CONSTRAINT [FK_Campaigns_SubmittedBy]
+        FOREIGN KEY ([SubmittedByAccountID]) REFERENCES [dbo].[Accounts]([AccountID]),
+    CONSTRAINT [FK_Campaigns_ReviewedBy]
+        FOREIGN KEY ([ReviewedByAccountID]) REFERENCES [dbo].[Accounts]([AccountID])
 );
 GO
  
-CREATE UNIQUE INDEX [UQ_Campaigns_EventKey_Active] ON [Notification].[Campaigns] ([EventKey]) WHERE [EventKey] IS NOT NULL AND [IsDeleted] = 0;
-CREATE INDEX [IX_Campaigns_Status_ScheduledAt]     ON [Notification].[Campaigns] ([Status], [ScheduledAt]) WHERE [IsDeleted] = 0 AND [Status] IN ('Scheduled', 'Sending');
+CREATE UNIQUE INDEX [UQ_Campaigns_EventKey_Active]
+    ON [Notification].[Campaigns] ([EventKey])
+    WHERE [EventKey] IS NOT NULL AND [IsDeleted] = 0;
+ 
+CREATE INDEX [IX_Campaigns_Status]
+    ON [Notification].[Campaigns] ([Status], [CreatedAt] DESC)
+    WHERE [IsDeleted] = 0;
+
+CREATE INDEX [IX_Campaigns_PendingApproval]
+    ON [Notification].[Campaigns] ([Status], [SubmittedAt] ASC)
+    INCLUDE ([CampaignID], [CampaignName], [SubmittedByAccountID])
+    WHERE [Status] = 'PendingApproval' AND [IsDeleted] = 0;
+ 
+CREATE NONCLUSTERED INDEX [IX_Campaigns_ApprovedExpired]
+    ON [Notification].[Campaigns] ([Status], [ApprovedExpireAt])
+    INCLUDE ([CampaignID], [SubmittedByAccountID], [CreatedByAccountID])
+    WHERE [Status] = 'Approved' AND [IsDeleted] = 0;
+ 
+CREATE NONCLUSTERED INDEX [IX_Campaigns_ScheduledWithRef]
+    ON [Notification].[Campaigns] ([Status], [ReferenceType], [ScheduledAt])
+    INCLUDE ([CampaignID], [ReferenceID], [ValidTo])
+    WHERE [Status] = 'Scheduled'
+      AND [ReferenceType] IS NOT NULL
+      AND [IsDeleted] = 0;
+GO
+ 
+CREATE TABLE [Notification].[CampaignApprovalLogs] (
+    [LogID]      INT           IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    [CampaignID] INT           NOT NULL,
+    [Action]     VARCHAR(20)   NOT NULL
+        CONSTRAINT [CK_CAL_Action] CHECK ([Action] IN (
+            'Submitted',    -- Staff nộp lên Admin duyệt
+            'Approved',     -- Admin duyệt
+            'Rejected',     -- Admin từ chối (Note bắt buộc)
+            'Recalled',     -- Staff rút lại trước khi Admin duyệt
+            'Scheduled',    -- Staff lên lịch lần đầu
+            'Rescheduled',  -- Staff đổi lịch (lần 2+) ← v3.3
+            'Cancelled',    -- Huỷ campaign
+            'Overridden'    -- Admin override đặc biệt
+        )),
+    [ActorID]    INT           NOT NULL,
+    [Note]       NVARCHAR(500) NULL,
+    [CreatedAt]  DATETIME2(0)  NOT NULL DEFAULT GETUTCDATE(),
+ 
+    CONSTRAINT [FK_CAL_Campaigns]
+        FOREIGN KEY ([CampaignID]) REFERENCES [Notification].[Campaigns]([CampaignID]),
+    CONSTRAINT [FK_CAL_Actor]
+        FOREIGN KEY ([ActorID]) REFERENCES [dbo].[Accounts]([AccountID]),
+ 
+    /* Rejected bắt buộc ghi chú lý do */
+    CONSTRAINT [CK_CAL_RejectedNeedsNote]
+        CHECK ([Action] <> 'Rejected' OR [Note] IS NOT NULL)
+);
+GO
+ 
+/* Xem lịch sử duyệt của một campaign, mới nhất lên đầu */
+CREATE NONCLUSTERED INDEX [IX_CAL_Campaign]
+    ON [Notification].[CampaignApprovalLogs] ([CampaignID], [CreatedAt] DESC)
+    INCLUDE ([Action], [ActorID]);
+ 
+/* Admin xem danh sách campaign chờ duyệt qua log */
+CREATE NONCLUSTERED INDEX [IX_CAL_PendingSubmissions]
+    ON [Notification].[CampaignApprovalLogs] ([Action], [CreatedAt] ASC)
+    INCLUDE ([CampaignID], [ActorID])
+    WHERE [Action] = 'Submitted';
+GO
+ 
+CREATE TABLE [Notification].[CampaignScheduleLogs] (
+    [LogID]               INT           IDENTITY(1,1) PRIMARY KEY,
+    [CampaignID]          INT           NOT NULL,
+    [ActorID]             INT           NOT NULL,
+    [Action]              VARCHAR(15)   NOT NULL
+        CONSTRAINT [CK_CSL_Action]
+            CHECK ([Action] IN ('Scheduled', 'Rescheduled')),
+    [PreviousScheduledAt] DATETIME2(0)  NULL,   -- NULL nếu lần set đầu tiên
+    [NewScheduledAt]      DATETIME2(0)  NOT NULL,
+    [Reason]              NVARCHAR(200) NULL,    -- Staff ghi chú lý do đổi lịch (khuyến khích)
+    [CreatedAt]           DATETIME2(0)  NOT NULL DEFAULT GETUTCDATE(),
+ 
+    CONSTRAINT [FK_CSL_Campaigns]
+        FOREIGN KEY ([CampaignID]) REFERENCES [Notification].[Campaigns]([CampaignID]),
+    CONSTRAINT [FK_CSL_Actor]
+        FOREIGN KEY ([ActorID]) REFERENCES [dbo].[Accounts]([AccountID]),
+ 
+    CONSTRAINT [CK_CSL_ActionConsistency]
+        CHECK (
+            ([Action] = 'Scheduled'   AND [PreviousScheduledAt] IS NULL)
+            OR ([Action] = 'Rescheduled' AND [PreviousScheduledAt] IS NOT NULL)
+        )
+);
+GO
+ 
+/* Xem lịch sử đổi lịch của một campaign */
+CREATE NONCLUSTERED INDEX [IX_CSL_Campaign]
+    ON [Notification].[CampaignScheduleLogs] ([CampaignID], [CreatedAt] DESC)
+    INCLUDE ([ActorID], [Action], [NewScheduledAt], [PreviousScheduledAt]);
 GO
 
+CREATE TABLE [Notification].[CampaignSchedules] (
+    [ScheduleID]      INT           IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    [CampaignID]      INT           NOT NULL UNIQUE,
+    [ScheduledBy]     INT           NOT NULL,
+    [ScheduledAt]     DATETIME2(0)  NOT NULL,
+    [LockedByJobID]   INT           NULL,
+    [LockedAt]        DATETIME2(0)  NULL,
+    [ExecutionStatus] VARCHAR(20)   NOT NULL DEFAULT 'Waiting'
+        CONSTRAINT [CK_CS_ExecutionStatus] CHECK ([ExecutionStatus] IN (
+            'Waiting',      -- Chờ đến giờ ScheduledAt
+            'Dispatched',   -- Job đã lock, đang fan-out
+            'Done',         -- Gửi thành công
+            'Failed',       -- Thất bại sau MaxAttemptCount lần
+            'Cancelled'     -- Bị huỷ trước khi gửi
+        )),
+    [AttemptCount]    TINYINT       NOT NULL DEFAULT 0,
+    [MaxAttemptCount] TINYINT       NOT NULL DEFAULT 3,  -- ← v3.3 NEW
+    [LastError]       NVARCHAR(500) NULL,
+    [ExecutedAt]      DATETIME2(0)  NULL,
+    [CreatedAt]       DATETIME2(0)  NOT NULL DEFAULT GETUTCDATE(),
+    [UpdatedAt]       DATETIME2(0)  NULL,
+ 
+    CONSTRAINT [FK_CS_Campaigns]
+        FOREIGN KEY ([CampaignID])    REFERENCES [Notification].[Campaigns]([CampaignID]),
+    CONSTRAINT [FK_CS_ScheduledBy]
+        FOREIGN KEY ([ScheduledBy])   REFERENCES [dbo].[Accounts]([AccountID]),
+    CONSTRAINT [FK_CS_Jobs]
+        FOREIGN KEY ([LockedByJobID]) REFERENCES [System].[BackgroundJobs]([JobID]),
+ 
+    /* Lock phải có cả JobID lẫn thời điểm, hoặc cả hai NULL */
+    CONSTRAINT [CK_CS_LockConsistency]
+        CHECK (
+            ([LockedByJobID] IS NULL AND [LockedAt] IS NULL)
+            OR ([LockedByJobID] IS NOT NULL AND [LockedAt] IS NOT NULL)
+        ),
+ 
+    /* ExecutedAt chỉ có giá trị khi Done hoặc Failed */
+    CONSTRAINT [CK_CS_ExecutedAtConsistency]
+        CHECK (
+            [ExecutionStatus] IN ('Done', 'Failed')
+            OR [ExecutedAt] IS NULL
+        ),
+ 
+    /* AttemptCount không vượt MaxAttemptCount */
+    CONSTRAINT [CK_CS_AttemptNotExceedMax]  -- ← v3.3 NEW
+        CHECK ([AttemptCount] <= [MaxAttemptCount])
+);
+GO
+ 
+/* Job quét lịch chờ gửi */
+CREATE NONCLUSTERED INDEX [IX_CS_Waiting]
+    ON [Notification].[CampaignSchedules] ([ExecutionStatus], [ScheduledAt])
+    INCLUDE ([CampaignID], [AttemptCount], [MaxAttemptCount])
+    WHERE [ExecutionStatus] = 'Waiting';
+ 
+/* Job recovery: tìm lock bị treo */
+CREATE NONCLUSTERED INDEX [IX_CS_StaleLock]
+    ON [Notification].[CampaignSchedules] ([ExecutionStatus], [LockedAt])
+    INCLUDE ([CampaignID], [LockedByJobID])
+    WHERE [ExecutionStatus] = 'Dispatched';
+GO
+ 
+
+CREATE TABLE [Notification].[CampaignReferenceSnapshots] (
+    [SnapshotID]      INT           IDENTITY(1,1) PRIMARY KEY,
+    [CampaignID]      INT           NOT NULL,
+    [ReferenceType]   VARCHAR(20)   NOT NULL,
+    [ReferenceID]     INT           NOT NULL,
+ 
+    /* Trạng thái entity tại thời điểm Staff lên lịch */
+    [EntityStatus]    VARCHAR(20)   NOT NULL,   -- VD: 'Active', 'Scheduled', 'Published'
+    [EntityStartDate] DATETIME2(0)  NULL,        -- StartDate/StartAt của entity
+    [EntityEndDate]   DATETIME2(0)  NOT NULL,    -- EndDate/EndAt — field quan trọng nhất để so sánh
+ 
+    /* Revalidation tracking */
+    [IsStale]         BIT           NOT NULL DEFAULT 0,
+    [StaleReason]     NVARCHAR(200) NULL,        -- VD: 'EntityEndDate shortened', 'Entity deleted'
+    [StaleDetectedAt] DATETIME2(0)  NULL,
+ 
+    [SnapshotAt]      DATETIME2(0)  NOT NULL DEFAULT GETUTCDATE(),
+ 
+    CONSTRAINT [FK_CRS_Campaigns]
+        FOREIGN KEY ([CampaignID]) REFERENCES [Notification].[Campaigns]([CampaignID]),
+ 
+    CONSTRAINT [CK_CRS_ReferenceType]
+        CHECK ([ReferenceType] IN ('VOUCHER', 'PRODUCT', 'BLOG', 'SALE', 'OTHER')),
+ 
+    /* EntityEndDate phải sau EntityStartDate nếu có StartDate */
+    CONSTRAINT [CK_CRS_DateRange]
+        CHECK ([EntityStartDate] IS NULL OR [EntityEndDate] > [EntityStartDate]),
+ 
+    /* Khi stale: phải có lý do VÀ thời điểm phát hiện */
+    CONSTRAINT [CK_CRS_StaleConsistency]
+        CHECK (
+            [IsStale] = 0
+            OR ([StaleReason] IS NOT NULL AND [StaleDetectedAt] IS NOT NULL)
+        )
+);
+GO
+ 
+/* Revalidation job quét: snapshot chưa stale, sắp đến hoặc đã qua EntityEndDate */
+CREATE NONCLUSTERED INDEX [IX_CRS_RevalidationJob]
+    ON [Notification].[CampaignReferenceSnapshots] ([IsStale], [EntityEndDate])
+    INCLUDE ([CampaignID], [ReferenceType], [ReferenceID], [EntityStatus])
+    WHERE [IsStale] = 0;
+ 
+/* Mỗi campaign chỉ có 1 snapshot đang active */
+CREATE UNIQUE INDEX [UQ_CRS_OneLiveSnapshotPerCampaign]
+    ON [Notification].[CampaignReferenceSnapshots] ([CampaignID])
+    WHERE [IsStale] = 0;
+GO
+ 
+ 
+ 
 CREATE TABLE [Notification].[CampaignStats] (
-    [StatID]       INT IDENTITY(1,1) NOT NULL,
-    [CampaignID]   INT               NOT NULL,
-    [TotalSent]    INT               NOT NULL DEFAULT 0,  
-    [TotalRead]    INT               NOT NULL DEFAULT 0, 
-    [TotalClicked] INT               NOT NULL DEFAULT 0,  
-    [ComputedAt]   DATETIME2(0)      NOT NULL DEFAULT GETDATE(),
-    CONSTRAINT [PK_CampaignStats]                 PRIMARY KEY ([StatID]),
-    CONSTRAINT [UQ_CampaignStats_CampaignID]      UNIQUE ([CampaignID]),
-    CONSTRAINT [FK_CampaignStats_Campaigns]       FOREIGN KEY ([CampaignID]) REFERENCES [Notification].[Campaigns]([CampaignID]),
-    CONSTRAINT [CK_CampaignStats_NonNegative]     CHECK ([TotalSent] >= 0 AND [TotalRead] >= 0 AND [TotalClicked] >= 0),
-    CONSTRAINT [CK_CampaignStats_ReadNotExceedSent] CHECK ([TotalRead] <= [TotalSent]),
+    [StatID]       INT          IDENTITY(1,1) NOT NULL,
+    [CampaignID]   INT          NOT NULL,
+    [TotalSent]    INT          NOT NULL DEFAULT 0,
+    [TotalRead]    INT          NOT NULL DEFAULT 0,
+    [TotalClicked] INT          NOT NULL DEFAULT 0,
+    [ComputedAt]   DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    CONSTRAINT [PK_CampaignStats]                      PRIMARY KEY ([StatID]),
+    CONSTRAINT [UQ_CampaignStats_CampaignID]           UNIQUE ([CampaignID]),
+    CONSTRAINT [FK_CampaignStats_Campaigns]            FOREIGN KEY ([CampaignID]) REFERENCES [Notification].[Campaigns]([CampaignID]),
+    CONSTRAINT [CK_CampaignStats_NonNegative]          CHECK ([TotalSent] >= 0 AND [TotalRead] >= 0 AND [TotalClicked] >= 0),
+    CONSTRAINT [CK_CampaignStats_ReadNotExceedSent]    CHECK ([TotalRead]    <= [TotalSent]),
     CONSTRAINT [CK_CampaignStats_ClickedNotExceedSent] CHECK ([TotalClicked] <= [TotalSent])
 );
 GO
-
+ 
 CREATE TABLE [Notification].[CampaignTargets] (
-    [CampaignTargetID] INT IDENTITY(1,1) NOT NULL,
-    [CampaignID]       INT               NOT NULL,
-    [TargetType]       VARCHAR(20)       NOT NULL DEFAULT 'ACCOUNT_ID',
-    [TargetValue]      VARCHAR(200)      NOT NULL,
+    [CampaignTargetID] INT          IDENTITY(1,1) NOT NULL,
+    [CampaignID]       INT          NOT NULL,
+    [TargetType]       VARCHAR(20)  NOT NULL DEFAULT 'ACCOUNT_ID',
+    [TargetValue]      VARCHAR(200) NOT NULL,
     CONSTRAINT [PK_CampaignTargets]             PRIMARY KEY ([CampaignTargetID]),
     CONSTRAINT [CK_CampaignTargets_TargetType]  CHECK ([TargetType] IN ('ACCOUNT_ID', 'ROLE_ID')),
     CONSTRAINT [UQ_CampaignTargets_NoDuplicate] UNIQUE ([CampaignID], [TargetType], [TargetValue]),
     CONSTRAINT [FK_CampaignTargets_Campaigns]   FOREIGN KEY ([CampaignID]) REFERENCES [Notification].[Campaigns]([CampaignID])
 );
 GO
-
+ 
 CREATE TABLE [Notification].[Deliveries] (
-    [DeliveryID]       BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    [AccountID]        INT                  NOT NULL,
-    [CreatedByJobID]   INT                  NULL,
-    [CampaignID]       INT                  NULL,
-    [TemplateCode]     VARCHAR(50)          NULL,
-    [RecipientType]    VARCHAR(15)          NOT NULL DEFAULT 'CUSTOMER'
-        CONSTRAINT [CK_Deliveries_RecipientType] CHECK ([RecipientType] IN ('CUSTOMER', 'ADMIN', 'STAFF', 'MERCHANDISE')),
-    [Channel]          VARCHAR(20)          NOT NULL DEFAULT 'WEB_BELL'
-        CONSTRAINT [CK_Deliveries_Channel] CHECK ([Channel] IN ('WEB_BELL', 'EMAIL')),
-    [ImageUrl]         NVARCHAR(500)        NULL,
-    [NotificationType] VARCHAR(20)          NOT NULL DEFAULT 'SYSTEM'
+    [DeliveryID]       BIGINT        IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    [AccountID]        INT           NOT NULL,
+    [CreatedByJobID]   INT           NULL,
+    [CampaignID]       INT           NULL,
+    [TemplateCode]     VARCHAR(50)   NULL,
+    [RecipientType]    VARCHAR(15)   NOT NULL DEFAULT 'CUSTOMER'
+        CONSTRAINT [CK_Deliveries_RecipientType]    CHECK ([RecipientType]    IN ('CUSTOMER', 'ADMIN', 'STAFF', 'MERCHANDISE')),
+    [Channel]          VARCHAR(20)   NOT NULL DEFAULT 'WEB_BELL'
+        CONSTRAINT [CK_Deliveries_Channel]          CHECK ([Channel]          IN ('WEB_BELL', 'EMAIL')),
+    [ImageUrl]         NVARCHAR(500) NULL,
+    [NotificationType] VARCHAR(20)   NOT NULL DEFAULT 'SYSTEM'
         CONSTRAINT [CK_Deliveries_NotificationType] CHECK ([NotificationType] IN ('ORDER', 'PROMOTION', 'SYSTEM', 'BLOG', 'STOCK')),
-    [ActionType]       NVARCHAR(20)         NULL,
-    [ActionTarget]     NVARCHAR(500)        NULL,
-    [Title]            NVARCHAR(255)        NOT NULL,
-    [Message]          NVARCHAR(500)        NOT NULL,
-    [Payload]          NVARCHAR(2000)       NOT NULL DEFAULT '{}'
-        CONSTRAINT [CK_Deliveries_PayloadIsJson] CHECK (ISJSON([Payload]) = 1),
-    [Status]           VARCHAR(10)          NOT NULL DEFAULT 'Unread'
-        CONSTRAINT [CK_Deliveries_Status] CHECK ([Status] IN ('Unread', 'Read', 'Archived')),
-    [ReadAt]           DATETIME2(0)         NULL,
-    [EmailStatus]      VARCHAR(15)          NULL
-        CONSTRAINT [CK_Deliveries_EmailStatus] CHECK ([EmailStatus] IN ('Pending', 'Sent', 'Failed')),
-    [PushStatus]       VARCHAR(15)          NULL
-        CONSTRAINT [CK_Deliveries_PushStatus] CHECK ([PushStatus] IN ('Pending', 'Sent', 'Failed')),
-    [IdempotencyKey] VARCHAR(200) UNIQUE NULL,
-    [IsDeleted]        BIT                  NOT NULL DEFAULT 0,
-    [CreatedAt]        DATETIME2(0)         NOT NULL DEFAULT GETDATE(),
-    [UpdatedAt]        DATETIME2(0)         NULL,
-
+    [ActionType]       NVARCHAR(20)  NULL,
+    [ActionTarget]     NVARCHAR(500) NULL,
+    [Title]            NVARCHAR(255) NOT NULL,
+    [Message]          NVARCHAR(500) NOT NULL,
+    [Payload]          NVARCHAR(2000) NOT NULL DEFAULT '{}'
+        CONSTRAINT [CK_Deliveries_PayloadIsJson]    CHECK (ISJSON([Payload]) = 1),
+    [Status]           VARCHAR(10)   NOT NULL DEFAULT 'Unread'
+        CONSTRAINT [CK_Deliveries_Status]           CHECK ([Status]           IN ('Unread', 'Read', 'Archived')),
+    [ReadAt]           DATETIME2(0)  NULL,
+    [EmailStatus]      VARCHAR(15)   NULL
+        CONSTRAINT [CK_Deliveries_EmailStatus]      CHECK ([EmailStatus]      IN ('Pending', 'Sent', 'Failed')),
+    [PushStatus]       VARCHAR(15)   NULL
+        CONSTRAINT [CK_Deliveries_PushStatus]       CHECK ([PushStatus]       IN ('Pending', 'Sent', 'Failed')),
+    [IdempotencyKey]   VARCHAR(200)  NULL,
+    [IsDeleted]        BIT           NOT NULL DEFAULT 0,
+    [CreatedAt]        DATETIME2(0)  NOT NULL DEFAULT GETDATE(),
+    [UpdatedAt]        DATETIME2(0)  NULL,
+ 
     CONSTRAINT [FK_Deliveries_Accounts]  FOREIGN KEY ([AccountID])      REFERENCES [dbo].[Accounts]([AccountID]),
     CONSTRAINT [FK_Deliveries_Templates] FOREIGN KEY ([TemplateCode])   REFERENCES [Notification].[Templates]([TemplateCode]),
     CONSTRAINT [FK_Deliveries_Campaigns] FOREIGN KEY ([CampaignID])     REFERENCES [Notification].[Campaigns]([CampaignID]),
     CONSTRAINT [FK_Deliveries_Jobs]      FOREIGN KEY ([CreatedByJobID]) REFERENCES [System].[BackgroundJobs]([JobID]),
-
+ 
     CONSTRAINT [CK_Deliveries_ReadAtConsistency] CHECK ([Status] <> 'Read' OR [ReadAt] IS NOT NULL)
 );
 GO
  
-CREATE INDEX [IX_Deliveries_AccountID_Status]    ON [Notification].[Deliveries] ([AccountID], [Status]) INCLUDE ([Title], [Message], [CreatedAt], [CampaignID], [NotificationType], [ImageUrl], [ActionType], [ActionTarget]) WHERE [IsDeleted] = 0;
-CREATE INDEX [IX_Deliveries_AccountID_CreatedAt] ON [Notification].[Deliveries] ([AccountID], [CreatedAt] DESC) WHERE [IsDeleted] = 0;
-CREATE INDEX [IX_Deliveries_PushStatus]          ON [Notification].[Deliveries] ([PushStatus], [CreatedAt]) WHERE [PushStatus] = 'Failed';
-GO
-
 CREATE UNIQUE INDEX [UQ_Deliveries_IdempotencyKey]
-ON [Notification].[Deliveries]([IdempotencyKey])
-WHERE [IdempotencyKey] IS NOT NULL;
+    ON [Notification].[Deliveries] ([IdempotencyKey])
+    WHERE [IdempotencyKey] IS NOT NULL;
+ 
+CREATE INDEX [IX_Deliveries_AccountID_Status]
+    ON [Notification].[Deliveries] ([AccountID], [Status])
+    INCLUDE ([Title], [Message], [CreatedAt], [CampaignID], [NotificationType], [ImageUrl], [ActionType], [ActionTarget])
+    WHERE [IsDeleted] = 0;
+ 
+CREATE INDEX [IX_Deliveries_AccountID_CreatedAt]
+    ON [Notification].[Deliveries] ([AccountID], [CreatedAt] DESC)
+    WHERE [IsDeleted] = 0;
+ 
+CREATE INDEX [IX_Deliveries_PushStatus]
+    ON [Notification].[Deliveries] ([PushStatus], [CreatedAt])
+    WHERE [PushStatus] = 'Failed';
 GO
-
+ 
 CREATE TABLE [Notification].[DeliveryActions] (
-    [ActionID]     BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    [DeliveryID]   BIGINT               NOT NULL,
-    [AccountID]    INT                  NOT NULL,
-    [ActionType]   VARCHAR(10)          NOT NULL
+    [ActionID]     BIGINT        IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    [DeliveryID]   BIGINT        NOT NULL,
+    [AccountID]    INT           NOT NULL,
+    [ActionType]   VARCHAR(10)   NOT NULL
         CONSTRAINT [CK_DeliveryActions_ActionType] CHECK ([ActionType] IN ('Read', 'Click', 'Dismiss')),
-    [ActionTarget] NVARCHAR(500)        NULL,
-    [OccurredAt]   DATETIME2(0)         NOT NULL DEFAULT GETDATE(),
+    [ActionTarget] NVARCHAR(500) NULL,
+    [OccurredAt]   DATETIME2(0)  NOT NULL DEFAULT GETDATE(),
     CONSTRAINT [FK_DeliveryActions_Deliveries] FOREIGN KEY ([DeliveryID]) REFERENCES [Notification].[Deliveries]([DeliveryID]),
     CONSTRAINT [FK_DeliveryActions_Accounts]   FOREIGN KEY ([AccountID])  REFERENCES [dbo].[Accounts]([AccountID])
 );
 GO
  
-CREATE UNIQUE INDEX [UQ_DeliveryActions_OneReadPerDelivery] ON [Notification].[DeliveryActions] ([DeliveryID], [AccountID]) WHERE [ActionType] = 'Read';
-CREATE INDEX [IX_DeliveryActions_DeliveryID_OccurredAt]     ON [Notification].[DeliveryActions] ([DeliveryID], [OccurredAt] DESC);
+CREATE UNIQUE INDEX [UQ_DeliveryActions_OneReadPerDelivery]
+    ON [Notification].[DeliveryActions] ([DeliveryID], [AccountID])
+    WHERE [ActionType] = 'Read';
+ 
+CREATE INDEX [IX_DeliveryActions_DeliveryID_OccurredAt]
+    ON [Notification].[DeliveryActions] ([DeliveryID], [OccurredAt] DESC);
 GO
 
 CREATE TABLE [ChatConversations] (

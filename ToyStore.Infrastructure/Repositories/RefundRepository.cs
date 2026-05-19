@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,6 +21,15 @@ public class RefundRepository : IRefundRepository
     {
         _context = context;
         _dbSet = context.Set<OrderRefund>();
+    }
+
+    public async Task<List<OrderRefundReason>> GetActiveReasonsAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.Set<OrderRefundReason>()
+            .Where(r => !r.IsDeleted)
+            .OrderBy(r => r.RefundReasonId)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<PaginatedResponse<RefundListDto>> GetRefundsAsync(RefundFilterDto filter, CancellationToken cancellationToken = default)

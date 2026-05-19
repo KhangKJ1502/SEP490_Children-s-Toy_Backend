@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using ToyStore.Application.DTOs;
@@ -8,6 +9,7 @@ namespace ToyStore.Application.Interfaces.Repositories;
 
 public interface IRefundRepository
 {
+    Task<List<OrderRefundReason>> GetActiveReasonsAsync(CancellationToken cancellationToken = default);
     Task<PaginatedResponse<RefundListDto>> GetRefundsAsync(RefundFilterDto filter, CancellationToken cancellationToken = default);
     Task<PaginatedResponse<RefundListDto>> GetAdminRefundsAsync(AdminRefundFilterDto filter, CancellationToken cancellationToken = default);
     Task<OrderRefund?> GetByIdAsync(int id, CancellationToken cancellationToken = default);

@@ -23,6 +23,12 @@ public class RefundService : IRefundService
         _eventPublisher = eventPublisher;
     }
 
+    public async Task<List<RefundReasonDto>> GetRefundReasonsAsync(CancellationToken cancellationToken = default)
+    {
+        var reasons = await _unitOfWork.Refunds.GetActiveReasonsAsync(cancellationToken);
+        return _mapper.Map<List<RefundReasonDto>>(reasons);
+    }
+
     public async Task<Result<RefundDto>> CreateRefundAsync(int customerId, CreateRefundDto dto, CancellationToken cancellationToken = default)
     {
         var order = await _unitOfWork.Orders.GetByIdForUpdateAsync(dto.OrderId, cancellationToken);
@@ -30,11 +36,18 @@ public class RefundService : IRefundService
             return Result<RefundDto>.NotFound("Order", dto.OrderId);
 
         // Validations
-        if (order.StatusId != (byte)OrderStatus.Delivered)
-            return Result<RefundDto>.BusinessError("Order must be in Delivered status to request a refund.");
+        if (order.StatusId != (byte)OrderStatus.Completed)
+            return Result<RefundDto>.BusinessError("Order must be in Completed status to request a refund.");
 
-        if (order.DeliveredAt == null || (DateTime.UtcNow - order.DeliveredAt.Value).TotalDays > 3)
-            return Result<RefundDto>.BusinessError("Refund requests must be submitted within 3 days of successful delivery.");
+        if (order.CompletedAt == null || (DateTime.UtcNow - order.CompletedAt.Value).TotalDays > 3)
+            return Result<RefundDto>.BusinessError("Refund requests must be submitted within 3 days of order completion.");
+
+        // Wallet check: customer must have an Active wallet to receive the refund amount
+        var wallet = await _unitOfWork.Wallets.GetByAccountIdAsync(customerId, cancellationToken);
+        if (wallet == null)
+            return Result<RefundDto>.BusinessError("You must create a wallet before requesting a refund. Please set up your wallet at My Wallet.");
+        if (!string.Equals(wallet.Status, "Active", StringComparison.OrdinalIgnoreCase))
+            return Result<RefundDto>.BusinessError($"Your wallet is currently {wallet.Status}. Only an Active wallet can receive refunds. Please resolve your wallet status before requesting a refund.");
 
         var existingRefunds = await _unitOfWork.Refunds.GetAdminRefundsAsync(new AdminRefundFilterDto { OrderId = dto.OrderId, PageSize = 100 }, cancellationToken);
 

@@ -30,6 +30,7 @@ public class CustomerOrderDetailDto
     public decimal EstimatedShippingFee { get; set; }
     public decimal? ActualShippingFee { get; set; }
     public decimal TotalAmount { get; set; }
+    public bool HasActiveRefund { get; set; }
 
     public string PaymentMethod { get; set; } = string.Empty;
     public string PaymentStatus { get; set; } = string.Empty;
