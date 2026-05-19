@@ -119,7 +119,15 @@ public class ProductRepository : IProductRepository
         
         if (!string.IsNullOrWhiteSpace(status))
         {
-            query = query.Where(x => x.ProductStatus == status);
+            var statuses = status.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (statuses.Length > 1)
+            {
+                query = query.Where(x => statuses.Contains(x.ProductStatus));
+            }
+            else
+            {
+                query = query.Where(x => x.ProductStatus == status);
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
@@ -244,7 +252,15 @@ public class ProductRepository : IProductRepository
         
         if (!string.IsNullOrWhiteSpace(status))
         {
-            query = query.Where(x => x.ProductStatus == status);
+            var statuses = status.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (statuses.Length > 1)
+            {
+                query = query.Where(x => statuses.Contains(x.ProductStatus));
+            }
+            else
+            {
+                query = query.Where(x => x.ProductStatus == status);
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
@@ -334,7 +350,15 @@ public class ProductRepository : IProductRepository
 
         if (!string.IsNullOrWhiteSpace(status))
         {
-            query = query.Where(x => x.ProductStatus == status);
+            var statuses = status.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (statuses.Length > 1)
+            {
+                query = query.Where(x => statuses.Contains(x.ProductStatus));
+            }
+            else
+            {
+                query = query.Where(x => x.ProductStatus == status);
+            }
         }
 
         if (lowStockOnly)

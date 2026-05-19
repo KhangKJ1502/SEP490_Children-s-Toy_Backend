@@ -517,6 +517,7 @@ public class AdminOrderService : IAdminOrderService
             request.Reason ?? "Admin cancelled",
             cancelledByAccountId: _currentUser.AccountId,
             restoreCart: false,
+            restoreVoucher: true,
             cancellationToken: cancellationToken);
         if (!result.IsSuccess)
         {
@@ -525,7 +526,11 @@ public class AdminOrderService : IAdminOrderService
 
         var cancelPayload = new { orderId = order.OrderId, orderCode = order.OrderCode, reason = request.Reason };
         await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderCancelled, cancelPayload, CancellationToken.None);
-        await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.StaffCancelRequested, cancelPayload, CancellationToken.None);
+        
+        if (!(order.PaymentMethod == "SE_PAY" && order.PaymentStatus != "PAID"))
+        {
+            await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.StaffCancelRequested, cancelPayload, CancellationToken.None);
+        }
 
         return Result<CancelOrderResponseDto>.Success(new CancelOrderResponseDto
         {

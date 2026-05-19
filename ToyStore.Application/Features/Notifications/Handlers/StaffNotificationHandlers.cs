@@ -229,6 +229,13 @@ public class StaffCancelRequestedHandler : IOutboxEventHandler
         var root = doc.RootElement;
 
         var orderId      = root.GetProperty("orderId").GetInt32();
+
+        var order = await _unitOfWork.Orders.GetByIdAsync(orderId, ct);
+        if (order is not null && order.PaymentMethod == "SE_PAY" && order.PaymentStatus != "PAID")
+        {
+            return;
+        }
+
         var orderCode    = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
         var reason       = root.TryGetProperty("reason", out var r) ? r.GetString() ?? "" : "";
         var customerName = root.TryGetProperty("customerName", out var cn) ? cn.GetString() ?? "Customer" : "Customer";
