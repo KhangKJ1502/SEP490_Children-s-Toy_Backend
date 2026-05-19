@@ -79,8 +79,9 @@ public class OrderStatusWorker : BackgroundService
             var result = await lifecycleService.CancelOrderInternalAsync(
                 order,
                 "Payment timeout — auto cancelled after 24 hours",
-                0, // System/Auto
-                cancellationToken);
+                cancelledByAccountId: 0,   // System/Auto
+                restoreCart: false,         // Auto-cancel does not restore cart
+                cancellationToken: cancellationToken);
 
             if (result.IsSuccess)
             {

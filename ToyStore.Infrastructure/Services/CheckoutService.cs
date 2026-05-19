@@ -626,15 +626,16 @@ public class CheckoutService : ICheckoutService
             await _db.SaveChangesAsync(cancellationToken);
             await _uow.CommitTransactionAsync(cancellationToken);
 
-            // ── Sau transaction ──────────────────────────────────────────
-
             _logger.LogInformation("Order {Code} created via {Method}, Status={PS}",
                 orderCode, payMethod, order.PaymentStatus);
 
-            await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(),
-                NotificationEventTypes.OrderPlaced,
-                new { orderId = order.OrderId, orderCode, totalAmount },
-                CancellationToken.None);
+            if (payMethod != PayMethodSepay)
+            {
+                await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(),
+                    NotificationEventTypes.OrderPlaced,
+                    new { orderId = order.OrderId, orderCode, totalAmount },
+                    CancellationToken.None);
+            }
 
             return Result<CheckoutConfirmResponseDto>.Success(new CheckoutConfirmResponseDto
             {
