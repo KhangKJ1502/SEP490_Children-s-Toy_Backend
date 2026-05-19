@@ -1,4 +1,5 @@
 using AutoMapper;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ToyStore.Application.Interfaces.Notifications;
@@ -10,6 +11,7 @@ using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
 using ToyStore.Domain.Entities;
 using ToyStore.Domain.Enums;
+using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Options;
 
 namespace ToyStore.Infrastructure.Services;
@@ -29,6 +31,7 @@ public class OrderCustomerService : IOrderCustomerService
     private readonly IMapper _mapper;
     private readonly IShippingStatusMapper _statusMapper;
     private readonly SePayOptions _sePayOptions;
+    private readonly SEP490ToyStoreContext _db;
 
     private static readonly HashSet<string> NonCancellableGhnStatuses =
         new(StringComparer.OrdinalIgnoreCase)
@@ -36,6 +39,7 @@ public class OrderCustomerService : IOrderCustomerService
 
     public OrderCustomerService(
         IUnitOfWork uow,
+        SEP490ToyStoreContext db,
         IGhnClient ghnClient,
         IDomainEventPublisher eventPublisher,
         ILogger<OrderCustomerService> logger,
@@ -46,6 +50,7 @@ public class OrderCustomerService : IOrderCustomerService
         IOptions<SePayOptions> sePayOptions)
     {
         _uow = uow;
+        _db = db;
         _ghnClient = ghnClient;
         _eventPublisher = eventPublisher;
         _logger = logger;
@@ -121,6 +126,7 @@ public class OrderCustomerService : IOrderCustomerService
         int? actorAccountId,
         bool isAdmin,
         string? reason,
+        bool restoreCart = false,
         CancellationToken cancellationToken = default)
     {
         var order = await _uow.Orders.GetByIdForUpdateAsync(orderId, cancellationToken);
@@ -164,15 +170,21 @@ public class OrderCustomerService : IOrderCustomerService
             // TODO: Call GHN cancel API if available in IGhnClient
         }
 
-        var result = await _orderLifecycle.CancelOrderInternalAsync(order, reason ?? "Cancelled by customer", actorAccountId ?? order.AccountId, cancellationToken);
+        var result = await _orderLifecycle.CancelOrderInternalAsync(order, reason ?? "Cancelled by customer", actorAccountId ?? order.AccountId, restoreCart, cancellationToken);
         if (!result.IsSuccess)
         {
             return Result<CancelOrderCustomerResponseDto>.Failure(result.ErrorCode!, result.ErrorMessage!);
         }
 
-        var cancelPayload = new { orderId = order.OrderId, orderCode = order.OrderCode, reason = reason };
-        await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderCancelled,
-            cancelPayload, CancellationToken.None);
+        if (!restoreCart)
+        {
+            if (!(order.PaymentMethod == "SE_PAY" && order.PaymentStatus != "PAID"))
+            {
+                var cancelPayload = new { orderId = order.OrderId, orderCode = order.OrderCode, reason = reason };
+                await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderCancelled,
+                    cancelPayload, CancellationToken.None);
+            }
+        }
 
         return Result<CancelOrderCustomerResponseDto>.Success(new CancelOrderCustomerResponseDto
         {
@@ -280,6 +292,60 @@ public class OrderCustomerService : IOrderCustomerService
             new { orderId = order.OrderId, orderCode = order.OrderCode }, CancellationToken.None);
 
         return Result<string>.Success("Order receipt confirmed successfully.");
+    }
+
+    // ── Payment Info (secure endpoint, không lộ qua URL) ─────────────────────
+
+    public async Task<Result<OrderPaymentInfoDto>> GetPaymentInfoAsync(
+        int orderId,
+        int accountId,
+        CancellationToken cancellationToken = default)
+    {
+        var order = await _uow.Orders.GetByIdAsync(orderId, cancellationToken);
+        if (order is null)
+            return Result<OrderPaymentInfoDto>.NotFound("Order", orderId);
+
+        if (order.AccountId != accountId)
+            return Result<OrderPaymentInfoDto>.Unauthorized("You are not authorized to access this order's payment info.");
+
+        if (order.PaymentMethod != "SE_PAY")
+            return Result<OrderPaymentInfoDto>.BusinessError("This order does not use QR payment.");
+
+        // Lấy attempt đang Pending (hoặc attempt mới nhất nếu không có Pending)
+        var latestAttempt = await _db.PaymentGatewayTransactions
+            .Where(t => t.OrderId == orderId)
+            .OrderByDescending(t => t.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (latestAttempt is null)
+            return Result<OrderPaymentInfoDto>.NotFound("Payment attempt", orderId);
+
+        var qrUrl = BuildVietQrUrl(latestAttempt.RequestId, (long)order.TotalAmount);
+        var expiresAt = DateTime.SpecifyKind(order.CreatedAt, DateTimeKind.Utc)
+            .AddMinutes(_sePayOptions.PaymentTtlMinutes);
+
+        return Result<OrderPaymentInfoDto>.Success(new OrderPaymentInfoDto
+        {
+            OrderId = order.OrderId,
+            OrderCode = order.OrderCode,
+            Amount = order.TotalAmount,
+            PaymentAttemptCode = latestAttempt.RequestId,
+            QrImageUrl = qrUrl,
+            ExpiresAt = expiresAt
+        });
+    }
+
+    private string BuildVietQrUrl(string attemptCode, long amount)
+    {
+        var p = new System.Collections.Specialized.NameValueCollection
+        {
+            ["acc"] = _sePayOptions.AccountNumber,
+            ["bank"] = _sePayOptions.BankCode,
+            ["amount"] = amount.ToString(),
+            ["des"] = attemptCode
+        };
+        var qs = string.Join("&", p.AllKeys.Select(k => $"{k}={Uri.EscapeDataString(p[k]!)}"));
+        return $"https://qr.sepay.vn/img?{qs}";
     }
 
     private static IReadOnlyCollection<string>? MapCustomerStatusFilter(string? status)

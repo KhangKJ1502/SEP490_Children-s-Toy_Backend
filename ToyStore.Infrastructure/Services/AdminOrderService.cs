@@ -512,7 +512,12 @@ public class AdminOrderService : IAdminOrderService
             return Result<CancelOrderResponseDto>.Failure("CONFIGURATION_ERROR",
                 "Status 'Cancelled' not found in database.");
 
-        var result = await _orderLifecycle.CancelOrderInternalAsync(order, request.Reason ?? "Admin cancelled", _currentUser.AccountId, cancellationToken);
+        var result = await _orderLifecycle.CancelOrderInternalAsync(
+            order,
+            request.Reason ?? "Admin cancelled",
+            cancelledByAccountId: _currentUser.AccountId,
+            restoreCart: false,
+            cancellationToken: cancellationToken);
         if (!result.IsSuccess)
         {
             return Result<CancelOrderResponseDto>.Failure(result.ErrorCode!, result.ErrorMessage!);

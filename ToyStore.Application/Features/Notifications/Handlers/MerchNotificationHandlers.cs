@@ -202,6 +202,8 @@ public class OrderCancelledHandler : IOutboxEventHandler
         var order = await _unitOfWork.Orders.GetByIdAsync(orderId, ct);
         if (order is null) return;
 
+        bool cancelledByCustomer = order.CancelledBy.HasValue && order.CancelledBy.Value == order.AccountId;
+
         await _dispatcher.DispatchAsync(new NotificationContext
         {
             RecipientAccountId = order.AccountId,
@@ -214,8 +216,8 @@ public class OrderCancelledHandler : IOutboxEventHandler
                 ["CancelReason"] = reason,
             },
             ReferenceId  = $"{orderId}",
-            SendBell     = true,
-            SendEmail    = true,
+            SendBell     = !cancelledByCustomer,
+            SendEmail    = !cancelledByCustomer,
             ActionTarget = $"/profile/orders/{orderId}",
         }, ct);
     }

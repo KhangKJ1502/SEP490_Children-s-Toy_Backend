@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using ToyStore.Application.Campaigns;
 using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs.Campaigns;
@@ -10,19 +11,19 @@ namespace ToyStore.Application.Services.Campaigns;
 public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
 {
     private static readonly HashSet<string> ValidReferenceTypes = ["VOUCHER", "PRODUCT", "BLOG", "SALE", "OTHER"];
-    private const int MinLeadMinutes = 30;
-    private const int MaxFutureDays = 90;
-    private static readonly TimeSpan VoucherEndBuffer = TimeSpan.FromHours(2);
-    private static readonly TimeSpan SaleLeadWindow = TimeSpan.FromHours(24);
-    private static readonly TimeSpan VoucherSoonWarn = TimeSpan.FromHours(24);
 
     private readonly IUnitOfWork _uow;
     private readonly ITimeProvider _time;
+    private readonly CampaignSettings _settings;
 
-    public CampaignLifecycleRules(IUnitOfWork unitOfWork, ITimeProvider timeProvider)
+    public CampaignLifecycleRules(
+        IUnitOfWork unitOfWork,
+        ITimeProvider timeProvider,
+        IOptions<CampaignSettings> settings)
     {
         _uow  = unitOfWork;
         _time = timeProvider;
+        _settings = settings.Value;
     }
 
     public async Task<Result?> ValidateCreateDtoAsync(CreateCampaignDto dto, CancellationToken ct = default)
@@ -245,11 +246,11 @@ public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
         if (campaign.ApprovedExpireAt.HasValue && now > campaign.ApprovedExpireAt.Value)
             return Result.Failure(CampaignErrorCodes.ApprovedExpired, "The approval window to schedule this campaign has expired.");
 
-        if (scheduledAtUtc < now.AddMinutes(MinLeadMinutes))
-            return Result.Failure(CampaignErrorCodes.ScheduledAtTooSoon, $"Scheduled time must be at least {MinLeadMinutes} minutes from now.");
+        if (scheduledAtUtc < now.AddMinutes(_settings.MinLeadMinutes))
+            return Result.Failure(CampaignErrorCodes.ScheduledAtTooSoon, $"Scheduled time must be at least {_settings.MinLeadMinutes} minutes from now.");
 
-        if (scheduledAtUtc > now.AddDays(MaxFutureDays))
-            return Result.Failure(CampaignErrorCodes.ScheduledAtTooFar, $"Scheduled time must be within {MaxFutureDays} days.");
+        if (scheduledAtUtc > now.AddDays(_settings.MaxFutureDays))
+            return Result.Failure(CampaignErrorCodes.ScheduledAtTooFar, $"Scheduled time must be within {_settings.MaxFutureDays} days.");
 
         if (validFromUtc.HasValue && validToUtc.HasValue && validFromUtc >= validToUtc)
             return Result.Failure(CampaignErrorCodes.ValidRangeInvalid, "ValidFrom must be before ValidTo.");
@@ -282,8 +283,8 @@ public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
             return Result.Failure(CampaignErrorCodes.CampaignLockedByJob, "Campaign is locked by a dispatch job.");
 
         var now = _time.UtcNow;
-        if (newScheduledAtUtc < now.AddMinutes(MinLeadMinutes))
-            return Result.Failure(CampaignErrorCodes.ScheduledAtTooSoon, $"New schedule must be at least {MinLeadMinutes} minutes from now.");
+        if (newScheduledAtUtc < now.AddMinutes(_settings.MinLeadMinutes))
+            return Result.Failure(CampaignErrorCodes.ScheduledAtTooSoon, $"New schedule must be at least {_settings.MinLeadMinutes} minutes from now.");
 
         if (sched.ScheduledAt == newScheduledAtUtc)
             return Result.Failure(CampaignErrorCodes.SameScheduledAt, "New schedule must differ from the current schedule.");
@@ -486,10 +487,10 @@ public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
         if (scheduledAtUtc < v.StartDate)
             return Result.Failure(CampaignErrorCodes.ScheduledBeforeVoucherStart, "Scheduled time must be on or after voucher start.");
 
-        if (scheduledAtUtc > v.EndDate - VoucherEndBuffer)
-            return Result.Failure(CampaignErrorCodes.ScheduledTooCloseToVoucherEnd, "Scheduled time must be at least 2 hours before voucher end.");
+        if (scheduledAtUtc > v.EndDate - TimeSpan.FromHours(_settings.VoucherEndBufferHours))
+            return Result.Failure(CampaignErrorCodes.ScheduledTooCloseToVoucherEnd, $"Scheduled time must be at least {_settings.VoucherEndBufferHours} hours before voucher end.");
 
-        if (v.EndDate - scheduledAtUtc < VoucherSoonWarn)
+        if (v.EndDate - scheduledAtUtc < TimeSpan.FromHours(_settings.VoucherSoonWarnHours))
             warningCodes.Add(CampaignErrorCodes.WarnVoucherExpiringSoon);
 
         return Result.Success();
@@ -501,9 +502,9 @@ public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
         if (p is null || p.IsDeleted || p.Status is not ("Active" or "Scheduled"))
             return Result.Failure(CampaignErrorCodes.ReferenceNotFound, "Promotion not found or not active/scheduled.");
 
-        var earliest = p.StartDate - SaleLeadWindow;
+        var earliest = p.StartDate - TimeSpan.FromHours(_settings.SaleLeadWindowHours);
         if (scheduledAtUtc < earliest)
-            return Result.Failure(CampaignErrorCodes.ScheduledTooEarlyForSale, "Scheduled time must not be more than 24 hours before sale start.");
+            return Result.Failure(CampaignErrorCodes.ScheduledTooEarlyForSale, $"Scheduled time must not be more than {_settings.SaleLeadWindowHours} hours before sale start.");
 
         if (string.Equals(p.PromotionType, "FLASH_SALE", StringComparison.OrdinalIgnoreCase))
         {
@@ -514,15 +515,15 @@ public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
             // Align with non-flash sale: keep a buffer before the promotion window ends. For flash, the
             // meaningful window end is the last slot's EndAt (multi-slot / multi-day friendly).
             var lastSlotEndUtc = activeSlots.Max(s => s.EndAt);
-            if (scheduledAtUtc > lastSlotEndUtc - VoucherEndBuffer)
+            if (scheduledAtUtc > lastSlotEndUtc - TimeSpan.FromHours(_settings.VoucherEndBufferHours))
                 return Result.Failure(
                     CampaignErrorCodes.ScheduledTooCloseToSaleEnd,
-                    "Scheduled time must be at least 2 hours before the last flash sale time slot ends.");
+                    $"Scheduled time must be at least {_settings.VoucherEndBufferHours} hours before the last flash sale time slot ends.");
         }
         else
         {
-            if (scheduledAtUtc > p.EndDate - VoucherEndBuffer)
-                return Result.Failure(CampaignErrorCodes.ScheduledTooCloseToSaleEnd, "Scheduled time must be at least 2 hours before promotion end.");
+            if (scheduledAtUtc > p.EndDate - TimeSpan.FromHours(_settings.VoucherEndBufferHours))
+                return Result.Failure(CampaignErrorCodes.ScheduledTooCloseToSaleEnd, $"Scheduled time must be at least {_settings.VoucherEndBufferHours} hours before promotion end.");
         }
 
         return Result.Success();
@@ -688,8 +689,8 @@ public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
         CancellationToken ct = default)
     {
         var now = _time.UtcNow;
-        var gMin = now.AddMinutes(MinLeadMinutes);
-        var gMax = now.AddDays(MaxFutureDays);
+        var gMin = now.AddMinutes(_settings.MinLeadMinutes);
+        var gMax = now.AddDays(_settings.MaxFutureDays);
 
         var dto = new CampaignScheduleBoundsDto
         {
@@ -745,7 +746,7 @@ public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
         if (v is null || v.IsDeleted || v.Status != "Active")
         {
             dto.ReferenceHintWarning =
-                "Không tìm thấy voucher Active — chỉ hiển thị giới hạn chung hệ thống (sau 30 phút, trong 90 ngày).";
+                $"Không tìm thấy voucher Active — chỉ hiển thị giới hạn chung hệ thống (sau {_settings.MinLeadMinutes} phút, trong {_settings.MaxFutureDays} ngày).";
             dto.EarliestUtc = gMin;
             dto.LatestUtc = gMax;
             dto.IsFeasible = gMin <= gMax;
@@ -753,7 +754,7 @@ public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
         }
 
         var rMin = v.StartDate;
-        var rMax = v.EndDate - VoucherEndBuffer;
+        var rMax = v.EndDate - TimeSpan.FromHours(_settings.VoucherEndBufferHours);
         dto.ReferenceRulesApplied = true;
         dto.EarliestUtc = MaxDt(gMin, rMin);
         dto.LatestUtc = MinDt(gMax, rMax);
@@ -780,7 +781,7 @@ public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
         }
 
         dto.PromotionType = p.PromotionType;
-        var rMin = p.StartDate - SaleLeadWindow;
+        var rMin = p.StartDate - TimeSpan.FromHours(_settings.SaleLeadWindowHours);
         DateTime rMax;
         if (string.Equals(p.PromotionType, "FLASH_SALE", StringComparison.OrdinalIgnoreCase))
         {
@@ -794,10 +795,10 @@ public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
                 return Result<CampaignScheduleBoundsDto>.Success(dto);
             }
 
-            rMax = activeSlots.Max(s => s.EndAt) - VoucherEndBuffer;
+            rMax = activeSlots.Max(s => s.EndAt) - TimeSpan.FromHours(_settings.VoucherEndBufferHours);
         }
         else
-            rMax = p.EndDate - VoucherEndBuffer;
+            rMax = p.EndDate - TimeSpan.FromHours(_settings.VoucherEndBufferHours);
 
         dto.ReferenceRulesApplied = true;
         dto.EarliestUtc = MaxDt(gMin, rMin);

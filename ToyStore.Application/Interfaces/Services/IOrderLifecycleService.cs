@@ -11,7 +11,11 @@ public interface IOrderLifecycleService
     /// <summary>
     /// Thực hiện hủy đơn hàng (internal logic).
     /// </summary>
-    Task<Result> CancelOrderInternalAsync(Order order, string reason, int cancelledByAccountId, CancellationToken cancellationToken = default);
+    /// <param name="restoreCart">
+    /// true  = khôi phục sản phẩm về giỏ hàng (dùng khi cancel từ trang thanh toán QR).
+    /// false = KHÔNG khôi phục giỏ hàng (dùng khi cancel từ Order Detail / Order History).
+    /// </param>
+    Task<Result> CancelOrderInternalAsync(Order order, string reason, int cancelledByAccountId, bool restoreCart = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Hoàn thành đơn hàng (internal logic).
