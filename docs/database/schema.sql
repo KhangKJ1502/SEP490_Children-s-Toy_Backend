@@ -847,7 +847,7 @@ CREATE TABLE [ReviewProducts] (
     [Comment]   NVARCHAR(500) NULL,
     [ModerationStatus] VARCHAR(20) NOT NULL DEFAULT 'Pending'
         CONSTRAINT [CK_ReviewProducts_ModerationStatus] CHECK (
-            [ModerationStatus] IN ('Pending', 'Approved', 'Rejected', 'ManualReview')
+            [ModerationStatus] IN ('Pending', 'Processing', 'Approved', 'Rejected', 'ManualReview')
         ),
     [IsDeleted] BIT NOT NULL DEFAULT 0,
     [IsEdited]  BIT NOT NULL DEFAULT 0,
@@ -894,7 +894,7 @@ CREATE TABLE [ReviewProductImages] (
     [ImageURL]             VARCHAR(500) NOT NULL,
     [ModerationStatus]     VARCHAR(20) NOT NULL DEFAULT 'Pending'
         CONSTRAINT [CK_ReviewProductImages_ModerationStatus] CHECK (
-            [ModerationStatus] IN ('Pending', 'Approved', 'Rejected', 'ManualReview')
+            [ModerationStatus] IN ('Pending', 'Processing', 'Approved', 'Rejected', 'ManualReview')
         ),
     [PHash]                VARCHAR(64)  NULL,
     [AIRawResult]          NVARCHAR(MAX) NULL,
@@ -947,7 +947,7 @@ CREATE TABLE [dbo].[ReviewModerationLogs] (
             REFERENCES [dbo].[ReviewProductImages]([ReviewProductImageID]),
     [ModeratorType] VARCHAR(10)   NOT NULL
         CONSTRAINT [CK_ModerationLogs_ModeratorType]
-            CHECK ([ModeratorType] IN ('AI', 'Staff')),
+            CHECK ([ModeratorType] IN ('AI', 'Staff', 'Admin')),
     [ModeratedBy]  INT            NULL
         CONSTRAINT [FK_ModerationLogs_Accounts]
             REFERENCES [dbo].[Accounts]([AccountID]),
