@@ -333,15 +333,15 @@ public class RefundService : IRefundService
         // order is tracked by EF, no need to call Update
 
         // 5. Restore Inventory
-        var orderDetails = order.OrderDetails; // Order details should be included when Order was fetched.
-        // Wait, if order.OrderDetails is not included, we need to fetch them.
+        var orderDetails = order.OrderDetails;
         foreach (var item in orderDetails)
         {
-            var product = await _unitOfWork.Products.GetByIdAsync(item.ProductId, cancellationToken);
-            if (product != null)
+            await _unitOfWork.Products.AdjustStockAsync(item.ProductId, item.Quantity, cancellationToken);
+            
+            if (item.SlotProductId.HasValue)
             {
-                product.Quantity += item.Quantity;
-                _unitOfWork.Products.Update(product);
+                // Refund means order was Paid/Completed, so stock was deducted from SoldQuantity
+                await _unitOfWork.Orders.AdjustFlashSaleStockAsync(item.SlotProductId.Value, -item.Quantity, 0, cancellationToken);
             }
         }
     }
