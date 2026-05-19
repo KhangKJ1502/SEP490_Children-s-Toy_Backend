@@ -62,6 +62,7 @@ public class OrdersController : ControllerBase
             _currentUser.AccountId,
             isAdmin: false,
             request.Reason,
+            restoreCart: request.RestoreCart,
             ct);
         return result.ToActionResult();
     }
@@ -112,9 +113,30 @@ public class OrdersController : ControllerBase
         var result = await _orderService.CompleteAsync(orderId, _currentUser.AccountId, ct);
         return result.ToActionResult();
     }
+
+    /// <summary>
+    /// Lấy thông tin thanh toán nhạy cảm của đơn SE_PAY (QR URL, amount, attemptCode).
+    /// Chỉ trả về cho chủ đơn hàng — không lộ trên URL.
+    /// GET /api/orders/{orderId}/payment-info
+    /// </summary>
+    [HttpGet("{orderId:int}/payment-info")]
+    public async Task<ActionResult<OrderPaymentInfoDto>> GetPaymentInfo(
+        int orderId,
+        CancellationToken ct)
+    {
+        var result = await _orderService.GetPaymentInfoAsync(orderId, _currentUser.AccountId, ct);
+        return result.ToActionResult();
+    }
 }
 
 public class CancelOrderCustomerRequestDto
 {
     public string? Reason { get; set; }
+
+    /// <summary>
+    /// true  = khôi phục giỏ hàng sau khi hủy (dùng cho luồng Payment QR).
+    /// false = KHÔNG khôi phục giỏ hàng (dùng cho Order Detail / Order History). Mặc định.
+    /// </summary>
+    public bool RestoreCart { get; set; } = false;
 }
+

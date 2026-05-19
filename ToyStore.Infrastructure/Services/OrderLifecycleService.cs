@@ -28,7 +28,7 @@ public class OrderLifecycleService : IOrderLifecycleService
         _shiftAssignmentService = shiftAssignmentService;
     }
 
-    public async Task<Result> CancelOrderInternalAsync(Order order, string reason, int cancelledByAccountId, CancellationToken cancellationToken = default)
+    public async Task<Result> CancelOrderInternalAsync(Order order, string reason, int cancelledByAccountId, bool restoreCart = false, CancellationToken cancellationToken = default)
     {
         var now = _timeProvider.UtcNow;
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
@@ -94,21 +94,26 @@ public class OrderLifecycleService : IOrderLifecycleService
                 order.PaymentStatus = cancelledByAccountId == 0 ? "EXPIRED" : "CANCELLED";
             }
 
-            // 4. Restore cart items if the order is cancelled before being paid/processed
-            // SE_PAY: cart was never removed at confirm (removed only on webhook PAID), no restore needed
-            // COD/WALLET: cart was removed at confirm; restore if unpaid
-            bool cartWasRemovedAtConfirm = order.PaymentMethod != "SE_PAY";
-            if (cartWasRemovedAtConfirm && order.PaymentStatus != "PAID")
+            // 4. Restore cart items only when explicitly requested (QR payment cancel flow).
+            // - Payment QR cancel (restoreCart=true): SE_PAY never removed cart at confirm,
+            //   COD/WALLET cart was removed at confirm so we restore if unpaid.
+            // - Order Detail / Order History cancel (restoreCart=false): intentional cancel by the user,
+            //   we intentionally do NOT put items back into the cart.
+            if (restoreCart)
             {
-                var cart = await _unitOfWork.Carts.GetByAccountIdWithRemovedItemsAsync(order.AccountId, cancellationToken);
-                if (cart != null)
+                bool cartWasRemovedAtConfirm = order.PaymentMethod != "SE_PAY";
+                if (cartWasRemovedAtConfirm && order.PaymentStatus != "PAID")
                 {
-                    var productIdsInOrder = order.OrderDetails.Select(d => d.ProductId).ToHashSet();
-                    foreach (var ci in cart.CartItems.Where(i => i.RemovedAt.HasValue && productIdsInOrder.Contains(i.ProductId)))
+                    var cart = await _unitOfWork.Carts.GetByAccountIdWithRemovedItemsAsync(order.AccountId, cancellationToken);
+                    if (cart != null)
                     {
-                        if (ci.RemovedAt >= order.CreatedAt.AddMinutes(-5))
+                        var productIdsInOrder = order.OrderDetails.Select(d => d.ProductId).ToHashSet();
+                        foreach (var ci in cart.CartItems.Where(i => i.RemovedAt.HasValue && productIdsInOrder.Contains(i.ProductId)))
                         {
-                            ci.RemovedAt = null;
+                            if (ci.RemovedAt >= order.CreatedAt.AddMinutes(-5))
+                            {
+                                ci.RemovedAt = null;
+                            }
                         }
                     }
                 }

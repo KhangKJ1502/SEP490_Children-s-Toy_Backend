@@ -162,8 +162,9 @@ public class AdminOrdersController : ControllerBase
             id,
             _currentUser.AccountId,
             isAdmin: true,
-            request.Reason,
-            cancellationToken);
+            reason: request.Reason,
+            restoreCart: false,
+            cancellationToken: cancellationToken);
         return result.ToActionResult();
     }
 

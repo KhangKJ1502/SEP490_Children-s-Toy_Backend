@@ -24,6 +24,7 @@ public interface IOrderCustomerService
         int? actorAccountId,
         bool isAdmin,
         string? reason,
+        bool restoreCart = false,
         CancellationToken cancellationToken = default);
 
     /// <summary>Lấy trạng thái giao hàng từ GHN.</summary>
@@ -42,6 +43,15 @@ public interface IOrderCustomerService
 
     /// <summary>Xác nhận đã nhận hàng (Hoàn thành đơn hàng).</summary>
     Task<Result<string>> CompleteAsync(
+        int orderId,
+        int accountId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lấy thông tin thanh toán nhạy cảm (QR, amount, attemptCode) của đơn SE_PAY.
+    /// Chỉ trả dữ liệu cho chủ đơn hàng.
+    /// </summary>
+    Task<Result<OrderPaymentInfoDto>> GetPaymentInfoAsync(
         int orderId,
         int accountId,
         CancellationToken cancellationToken = default);
@@ -80,5 +90,19 @@ public class OrderPaymentStatusDto
     public string OrderCode { get; set; } = string.Empty;
     public string PaymentStatus { get; set; } = string.Empty;
     public DateTime? PaidAt { get; set; }
+    public DateTime? ExpiresAt { get; set; }
+}
+
+/// <summary>
+/// Thông tin thanh toán nhạy cảm của đơn SE_PAY.
+/// Trả về qua API thay vì lộ trên URL.
+/// </summary>
+public class OrderPaymentInfoDto
+{
+    public int OrderId { get; set; }
+    public string OrderCode { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public string PaymentAttemptCode { get; set; } = string.Empty;
+    public string? QrImageUrl { get; set; }
     public DateTime? ExpiresAt { get; set; }
 }

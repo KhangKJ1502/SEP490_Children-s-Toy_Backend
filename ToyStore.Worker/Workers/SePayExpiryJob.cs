@@ -70,10 +70,11 @@ public class SePayExpiryJob : BackgroundService
 
                 var result = await orderService.CancelAsync(
                     orderId,
-                    actorAccountId: null, // system
+                    actorAccountId: null,  // system
                     isAdmin: true,
                     reason: "SE_PAY payment timeout — auto-cancelled by system",
-                    ct);
+                    restoreCart: false,
+                    cancellationToken: ct);
 
                 if (result.IsSuccess)
                     _logger.LogInformation("SePayExpiryJob: auto-cancelled order {Id}", orderId);

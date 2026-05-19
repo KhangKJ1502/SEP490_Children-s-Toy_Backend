@@ -247,6 +247,10 @@ public static class DependencyInjection
         services.Configure<VoucherRiskThresholds>(
             configuration.GetSection("Vouchers"));
 
+        // --- Campaigns ---
+        services.Configure<ToyStore.Application.Common.Models.CampaignSettings>(
+            configuration.GetSection("Campaigns"));
+
         // --- GHN van chuyen ---
         services.Configure<GhnOptions>(
             configuration.GetSection(GhnOptions.SectionName));
