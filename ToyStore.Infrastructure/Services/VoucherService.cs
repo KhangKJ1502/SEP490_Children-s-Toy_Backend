@@ -79,6 +79,19 @@ public class VoucherService : IVoucherService
 
         var items = _mapper.Map<List<VoucherListDto>>(pagedVouchers.Items);
 
+        // Populate CurrentUserUsageCount if user is authenticated
+        var accountId = _currentUserService.AccountId;
+        if (accountId > 0)
+        {
+            foreach (var item in items)
+            {
+                if (item.MaxUsagePerUser.HasValue)
+                {
+                    item.CurrentUserUsageCount = await _unitOfWork.Vouchers.CountUsageByAccountAsync(item.VoucherId, accountId, cancellationToken);
+                }
+            }
+        }
+
         _logger.LogInformation(
             "Retrieved vouchers list with PageNumber {PageNumber}, PageSize {PageSize}, SearchTerm {SearchTerm}, Status {Status}",
             pageNumber,

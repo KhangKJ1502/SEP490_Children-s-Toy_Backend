@@ -768,7 +768,8 @@ public class CheckoutService : ICheckoutService
     {
         var now = _timeProvider.UtcNow;
         if (v.Status != "Active" || v.IsDeleted) return "Invalid voucher.";
-        if (now < v.StartDate || now > v.EndDate) return "Voucher has expired.";
+        if (now < v.StartDate) return "Voucher is not yet active.";
+        if (now > v.EndDate) return "Voucher has expired.";
         if (!v.DiscountTarget.Equals(expectedTarget, StringComparison.OrdinalIgnoreCase))
             return "Voucher is not applicable for this target.";
         if (v.MinOrderAmount.HasValue && orderSubTotal < v.MinOrderAmount.Value)
