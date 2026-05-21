@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using ToyStore.Application.DTOs.Recommendations;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Recommendation.MongoDb.Documents;
@@ -17,10 +18,12 @@ namespace ToyStore.Recommendation.Algorithms;
 public class BusinessRulesFilter
 {
     private readonly SEP490ToyStoreContext _db;
+    private readonly ILogger<BusinessRulesFilter> _logger;
 
-    public BusinessRulesFilter(SEP490ToyStoreContext db)
+    public BusinessRulesFilter(SEP490ToyStoreContext db, ILogger<BusinessRulesFilter> logger)
     {
         _db = db;
+        _logger = logger;
     }
 
     /// <summary>
@@ -29,22 +32,31 @@ public class BusinessRulesFilter
     /// <param name="candidates">Ứng viên đầu ra của 1 algorithm (đã sort theo score giảm dần).</param>
     /// <param name="maxItems">Số item tối đa muốn lấy.</param>
     /// <param name="userProfile">Profile MongoDB (để biết user đã mua gì) — nullable cho guest.</param>
+    /// <param name="skipPurchasedFilter">Nếu true, KHÔNG loại bỏ sản phẩm đã mua (dùng cho trending/public widgets).</param>
     public async Task<List<RecommendationItemDto>> FilterAndEnrichAsync(
         IList<RecommendationCandidate> candidates,
         int maxItems,
         UserProfileDocument? userProfile,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool skipPurchasedFilter = false)
     {
         if (candidates.Count == 0 || maxItems <= 0)
             return new List<RecommendationItemDto>();
 
-        // 1. Loại các product đã mua (tránh khuyến nghị thứ user đã sở hữu)
-        var purchasedSet = userProfile?.PurchasedProductIds?.ToHashSet() ?? new HashSet<int>();
+        // 1. Loại các product đã mua (chỉ cho widget cá nhân hóa, KHÔNG áp dụng cho trending/public widgets)
+        var purchasedSet = skipPurchasedFilter 
+            ? new HashSet<int>() 
+            : (userProfile?.PurchasedProductIds?.ToHashSet() ?? new HashSet<int>());
+        
         var candidateIds = candidates
             .Where(c => !purchasedSet.Contains(c.ProductId))
             .Select(c => c.ProductId)
             .Distinct()
             .ToList();
+
+        _logger.LogInformation(
+            "BusinessRulesFilter: {CandidateCount} candidates, {PurchasedCount} purchased, {RemainingCount} after purchase filter, skipPurchasedFilter={Skip}",
+            candidates.Count, purchasedSet.Count, candidateIds.Count, skipPurchasedFilter);
 
         if (candidateIds.Count == 0)
             return new List<RecommendationItemDto>();
@@ -58,7 +70,7 @@ public class BusinessRulesFilter
             .AsNoTracking()
             .Where(p => idsToFetch.Contains(p.ProductId)
                      && !p.IsDeleted
-                     && p.ProductStatus == "Active"
+                     && (p.ProductStatus == "Active" || p.ProductStatus == "active")
                      && p.Quantity > 0)
             .Select(p => new EnrichedProduct
             {
@@ -82,6 +94,10 @@ public class BusinessRulesFilter
                     && pp.Promotion.Status == "Active"),
             })
             .ToListAsync(ct);
+
+        _logger.LogInformation(
+            "BusinessRulesFilter: Queried {IdsCount} product IDs, found {ProductsCount} valid products (Active + Quantity > 0)",
+            idsToFetch.Count, products.Count);
 
         if (products.Count == 0)
             return new List<RecommendationItemDto>();

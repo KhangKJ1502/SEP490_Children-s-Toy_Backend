@@ -77,12 +77,18 @@ public class RecommendationService : IRecommendationService
 
         var maxItems = widget.MaxItems > 0 ? widget.MaxItems : (byte)10;
 
+        // Xác định widget có phải public (KHÔNG filter "đã mua") hay không
+        var isPublicWidget = widget.WidgetCode == "homepage_trending" 
+                          || widget.WidgetCode == "pdp_similar" 
+                          || widget.WidgetCode == "pdp_also_bought"
+                          || widget.WidgetCode == "after_purchase";
+
         // ── 1. Cache lookup
         var cacheKey = BuildCacheKey(widgetCode, accountId, productId);
         var cached = await GetCachedAsync(cacheKey, ct);
         if (cached != null)
         {
-            var cachedItems = await MapCachedItemsAsync(cached, ct);
+            var cachedItems = await MapCachedItemsAsync(cached, isPublicWidget, ct);
             if (cachedItems.Count > 0)
             {
                 return Result<RecommendationWidgetResponseDto>.Success(new RecommendationWidgetResponseDto
@@ -98,6 +104,9 @@ public class RecommendationService : IRecommendationService
 
         // ── 2. Chạy thuật toán chính theo widget.Algorithm
         var candidates = await RunAlgorithmAsync(widget.Algorithm, accountId, productId, maxItems, ct);
+        _logger.LogInformation(
+            "Widget {Code} algorithm {Algo} returned {Count} candidates",
+            widget.WidgetCode, widget.Algorithm, candidates.Count);
 
         // ── 2.5. Lấy user profile (cho business rules: purchased filter)
         UserProfileDocument? userProfile = null;
@@ -116,7 +125,12 @@ public class RecommendationService : IRecommendationService
         }
 
         // ── 3. Business rules filter + enrich
-        var items = await _filter.FilterAndEnrichAsync(candidates, maxItems, userProfile, ct);
+        // Chỉ apply "purchased filter" cho widget cá nhân hóa (homepage_personal)
+        // KHÔNG apply cho widget công khai (trending, pdp_similar, pdp_also_bought, after_purchase)
+        var items = await _filter.FilterAndEnrichAsync(candidates, maxItems, userProfile, ct, skipPurchasedFilter: isPublicWidget);
+        _logger.LogInformation(
+            "Widget {Code} after filter + enrich: {Count} items",
+            widget.WidgetCode, items.Count);
 
         // ── 4. Fallback chain — nếu rỗng, dùng fallback algorithm
         if (items.Count == 0 && !string.IsNullOrWhiteSpace(widget.FallbackAlgo))
@@ -127,7 +141,7 @@ public class RecommendationService : IRecommendationService
 
             var fallbackCandidates = await RunFallbackAsync(
                 widget.FallbackAlgo!, accountId, productId, maxItems, ct);
-            items = await _filter.FilterAndEnrichAsync(fallbackCandidates, maxItems, userProfile, ct);
+            items = await _filter.FilterAndEnrichAsync(fallbackCandidates, maxItems, userProfile, ct, skipPurchasedFilter: isPublicWidget);
         }
 
         // ── 4b. Last resort — Trending global (đảm bảo không bao giờ trả rỗng cho widget homepage_trending,
@@ -135,7 +149,7 @@ public class RecommendationService : IRecommendationService
         if (items.Count == 0)
         {
             var trendingCandidates = await _trending.GetCandidatesAsync("global", maxItems, ct);
-            items = await _filter.FilterAndEnrichAsync(trendingCandidates, maxItems, userProfile, ct);
+            items = await _filter.FilterAndEnrichAsync(trendingCandidates, maxItems, userProfile, ct, skipPurchasedFilter: true);
         }
 
         // ── 5. Save cache (best-effort)
@@ -263,7 +277,7 @@ public class RecommendationService : IRecommendationService
     /// Cache cố tình KHÔNG lưu tên/giá/ảnh để tránh stale — luôn enrich realtime từ DB.
     /// </summary>
     private Task<List<RecommendationItemDto>> MapCachedItemsAsync(
-        RecommendationCacheDocument cache, CancellationToken ct)
+        RecommendationCacheDocument cache, bool skipPurchasedFilter, CancellationToken ct)
     {
         var candidates = cache.Items.Select(i => new RecommendationCandidate
         {
@@ -274,6 +288,6 @@ public class RecommendationService : IRecommendationService
         }).ToList();
 
         // Enrich + filter business rules (sp ngừng bán/hết hàng sẽ bị loại khỏi cache realtime)
-        return _filter.FilterAndEnrichAsync(candidates, candidates.Count, userProfile: null, ct);
+        return _filter.FilterAndEnrichAsync(candidates, candidates.Count, userProfile: null, ct, skipPurchasedFilter);
     }
 }

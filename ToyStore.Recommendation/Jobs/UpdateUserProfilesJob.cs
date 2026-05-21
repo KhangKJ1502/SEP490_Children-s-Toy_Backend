@@ -94,11 +94,13 @@ public class UpdateUserProfilesJob : BackgroundService
                   })
             .ToListAsync(ct);
 
-        // 3. Lấy purchased product cho từng account (orders đã hoàn tất, không bị huỷ/xoá)
+        // 3. Lấy purchased product cho từng account (CHỈ orders Completed/Delivered - tức đã hoàn tất thật sự)
+        //    Không tính orders Pending/Processing/Shipped/... vì user có thể hủy
         var purchasedByAccount = await db.OrderDetails
             .AsNoTracking()
             .Where(od => !od.Order.IsDeleted
                       && od.Order.CancelledAt == null
+                      && (od.Order.Status.StatusName == "Completed" || od.Order.Status.StatusName == "Delivered")
                       && accountIds.Contains(od.Order.AccountId))
             .Select(od => new { od.Order.AccountId, od.ProductId })
             .Distinct()
