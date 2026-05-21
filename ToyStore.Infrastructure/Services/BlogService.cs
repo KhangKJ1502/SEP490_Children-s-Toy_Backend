@@ -25,13 +25,10 @@ public class BlogService : IBlogService
     private const string PublishedStatus = "Published";
     private const string RejectedStatus = "Rejected";
     private const string HiddenStatus = "Hidden";
-<<<<<<< HEAD
     private const string ModerationPending = "Pending";
     private const string ModerationApproved = "Approved";
-    private const int CommentRateLimitPerMinute = 5;
-=======
     private const string ManualReviewStatus = "ManualReview";
->>>>>>> 1fa1bdca4b7a030dd14764900025ba7b34ce04fc
+    private const int CommentRateLimitPerMinute = 5;
     private const string ApprovePublishNowDecision = "ApprovePublishNow";
     private const string ApproveKeepScheduleDecision = "ApproveKeepSchedule";
 
@@ -1324,10 +1321,6 @@ public class BlogService : IBlogService
             Comment = review.Comment ?? string.Empty,
             Status = review.IsDeleted ? "Hidden" : "Visible",
             ModerationStatus = review.ModerationStatus,
-<<<<<<< HEAD
-=======
-            IsHidden = review.IsHidden,
->>>>>>> 1fa1bdca4b7a030dd14764900025ba7b34ce04fc
             LikeCount = GetReactionCount(counts, ReactionLike),
             LoveCount = GetReactionCount(counts, ReactionLove),
             HahaCount = GetReactionCount(counts, ReactionHaha),
@@ -1361,10 +1354,6 @@ public class BlogService : IBlogService
             Comment = reply.Comment,
             Status = reply.IsDeleted ? "Hidden" : "Visible",
             ModerationStatus = reply.ModerationStatus,
-<<<<<<< HEAD
-=======
-            IsHidden = reply.IsHidden,
->>>>>>> 1fa1bdca4b7a030dd14764900025ba7b34ce04fc
             LikeCount = GetReactionCount(counts, ReactionLike),
             LoveCount = GetReactionCount(counts, ReactionLove),
             HahaCount = GetReactionCount(counts, ReactionHaha),
