@@ -72,6 +72,28 @@ public class BlogCommentBanReasonDto
     public DateTime CreatedAt { get; set; }
 }
 
+public class BlogReviewPermissionDto
+{
+    public int AccountId { get; set; }
+    public string AccountName { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string? AccountImageUrl { get; set; }
+    public byte ViolationCount { get; set; }
+    public bool IsCommentBanned { get; set; }
+    public DateTime? BannedAt { get; set; }
+    public DateTime? BanExpiresAt { get; set; }
+    public DateTime? UnbannedAt { get; set; }
+    public int? UnbannedBy { get; set; }
+    public string? UnbannedByName { get; set; }
+    public DateTime? LastViolatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+}
+
+public class UpdateBlogReviewPermissionDto
+{
+    public bool IsCommentBanned { get; set; }
+}
+
 public class UpsertReactionDto
 {
     public string ReactionCode { get; set; } = string.Empty;

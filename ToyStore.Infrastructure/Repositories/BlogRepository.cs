@@ -512,6 +512,42 @@ public class BlogRepository : IBlogRepository
         return (true, state.BanExpiresAt);
     }
 
+    public Task<List<BlogCommentViolationCount>> GetPagedBannedCommentAccountsAsync(
+        int pageNumber,
+        int pageSize,
+        string? searchTerm,
+        CancellationToken cancellationToken = default)
+    {
+        return BuildBannedCommentAccountsQuery(searchTerm)
+            .OrderByDescending(x => x.BannedAt ?? x.UpdatedAt)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<int> CountBannedCommentAccountsAsync(string? searchTerm, CancellationToken cancellationToken = default)
+    {
+        return BuildBannedCommentAccountsQuery(searchTerm).CountAsync(cancellationToken);
+    }
+
+    public Task<BlogCommentViolationCount?> GetCommentPermissionStateAsync(
+        int accountId,
+        CancellationToken cancellationToken = default)
+    {
+        return _context.BlogCommentViolationCounts
+            .Include(x => x.Account)
+            .Include(x => x.UnbannedByNavigation)
+            .FirstOrDefaultAsync(x => x.AccountId == accountId, cancellationToken);
+    }
+
+    public async Task UpdateCommentPermissionStateAsync(
+        BlogCommentViolationCount entity,
+        CancellationToken cancellationToken = default)
+    {
+        _context.BlogCommentViolationCounts.Update(entity);
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task<bool> IncrementRateAndCheckCommentLimitAsync(
         int accountId,
         DateTime utcNow,
@@ -568,6 +604,26 @@ public class BlogRepository : IBlogRepository
         await _context.BlogCommentViolationCounts.AddAsync(state, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
         return state;
+    }
+
+    private IQueryable<BlogCommentViolationCount> BuildBannedCommentAccountsQuery(string? searchTerm)
+    {
+        var query = _context.BlogCommentViolationCounts
+            .AsNoTracking()
+            .Include(x => x.Account)
+            .Include(x => x.UnbannedByNavigation)
+            .Where(x => x.IsCommentBanned && !x.Account.IsDeleted);
+
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var term = searchTerm.Trim();
+            query = query.Where(x =>
+                x.Account.AccountName.Contains(term)
+                || x.Account.Email.Contains(term)
+                || x.AccountId.ToString().Contains(term));
+        }
+
+        return query;
     }
 
     private IQueryable<BlogPost> BuildQuery(

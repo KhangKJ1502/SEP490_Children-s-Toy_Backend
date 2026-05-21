@@ -1,4 +1,5 @@
 using AutoMapper;
+using FluentValidation;
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.Common.Models;
 using ToyStore.Application.Constants;
@@ -42,6 +43,7 @@ public class BlogService : IBlogService
     private readonly IDomainEventPublisher _eventPublisher;
     private readonly IMapper _mapper;
     private readonly INotificationDispatcher _notificationDispatcher;
+    private readonly IValidator<UpdateBlogReviewPermissionDto> _permissionValidator;
     private readonly ILogger<BlogService> _logger;
     private readonly ITimeProvider _timeProvider;
     private readonly IBlogCommentModerationGateway _blogCommentModerationGateway;
@@ -52,6 +54,7 @@ public class BlogService : IBlogService
         IDomainEventPublisher eventPublisher,
         IMapper mapper,
         INotificationDispatcher notificationDispatcher,
+        IValidator<UpdateBlogReviewPermissionDto> permissionValidator,
         ILogger<BlogService> logger,
         ITimeProvider timeProvider,
         IBlogCommentModerationGateway blogCommentModerationGateway)
@@ -61,6 +64,7 @@ public class BlogService : IBlogService
         _eventPublisher     = eventPublisher;
         _mapper             = mapper;
         _notificationDispatcher = notificationDispatcher;
+        _permissionValidator = permissionValidator;
         _logger             = logger;
         _timeProvider       = timeProvider;
         _blogCommentModerationGateway = blogCommentModerationGateway;
@@ -864,6 +868,79 @@ public class BlogService : IBlogService
         return Result<List<BlogCommentBanReasonDto>>.Success(mapped);
     }
 
+    public async Task<Result<PaginatedResponse<BlogReviewPermissionDto>>> GetBlogReviewPermissionsAsync(
+        int pageNumber = 1,
+        int pageSize = 10,
+        string? searchTerm = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsPrivilegedUser())
+        {
+            return Result<PaginatedResponse<BlogReviewPermissionDto>>.Unauthorized();
+        }
+
+        if (pageNumber < 1 || pageSize < 1 || pageSize > 100)
+        {
+            return Result<PaginatedResponse<BlogReviewPermissionDto>>.Failure("VALIDATION_ERROR", "Invalid pagination values.");
+        }
+
+        var states = await _unitOfWork.Blogs.GetPagedBannedCommentAccountsAsync(pageNumber, pageSize, searchTerm, cancellationToken);
+        var totalCount = await _unitOfWork.Blogs.CountBannedCommentAccountsAsync(searchTerm, cancellationToken);
+        var mapped = _mapper.Map<List<BlogReviewPermissionDto>>(states);
+
+        return Result<PaginatedResponse<BlogReviewPermissionDto>>.Success(
+            new PaginatedResponse<BlogReviewPermissionDto>(mapped, totalCount, pageNumber, pageSize));
+    }
+
+    public async Task<Result<BlogReviewPermissionDto>> UpdateBlogReviewPermissionAsync(
+        int accountId,
+        UpdateBlogReviewPermissionDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsPrivilegedUser())
+        {
+            return Result<BlogReviewPermissionDto>.Unauthorized();
+        }
+
+        if (accountId <= 0)
+        {
+            return Result<BlogReviewPermissionDto>.Failure("VALIDATION_ERROR", "AccountId must be greater than 0.");
+        }
+
+        var validationResult = await _permissionValidator.ValidateAsync(dto, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            var errors = validationResult.Errors
+                .GroupBy(x => x.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ErrorMessage).ToArray());
+            return Result<BlogReviewPermissionDto>.ValidationFailure(errors);
+        }
+
+        var state = await _unitOfWork.Blogs.GetCommentPermissionStateAsync(accountId, cancellationToken);
+        if (state == null)
+        {
+            return Result<BlogReviewPermissionDto>.NotFound("Blog comment permission", accountId);
+        }
+
+        if (!state.IsCommentBanned)
+        {
+            return Result<BlogReviewPermissionDto>.Failure("VALIDATION_ERROR", "This account is not currently banned from blog comments.");
+        }
+
+        var now = _timeProvider.UtcNow;
+        state.IsCommentBanned = false;
+        state.BanExpiresAt = null;
+        state.UnbannedAt = now;
+        state.UnbannedBy = _currentUserService.AccountId > 0 ? _currentUserService.AccountId : null;
+        state.UpdatedAt = now;
+
+        await _unitOfWork.Blogs.UpdateCommentPermissionStateAsync(state, cancellationToken);
+        await SendBlogCommentPermissionRestoredNotificationAsync(state.AccountId, cancellationToken);
+
+        var updated = await _unitOfWork.Blogs.GetCommentPermissionStateAsync(accountId, cancellationToken);
+        return Result<BlogReviewPermissionDto>.Success(_mapper.Map<BlogReviewPermissionDto>(updated!));
+    }
+
     public async Task<Result<ReactionSummaryDto>> ReactToBlogAsync(int blogPostId, UpsertReactionDto dto, CancellationToken cancellationToken = default)
     {
         if (_currentUserService.AccountId <= 0)
@@ -1455,6 +1532,34 @@ public class BlogService : IBlogService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to send blog reply moderation notification for reply {ReplyBlogId}", reply.ReplyBlogId);
+        }
+    }
+
+    private async Task SendBlogCommentPermissionRestoredNotificationAsync(int accountId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (accountId <= 0)
+            {
+                return;
+            }
+
+            await _notificationDispatcher.DispatchAsync(new NotificationContext
+            {
+                RecipientAccountId = accountId,
+                RecipientType = RecipientTypes.Customer,
+                NotificationType = NotificationTypes.Blog,
+                Title = "Blog comment permission restored",
+                Message = "Your blog comment permission has been restored.",
+                SendBell = true,
+                SendEmail = false,
+                ActionTarget = "/blog",
+                IdempotencyKey = $"blog-comment-permission-restored:{accountId}:{DateTime.UtcNow.Ticks}"
+            }, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send blog comment permission restored notification for account {AccountId}", accountId);
         }
     }
 

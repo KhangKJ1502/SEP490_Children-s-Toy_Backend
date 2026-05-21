@@ -82,6 +82,7 @@ public static class DependencyInjection
         services.AddScoped<IValidator<SubmitBlogDto>, SubmitBlogValidator>();
         services.AddScoped<IValidator<ApproveBlogDto>, ApproveBlogValidator>();
         services.AddScoped<IValidator<UpdateBlogFeaturedDto>, UpdateBlogFeaturedValidator>();
+        services.AddScoped<IValidator<UpdateBlogReviewPermissionDto>, UpdateBlogReviewPermissionValidator>();
 
 
         services.AddScoped<IValidator<CreateAccountDto>, CreateAccountValidator>();
