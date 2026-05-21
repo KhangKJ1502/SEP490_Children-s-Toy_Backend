@@ -10,7 +10,7 @@ public class BlogReviewDto
     public string? AccountImageUrl { get; set; }
     public string Comment { get; set; } = string.Empty;
     public string Status { get; set; } = "Visible";
-    public string ModerationStatus { get; set; } = string.Empty;
+    public string ModerationStatus { get; set; } = "Pending";
     public bool IsHidden { get; set; }
     public byte? BanReasonId { get; set; }
     public string? BanReasonContent { get; set; }
@@ -35,10 +35,6 @@ public class BlogReviewReplyDto
     public string? ReplyToAccountName { get; set; }
     public string Comment { get; set; } = string.Empty;
     public string Status { get; set; } = "Visible";
-    public string ModerationStatus { get; set; } = string.Empty;
-    public bool IsHidden { get; set; }
-    public byte? BanReasonId { get; set; }
-    public string? BanReasonContent { get; set; }
     public int LikeCount { get; set; }
     public int LoveCount { get; set; }
     public int HahaCount { get; set; }

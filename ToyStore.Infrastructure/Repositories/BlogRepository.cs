@@ -489,6 +489,87 @@ public class BlogRepository : IBlogRepository
         return raw.ToDictionary(x => x.ReplyBlogId, x => x.Code);
     }
 
+    public async Task<(bool IsLocked, DateTime? LockedUntil)> CheckAndRefreshCommentLockAsync(
+        int accountId,
+        DateTime utcNow,
+        CancellationToken cancellationToken = default)
+    {
+        var state = await GetOrCreateViolationStateAsync(accountId, utcNow, cancellationToken);
+        if (!state.IsCommentBanned)
+        {
+            return (false, null);
+        }
+
+        if (state.BanExpiresAt.HasValue && state.BanExpiresAt.Value <= utcNow)
+        {
+            state.IsCommentBanned = false;
+            state.UnbannedAt = utcNow;
+            state.UpdatedAt = utcNow;
+            await _context.SaveChangesAsync(cancellationToken);
+            return (false, null);
+        }
+
+        return (true, state.BanExpiresAt);
+    }
+
+    public async Task<bool> IncrementRateAndCheckCommentLimitAsync(
+        int accountId,
+        DateTime utcNow,
+        int limit,
+        int windowMinutes,
+        CancellationToken cancellationToken = default)
+    {
+        var state = await GetOrCreateViolationStateAsync(accountId, utcNow, cancellationToken);
+        var windowStart = utcNow.AddMinutes(-windowMinutes);
+
+        if (!state.RateWindowAt.HasValue || state.RateWindowAt.Value <= windowStart)
+        {
+            state.RateWindowAt = utcNow;
+            state.RateCount = 1;
+            state.UpdatedAt = utcNow;
+            await _context.SaveChangesAsync(cancellationToken);
+            return false;
+        }
+
+        var next = state.RateCount + 1;
+        state.RateCount = next > byte.MaxValue ? byte.MaxValue : (byte)next;
+        state.UpdatedAt = utcNow;
+        await _context.SaveChangesAsync(cancellationToken);
+        return state.RateCount >= limit;
+    }
+
+    private async Task<BlogCommentViolationCount> GetOrCreateViolationStateAsync(
+        int accountId,
+        DateTime utcNow,
+        CancellationToken cancellationToken)
+    {
+        var state = await _context.BlogCommentViolationCounts
+            .FirstOrDefaultAsync(x => x.AccountId == accountId, cancellationToken);
+        if (state != null)
+        {
+            return state;
+        }
+
+        state = new BlogCommentViolationCount
+        {
+            AccountId = accountId,
+            ViolationCount = 0,
+            LastViolatedAt = null,
+            UpdatedAt = utcNow,
+            IsCommentBanned = false,
+            BannedAt = null,
+            BanExpiresAt = null,
+            UnbannedAt = null,
+            UnbannedBy = null,
+            RateCount = 0,
+            RateWindowAt = null
+        };
+
+        await _context.BlogCommentViolationCounts.AddAsync(state, cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
+        return state;
+    }
+
     private IQueryable<BlogPost> BuildQuery(
         string? searchTerm,
         string? status,
