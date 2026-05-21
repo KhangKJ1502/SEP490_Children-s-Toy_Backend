@@ -1,5 +1,6 @@
 using ToyStore.Infrastructure;
 using ToyStore.Recommendation;
+using ToyStore.Recommendation.Jobs;
 using ToyStore.Worker.Workers;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -9,13 +10,19 @@ builder.Services.AddHttpContextAccessor();
 // Infrastructure layer (includes Application via AddApplication())
 builder.Services.AddInfrastructure(builder.Configuration);
 
-// Recommendation layer
-builder.Services.AddRecommendation();
+// Recommendation layer (DI: MongoDb, Tracking, RecommendationService, ...)
+builder.Services.AddRecommendation(builder.Configuration);
+
+// Recommendation background jobs
+builder.Services.AddHostedService<FlushEventsJob>();
+builder.Services.AddHostedService<ComputeScoresJob>();
+builder.Services.AddHostedService<ComputeSimilarityJob>();
+builder.Services.AddHostedService<ComputeTrendingJob>();
+builder.Services.AddHostedService<UpdateUserProfilesJob>();
 
 // Core system workers
 builder.Services.AddHostedService<OrderStatusWorker>();
 builder.Services.AddHostedService<PromotionStatusJob>();
-builder.Services.AddHostedService<RecommendationWorker>();
 builder.Services.AddHostedService<BlogPublishWorker>();
 
 // Notification pipeline
