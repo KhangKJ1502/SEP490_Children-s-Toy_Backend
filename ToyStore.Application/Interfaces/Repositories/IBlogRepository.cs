@@ -150,6 +150,22 @@ public interface IBlogRepository
         DateTime utcNow,
         CancellationToken cancellationToken = default);
 
+    Task<List<BlogCommentViolationCount>> GetPagedBannedCommentAccountsAsync(
+        int pageNumber,
+        int pageSize,
+        string? searchTerm,
+        CancellationToken cancellationToken = default);
+
+    Task<int> CountBannedCommentAccountsAsync(string? searchTerm, CancellationToken cancellationToken = default);
+
+    Task<BlogCommentViolationCount?> GetCommentPermissionStateAsync(
+        int accountId,
+        CancellationToken cancellationToken = default);
+
+    Task UpdateCommentPermissionStateAsync(
+        BlogCommentViolationCount entity,
+        CancellationToken cancellationToken = default);
+
     Task<bool> IncrementRateAndCheckCommentLimitAsync(
         int accountId,
         DateTime utcNow,
