@@ -181,8 +181,9 @@ public class ReviewService : IReviewService
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
 
-            // 5. Auto-Approve Flow
-            await AutoApproveAsync(review, uploadedImages, now, cancellationToken);
+            // 5. AI Moderation: Review đã được tạo với ModerationStatus = "Pending".
+            //    AI Sidecar sẽ tự động pick up và xử lý qua polling mỗi 30 giây.
+            //    Không cần auto-approve ở đây nữa.
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
@@ -198,7 +199,8 @@ public class ReviewService : IReviewService
             }
 
             // Fetch the fully populated review to map and return
-            var completeReview = await _unitOfWork.Reviews.GetByIdPublicAsync(review.ReviewId, cancellationToken);
+            // Dùng GetByIdForUpdateAsync (không filter ModerationStatus) vì review đang ở trạng thái Pending
+            var completeReview = await _unitOfWork.Reviews.GetByIdForUpdateAsync(review.ReviewId, cancellationToken);
             return Result<ReviewProductDto>.Success(_mapper.Map<ReviewProductDto>(completeReview ?? review));
         }
         catch (Exception ex)
@@ -310,15 +312,16 @@ public class ReviewService : IReviewService
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
 
-            // Chạy lại Auto-Approve Flow
-            await AutoApproveAsync(trackReview, uploadedImages, now, cancellationToken);
+            // AI Moderation: Review đã được reset về ModerationStatus = "Pending" (line 271).
+            //    AI Sidecar sẽ tự động pick up và xử lý lại qua polling.
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             _logger.LogInformation("User {UserId} edited review {ReviewId}", accountId, reviewId);
 
-            var completeReview = await _unitOfWork.Reviews.GetByIdPublicAsync(reviewId, cancellationToken);
+            // Dùng GetByIdForUpdateAsync (không filter ModerationStatus) vì review đang ở trạng thái Pending
+            var completeReview = await _unitOfWork.Reviews.GetByIdForUpdateAsync(reviewId, cancellationToken);
             return Result<ReviewProductDto>.Success(_mapper.Map<ReviewProductDto>(completeReview ?? trackReview));
         }
         catch (Exception ex)
@@ -474,6 +477,15 @@ public class ReviewService : IReviewService
         var review = await _unitOfWork.Reviews.GetByIdForUpdateAsync(reviewId, cancellationToken);
         if (review == null)
             return Result<AdminReviewDetailDto>.NotFound("Review", reviewId);
+
+        if (review.ModerationStatus == "Rejected")
+            return Result<AdminReviewDetailDto>.BusinessError("Cannot change moderation status of a rejected review.");
+
+        if (review.ModerationStatus != "ManualReview" && review.ModerationStatus != "Pending")
+            return Result<AdminReviewDetailDto>.BusinessError("Can only update status from Pending or ManualReview.");
+
+        if (dto.ModerationStatus != "Approved" && dto.ModerationStatus != "Rejected")
+            return Result<AdminReviewDetailDto>.BusinessError("Status can only be changed to Approved or Rejected.");
 
         var now = _timeProvider.UtcNow;
         var staffId = _currentUser.AccountId;
@@ -639,45 +651,7 @@ public class ReviewService : IReviewService
 
     // --- Private Helpers ---
 
-    private async Task AutoApproveAsync(
-        ReviewProduct review,
-        List<ReviewProductImage> images,
-        DateTime now,
-        CancellationToken cancellationToken)
-    {
-        // PHASE HIỆN TẠI (chưa tích hợp AI): Tự động approve
-        review.ModerationStatus = "Approved";
-        review.UpdatedAt = now;
-
-        await _unitOfWork.Reviews.AddModerationLogAsync(new ReviewModerationLog
-        {
-            TargetType = "Text",
-            ReviewId = review.ReviewId,
-            ModeratorType = "AI",
-            Action = "Approved",
-            AiModelVersion = "auto-approve-v0",
-            ModerationResult = "Approved",
-            Reason = "AI moderation not yet integrated — auto approved",
-            CreatedAt = now
-        }, cancellationToken);
-
-        foreach (var img in images)
-        {
-            img.ModerationStatus = "Approved";
-            img.UpdatedAt = now;
-
-            await _unitOfWork.Reviews.AddModerationLogAsync(new ReviewModerationLog
-            {
-                TargetType = "Image",
-                ReviewId = review.ReviewId,
-                ImageId = img.ReviewProductImageId,
-                ModeratorType = "AI",
-                Action = "Approved",
-                AiModelVersion = "auto-approve-v0",
-                ModerationResult = "Approved",
-                Reason = "AI moderation not yet integrated — auto approved",
-                CreatedAt = now
-            }, cancellationToken);
-        }
-    }
+    // AutoApproveAsync đã được xóa.
+    // Review được tạo với ModerationStatus = "Pending" và AI Sidecar
+    // (chạy trên port 8001) sẽ tự động poll DB mỗi 30 giây để kiểm duyệt.
 }

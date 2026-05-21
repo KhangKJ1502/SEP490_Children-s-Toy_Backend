@@ -52,7 +52,7 @@ CREATE TABLE [System].[BackgroundJobs] (
 GO
 
 /* =============================================
-   1. USER MANAGEMENT (IAM)
+   1. USER MANAGEMENT (IAM)bl
 ============================================= */
 CREATE TABLE [Roles] (
     [RoleID]      TINYINT IDENTITY(1,1) PRIMARY KEY,
@@ -605,8 +605,8 @@ CREATE TABLE [StaffShiftCapacity] (
     [AccountID]   INT          NOT NULL,
     [CurrentLoad] SMALLINT     NOT NULL DEFAULT 0
         CONSTRAINT [CK_SSC_CurrentLoad_Min] CHECK ([CurrentLoad] >= 0),
+    [ShiftFullNotifiedAt]      DATETIME2(3) NULL,
     [MaxLoad]     SMALLINT     NOT NULL DEFAULT 20,
-    [ShiftFullNotifiedAt] DATETIME2(3) NULL,
     [UpdatedAt]   DATETIME2(0) NULL,
     CONSTRAINT [FK_SSC_Schedules] FOREIGN KEY ([ScheduleID]) REFERENCES [WorkSchedules]([ScheduleID]),
     CONSTRAINT [FK_SSC_Accounts]  FOREIGN KEY ([AccountID])  REFERENCES [Accounts]([AccountID]),
@@ -1022,38 +1022,239 @@ CREATE TABLE [ReviewProductReactions] (
         UNIQUE ([AccountID], [ReviewProductID])
 );
 GO
+CREATE TABLE [dbo].[ReviewBlogs] (
+    [ReviewBlogID]     INT           IDENTITY(1,1) PRIMARY KEY,
+    [BlogPostID]       INT           NOT NULL,
+    [AccountID]        INT           NOT NULL,
+    [Comment]          NVARCHAR(500) NULL,
+    [ModerationStatus] VARCHAR(20)   NOT NULL DEFAULT 'Pending'
+        CONSTRAINT [CK_ReviewBlogs_ModerationStatus]
+            CHECK ([ModerationStatus] IN (
+                'Pending','Processing','Approved','Rejected','ManualReview','Failed'
+                --  Pending     = vừa gửi, chờ AI
+                --  Processing  = AI đang xử lý
+                --  Approved    = AI duyệt qua
+                --  Rejected    = AI từ chối
+                --  ManualReview= AI không chắc, cần Admin xem
+                --  Failed      = AI lỗi, cần xử lý lại
+            )),
+    [ManualReviewDeadline] DATETIME2(0) NULL,
+    [RetryCount]       TINYINT       NOT NULL DEFAULT 0,
+    [LastRetryAt]      DATETIME2(0)  NULL,
+    [IsHidden]         BIT           NOT NULL DEFAULT 0,   -- Admin ẩn thủ công
+    [HiddenBy]         INT           NULL,
+    [HiddenAt]         DATETIME2(0)  NULL,
+    [IsDeleted]        BIT           NOT NULL DEFAULT 0,
+    [CreatedAt]        DATETIME2(0)  NOT NULL DEFAULT GETDATE(),
+    [UpdatedAt]        DATETIME2(0)  NULL,
 
-/* =============================================
-   7.1. BLOG REVIEWS & INTERACTIONS
-============================================= */
-CREATE TABLE [ReviewBlogs] (
-    [ReviewBlogID] INT IDENTITY(1,1) PRIMARY KEY,
-    [BlogPostID]   INT NOT NULL,
-    [AccountID]    INT NOT NULL,
-    [Comment]      NVARCHAR(500) NULL,
-    [IsDeleted]    BIT NOT NULL DEFAULT 0,
-    [CreatedAt]    DATETIME2(0) NOT NULL DEFAULT GETDATE(),
-    [UpdatedAt]    DATETIME2(0) NULL,
-    CONSTRAINT [FK_ReviewBlogs_BlogPosts] FOREIGN KEY ([BlogPostID]) REFERENCES [BlogPosts]([BlogPostID]),
-    CONSTRAINT [FK_ReviewBlogs_Accounts]  FOREIGN KEY ([AccountID])  REFERENCES [Accounts]([AccountID])
+    CONSTRAINT [FK_ReviewBlogs_BlogPosts]
+        FOREIGN KEY ([BlogPostID]) REFERENCES [BlogPosts]([BlogPostID]),
+    CONSTRAINT [FK_ReviewBlogs_Accounts]
+        FOREIGN KEY ([AccountID])  REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [FK_ReviewBlogs_HiddenBy]
+        FOREIGN KEY ([HiddenBy])   REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [CK_ReviewBlogs_HiddenConsistency]
+        CHECK (
+            ([IsHidden] = 0 AND [HiddenBy] IS NULL AND [HiddenAt] IS NULL)
+            OR ([IsHidden] = 1 AND [HiddenBy] IS NOT NULL AND [HiddenAt] IS NOT NULL)
+        )
 );
 GO
 
-CREATE TABLE [ReviewBlogReplies] (
-    [ReplyBlogID]      INT IDENTITY(1,1) PRIMARY KEY,
-    [ReviewBlogID]     INT NOT NULL,
-    [AccountID]        INT NOT NULL,
-    [ParentReplyID]    INT NULL,
-    [ReplyToAccountID] INT NULL,
+CREATE TABLE [dbo].[ReviewBlogReplies] (
+    [ReplyBlogID]      INT           IDENTITY(1,1) PRIMARY KEY,
+    [ReviewBlogID]     INT           NOT NULL,
+    [AccountID]        INT           NOT NULL,
+    [ParentReplyID]    INT           NULL,
+    [ReplyToAccountID] INT           NULL,
     [Comment]          NVARCHAR(500) NOT NULL,
-    [IsDeleted]        BIT NOT NULL DEFAULT 0,
-    [CreatedAt]        DATETIME2(0) NOT NULL DEFAULT GETDATE(),
-    [UpdatedAt]        DATETIME2(0) NULL,
-    CONSTRAINT [FK_ReviewBlogReplies_ReviewBlogs] FOREIGN KEY ([ReviewBlogID])     REFERENCES [ReviewBlogs]([ReviewBlogID]),
-    CONSTRAINT [FK_ReviewBlogReplies_Accounts]    FOREIGN KEY ([AccountID])        REFERENCES [Accounts]([AccountID]),
-    CONSTRAINT [FK_ReviewBlogReplies_Parent]      FOREIGN KEY ([ParentReplyID])    REFERENCES [ReviewBlogReplies]([ReplyBlogID]),
-    CONSTRAINT [FK_ReviewBlogReplies_ReplyTo]     FOREIGN KEY ([ReplyToAccountID]) REFERENCES [Accounts]([AccountID])
+    [ModerationStatus] VARCHAR(20)   NOT NULL DEFAULT 'Pending'
+        CONSTRAINT [CK_ReviewBlogReplies_ModerationStatus]
+            CHECK ([ModerationStatus] IN (
+                'Pending','Processing','Approved','Rejected','ManualReview','Failed'
+            )),
+    [ManualReviewDeadline] DATETIME2(0) NULL,
+    [RetryCount]       TINYINT       NOT NULL DEFAULT 0,
+    [LastRetryAt]      DATETIME2(0)  NULL,
+    [IsHidden]         BIT           NOT NULL DEFAULT 0,
+    [HiddenBy]         INT           NULL,
+    [HiddenAt]         DATETIME2(0)  NULL,
+    [IsDeleted]        BIT           NOT NULL DEFAULT 0,
+    [CreatedAt]        DATETIME2(0)  NOT NULL DEFAULT GETDATE(),
+    [UpdatedAt]        DATETIME2(0)  NULL,
+
+    CONSTRAINT [FK_ReviewBlogReplies_ReviewBlogs]
+        FOREIGN KEY ([ReviewBlogID])     REFERENCES [ReviewBlogs]([ReviewBlogID]),
+    CONSTRAINT [FK_ReviewBlogReplies_Accounts]
+        FOREIGN KEY ([AccountID])        REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [FK_ReviewBlogReplies_Parent]
+        FOREIGN KEY ([ParentReplyID])    REFERENCES [ReviewBlogReplies]([ReplyBlogID]),
+    CONSTRAINT [FK_ReviewBlogReplies_ReplyTo]
+        FOREIGN KEY ([ReplyToAccountID]) REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [FK_ReviewBlogReplies_HiddenBy]
+        FOREIGN KEY ([HiddenBy])         REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [CK_ReviewBlogReplies_HiddenConsistency]
+        CHECK (
+            ([IsHidden] = 0 AND [HiddenBy] IS NULL AND [HiddenAt] IS NULL)
+            OR ([IsHidden] = 1 AND [HiddenBy] IS NOT NULL AND [HiddenAt] IS NOT NULL)
+        )
 );
+GO
+
+
+-- Index hay dùng khi query comment theo blog + status
+CREATE NONCLUSTERED INDEX [IX_ReviewBlogs_BlogPost_Status]
+    ON [dbo].[ReviewBlogs]([BlogPostID],[ModerationStatus],[CreatedAt] DESC);
+GO
+
+CREATE NONCLUSTERED INDEX [IX_ReviewBlogReplies_Comment_Status]
+    ON [dbo].[ReviewBlogReplies]([ReviewBlogID],[ModerationStatus],[CreatedAt] DESC);
+GO
+
+-- Lọc nhanh các comment đang Failed hoặc Pending quá lâu
+CREATE NONCLUSTERED INDEX [IX_ReviewBlogs_Failed]
+    ON [dbo].[ReviewBlogs]([ModerationStatus],[CreatedAt] ASC)
+    WHERE [ModerationStatus] IN ('Failed','Pending');
+GO
+
+CREATE NONCLUSTERED INDEX [IX_ReviewBlogReplies_Failed]
+    ON [dbo].[ReviewBlogReplies]([ModerationStatus],[CreatedAt] ASC)
+    WHERE [ModerationStatus] IN ('Failed','Pending');
+GO
+
+-- =============================================
+-- BLOG COMMENT MODERATION
+-- =============================================
+
+-- 1. Lý do từ chối comment (dropdown)
+CREATE TABLE [dbo].[BlogCommentBanReasons] (
+    [BanReasonID] TINYINT       IDENTITY(1,1) PRIMARY KEY,
+    [Content]     NVARCHAR(255) NOT NULL,
+    [CreatedAt]   DATETIME2(0)  NOT NULL DEFAULT GETDATE()
+);
+GO
+
+INSERT INTO [dbo].[BlogCommentBanReasons] ([Content]) VALUES
+(N'Insulting, abusive, or discriminatory content'),
+(N'Spam, ads, links, or repeated meaningless content'),
+(N'Content unrelated to the blog or product'),
+(N'False or misleading information'),
+(N'Content unsuitable for children'),
+(N'Sharing private or sensitive personal information'),
+(N'Harassment, bullying, or targeting specific users'),
+(N'Violent content, threats, or incitement'),
+(N'AI moderation is currently unavailable. Your comment will be sent for manual review');
+GO
+
+-- =============================================
+-- 2. Log kiểm duyệt (AI + Admin)
+--    dùng chung cho Comment và Reply
+-- =============================================
+CREATE TABLE [dbo].[BlogCommentModerationLogs] (
+    [LogID]            INT           IDENTITY(1,1) PRIMARY KEY,
+    [TargetType]       VARCHAR(10)   NOT NULL
+        CONSTRAINT [CK_BCML_TargetType]
+            CHECK ([TargetType] IN ('Comment','Reply')),
+    [CommentID]        INT           NULL,   -- FK → ReviewBlogs
+    [ReplyID]          INT           NULL,   -- FK → ReviewBlogReplies
+    [ModeratorType]    VARCHAR(10)   NOT NULL
+        CONSTRAINT [CK_BCML_ModeratorType]
+            CHECK ([ModeratorType] IN ('AI','Admin','Staff')),
+    [ModeratedBy]      INT           NULL,   -- NULL nếu AI
+    [Action]           VARCHAR(20)   NOT NULL
+        CONSTRAINT [CK_BCML_Action]
+            CHECK ([Action] IN (
+                'AutoApproved', -- AI duyệt tự động
+                'Rejected',     -- AI từ chối
+                'ManualReview', -- AI không chắc, đẩy lên Admin
+                'Overridden',   -- Admin override quyết định của AI
+                'Failed'        -- AI gặp lỗi khi xử lý
+            )),
+    [BanReasonID]      TINYINT       NULL,   -- bắt buộc khi Rejected
+    [ConfidenceScore]  DECIMAL(5,4)  NULL,   -- 0.0 → 1.0
+    [ModerationResult] NVARCHAR(MAX) NULL,   -- raw JSON từ AI
+    [CreatedAt]        DATETIME2(0)  NOT NULL DEFAULT GETDATE(),
+
+    CONSTRAINT [FK_BCML_ReviewBlogs]
+        FOREIGN KEY ([CommentID])   REFERENCES [ReviewBlogs]([ReviewBlogID]),
+    CONSTRAINT [FK_BCML_ReviewBlogReplies]
+        FOREIGN KEY ([ReplyID])     REFERENCES [ReviewBlogReplies]([ReplyBlogID]),
+    CONSTRAINT [FK_BCML_Accounts]
+        FOREIGN KEY ([ModeratedBy]) REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [FK_BCML_BanReasons]
+        FOREIGN KEY ([BanReasonID]) REFERENCES [BlogCommentBanReasons]([BanReasonID]),
+
+    CONSTRAINT [CK_BCML_TargetConsistency]
+        CHECK (
+            ([TargetType]='Comment' AND [CommentID] IS NOT NULL AND [ReplyID] IS NULL)
+            OR ([TargetType]='Reply' AND [ReplyID] IS NOT NULL AND [CommentID] IS NULL)
+        ),
+    CONSTRAINT [CK_BCML_ModeratorConsistency]
+        CHECK (
+            ([ModeratorType]='AI'    AND [ModeratedBy] IS NULL)
+            OR ([ModeratorType]='Admin' AND [ModeratedBy] IS NOT NULL)
+        ),
+    CONSTRAINT [CK_BCML_RejectedNeedsReason]
+        CHECK ([Action] <> 'Rejected' OR [BanReasonID] IS NOT NULL)
+);
+GO
+
+CREATE NONCLUSTERED INDEX [IX_BCML_Comment]
+    ON [dbo].[BlogCommentModerationLogs]([CommentID],[CreatedAt] DESC)
+    WHERE [CommentID] IS NOT NULL;
+GO
+
+CREATE NONCLUSTERED INDEX [IX_BCML_Reply]
+    ON [dbo].[BlogCommentModerationLogs]([ReplyID],[CreatedAt] DESC)
+    WHERE [ReplyID] IS NOT NULL;
+GO
+
+CREATE NONCLUSTERED INDEX [IX_BCML_ManualReview]
+    ON [dbo].[BlogCommentModerationLogs]([Action],[CreatedAt] ASC)
+    INCLUDE ([CommentID],[ReplyID],[TargetType])
+    WHERE [Action] IN ('ManualReview','Failed');
+GO
+
+-- =============================================
+-- 3. Đếm vi phạm + trạng thái khóa + rate limit
+-- =============================================
+CREATE TABLE [dbo].[BlogCommentViolationCount] (
+    [AccountID]       INT          NOT NULL PRIMARY KEY,
+
+    -- Vi phạm
+    [ViolationCount]  TINYINT      NOT NULL DEFAULT 0,   -- tổng số lần bị Rejected
+    [LastViolatedAt]  DATETIME2(0) NULL,                  -- lần vi phạm gần nhất
+    [UpdatedAt]       DATETIME2(0) NULL,
+
+    -- Trạng thái khóa comment
+    [IsCommentBanned] BIT          NOT NULL DEFAULT 0,   -- 1 = đang bị khóa
+    [BannedAt]        DATETIME2(0) NULL,                  -- thời điểm bị khóa
+    [BanExpiresAt]    DATETIME2(0) NULL,                  -- hết hạn tự mở (NULL = Admin khóa thủ công)
+    [UnbannedAt]      DATETIME2(0) NULL,                  -- Admin mở sớm lúc nào
+    [UnbannedBy]      INT          NULL,                  -- Admin nào mở sớm
+
+    -- Rate limit (thay thế Redis)
+    [RateCount]       TINYINT      NOT NULL DEFAULT 0,   -- số lần comment trong 1 phút
+    [RateWindowAt]    DATETIME2(0) NULL,                  -- thời điểm bắt đầu cửa sổ đếm
+
+    CONSTRAINT [FK_BCVC_Accounts]
+        FOREIGN KEY ([AccountID])  REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [FK_BCVC_UnbannedBy]
+        FOREIGN KEY ([UnbannedBy]) REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [CK_BCVC_Count]
+        CHECK ([ViolationCount] >= 0),
+    CONSTRAINT [CK_BCVC_RateCount]
+        CHECK ([RateCount] >= 0),
+    CONSTRAINT [CK_BCVC_BannedConsistency]
+        CHECK ([IsCommentBanned] = 0 OR [BannedAt] IS NOT NULL)
+);
+GO
+
+CREATE NONCLUSTERED INDEX [IX_BCVC_Banned]
+    ON [dbo].[BlogCommentViolationCount]([IsCommentBanned],[BanExpiresAt])
+    WHERE [IsCommentBanned] = 1;
+    -- dùng cho cả: Admin lọc danh sách + Job định kỳ check hết hạn
 GO
 
 CREATE TABLE [ReviewBlogReactions] (
