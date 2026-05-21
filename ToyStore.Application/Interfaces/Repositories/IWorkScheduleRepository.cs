@@ -16,6 +16,12 @@ public interface IWorkScheduleRepository
 
     Task<bool> ExistsAsync(int accountId, DateTime workDate, byte shiftTemplateId, CancellationToken cancellationToken = default);
 
+    Task<List<WorkSchedule>> GetByDateRangeAsync(DateTime fromInclusive, DateTime toInclusive, CancellationToken cancellationToken = default);
+
+    Task<List<WorkSchedule>> GetByAccountAndDateAsync(int accountId, DateTime workDate, CancellationToken cancellationToken = default);
+
+    Task<int> CountActiveRoleOnShiftAsync(DateTime workDate, byte shiftTemplateId, byte roleId, int? excludeScheduleId, CancellationToken cancellationToken = default);
+
     Task<WorkSchedule> CreateAsync(WorkSchedule schedule, CancellationToken cancellationToken = default);
     Task UpdateAsync(WorkSchedule schedule, CancellationToken cancellationToken = default);
     Task DeleteAsync(WorkSchedule schedule, CancellationToken cancellationToken = default);

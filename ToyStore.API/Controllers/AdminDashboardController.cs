@@ -6,7 +6,7 @@ using ToyStore.Application.Interfaces.Services;
 
 namespace ToyStore.API.Controllers;
 
-[Authorize(Roles = "Staff,Merchandise,Admin")]
+[Authorize(Policy = "Orders.Admin")]
 [ApiController]
 [Route("api/admin/dashboard")]
 public class AdminDashboardController : ControllerBase

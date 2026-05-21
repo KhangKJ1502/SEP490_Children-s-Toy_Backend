@@ -18,41 +18,41 @@ BEGIN TRY
 
     /* ─── NHÓM SYSTEM: tự động, không tắt/xóa ─────────────────── */
 
-    -- Đơn hàng — khách hàng
+    -- Orders — customer
     INSERT INTO @Tpl VALUES
-    ('ORDER_PLACED',          'SYSTEM', N'Đặt hàng thành công',
-     N'Đơn hàng {{OrderCode}} trị giá {{TotalAmount}} đ của bạn đã được ghi nhận thành công.'),
-    ('ORDER_CONFIRMED',       'SYSTEM', N'Xác nhận đơn hàng {{OrderCode}}',
-     N'Đơn hàng {{OrderCode}} của bạn đã được shop xác nhận và chuẩn bị hàng.'),
-    ('ORDER_PACKING',         'SYSTEM', N'Đơn hàng {{OrderCode}} đang đóng gói',
-     N'Đơn hàng {{OrderCode}} của bạn đang được nhân viên đóng gói cẩn thận.'),
-    ('ORDER_SHIPPING',        'SYSTEM', N'Đơn hàng {{OrderCode}} đang giao',
-     N'Đơn hàng {{OrderCode}} đã được giao cho bưu tá {{ShipperName}}. Vui lòng chú ý điện thoại.'),
-    ('ORDER_DELIVERED',       'SYSTEM', N'Giao hàng thành công',
-     N'Đơn hàng {{OrderCode}} đã giao thành công. Đừng quên đánh giá sản phẩm để nhận ưu đãi nhé!'),
-    ('ORDER_CANCELLED',       'SYSTEM', N'Đơn hàng {{OrderCode}} đã hủy',
-     N'Đơn hàng {{OrderCode}} của bạn đã bị hủy với lý do: {{CancelReason}}.'),
-    ('ORDER_DELIVERY_FAILED', 'SYSTEM', N'Giao hàng thất bại',
-     N'Giao hàng đơn {{OrderCode}} không thành công do: {{FailReason}}. Vui lòng liên hệ CSKH.'),
-    ('ORDER_ASSIGNED',        'SYSTEM', N'Đơn hàng {{OrderCode}} đã được phân công',
-     N'Đơn hàng {{OrderCode}} đã được phân công cho bạn xử lý.');
+    ('ORDER_PLACED',          'SYSTEM', N'Order placed successfully',
+     N'Your order {{OrderCode}} ({{TotalAmount}} VND) has been received.'),
+    ('ORDER_CONFIRMED',       'SYSTEM', N'Order confirmed: {{OrderCode}}',
+     N'Your order {{OrderCode}} has been confirmed and is being prepared.'),
+    ('ORDER_PACKING',         'SYSTEM', N'Order {{OrderCode}} is being packed',
+     N'Your order {{OrderCode}} is being packed by our team.'),
+    ('ORDER_SHIPPING',        'SYSTEM', N'Order {{OrderCode}} is on the way',
+     N'Order {{OrderCode}} has been handed to courier {{ShipperName}}. Please keep your phone available.'),
+    ('ORDER_DELIVERED',       'SYSTEM', N'Delivery successful',
+     N'Order {{OrderCode}} was delivered successfully. Leave a review to unlock rewards!'),
+    ('ORDER_CANCELLED',       'SYSTEM', N'Order {{OrderCode}} cancelled',
+     N'Your order {{OrderCode}} was cancelled. Reason: {{CancelReason}}.'),
+    ('ORDER_DELIVERY_FAILED', 'SYSTEM', N'Delivery failed',
+     N'Delivery for order {{OrderCode}} failed: {{FailReason}}. Please contact support.'),
+    ('ORDER_ASSIGNED',        'SYSTEM', N'Order Assigned: {{OrderCode}}',
+     N'Order {{OrderCode}} from {{CustomerName}} has been assigned to you. Total: {{TotalAmount}} VND. Please process it during your current shift.');
 
-    -- Thanh toán & Ví
+    -- Payments & wallet
     INSERT INTO @Tpl VALUES
-    ('PAYMENT_SUCCESS',  'SYSTEM', N'Thanh toán thành công',
-     N'Bạn đã thanh toán thành công {{Amount}} đ cho đơn hàng {{OrderCode}}.'),
-    ('PAYMENT_FAILED',   'SYSTEM', N'Thanh toán thất bại',
-     N'Giao dịch thanh toán {{Amount}} đ cho đơn hàng {{OrderCode}} không thành công.'),
-    ('WALLET_TOPUP',     'SYSTEM', N'Nạp tiền thành công',
-     N'Ví của bạn vừa được nạp thêm {{Amount}} đ. Số dư hiện tại: {{Balance}} đ.'),
-    ('WALLET_REFUND',    'SYSTEM', N'Hoàn tiền vào ví',
-     N'Bạn vừa được hoàn {{Amount}} đ vào ví từ đơn hàng {{OrderCode}}.'),
-    ('REFUND_APPROVED',  'SYSTEM', N'Yêu cầu hoàn tiền được chấp thuận',
-     N'Yêu cầu hoàn tiền cho đơn hàng {{OrderCode}} đã được chấp thuận. {{Amount}} đ sẽ được hoàn vào ví của bạn.'),
-    ('REFUND_REJECTED',  'SYSTEM', N'Yêu cầu hoàn tiền bị từ chối',
-     N'Yêu cầu hoàn tiền cho đơn hàng {{OrderCode}} đã bị từ chối. Vui lòng liên hệ CSKH nếu cần hỗ trợ.'),
-    ('REFUND_COMPLETED', 'SYSTEM', N'Hoàn tiền hoàn tất',
-     N'{{Amount}} đ từ đơn hàng {{OrderCode}} đã được hoàn thành công vào ví của bạn.');
+    ('PAYMENT_SUCCESS',  'SYSTEM', N'Payment successful',
+     N'You paid {{Amount}} VND for order {{OrderCode}}.'),
+    ('PAYMENT_FAILED',   'SYSTEM', N'Payment failed',
+     N'Payment of {{Amount}} VND for order {{OrderCode}} failed.'),
+    ('WALLET_TOPUP',     'SYSTEM', N'Wallet top-up successful',
+     N'{{Amount}} VND was added to your wallet. Current balance: {{Balance}} VND.'),
+    ('WALLET_REFUND',    'SYSTEM', N'Refund to wallet',
+     N'{{Amount}} VND was refunded to your wallet for order {{OrderCode}}.'),
+    ('REFUND_APPROVED',  'SYSTEM', N'Refund approved',
+     N'Your refund request for order {{OrderCode}} was approved. {{Amount}} VND will be returned to your wallet.'),
+    ('REFUND_REJECTED',  'SYSTEM', N'Refund rejected',
+     N'Your refund request for order {{OrderCode}} was rejected. Contact support if you need help.'),
+    ('REFUND_COMPLETED', 'SYSTEM', N'Refund completed',
+     N'{{Amount}} VND from order {{OrderCode}} has been refunded to your wallet.');
 
     -- Sản phẩm & Tồn kho
     INSERT INTO @Tpl VALUES
@@ -113,7 +113,9 @@ BEGIN TRY
     ('ADMIN_ORDER_QUEUED',     'SYSTEM', N'Đơn hàng {{OrderCode}} đang chờ phân công',
      N'Đơn hàng {{OrderCode}} chưa được phân công do {{Reason}}. Vui lòng xử lý thủ công.'),
     ('ADMIN_SHIFT_ENDED_PENDING', 'SYSTEM', N'Ca {{ShiftName}} kết thúc còn đơn chờ',
-     N'Ca làm việc {{ShiftName}} (nhân viên #{{AccountId}}) đã kết thúc với {{CurrentLoad}} đơn hàng đang xử lý dở.');
+     N'Ca làm việc {{ShiftName}} (nhân viên #{{AccountId}}) đã kết thúc với {{CurrentLoad}} đơn hàng đang xử lý dở.'),
+    ('ADMIN_SHIFT_FULL',       'SYSTEM', N'Ca {{ShiftName}} đã đầy đơn ngày {{WorkDate}}',
+     N'Một hoặc hai vai trò trong ca {{ShiftName}} đã đạt giới hạn số đơn xử lý đồng thời. Ngày {{WorkDate}}. Vui lòng xử lý thủ công (tăng MaxLoad hoặc phân đơn lại).');
 
     /* ─── NHÓM ADMIN: marketing, bật/tắt được ──────────────────── */
     INSERT INTO @Tpl VALUES

@@ -65,4 +65,5 @@ public static class NotificationTemplates
     public const string AdminBlogPending     = "ADMIN_BLOG_PENDING";
     public const string AdminOrderQueued     = "ADMIN_ORDER_QUEUED";
     public const string AdminShiftEndedPending = "ADMIN_SHIFT_ENDED_PENDING";
+    public const string AdminShiftFull       = "ADMIN_SHIFT_FULL";
 }
