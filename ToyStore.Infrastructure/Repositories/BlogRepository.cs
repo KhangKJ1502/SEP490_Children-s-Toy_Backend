@@ -160,6 +160,7 @@ public class BlogRepository : IBlogRepository
         return _context.ReviewBlogReplies
             .Include(x => x.Account)
             .Include(x => x.ReplyToAccount)
+            .Include(x => x.ReviewBlog)
             .FirstOrDefaultAsync(x => x.ReplyBlogId == replyBlogId, cancellationToken);
     }
 
@@ -206,6 +207,40 @@ public class BlogRepository : IBlogRepository
     public Task<int> CountReviewsForManagementAsync(string? searchTerm, string? status, CancellationToken cancellationToken = default)
     {
         return BuildReviewManagementQuery(searchTerm, status).CountAsync(cancellationToken);
+    }
+
+    public Task<List<BlogCommentBanReason>> GetBlogCommentBanReasonsAsync(CancellationToken cancellationToken = default)
+    {
+        return _context.BlogCommentBanReasons
+            .AsNoTracking()
+            .OrderBy(x => x.BanReasonId)
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<BlogCommentModerationLog?> GetLatestRejectedCommentLogAsync(int reviewBlogId, CancellationToken cancellationToken = default)
+    {
+        return _context.BlogCommentModerationLogs
+            .AsNoTracking()
+            .Include(x => x.BanReason)
+            .Where(x => x.TargetType == "Comment" && x.CommentId == reviewBlogId && x.Action == "Rejected")
+            .OrderByDescending(x => x.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public Task<BlogCommentModerationLog?> GetLatestRejectedReplyLogAsync(int replyBlogId, CancellationToken cancellationToken = default)
+    {
+        return _context.BlogCommentModerationLogs
+            .AsNoTracking()
+            .Include(x => x.BanReason)
+            .Where(x => x.TargetType == "Reply" && x.ReplyId == replyBlogId && x.Action == "Rejected")
+            .OrderByDescending(x => x.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task AddCommentModerationLogAsync(BlogCommentModerationLog log, CancellationToken cancellationToken = default)
+    {
+        await _context.BlogCommentModerationLogs.AddAsync(log, cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
     }
 
     public Task<ReactionType?> GetReactionTypeByCodeAsync(string reactionCode, CancellationToken cancellationToken = default)
@@ -546,11 +581,10 @@ public class BlogRepository : IBlogRepository
             .OrderByDescending(x => x.CreatedAt)
             .AsQueryable();
 
-        if (!string.IsNullOrWhiteSpace(status))
-        {
-            var isHidden = string.Equals(status.Trim(), "Hidden", StringComparison.OrdinalIgnoreCase);
-            query = query.Where(x => x.IsDeleted == isHidden);
-        }
+        query = query.Where(x =>
+            !x.IsDeleted &&
+            !x.IsHidden &&
+            (x.ModerationStatus == "ManualReview" || x.ModerationStatus == "Approved"));
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
