@@ -1,8 +1,8 @@
-using System.Data;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.DTOs.Assignments;
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Application.Interfaces.Services;
+using ToyStore.Domain.Constants;
 using ToyStore.Domain.Entities;
 using ToyStore.Infrastructure.Data;
 
@@ -11,10 +11,12 @@ namespace ToyStore.Infrastructure.Repositories;
 public class OrderAssignmentRepository : IOrderAssignmentRepository
 {
     private readonly SEP490ToyStoreContext _context;
+    private readonly IShiftCapacityMonitor _shiftCapacityMonitor;
 
-    public OrderAssignmentRepository(SEP490ToyStoreContext context)
+    public OrderAssignmentRepository(SEP490ToyStoreContext context, IShiftCapacityMonitor shiftCapacityMonitor)
     {
         _context = context;
+        _shiftCapacityMonitor = shiftCapacityMonitor;
     }
 
     public Task<bool> HasActiveAssignmentsAsync(int orderId, CancellationToken cancellationToken = default)
@@ -22,6 +24,22 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
         return _context.OrderAssignments
             .AsNoTracking()
             .AnyAsync(x => x.OrderId == orderId && x.IsActive, cancellationToken);
+    }
+
+    public Task<bool> HasActiveAssignmentAsync(
+        int orderId,
+        int accountId,
+        byte roleId,
+        CancellationToken cancellationToken = default)
+    {
+        return _context.OrderAssignments
+            .AsNoTracking()
+            .AnyAsync(
+                x => x.OrderId == orderId
+                     && x.AccountId == accountId
+                     && x.RoleId == roleId
+                     && x.IsActive,
+                cancellationToken);
     }
 
     public Task<List<OrderAssignment>> GetActiveAssignmentsAsync(int orderId, CancellationToken cancellationToken = default)
@@ -186,6 +204,10 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
             merchResult.UpdatedAt = now;
 
             await _context.SaveChangesAsync(cancellationToken);
+
+            await _shiftCapacityMonitor.TryNotifyShiftFullAsync(staffResult.ScheduleId, cancellationToken);
+            await _shiftCapacityMonitor.TryNotifyShiftFullAsync(merchResult.ScheduleId, cancellationToken);
+
             await transaction.CommitAsync(cancellationToken);
 
             return new AssignmentResultDto
@@ -204,7 +226,6 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
 
     public async Task<int> ReleaseCapacityAsync(int orderId, CancellationToken cancellationToken = default)
     {
-        // 1. Tìm các assignment đang hoạt động của đơn hàng này
         var activeAssignments = await _context.OrderAssignments
             .Where(oa => oa.OrderId == orderId && oa.IsActive)
             .ToListAsync(cancellationToken);
@@ -213,14 +234,12 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
 
         var scheduleIds = activeAssignments.Select(oa => oa.ScheduleId).Distinct().ToList();
 
-        // 2. Tìm các bản ghi Capacity tương ứng
         var capacities = await _context.StaffShiftCapacities
             .Where(ssc => scheduleIds.Contains(ssc.ScheduleId))
             .ToListAsync(cancellationToken);
 
         if (!capacities.Any()) return 0;
 
-        // 3. Cập nhật giảm tải cho nhân viên
         foreach (var cap in capacities)
         {
             if (cap.CurrentLoad > 0)
@@ -238,7 +257,6 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
         await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         try
         {
-            // 1. Lấy assignment cũ
             var oldAssignment = await _context.OrderAssignments
                 .FirstOrDefaultAsync(oa => oa.OrderId == orderId && oa.RoleId == roleId && oa.IsActive, cancellationToken);
 
@@ -247,23 +265,20 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
                 throw new InvalidOperationException("No active assignment found for this Order and Role");
             }
 
-            // Hủy assignment cũ
             oldAssignment.IsActive = false;
 
-            // Giảm tải cho schedule cũ
             var oldCapacity = await _context.StaffShiftCapacities
                 .FirstOrDefaultAsync(c => c.ScheduleId == oldAssignment.ScheduleId, cancellationToken);
-            
+
             if (oldCapacity != null)
             {
                 if (oldCapacity.CurrentLoad > 0) oldCapacity.CurrentLoad--;
                 oldCapacity.UpdatedAt = DateTime.UtcNow;
             }
 
-            // 2. Tạo assignment mới
             var newSchedule = await _context.WorkSchedules
                 .FirstOrDefaultAsync(ws => ws.ScheduleId == newScheduleId, cancellationToken);
-            
+
             if (newSchedule == null)
             {
                 throw new InvalidOperationException("New schedule not found");
@@ -280,10 +295,9 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
                 Notes = notes,
                 AssignedAt = DateTime.UtcNow
             };
-            
+
             await _context.OrderAssignments.AddAsync(newAssignment, cancellationToken);
 
-            // Tăng tải cho schedule mới
             var newCapacity = await _context.StaffShiftCapacities
                 .FirstOrDefaultAsync(c => c.ScheduleId == newScheduleId, cancellationToken);
 
@@ -294,6 +308,10 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
             }
 
             await _context.SaveChangesAsync(cancellationToken);
+
+            if (newCapacity != null)
+                await _shiftCapacityMonitor.TryNotifyShiftFullAsync(newScheduleId, cancellationToken);
+
             await transaction.CommitAsync(cancellationToken);
         }
         catch
@@ -301,5 +319,140 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
             await transaction.RollbackAsync(cancellationToken);
             throw;
         }
+    }
+
+    public async Task<List<int>> GetPendingOrderIdsByScheduleAsync(int scheduleId, CancellationToken cancellationToken = default)
+    {
+        var query = from oa in _context.OrderAssignments.AsNoTracking()
+                    join o in _context.Orders.AsNoTracking() on oa.OrderId equals o.OrderId
+                    join s in _context.StatusOrders.AsNoTracking() on o.StatusId equals s.StatusId
+                    where oa.ScheduleId == scheduleId
+                       && oa.IsActive
+                       && !o.IsDeleted
+                       && s.StatusName == OrderStatuses.Pending
+                    select o.OrderId;
+
+        return await query.Distinct().ToListAsync(cancellationToken);
+    }
+
+    public async Task DeactivateByScheduleAsync(int scheduleId, CancellationToken cancellationToken = default)
+    {
+        var assignments = await _context.OrderAssignments
+            .Where(oa => oa.ScheduleId == scheduleId && oa.IsActive)
+            .ToListAsync(cancellationToken);
+
+        if (!assignments.Any())
+            return;
+
+        var capacity = await _context.StaffShiftCapacities
+            .FirstOrDefaultAsync(c => c.ScheduleId == scheduleId, cancellationToken);
+
+        if (capacity != null)
+        {
+            var decrement = assignments.Count;
+            capacity.CurrentLoad = (short)Math.Max(0, capacity.CurrentLoad - decrement);
+            capacity.UpdatedAt = DateTime.UtcNow;
+        }
+
+        foreach (var a in assignments)
+            a.IsActive = false;
+    }
+
+    public async Task<List<OrderAssignment>> GetActiveByScheduleAndRoleForStatusesAsync(
+        int scheduleId,
+        byte roleId,
+        IReadOnlyCollection<string> statusNames,
+        CancellationToken cancellationToken = default)
+    {
+        if (statusNames.Count == 0)
+            return [];
+
+        return await (
+            from oa in _context.OrderAssignments
+            join o in _context.Orders on oa.OrderId equals o.OrderId
+            join s in _context.StatusOrders on o.StatusId equals s.StatusId
+            where oa.ScheduleId == scheduleId
+                  && oa.RoleId == roleId
+                  && oa.IsActive
+                  && !o.IsDeleted
+                  && statusNames.Contains(s.StatusName)
+            select oa
+        ).ToListAsync(cancellationToken);
+    }
+
+    public async Task<List<OrderAssignmentTransferItem>> TransferAssignmentsToAccountAsync(
+        int scheduleId,
+        byte roleId,
+        int newAccountId,
+        int assignedBy,
+        string? note,
+        IReadOnlyCollection<string> statusNames,
+        CancellationToken cancellationToken = default)
+    {
+        if (statusNames.Count == 0)
+            return [];
+
+        var rows = await (
+            from oa in _context.OrderAssignments
+            join o in _context.Orders on oa.OrderId equals o.OrderId
+            join s in _context.StatusOrders on o.StatusId equals s.StatusId
+            where oa.ScheduleId == scheduleId
+                  && oa.RoleId == roleId
+                  && oa.IsActive
+                  && !o.IsDeleted
+                  && statusNames.Contains(s.StatusName)
+            select new { Assignment = oa, Order = o, Status = s }
+        ).ToListAsync(cancellationToken);
+
+        var transferred = new List<OrderAssignmentTransferItem>();
+        var utcNow = DateTime.UtcNow;
+
+        foreach (var row in rows)
+        {
+            row.Assignment.AccountId = newAccountId;
+            row.Assignment.AssignedBy = assignedBy;
+            row.Assignment.Notes = note;
+            row.Assignment.AssignedAt = utcNow;
+
+            transferred.Add(new OrderAssignmentTransferItem
+            {
+                OrderId = row.Order.OrderId,
+                OrderCode = row.Order.OrderCode,
+                StatusName = row.Status.StatusName
+            });
+        }
+
+        return transferred;
+    }
+
+    public async Task<List<int>> DeactivateByScheduleRoleAndAccountAsync(
+        int scheduleId,
+        byte roleId,
+        int accountId,
+        CancellationToken cancellationToken = default)
+    {
+        var assignments = await _context.OrderAssignments
+            .Where(oa => oa.ScheduleId == scheduleId
+                         && oa.RoleId == roleId
+                         && oa.AccountId == accountId
+                         && oa.IsActive)
+            .ToListAsync(cancellationToken);
+
+        if (assignments.Count == 0)
+            return [];
+
+        var capacity = await _context.StaffShiftCapacities
+            .FirstOrDefaultAsync(c => c.ScheduleId == scheduleId, cancellationToken);
+
+        if (capacity != null)
+        {
+            capacity.CurrentLoad = (short)Math.Max(0, capacity.CurrentLoad - assignments.Count);
+            capacity.UpdatedAt = DateTime.UtcNow;
+        }
+
+        foreach (var a in assignments)
+            a.IsActive = false;
+
+        return assignments.Select(a => a.OrderId).Distinct().ToList();
     }
 }

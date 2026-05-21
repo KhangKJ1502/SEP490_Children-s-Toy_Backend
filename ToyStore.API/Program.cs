@@ -98,7 +98,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("Orders.Admin", policy => policy.RequireRole("Admin"));
+    options.AddPolicy("Orders.Operational", policy => policy.RequireRole("Staff", "Merchandise", "Admin"));
+});
 
 builder.Services.AddCors(options =>
 {

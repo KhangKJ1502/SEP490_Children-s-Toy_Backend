@@ -32,10 +32,12 @@ public class OrderAutoAssignedHandler : IOutboxEventHandler
 {
     public string EventType => ShiftEventTypes.OrderAssigned;
 
+    private readonly IUnitOfWork _unitOfWork;
     private readonly INotificationDispatcher _dispatcher;
 
-    public OrderAutoAssignedHandler(INotificationDispatcher dispatcher)
+    public OrderAutoAssignedHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
     {
+        _unitOfWork = unitOfWork;
         _dispatcher = dispatcher;
     }
 
@@ -45,9 +47,14 @@ public class OrderAutoAssignedHandler : IOutboxEventHandler
         var root = doc.RootElement;
 
         var orderId        = root.GetProperty("orderId").GetInt32();
-        var orderCode      = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
+        var orderCode      = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() : null;
         var staffAccountId = root.TryGetProperty("staffAccountId", out var s) ? s.GetInt32() : 0;
         var merchAccountId = root.TryGetProperty("merchAccountId", out var m) ? m.GetInt32() : 0;
+
+        var order = await _unitOfWork.Orders.GetByIdAsync(orderId, ct);
+        var placeholders = order is not null
+            ? OrderAssignmentNotificationHelper.CreatePlaceholders(order)
+            : OrderAssignmentNotificationHelper.CreatePlaceholders(orderId, orderCode);
 
         if (staffAccountId > 0)
         {
@@ -57,10 +64,7 @@ public class OrderAutoAssignedHandler : IOutboxEventHandler
                 RecipientType      = RecipientTypes.Staff,
                 NotificationType   = NotificationTypes.Order,
                 TemplateCode       = NotificationTemplates.OrderAssigned,
-                Placeholders       = new Dictionary<string, string>
-                {
-                    ["OrderCode"] = orderCode,
-                },
+                Placeholders       = placeholders,
                 ReferenceId  = $"{orderId}:{staffAccountId}",
                 SendBell     = true,
                 SendEmail    = false,
@@ -76,10 +80,7 @@ public class OrderAutoAssignedHandler : IOutboxEventHandler
                 RecipientType      = RecipientTypes.Staff,
                 NotificationType   = NotificationTypes.Order,
                 TemplateCode       = NotificationTemplates.OrderAssigned,
-                Placeholders       = new Dictionary<string, string>
-                {
-                    ["OrderCode"] = orderCode,
-                },
+                Placeholders       = placeholders,
                 ReferenceId  = $"{orderId}:{merchAccountId}",
                 SendBell     = true,
                 SendEmail    = false,
@@ -231,6 +232,77 @@ public class ShiftEndedWithPendingOrdersHandler : IOutboxEventHandler
                 SendBell     = true,
                 SendEmail    = true,
                 ActionTarget = $"/admin/shifts/{scheduleId}",
+            }, ct);
+        }
+    }
+}
+
+public class ShiftFullHandler : IOutboxEventHandler
+{
+    public string EventType => ShiftEventTypes.ShiftFull;
+
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly INotificationDispatcher _dispatcher;
+
+    public ShiftFullHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
+    {
+        _unitOfWork = unitOfWork;
+        _dispatcher = dispatcher;
+    }
+
+    public async Task HandleAsync(OutboxEventData ev, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(ev.Payload);
+        var root = doc.RootElement;
+
+        var scheduleId = root.GetProperty("scheduleId").GetInt32();
+        string shiftName = root.TryGetProperty("shiftName", out var sn) ? (sn.GetString() ?? "Shift") : "Shift";
+
+        DateTime workDate = DateTime.UtcNow.Date;
+        if (root.TryGetProperty("workDate", out var wd))
+        {
+            workDate = wd.ValueKind == JsonValueKind.String && DateTime.TryParse(wd.GetString(), out var d)
+                ? d.Date
+                : wd.TryGetDateTime(out var dto) ? dto.Date : wd.GetDateTime().Date;
+        }
+
+        var triggeredAt = DateTime.UtcNow;
+        if (root.TryGetProperty("triggeredAt", out var tt))
+        {
+            if (tt.ValueKind == JsonValueKind.String && DateTime.TryParse(tt.GetString(), out var tUtc))
+                triggeredAt = tUtc;
+            else if (tt.TryGetDateTime(out var t))
+                triggeredAt = t;
+            else if (tt.ValueKind != JsonValueKind.Undefined)
+                triggeredAt = tt.GetDateTime();
+        }
+
+        var admins = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
+        foreach (var admin in admins)
+        {
+            await _dispatcher.DispatchAsync(new NotificationContext
+            {
+                RecipientAccountId = admin.AccountId,
+                RecipientType      = RecipientTypes.Admin,
+                NotificationType   = NotificationTypes.System,
+                TemplateCode       = NotificationTemplates.AdminShiftFull,
+                Placeholders       = new Dictionary<string, string>
+                {
+                    ["ShiftName"] = $"{shiftName}",
+                    ["WorkDate"]  = $"{workDate:yyyy-MM-dd}",
+                },
+                ReferenceId  = $"{scheduleId}:{admin.AccountId}",
+                SendBell     = true,
+                SendEmail    = true,
+                ActionTarget = $"/admin/shifts/{scheduleId}",
+                Payload      = new Dictionary<string, object>
+                {
+                    ["type"]       = "SHIFT_FULL",
+                    ["scheduleId"] = scheduleId,
+                    ["shiftName"]  = shiftName ?? "Shift",
+                    ["workDate"]   = workDate.Date,
+                    ["triggeredAt"] = triggeredAt,
+                },
             }, ct);
         }
     }

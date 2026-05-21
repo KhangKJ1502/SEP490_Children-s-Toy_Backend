@@ -11,7 +11,7 @@ namespace ToyStore.API.Controllers;
 /// <summary>
 /// Quan ly don hang phia admin (Staff, Merchandise, Admin).
 /// </summary>
-[Authorize(Roles = "Staff,Merchandise,Admin")]
+[Authorize(Policy = "Orders.Operational")]
 [ApiController]
 [Route("api/admin/orders")]
 public class AdminOrdersController : ControllerBase
@@ -19,15 +19,18 @@ public class AdminOrdersController : ControllerBase
     private readonly IAdminOrderService _orderService;
     private readonly IOrderCustomerService _customerOrderService;
     private readonly ICurrentUserService _currentUser;
+    private readonly IOrderAccessService _orderAccess;
 
     public AdminOrdersController(
         IAdminOrderService orderService,
         IOrderCustomerService customerOrderService,
-        ICurrentUserService currentUser)
+        ICurrentUserService currentUser,
+        IOrderAccessService orderAccess)
     {
         _orderService        = orderService;
         _customerOrderService = customerOrderService;
         _currentUser         = currentUser;
+        _orderAccess         = orderAccess;
     }
 
     /// <summary>
@@ -121,7 +124,7 @@ public class AdminOrdersController : ControllerBase
     /// PATCH /api/admin/orders/{id}/assign
     /// </summary>
     [HttpPatch("{id:int}/assign")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "Orders.Admin")]
     public async Task<IActionResult> AssignOrder(
         int id,
         [FromBody] AssignOrderRequestDto request,
@@ -152,7 +155,7 @@ public class AdminOrdersController : ControllerBase
     /// POST /api/admin/orders/{id}/cancel-full
     /// </summary>
     [HttpPost("{id:int}/cancel-full")]
-    [Authorize(Roles = "Staff,Admin")]
+    [Authorize(Policy = "Orders.Admin")]
     public async Task<ActionResult<CancelOrderCustomerResponseDto>> CancelFull(
         int id,
         [FromBody] CancelOrderCustomerRequestDto request,
@@ -177,10 +180,16 @@ public class AdminOrdersController : ControllerBase
         int id,
         CancellationToken cancellationToken)
     {
+        var access = await _orderAccess.EnsureCanViewAsync(id, cancellationToken);
+        if (access.IsFailure)
+        {
+            return Result<OrderTrackingDto>.Failure(access.ErrorCode!, access.ErrorMessage!).ToActionResult();
+        }
+
         var result = await _customerOrderService.GetTrackingAsync(
             id,
             _currentUser.AccountId,
-            isAdmin: true,
+            isAdmin: _orderAccess.IsPrivileged(_currentUser.RoleId),
             cancellationToken);
         return result.ToActionResult();
     }

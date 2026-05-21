@@ -48,7 +48,7 @@ public class WorkSchedulesController : ControllerBase
 
     [HttpPut("{scheduleId:int}/absent")]
     [Authorize(Roles = "Admin")]
-    public async Task<ActionResult> MarkAbsent(
+    public async Task<ActionResult<MarkAbsentResultDto>> MarkAbsent(
         [FromRoute] int scheduleId,
         CancellationToken cancellationToken = default)
     {
@@ -56,9 +56,20 @@ public class WorkSchedulesController : ControllerBase
         return result.ToActionResult();
     }
 
+    [HttpPost("clone-week")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<CloneWeekResultDto>> CloneWeek(
+        [FromQuery] DateTime sourceMonday,
+        [FromQuery] DateTime targetMonday,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _workScheduleService.CloneWeekAsync(sourceMonday, targetMonday, cancellationToken);
+        return result.ToActionResult();
+    }
+
     [HttpPut("{scheduleId:int}")]
     [Authorize(Roles = "Admin")]
-    public async Task<ActionResult<WorkScheduleDto>> Update(
+    public async Task<ActionResult<UpdateWorkScheduleResultDto>> Update(
         [FromRoute] int scheduleId,
         [FromBody] UpdateWorkScheduleDto dto,
         CancellationToken cancellationToken = default)

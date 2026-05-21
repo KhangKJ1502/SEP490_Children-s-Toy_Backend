@@ -2865,6 +2865,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
             entity.Property(e => e.CurrentLoad).HasDefaultValue((short)0);
             entity.Property(e => e.MaxLoad).HasDefaultValue((short)20);
+            entity.Property(e => e.ShiftFullNotifiedAt).HasPrecision(3);
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
             entity.HasOne(d => d.WorkSchedule)

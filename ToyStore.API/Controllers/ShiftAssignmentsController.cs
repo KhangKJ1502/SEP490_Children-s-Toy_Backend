@@ -18,7 +18,7 @@ public class ShiftAssignmentsController : ControllerBase
     }
 
     [HttpGet("order-queue")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "Orders.Admin")]
     public async Task<ActionResult<List<OrderQueueItemDto>>> GetQueue(CancellationToken cancellationToken = default)
     {
         var result = await _assignmentService.GetQueueAsync(cancellationToken);
@@ -26,7 +26,7 @@ public class ShiftAssignmentsController : ControllerBase
     }
 
     [HttpPost("order-queue/{queueId:int}/assign")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "Orders.Admin")]
     public async Task<ActionResult> AssignQueue(
         [FromRoute] int queueId,
         [FromBody] AssignQueueOrderRequestDto dto,
@@ -37,7 +37,7 @@ public class ShiftAssignmentsController : ControllerBase
     }
 
     [HttpPost("orders/{orderId:int}/reassign")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "Orders.Admin")]
     public async Task<ActionResult> ReassignOrder(
         [FromRoute] int orderId,
         [FromBody] ReassignOrderRequestDto dto,
@@ -48,7 +48,7 @@ public class ShiftAssignmentsController : ControllerBase
     }
 
     [HttpPut("staff-shift-capacity/{scheduleId:int}/max-load")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = "Orders.Admin")]
     public async Task<ActionResult> UpdateMaxLoad(
         [FromRoute] int scheduleId,
         [FromBody] UpdateShiftCapacityDto dto,
