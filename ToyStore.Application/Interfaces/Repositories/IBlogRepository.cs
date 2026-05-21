@@ -136,4 +136,16 @@ public interface IBlogRepository
         List<int> replyBlogIds,
         int accountId,
         CancellationToken cancellationToken = default);
+
+    Task<(bool IsLocked, DateTime? LockedUntil)> CheckAndRefreshCommentLockAsync(
+        int accountId,
+        DateTime utcNow,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> IncrementRateAndCheckCommentLimitAsync(
+        int accountId,
+        DateTime utcNow,
+        int limit,
+        int windowMinutes,
+        CancellationToken cancellationToken = default);
 }

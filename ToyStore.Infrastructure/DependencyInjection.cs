@@ -237,6 +237,8 @@ public static class DependencyInjection
             configuration.GetSection(GhnOptions.SectionName));
         services.Configure<ShopAddressOptions>(
             configuration.GetSection(ShopAddressOptions.SectionName));
+        services.Configure<AiModerationOptions>(
+            configuration.GetSection(AiModerationOptions.SectionName));
 
         services.AddHttpClient("GHN", (sp, client) =>
         {
@@ -251,6 +253,18 @@ public static class DependencyInjection
         });
 
         services.AddScoped<IGhnClient, GhnClient>();
+
+        services.AddHttpClient("AI_MODERATION", (sp, client) =>
+        {
+            var opts = configuration.GetSection(AiModerationOptions.SectionName).Get<AiModerationOptions>()
+                       ?? new AiModerationOptions();
+            if (!string.IsNullOrWhiteSpace(opts.BaseUrl))
+            {
+                client.BaseAddress = new Uri(opts.BaseUrl.TrimEnd('/') + "/");
+            }
+            client.Timeout = TimeSpan.FromSeconds(opts.TimeoutSeconds <= 0 ? 10 : opts.TimeoutSeconds);
+        });
+        services.AddScoped<IBlogCommentModerationGateway, BlogCommentModerationGateway>();
 
         // --- SE_PAY / VietQR ---
         services.Configure<SePayOptions>(

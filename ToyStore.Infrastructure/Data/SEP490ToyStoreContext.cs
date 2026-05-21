@@ -2088,6 +2088,8 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<BlogCommentViolationCount>(entity =>
         {
+            entity.ToTable("BlogCommentViolationCount");
+
             entity.HasKey(e => e.AccountId).HasName("PK_BlogCommentViolationCount");
 
             entity.HasIndex(e => new { e.IsCommentBanned, e.BanExpiresAt }, "IX_BCVC_Banned")

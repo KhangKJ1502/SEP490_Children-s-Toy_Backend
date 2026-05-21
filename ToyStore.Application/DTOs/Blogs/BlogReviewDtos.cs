@@ -10,6 +10,7 @@ public class BlogReviewDto
     public string? AccountImageUrl { get; set; }
     public string Comment { get; set; } = string.Empty;
     public string Status { get; set; } = "Visible";
+    public string ModerationStatus { get; set; } = "Pending";
     public int LikeCount { get; set; }
     public int LoveCount { get; set; }
     public int HahaCount { get; set; }
@@ -31,6 +32,7 @@ public class BlogReviewReplyDto
     public string? ReplyToAccountName { get; set; }
     public string Comment { get; set; } = string.Empty;
     public string Status { get; set; } = "Visible";
+    public string ModerationStatus { get; set; } = "Pending";
     public int LikeCount { get; set; }
     public int LoveCount { get; set; }
     public int HahaCount { get; set; }
