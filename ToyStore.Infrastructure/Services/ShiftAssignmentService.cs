@@ -20,6 +20,7 @@ public class ShiftAssignmentService : IShiftAssignmentService
     private readonly IDomainEventPublisher _eventPublisher;
     private readonly ICurrentUserService _currentUser;
     private readonly ITimeProvider _timeProvider;
+    private readonly IShiftCapacityMonitor _shiftCapacityMonitor;
 
     private const byte StaffRoleId = 3;
     private const byte MerchRoleId = 4;
@@ -32,7 +33,8 @@ public class ShiftAssignmentService : IShiftAssignmentService
         IValidator<UpdateShiftCapacityDto> updateCapacityValidator,
         IDomainEventPublisher eventPublisher,
         ICurrentUserService currentUser,
-        ITimeProvider timeProvider)
+        ITimeProvider timeProvider,
+        IShiftCapacityMonitor shiftCapacityMonitor)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
@@ -42,6 +44,7 @@ public class ShiftAssignmentService : IShiftAssignmentService
         _eventPublisher = eventPublisher;
         _currentUser = currentUser;
         _timeProvider = timeProvider;
+        _shiftCapacityMonitor = shiftCapacityMonitor;
     }
 
     public async Task<Result<AssignmentResultDto>> AutoAssignOrderAsync(int orderId, CancellationToken cancellationToken = default)
@@ -274,6 +277,8 @@ public class ShiftAssignmentService : IShiftAssignmentService
             queueEntry.ResolvedAt = now;
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _shiftCapacityMonitor.TryNotifyShiftFullAsync(staffSchedule.ScheduleId, cancellationToken);
+            await _shiftCapacityMonitor.TryNotifyShiftFullAsync(merchSchedule.ScheduleId, cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
         }
         catch

@@ -72,30 +72,8 @@ public static class DependencyInjection
         // Đăng ký FluentValidation
         services.AddValidatorsFromAssemblyContaining<Application.Validators.SuperCategories.CreateSuperCategoryValidator>();
 
-        // Đăng ký AutoMapper
-        services.AddAutoMapper(cfg =>
-        {
-            cfg.AddProfile<AccountProfile>();
-            cfg.AddProfile<VoucherProfile>();
-            cfg.AddProfile<TemplateProfile>();
-            cfg.AddProfile<PromotionProfile>();
-            cfg.AddProfile<CampaignProfile>();
-            cfg.AddProfile<SuperCategoryProfile>();
-            cfg.AddProfile<CategoryProfile>();
-            cfg.AddProfile<ProductProfile>();
-            cfg.AddProfile<BrandProfile>();
-            cfg.AddProfile<BlogProfile>();
-            cfg.AddProfile<RoleProfile>();
-            cfg.AddProfile<AddressProfile>();
-            cfg.AddProfile<CartProfile>();
-            cfg.AddProfile<OrdersProfile>();
-            cfg.AddProfile<ReviewProfile>();
-            cfg.AddProfile<CustomerChildProfile>();
-            cfg.AddProfile<RefundProfile>();
-            cfg.AddProfile<CustomerProfile>();
-            cfg.AddProfile<WalletProfile>();
-            cfg.AddProfile<ShiftSchedulingProfile>();
-        });
+        // Đăng ký AutoMapper — quét toàn bộ Profile trong Application (gồm ShiftSchedulingProfile)
+        services.AddAutoMapper(cfg => cfg.AddMaps(typeof(ShiftSchedulingProfile).Assembly));
 
         services.AddScoped<IValidator<CreateBrandDto>, CreateBrandValidator>();
         services.AddScoped<IValidator<UpdateBrandDto>, UpdateBrandValidator>();
@@ -159,6 +137,8 @@ public static class DependencyInjection
         services.AddScoped<IValidator<AssignQueueOrderRequestDto>, AssignQueueOrderRequestValidator>();
         services.AddScoped<IValidator<ReassignOrderRequestDto>, ReassignOrderRequestValidator>();
         services.AddScoped<IValidator<UpdateShiftCapacityDto>, UpdateShiftCapacityValidator>();
+
+        services.AddScoped<IWorkScheduleShiftRules, WorkScheduleShiftRules>();
 
         services.AddScoped<IVoucherRepository, VoucherRepository>();
         services.AddScoped<IVoucherService, VoucherService>();
@@ -234,6 +214,7 @@ public static class DependencyInjection
         services.AddScoped<IProfileService, ProfileService>();
         services.AddScoped<ICustomerNotificationPreferencesService, CustomerNotificationPreferencesService>();
         services.AddScoped<IHealthService, HealthService>();
+        services.AddScoped<IOrderAccessService, OrderAccessService>();
         services.AddScoped<IAdminOrderService, AdminOrderService>();
         services.AddScoped<IAdminDashboardService, AdminDashboardService>();
         services.AddScoped<IShippingWebhookService, ShippingWebhookService>();
@@ -303,6 +284,8 @@ public static class DependencyInjection
 
         // Outbox event publisher
         services.AddScoped<IDomainEventPublisher, DomainEventPublisher>();
+
+        services.AddScoped<IShiftCapacityMonitor, ShiftCapacityMonitor>();
 
         // Hub push service — default to NoOp; API project overrides with real impl
         services.TryAddScoped<INotificationHubService, NoOpNotificationHubService>();

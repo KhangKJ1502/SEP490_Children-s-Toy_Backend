@@ -16,6 +16,9 @@ public partial class StaffShiftCapacity
     /// <summary>Giới hạn số đơn đồng thời. Admin có thể tăng ngay trong ca.</summary>
     public short MaxLoad { get; set; }
 
+    /// <summary>UTC timestamp when shift reached max load and admins were notified (once per schedule).</summary>
+    public DateTime? ShiftFullNotifiedAt { get; set; }
+
     public DateTime? UpdatedAt { get; set; }
 
     public virtual WorkSchedule WorkSchedule { get; set; } = null!;

@@ -17,8 +17,9 @@ public interface IOrderRepository
         int pageNumber,
         int pageSize,
         int? statusId,
-        bool assignedToMe,
+        bool restrictToAssignment,
         int currentAccountId,
+        byte assignmentRoleId,
         string? keyword,
         DateTime? fromDate,
         DateTime? toDate,
@@ -43,8 +44,9 @@ public interface IOrderRepository
     Task<int> CountAdminAsync(
         IReadOnlyCollection<string> allowedStatusNames,
         int? statusId,
-        bool assignedToMe,
+        bool restrictToAssignment,
         int currentAccountId,
+        byte assignmentRoleId,
         string? keyword,
         DateTime? fromDate,
         DateTime? toDate,
@@ -71,6 +73,15 @@ public interface IOrderRepository
     /// Tra ve null neu khong tim thay hoac da bi xoa mem.
     /// </summary>
     Task<Order?> GetByIdForAdminAsync(int orderId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Admin detail query scoped to an active OrderAssignments row for Staff/Merchandise.
+    /// </summary>
+    Task<Order?> GetByIdForAssignedOperationalAsync(
+        int orderId,
+        int accountId,
+        byte assignmentRoleId,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Lay chi tiet don hang day du cho customer (co kiem tra owner).

@@ -268,10 +268,12 @@ public class StaffCancelRequestedHandler : IOutboxEventHandler
 public class StaffOrderAssignedHandler : IOutboxEventHandler
 {
     public string EventType => NotificationEventTypes.StaffOrderAssigned;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly INotificationDispatcher _dispatcher;
 
-    public StaffOrderAssignedHandler(INotificationDispatcher dispatcher)
+    public StaffOrderAssignedHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
     {
+        _unitOfWork = unitOfWork;
         _dispatcher = dispatcher;
     }
 
@@ -281,8 +283,13 @@ public class StaffOrderAssignedHandler : IOutboxEventHandler
         var root = doc.RootElement;
 
         var orderId         = root.GetProperty("orderId").GetInt32();
-        var orderCode       = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
+        var orderCode       = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() : null;
         var targetAccountId = root.GetProperty("targetAccountId").GetInt32();
+
+        var order = await _unitOfWork.Orders.GetByIdAsync(orderId, ct);
+        var placeholders = order is not null
+            ? OrderAssignmentNotificationHelper.CreatePlaceholders(order)
+            : OrderAssignmentNotificationHelper.CreatePlaceholders(orderId, orderCode);
 
         await _dispatcher.DispatchAsync(new NotificationContext
         {
@@ -290,10 +297,7 @@ public class StaffOrderAssignedHandler : IOutboxEventHandler
             RecipientType      = RecipientTypes.Staff,
             NotificationType   = NotificationTypes.Order,
             TemplateCode       = NotificationTemplates.StaffOrderAssigned,
-            Placeholders       = new Dictionary<string, string>
-            {
-                ["OrderCode"] = orderCode,
-            },
+            Placeholders       = placeholders,
             ReferenceId  = $"{orderId}:{targetAccountId}",
             SendBell     = true,
             SendEmail    = true,

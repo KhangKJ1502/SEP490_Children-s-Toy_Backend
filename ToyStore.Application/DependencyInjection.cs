@@ -44,6 +44,7 @@ public static class DependencyInjection
         services.AddScoped<IOutboxEventHandler, CapacityFreedHandler>();
         services.AddScoped<IOutboxEventHandler, ShiftStartedHandler>();
         services.AddScoped<IOutboxEventHandler, ShiftEndedWithPendingOrdersHandler>();
+        services.AddScoped<IOutboxEventHandler, ShiftFullHandler>();
 
         // Merch / order status handlers
         services.AddScoped<IOutboxEventHandler, MerchReadyToPackHandler>();
