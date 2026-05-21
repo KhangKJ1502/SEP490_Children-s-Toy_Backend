@@ -55,6 +55,12 @@ public partial class Account
 
     public virtual ICollection<BlogPostReaction> BlogPostReactions { get; set; } = new List<BlogPostReaction>();
 
+    public virtual ICollection<BlogCommentModerationLog> BlogCommentModerationLogs { get; set; } = new List<BlogCommentModerationLog>();
+
+    public virtual BlogCommentViolationCount? BlogCommentViolationCountAccount { get; set; }
+
+    public virtual ICollection<BlogCommentViolationCount> BlogCommentViolationCountUnbannedByNavigations { get; set; } = new List<BlogCommentViolationCount>();
+
     public virtual Cart? Cart { get; set; }
 
     public virtual ICollection<ChatConversation> ChatConversations { get; set; } = new List<ChatConversation>();
@@ -91,9 +97,13 @@ public partial class Account
 
     public virtual ICollection<ReviewBlogReply> ReviewBlogReplyAccounts { get; set; } = new List<ReviewBlogReply>();
 
+    public virtual ICollection<ReviewBlogReply> ReviewBlogReplyHiddenByNavigations { get; set; } = new List<ReviewBlogReply>();
+
     public virtual ICollection<ReviewBlogReply> ReviewBlogReplyReplyToAccounts { get; set; } = new List<ReviewBlogReply>();
 
     public virtual ICollection<ReviewBlog> ReviewBlogs { get; set; } = new List<ReviewBlog>();
+
+    public virtual ICollection<ReviewBlog> ReviewBlogHiddenByNavigations { get; set; } = new List<ReviewBlog>();
 
     public virtual ICollection<ReviewProductReaction> ReviewProductReactions { get; set; } = new List<ReviewProductReaction>();
 

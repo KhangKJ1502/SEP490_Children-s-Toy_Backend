@@ -13,7 +13,19 @@ public partial class ReviewBlog
 
     public string? Comment { get; set; }
 
-    public bool IsFeatured { get; set; }
+    public string ModerationStatus { get; set; } = null!;
+
+    public DateTime? ManualReviewDeadline { get; set; }
+
+    public byte RetryCount { get; set; }
+
+    public DateTime? LastRetryAt { get; set; }
+
+    public bool IsHidden { get; set; }
+
+    public int? HiddenBy { get; set; }
+
+    public DateTime? HiddenAt { get; set; }
 
     public bool IsDeleted { get; set; }
 
@@ -24,6 +36,10 @@ public partial class ReviewBlog
     public virtual Account Account { get; set; } = null!;
 
     public virtual BlogPost BlogPost { get; set; } = null!;
+
+    public virtual Account? HiddenByNavigation { get; set; }
+
+    public virtual ICollection<BlogCommentModerationLog> BlogCommentModerationLogs { get; set; } = new List<BlogCommentModerationLog>();
 
     public virtual ICollection<ReviewBlogReaction> ReviewBlogReactions { get; set; } = new List<ReviewBlogReaction>();
 
