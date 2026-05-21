@@ -39,6 +39,7 @@ public class AuthService : IAuthService
     private readonly IValidator<GoogleLoginDto> _googleLoginValidator;
     private readonly IValidator<GoogleRegisterDto> _googleRegisterValidator;
     private readonly ITimeProvider _timeProvider;
+    private readonly ILoginAttemptService _loginAttemptService;
 
     public AuthService(
         IUnitOfWork unitOfWork,
@@ -54,7 +55,8 @@ public class AuthService : IAuthService
         IValidator<ResetPasswordDto> resetPasswordValidator,
         IValidator<GoogleLoginDto> googleLoginValidator,
         IValidator<GoogleRegisterDto> googleRegisterValidator,
-        ITimeProvider timeProvider)
+        ITimeProvider timeProvider,
+        ILoginAttemptService loginAttemptService)
     {
         _unitOfWork               = unitOfWork;
         _emailService             = emailService;
@@ -70,6 +72,7 @@ public class AuthService : IAuthService
         _googleLoginValidator     = googleLoginValidator;
         _googleRegisterValidator  = googleRegisterValidator;
         _timeProvider             = timeProvider;
+        _loginAttemptService      = loginAttemptService;
     }
 
     public async Task<Result<AuthResponseDto>> LoginAsync(LoginDto dto, CancellationToken cancellationToken = default)
@@ -84,6 +87,17 @@ public class AuthService : IAuthService
         }
 
         var normalizedEmail = dto.Email.Trim().ToLowerInvariant();
+
+        // Kiểm tra xem tài khoản có bị khóa do nhập sai quá nhiều lần không
+        if (_loginAttemptService.IsLocked(normalizedEmail))
+        {
+            var remainingSeconds = _loginAttemptService.GetRemainingLockTimeInSeconds(normalizedEmail);
+            var remainingMinutes = Math.Ceiling(remainingSeconds / 60.0);
+            return Result<AuthResponseDto>.Failure(
+                "ACCOUNT_LOCKED",
+                $"Too many failed login attempts. Your account is locked for {remainingMinutes} minute(s). Please try again later.");
+        }
+
         var account = await _unitOfWork.Accounts.GetByEmailForAuthAsync(normalizedEmail, cancellationToken);
 
         if (account == null || account.IsDeleted)
@@ -93,13 +107,30 @@ public class AuthService : IAuthService
 
         if (!VerifyPassword(dto.Password, account.PasswordHash))
         {
-            return Result<AuthResponseDto>.Failure("INVALID_CREDENTIALS", "Invalid email or password.");
+            // Ghi nhận lần thất bại và lấy số lần còn lại
+            var remainingAttempts = _loginAttemptService.RecordFailedAttempt(normalizedEmail);
+            
+            if (remainingAttempts == 0)
+            {
+                _logger.LogWarning("Account {Email} has been locked due to too many failed login attempts.", normalizedEmail);
+                return Result<AuthResponseDto>.Failure(
+                    "ACCOUNT_LOCKED",
+                    "Too many failed login attempts. Your account has been locked for 5 minutes.");
+            }
+
+            _logger.LogWarning("Failed login attempt for {Email}. Remaining attempts: {Remaining}", normalizedEmail, remainingAttempts);
+            return Result<AuthResponseDto>.Failure(
+                "INVALID_CREDENTIALS",
+                $"Invalid email or password. You have {remainingAttempts} attempt(s) remaining before your account is locked.");
         }
 
         if (!account.IsActive)
         {
             return Result<AuthResponseDto>.Failure("ACCOUNT_INACTIVE", "Your account has been deactivated. Please contact support.");
         }
+
+        // Đăng nhập thành công → reset các lần thất bại
+        _loginAttemptService.ResetAttempts(normalizedEmail);
 
         var token = GenerateJwtToken(account);
         var expirationMinutes = int.Parse(_configuration["Jwt:ExpirationMinutes"] ?? "1440");
