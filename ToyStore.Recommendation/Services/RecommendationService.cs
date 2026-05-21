@@ -133,7 +133,12 @@ public class RecommendationService : IRecommendationService
             widget.WidgetCode, items.Count);
 
         // ── 4. Fallback chain — nếu rỗng, dùng fallback algorithm
-        if (items.Count == 0 && !string.IsNullOrWhiteSpace(widget.FallbackAlgo))
+        // KHÔNG fallback cho homepage_personal — widget này chỉ hiển thị khi có data cá nhân hóa
+        var shouldFallback = items.Count == 0 
+                          && !string.IsNullOrWhiteSpace(widget.FallbackAlgo)
+                          && widget.WidgetCode != "homepage_personal";
+        
+        if (shouldFallback)
         {
             _logger.LogInformation(
                 "Recommendation widget {Code} primary algo returned 0 items, falling back to {Fallback}",
@@ -144,10 +149,14 @@ public class RecommendationService : IRecommendationService
             items = await _filter.FilterAndEnrichAsync(fallbackCandidates, maxItems, userProfile, ct, skipPurchasedFilter: isPublicWidget);
         }
 
-        // ── 4b. Last resort — Trending global (đảm bảo không bao giờ trả rỗng cho widget homepage_trending,
-        //    pdp_similar, pdp_also_bought theo spec: "Cache miss phải fallback xuống trending, không được return rỗng")
-        if (items.Count == 0)
+        // ── 4b. Last resort — Trending global (đảm bảo không bao giờ trả rỗng cho widget công khai)
+        // KHÔNG áp dụng cho homepage_personal — widget cá nhân hóa chỉ hiển thị khi có data
+        var shouldLastResort = items.Count == 0 && widget.WidgetCode != "homepage_personal";
+        if (shouldLastResort)
         {
+            _logger.LogInformation(
+                "Widget {Code} using last resort trending fallback",
+                widget.WidgetCode);
             var trendingCandidates = await _trending.GetCandidatesAsync("global", maxItems, ct);
             items = await _filter.FilterAndEnrichAsync(trendingCandidates, maxItems, userProfile, ct, skipPurchasedFilter: true);
         }
