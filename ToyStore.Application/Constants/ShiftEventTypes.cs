@@ -7,4 +7,6 @@ public static class ShiftEventTypes
     public const string CapacityFreed = "order.capacity_freed";
     public const string ShiftStarted = "shift.started";
     public const string ShiftEndedWithPendingOrders = "shift.ended_with_pending";
+
+    public const string ShiftFull = "shift.full";
 }

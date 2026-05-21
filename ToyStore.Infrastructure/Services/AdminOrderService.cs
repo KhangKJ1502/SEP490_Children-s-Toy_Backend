@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ToyStore.Application.Common.Models;
 using ToyStore.Application.Constants;
+using ToyStore.Domain.Entities;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Checkouts;
 using ToyStore.Application.DTOs.Orders;
@@ -11,7 +12,6 @@ using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
-using ToyStore.Domain.Entities;
 using ToyStore.Infrastructure.Options;
 
 namespace ToyStore.Infrastructure.Services;
@@ -35,6 +35,7 @@ public class AdminOrderService : IAdminOrderService
     private readonly ILogger<AdminOrderService> _logger;
     private readonly ITimeProvider _timeProvider;
     private readonly IOrderLifecycleService _orderLifecycle;
+    private readonly IOrderAccessService _orderAccess;
 
     // Role names khop voi ClaimTypes.Role trong JWT
     private const string RoleStaff       = "Staff";
@@ -54,7 +55,8 @@ public class AdminOrderService : IAdminOrderService
         IDomainEventPublisher eventPublisher,
         ILogger<AdminOrderService> logger,
         ITimeProvider timeProvider,
-        IOrderLifecycleService orderLifecycle)
+        IOrderLifecycleService orderLifecycle,
+        IOrderAccessService orderAccess)
     {
         _unitOfWork      = unitOfWork;
         _currentUser     = currentUser;
@@ -69,6 +71,7 @@ public class AdminOrderService : IAdminOrderService
         _logger          = logger;
         _timeProvider    = timeProvider;
         _orderLifecycle  = orderLifecycle;
+        _orderAccess     = orderAccess;
     }
 
     // ── UC1: Danh sach don hang ───────────────────────────────────────────────
@@ -77,7 +80,14 @@ public class AdminOrderService : IAdminOrderService
         AdminOrderQueryDto query,
         CancellationToken cancellationToken = default)
     {
-        var allowedStatuses = GetAllowedStatusesForRole(_currentUser.RoleName);
+        var restrictToAssignment = !_orderAccess.IsPrivileged(_currentUser.RoleId);
+        var assignmentRoleId = _orderAccess.GetRequiredAssignmentRoleId(_currentUser.RoleId);
+
+        // Staff/Merch: list is scoped by OrderAssignments — do not also hide Processing/Shipped
+        // (CurrentLoad counts assigned orders; status-only filter caused "load=2 but empty list").
+        var allowedStatuses = restrictToAssignment
+            ? OrderStatuses.AdminVisibleStatuses
+            : GetAllowedStatusesForRole(_currentUser.RoleName);
 
         var pageSize = Math.Min(query.PageSize, 100);
         var pageNumber = Math.Max(query.PageNumber, 1);
@@ -87,8 +97,9 @@ public class AdminOrderService : IAdminOrderService
             pageNumber,
             pageSize,
             query.StatusId,
-            query.AssignedToMe,
+            restrictToAssignment,
             _currentUser.AccountId,
+            assignmentRoleId,
             query.Keyword,
             query.FromDate,
             query.ToDate,
@@ -97,8 +108,9 @@ public class AdminOrderService : IAdminOrderService
         var count = await _unitOfWork.Orders.CountAdminAsync(
             allowedStatuses,
             query.StatusId,
-            query.AssignedToMe,
+            restrictToAssignment,
             _currentUser.AccountId,
+            assignmentRoleId,
             query.Keyword,
             query.FromDate,
             query.ToDate,
@@ -113,20 +125,9 @@ public class AdminOrderService : IAdminOrderService
 
             foreach (var dto in dtos)
             {
-                var assignments = activeAssignments.Where(a => a.OrderId == dto.OrderId).ToList();
-                var staffAssig = assignments.FirstOrDefault(a => a.RoleId == 3);
-                var merchAssig = assignments.FirstOrDefault(a => a.RoleId == 4);
-
-                if (staffAssig != null && staffAssig.Account != null)
-                {
-                    dto.AssignedToStaffId = staffAssig.AccountId;
-                    dto.AssignedToStaffName = staffAssig.Account.AccountName;
-                }
-                if (merchAssig != null && merchAssig.Account != null)
-                {
-                    dto.AssignedToMerchId = merchAssig.AccountId;
-                    dto.AssignedToMerchName = merchAssig.Account.AccountName;
-                }
+                ApplyAssignmentNamesToDto(
+                    dto,
+                    activeAssignments.Where(a => a.OrderId == dto.OrderId));
             }
         }
 
@@ -140,26 +141,29 @@ public class AdminOrderService : IAdminOrderService
         int orderId,
         CancellationToken cancellationToken = default)
     {
-        var order = await _unitOfWork.Orders.GetByIdForAdminAsync(orderId, cancellationToken);
+        var access = await _orderAccess.EnsureCanViewAsync(orderId, cancellationToken);
+        if (access.IsFailure)
+        {
+            return access.ErrorCode == "FORBIDDEN"
+                ? Result<AdminOrderDetailDto>.Failure("FORBIDDEN", access.ErrorMessage!)
+                : Result<AdminOrderDetailDto>.Failure(access.ErrorCode!, access.ErrorMessage!);
+        }
+
+        var order = _orderAccess.IsPrivileged(_currentUser.RoleId)
+            ? await _unitOfWork.Orders.GetByIdForAdminAsync(orderId, cancellationToken)
+            : await _unitOfWork.Orders.GetByIdForAssignedOperationalAsync(
+                orderId,
+                _currentUser.AccountId,
+                _orderAccess.GetRequiredAssignmentRoleId(_currentUser.RoleId),
+                cancellationToken);
+
         if (order is null)
             return Result<AdminOrderDetailDto>.NotFound("Order", orderId);
 
         var dto = _mapper.Map<AdminOrderDetailDto>(order);
 
         var activeAssignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(orderId, cancellationToken);
-        var staffAssig = activeAssignments.FirstOrDefault(a => a.RoleId == 3);
-        var merchAssig = activeAssignments.FirstOrDefault(a => a.RoleId == 4);
-
-        if (staffAssig != null && staffAssig.Account != null)
-        {
-            dto.AssignedToStaffId = staffAssig.AccountId;
-            dto.AssignedToStaffName = staffAssig.Account.AccountName;
-        }
-        if (merchAssig != null && merchAssig.Account != null)
-        {
-            dto.AssignedToMerchId = merchAssig.AccountId;
-            dto.AssignedToMerchName = merchAssig.Account.AccountName;
-        }
+        ApplyAssignmentNamesToDto(dto, activeAssignments);
 
         return Result<AdminOrderDetailDto>.Success(dto);
     }
@@ -174,6 +178,10 @@ public class AdminOrderService : IAdminOrderService
         if (!IsStaffOrAdmin())
             return Result<ConfirmOrderResponseDto>.Failure("FORBIDDEN",
                 "Only Staff or Admin can confirm orders.");
+
+        var access = await _orderAccess.EnsureCanMutateAsync(orderId, OrderMutation.Confirm, cancellationToken);
+        if (access.IsFailure)
+            return Result<ConfirmOrderResponseDto>.Failure(access.ErrorCode!, access.ErrorMessage!);
 
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
 
@@ -244,6 +252,10 @@ public class AdminOrderService : IAdminOrderService
             return Result<ProcessOrderResponseDto>.Failure("FORBIDDEN",
                 "Only Merchandise or Admin can process orders.");
 
+        var access = await _orderAccess.EnsureCanMutateAsync(orderId, OrderMutation.Process, cancellationToken);
+        if (access.IsFailure)
+            return Result<ProcessOrderResponseDto>.Failure(access.ErrorCode!, access.ErrorMessage!);
+
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
 
         var order = await _unitOfWork.Orders.GetByIdForUpdateAsync(orderId, cancellationToken);
@@ -263,9 +275,9 @@ public class AdminOrderService : IAdminOrderService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            order.AssignedToStaffId = _currentUser.AccountId;
-            order.StatusId          = processingId;
-            order.UpdatedAt         = now;
+            // Phan cong thuc te nam o OrderAssignments; khong ghi de AssignedToStaffId bang Merch.
+            order.StatusId = processingId;
+            order.UpdatedAt = now;
 
             await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
             {
@@ -309,6 +321,10 @@ public class AdminOrderService : IAdminOrderService
         if (!IsMerchandiseOrAdmin())
             return Result<ShipOrderResponseDto>.Failure("FORBIDDEN",
                 "Only Merchandise or Admin can create shipping orders.");
+
+        var access = await _orderAccess.EnsureCanMutateAsync(orderId, OrderMutation.Ship, cancellationToken);
+        if (access.IsFailure)
+            return Result<ShipOrderResponseDto>.Failure(access.ErrorCode!, access.ErrorMessage!);
 
         var validation = await _shipValidator.ValidateAsync(request, cancellationToken);
         if (!validation.IsValid)
@@ -494,6 +510,10 @@ public class AdminOrderService : IAdminOrderService
             return Result<CancelOrderResponseDto>.Failure("FORBIDDEN",
                 "Only Staff or Admin can cancel orders.");
 
+        var access = await _orderAccess.EnsureCanMutateAsync(orderId, OrderMutation.Cancel, cancellationToken);
+        if (access.IsFailure)
+            return Result<CancelOrderResponseDto>.Failure(access.ErrorCode!, access.ErrorMessage!);
+
         var validation = await _cancelValidator.ValidateAsync(request, cancellationToken);
         if (!validation.IsValid)
             return validation.ToResult<CancelOrderResponseDto>();
@@ -517,6 +537,7 @@ public class AdminOrderService : IAdminOrderService
             request.Reason ?? "Admin cancelled",
             cancelledByAccountId: _currentUser.AccountId,
             restoreCart: false,
+            restoreVoucher: true,
             cancellationToken: cancellationToken);
         if (!result.IsSuccess)
         {
@@ -525,7 +546,11 @@ public class AdminOrderService : IAdminOrderService
 
         var cancelPayload = new { orderId = order.OrderId, orderCode = order.OrderCode, reason = request.Reason };
         await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderCancelled, cancelPayload, CancellationToken.None);
-        await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.StaffCancelRequested, cancelPayload, CancellationToken.None);
+        
+        if (!(order.PaymentMethod == "SE_PAY" && order.PaymentStatus != "PAID"))
+        {
+            await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.StaffCancelRequested, cancelPayload, CancellationToken.None);
+        }
 
         return Result<CancelOrderResponseDto>.Success(new CancelOrderResponseDto
         {
@@ -564,47 +589,120 @@ public class AdminOrderService : IAdminOrderService
         if (validationError is not null)
             return Result.UnprocessableEntity(validationError);
 
+        var assignmentRoleId = ResolveOrderAssignmentRoleId(targetAccount.RoleId, order.Status.StatusName);
+        if (assignmentRoleId is null)
+        {
+            return Result.Failure("VALIDATION_ERROR",
+                "Cannot determine assignment role for the target account and order status.");
+        }
+
+        var todayVn = _timeProvider.UtcNow.AddHours(7).Date;
+        var schedules = await _unitOfWork.WorkSchedules.GetByAccountAndDateAsync(
+            request.TargetAccountId, todayVn, cancellationToken);
+        var onDutySchedule = schedules.FirstOrDefault(s => s.Status == "OnDuty");
+        if (onDutySchedule is null)
+        {
+            return Result.UnprocessableEntity(
+                "Target account has no OnDuty work schedule for today.");
+        }
+
         var now = _timeProvider.UtcNow;
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
 
         if (!statusMap.TryGetValue(order.Status.StatusName, out var currentStatusId))
             return Result.Failure("CONFIGURATION_ERROR", "Current status not found in database.");
 
-        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        var note = string.IsNullOrWhiteSpace(request.Note)
+            ? "Reassigned by Admin"
+            : $"Reassigned by Admin: {request.Note}";
+
+        var activeAssignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(orderId, cancellationToken);
+        var hasExistingForRole = activeAssignments.Any(a => a.RoleId == assignmentRoleId.Value);
+
         try
         {
-            order.AssignedToStaffId = request.TargetAccountId;
-            order.UpdatedAt         = now;
+            if (hasExistingForRole)
+            {
+                await _unitOfWork.OrderAssignments.ReassignAsync(
+                    orderId,
+                    assignmentRoleId.Value,
+                    onDutySchedule.ScheduleId,
+                    _currentUser.AccountId,
+                    note,
+                    cancellationToken);
+            }
+            else
+            {
+                var schedule = await _unitOfWork.WorkSchedules.GetByIdForUpdateAsync(
+                    onDutySchedule.ScheduleId, cancellationToken);
+                if (schedule?.StaffShiftCapacity is null)
+                {
+                    return Result.Failure("CONFIGURATION_ERROR", "Shift capacity not found for target schedule.");
+                }
 
-            var note = string.IsNullOrWhiteSpace(request.Note)
-                ? "Reassigned by Admin"
-                : $"Reassigned by Admin: {request.Note}";
+                if (schedule.StaffShiftCapacity.CurrentLoad >= schedule.StaffShiftCapacity.MaxLoad)
+                {
+                    return Result.Failure("BUSINESS_RULE_VIOLATION", "Target schedule is at full capacity.");
+                }
+
+                await _unitOfWork.BeginTransactionAsync(cancellationToken);
+                try
+                {
+                    await _unitOfWork.OrderAssignments.AddAsync(new OrderAssignment
+                    {
+                        OrderId = orderId,
+                        ScheduleId = schedule.ScheduleId,
+                        AccountId = schedule.AccountId,
+                        RoleId = assignmentRoleId.Value,
+                        IsActive = true,
+                        AssignedAt = now,
+                        AssignedBy = _currentUser.AccountId,
+                        Notes = note
+                    }, cancellationToken);
+
+                    schedule.StaffShiftCapacity.CurrentLoad += 1;
+                    schedule.StaffShiftCapacity.UpdatedAt = now;
+
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
+                    await _unitOfWork.CommitTransactionAsync(cancellationToken);
+                }
+                catch
+                {
+                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                    throw;
+                }
+            }
+
+            if (assignmentRoleId == OrderAccessRoles.AssignmentStaff)
+            {
+                order.AssignedToStaffId = request.TargetAccountId;
+            }
+
+            order.UpdatedAt = now;
 
             await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
             {
-                OrderId   = order.OrderId,
-                StatusId  = currentStatusId,
+                OrderId = order.OrderId,
+                StatusId = currentStatusId,
                 ChangedBy = _currentUser.AccountId,
-                Note      = note,
+                Note = note,
                 CreatedAt = now
             }, cancellationToken);
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
-            await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             _logger.LogInformation(
-                "Order {OrderId} reassigned to account {TargetId} by Admin {AdminId}",
-                orderId, request.TargetAccountId, _currentUser.AccountId);
+                "Order {OrderId} assigned to account {TargetId} (OA role {RoleId}) by Admin {AdminId}",
+                orderId, request.TargetAccountId, assignmentRoleId, _currentUser.AccountId);
 
             await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.StaffOrderAssigned,
                 new { orderId = order.OrderId, orderCode = order.OrderCode, targetAccountId = request.TargetAccountId }, CancellationToken.None);
 
             return Result.Success();
         }
-        catch
+        catch (InvalidOperationException ex)
         {
-            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-            throw;
+            return Result.Failure("BUSINESS_RULE_VIOLATION", ex.Message);
         }
     }
 
@@ -649,10 +747,13 @@ public class AdminOrderService : IAdminOrderService
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
             try
             {
-                order.StatusId          = confirmedId;
-                order.ConfirmedAt       = now;
-                order.UpdatedAt         = now;
-                order.AssignedToStaffId = null;
+                order.StatusId    = confirmedId;
+                order.ConfirmedAt = now;
+                order.UpdatedAt   = now;
+
+                var staffAssignment = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(orderId, cancellationToken);
+                var staffRow = staffAssignment.FirstOrDefault(a => a.RoleId == OrderAccessRoles.AssignmentStaff);
+                order.AssignedToStaffId = staffRow?.AccountId;
 
                 await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
                 {
@@ -708,6 +809,66 @@ public class AdminOrderService : IAdminOrderService
     /// Tra ve thong bao loi neu role cua assignee khong phu hop voi giai doan don hang.
     /// Tra ve null neu hop le.
     /// </summary>
+    private static void ApplyAssignmentNamesToDto(
+        AdminOrderListItemDto dto,
+        IEnumerable<OrderAssignment> assignments)
+    {
+        var staffAssig = assignments.FirstOrDefault(a => a.RoleId == OrderAccessRoles.AssignmentStaff);
+        var merchAssig = assignments.FirstOrDefault(a => a.RoleId == OrderAccessRoles.AssignmentMerchandise);
+
+        if (staffAssig != null)
+        {
+            dto.AssignedToStaffId = staffAssig.AccountId;
+            dto.AssignedToStaffName = staffAssig.Account?.AccountName;
+        }
+
+        if (merchAssig != null)
+        {
+            dto.AssignedToMerchId = merchAssig.AccountId;
+            dto.AssignedToMerchName = merchAssig.Account?.AccountName;
+        }
+    }
+
+    private static void ApplyAssignmentNamesToDto(
+        AdminOrderDetailDto dto,
+        IEnumerable<OrderAssignment> assignments)
+    {
+        var staffAssig = assignments.FirstOrDefault(a => a.RoleId == OrderAccessRoles.AssignmentStaff);
+        var merchAssig = assignments.FirstOrDefault(a => a.RoleId == OrderAccessRoles.AssignmentMerchandise);
+
+        if (staffAssig != null)
+        {
+            dto.AssignedToStaffId = staffAssig.AccountId;
+            dto.AssignedToStaffName = staffAssig.Account?.AccountName;
+        }
+
+        if (merchAssig != null)
+        {
+            dto.AssignedToMerchId = merchAssig.AccountId;
+            dto.AssignedToMerchName = merchAssig.Account?.AccountName;
+        }
+    }
+
+    private static byte? ResolveOrderAssignmentRoleId(byte targetAccountRoleId, string orderStatusName)
+    {
+        if (targetAccountRoleId == OrderAccessRoles.Staff)
+            return OrderAccessRoles.AssignmentStaff;
+
+        if (targetAccountRoleId == OrderAccessRoles.Merchandise)
+            return OrderAccessRoles.AssignmentMerchandise;
+
+        if (targetAccountRoleId != OrderAccessRoles.Admin)
+            return null;
+
+        if (orderStatusName is OrderStatuses.Pending or OrderStatuses.Confirmed)
+            return OrderAccessRoles.AssignmentStaff;
+
+        if (orderStatusName is OrderStatuses.Processing or OrderStatuses.Shipped or OrderStatuses.Delivering)
+            return OrderAccessRoles.AssignmentMerchandise;
+
+        return null;
+    }
+
     private static string? ValidateAssigneeRoleForOrderStage(string statusName, string assigneeRole)
     {
         // Pending / Confirmed -> Staff hoac Admin

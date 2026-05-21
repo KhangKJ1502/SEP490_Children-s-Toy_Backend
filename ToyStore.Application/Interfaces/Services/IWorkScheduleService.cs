@@ -9,9 +9,11 @@ public interface IWorkScheduleService
 
     Task<Result<List<WorkScheduleListDto>>> GetListAsync(WorkScheduleQueryDto query, CancellationToken cancellationToken = default);
 
-    Task<Result<WorkScheduleDto>> UpdateAsync(int scheduleId, UpdateWorkScheduleDto dto, CancellationToken cancellationToken = default);
+    Task<Result<UpdateWorkScheduleResultDto>> UpdateAsync(int scheduleId, UpdateWorkScheduleDto dto, CancellationToken cancellationToken = default);
 
     Task<Result> DeleteAsync(int scheduleId, CancellationToken cancellationToken = default);
 
-    Task<Result> MarkAbsentAsync(int scheduleId, CancellationToken cancellationToken = default);
+    Task<Result<MarkAbsentResultDto>> MarkAbsentAsync(int scheduleId, CancellationToken cancellationToken = default);
+
+    Task<Result<CloneWeekResultDto>> CloneWeekAsync(DateTime sourceMonday, DateTime targetMonday, CancellationToken cancellationToken = default);
 }

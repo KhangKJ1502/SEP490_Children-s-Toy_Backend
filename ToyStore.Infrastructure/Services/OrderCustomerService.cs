@@ -170,7 +170,9 @@ public class OrderCustomerService : IOrderCustomerService
             // TODO: Call GHN cancel API if available in IGhnClient
         }
 
-        var result = await _orderLifecycle.CancelOrderInternalAsync(order, reason ?? "Cancelled by customer", actorAccountId ?? order.AccountId, restoreCart, cancellationToken);
+        int cancelledByAccountId = actorAccountId ?? (isAdmin ? 0 : order.AccountId);
+        bool restoreVoucher = isAdmin || (actorAccountId == null) || restoreCart;
+        var result = await _orderLifecycle.CancelOrderInternalAsync(order, reason ?? "Cancelled by customer", cancelledByAccountId, restoreCart, restoreVoucher, cancellationToken);
         if (!result.IsSuccess)
         {
             return Result<CancelOrderCustomerResponseDto>.Failure(result.ErrorCode!, result.ErrorMessage!);

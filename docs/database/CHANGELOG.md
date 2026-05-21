@@ -3,6 +3,22 @@
 > **Quy táº¯c:** Entry má»›i nháº¥t náº±m TRÃŠN CÃ™NG.
 > **Cáº­p nháº­t file nÃ y** má»—i khi thay Ä‘á»•i schema (thÃªm báº£ng, cá»™t, index).
 
+## [2026-05-19] Shift full alert + scheduling rules
+
+### Thay doi
+
+| Loại | Chi tiết |
+|------|----------|
+| Cột mới | `dbo.StaffShiftCapacity.ShiftFullNotifiedAt` — gửi cảnh báo admin một lần khi đạt MaxLoad |
+| Template | `ADMIN_SHIFT_FULL` trong `[Notification].[Templates]` |
+
+### Script
+
+- `docs/database/changes/20260519_ShiftFull_NotifiedAt.sql`
+- `docs/database/changes/20260519_AdminShiftFull_NotificationTemplate.sql`
+
+---
+
 ## [2026-05-14] `v3.4 - Shift scheduling + auto assignment (Luong B)`
 
 ### Thay doi

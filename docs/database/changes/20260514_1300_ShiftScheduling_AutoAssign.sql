@@ -6,6 +6,10 @@
 --   - OrderAssignments, OrderQueue
 --   - Trigger to create capacity rows
 --   - Stored procedures for auto-assign, release, reassign
+--
+-- APP NOTE (Mark absent → re-assign): EF `OrderAssignmentRepository.AutoAssignAsync` is the runtime
+-- path; when reassigning after absent status, deactivate old schedule assignments before calling
+-- auto-assign so Pending orders attempt fresh staff+merchandise pairing.
 -- ============================================================
 
 USE [SEP490_ToyStore];

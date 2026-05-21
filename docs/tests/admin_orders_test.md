@@ -18,10 +18,10 @@ Module quản lý đơn hàng phía Admin:
 
 | # | Test | Role | Input | Expected |
 |---|------|------|-------|----------|
-| 1.1 | Danh sách mặc định | Staff | pageNumber=1, pageSize=10 | 200 + chỉ đơn Pending/Confirmed |
-| 1.2 | Danh sách mặc định | Merchandise | pageNumber=1 | 200 + chỉ đơn Confirmed/Processing/Shipped |
+| 1.1 | Danh sách mặc định | Staff | pageNumber=1, pageSize=10 | 200 + chỉ đơn **đã gán OA RoleID=3** và status Pending/Confirmed |
+| 1.2 | Danh sách mặc định | Merchandise | pageNumber=1 | 200 + chỉ đơn **đã gán OA RoleID=4** và status Confirmed/Processing/Shipped |
 | 1.3 | Danh sách mặc định | Admin | pageNumber=1 | 200 + tất cả trạng thái |
-| 1.4 | Filter assignedToMe=true | Staff | assignedToMe=true | 200 + chỉ đơn gán cho mình |
+| 1.4 | Đơn không gán cho mình | Staff | GET order id của Staff khác | 403 (xem `order_access_authorization_test.md`) |
 | 1.5 | Filter keyword | Staff | keyword=ORD-001 | 200 + đúng đơn |
 | 1.6 | Filter fromDate/toDate | Admin | fromDate=2026-01-01&toDate=2026-12-31 | 200 + đơn trong khoảng |
 | 1.7 | Filter statusId | Admin | statusId=3 | 200 + chỉ đơn Processing |
@@ -36,6 +36,7 @@ Module quản lý đơn hàng phía Admin:
 | # | Test | Role | Input | Expected |
 |---|------|------|-------|----------|
 | 2.1 | Lấy đơn tồn tại | Admin | id=1 | 200 + full detail (items, history, shipping) |
+| 2.1b | Đơn gán cho Staff khác | Staff | id=đơn của người khác | 403 FORBIDDEN |
 | 2.2 | Đơn không tồn tại | Admin | id=99999 | 404 |
 | 2.3 | Đơn đã soft-delete | Admin | id=xoá | 404 |
 

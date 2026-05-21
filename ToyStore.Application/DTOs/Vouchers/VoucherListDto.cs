@@ -21,4 +21,5 @@ public class VoucherListDto
     public decimal? MinOrderAmount { get; set; }
     public string VoucherDescription { get; set; } = string.Empty;
     public short? MaxUsagePerUser { get; set; }
+    public int? CurrentUserUsageCount { get; set; }
 }

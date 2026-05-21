@@ -28,16 +28,17 @@ public class OrderRepository : IOrderRepository
         int pageNumber,
         int pageSize,
         int? statusId,
-        bool assignedToMe,
+        bool restrictToAssignment,
         int currentAccountId,
+        byte assignmentRoleId,
         string? keyword,
         DateTime? fromDate,
         DateTime? toDate,
         CancellationToken cancellationToken = default)
     {
         var query = BuildAdminQuery(
-            allowedStatusNames, statusId, assignedToMe,
-            currentAccountId, keyword, fromDate, toDate);
+            allowedStatusNames, statusId, restrictToAssignment,
+            currentAccountId, assignmentRoleId, keyword, fromDate, toDate);
 
         return await query
             .OrderByDescending(o => o.OrderDate)
@@ -68,16 +69,17 @@ public class OrderRepository : IOrderRepository
     public async Task<int> CountAdminAsync(
         IReadOnlyCollection<string> allowedStatusNames,
         int? statusId,
-        bool assignedToMe,
+        bool restrictToAssignment,
         int currentAccountId,
+        byte assignmentRoleId,
         string? keyword,
         DateTime? fromDate,
         DateTime? toDate,
         CancellationToken cancellationToken = default)
     {
         var query = BuildAdminQuery(
-            allowedStatusNames, statusId, assignedToMe,
-            currentAccountId, keyword, fromDate, toDate);
+            allowedStatusNames, statusId, restrictToAssignment,
+            currentAccountId, assignmentRoleId, keyword, fromDate, toDate);
 
         return await query.CountAsync(cancellationToken);
     }
@@ -104,7 +106,30 @@ public class OrderRepository : IOrderRepository
 
     public async Task<Order?> GetByIdForAdminAsync(int orderId, CancellationToken cancellationToken = default)
     {
-        return await _context.Orders
+        return await BuildAdminDetailQuery()
+            .FirstOrDefaultAsync(o => o.OrderId == orderId && !o.IsDeleted, cancellationToken);
+    }
+
+    public async Task<Order?> GetByIdForAssignedOperationalAsync(
+        int orderId,
+        int accountId,
+        byte assignmentRoleId,
+        CancellationToken cancellationToken = default)
+    {
+        return await BuildAdminDetailQuery()
+            .Where(o => o.OrderId == orderId
+                        && !o.IsDeleted
+                        && _context.OrderAssignments.Any(oa =>
+                            oa.OrderId == o.OrderId
+                            && oa.AccountId == accountId
+                            && oa.RoleId == assignmentRoleId
+                            && oa.IsActive))
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private IQueryable<Order> BuildAdminDetailQuery()
+    {
+        return _context.Orders
             .AsNoTracking()
             .Include(o => o.Status)
             .Include(o => o.Account)
@@ -114,8 +139,7 @@ public class OrderRepository : IOrderRepository
                 .ThenInclude(h => h.ChangedByNavigation)
             .Include(o => o.OrderStatusHistories)
                 .ThenInclude(h => h.Status)
-            .Include(o => o.ShippingProviderTransactions.OrderByDescending(t => t.CreatedAt))
-            .FirstOrDefaultAsync(o => o.OrderId == orderId && !o.IsDeleted, cancellationToken);
+            .Include(o => o.ShippingProviderTransactions.OrderByDescending(t => t.CreatedAt));
     }
 
     public async Task<Order?> GetByIdForCustomerAsync(
@@ -293,8 +317,9 @@ public class OrderRepository : IOrderRepository
     private IQueryable<Order> BuildAdminQuery(
         IReadOnlyCollection<string> allowedStatusNames,
         int? statusId,
-        bool assignedToMe,
+        bool restrictToAssignment,
         int currentAccountId,
+        byte assignmentRoleId,
         string? keyword,
         DateTime? fromDate,
         DateTime? toDate)
@@ -305,8 +330,7 @@ public class OrderRepository : IOrderRepository
             .Include(o => o.AssignedToStaff)
             .Where(o => !o.IsDeleted);
 
-        // Gioi han trang thai theo role neu khong phai dang xem "Don cua toi"
-        if (allowedStatusNames.Count > 0 && !assignedToMe)
+        if (allowedStatusNames.Count > 0)
         {
             query = query.Where(o => allowedStatusNames.Contains(o.Status.StatusName));
         }
@@ -316,10 +340,13 @@ public class OrderRepository : IOrderRepository
             query = query.Where(o => o.StatusId == (byte)statusId.Value);
         }
 
-        if (assignedToMe)
+        if (restrictToAssignment)
         {
             query = query.Where(o => _context.OrderAssignments
-                .Any(oa => oa.OrderId == o.OrderId && oa.AccountId == currentAccountId && oa.IsActive));
+                .Any(oa => oa.OrderId == o.OrderId
+                         && oa.AccountId == currentAccountId
+                         && oa.RoleId == assignmentRoleId
+                         && oa.IsActive));
         }
 
         if (!string.IsNullOrWhiteSpace(keyword))

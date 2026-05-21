@@ -606,6 +606,7 @@ CREATE TABLE [StaffShiftCapacity] (
     [CurrentLoad] SMALLINT     NOT NULL DEFAULT 0
         CONSTRAINT [CK_SSC_CurrentLoad_Min] CHECK ([CurrentLoad] >= 0),
     [MaxLoad]     SMALLINT     NOT NULL DEFAULT 20,
+    [ShiftFullNotifiedAt] DATETIME2(3) NULL,
     [UpdatedAt]   DATETIME2(0) NULL,
     CONSTRAINT [FK_SSC_Schedules] FOREIGN KEY ([ScheduleID]) REFERENCES [WorkSchedules]([ScheduleID]),
     CONSTRAINT [FK_SSC_Accounts]  FOREIGN KEY ([AccountID])  REFERENCES [Accounts]([AccountID]),

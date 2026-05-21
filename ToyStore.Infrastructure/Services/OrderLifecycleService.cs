@@ -28,7 +28,7 @@ public class OrderLifecycleService : IOrderLifecycleService
         _shiftAssignmentService = shiftAssignmentService;
     }
 
-    public async Task<Result> CancelOrderInternalAsync(Order order, string reason, int cancelledByAccountId, bool restoreCart = false, CancellationToken cancellationToken = default)
+    public async Task<Result> CancelOrderInternalAsync(Order order, string reason, int cancelledByAccountId, bool restoreCart = false, bool restoreVoucher = true, CancellationToken cancellationToken = default)
     {
         var now = _timeProvider.UtcNow;
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
@@ -80,7 +80,10 @@ public class OrderLifecycleService : IOrderLifecycleService
             }
 
             // 2. Restore voucher
-            await _unitOfWork.Orders.RestoreVoucherAsync(order.OrderId, cancellationToken);
+            if (restoreVoucher)
+            {
+                await _unitOfWork.Orders.RestoreVoucherAsync(order.OrderId, cancellationToken);
+            }
 
             // 3. Wallet refund / SE_PAY payment status sync
             if (order.PaymentMethod == "WALLET" && order.PaymentStatus == "PAID")
