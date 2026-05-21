@@ -34,6 +34,12 @@ public partial class SEP490ToyStoreContext : DbContext
 
     public virtual DbSet<BlogPostReaction> BlogPostReactions { get; set; }
 
+    public virtual DbSet<BlogCommentBanReason> BlogCommentBanReasons { get; set; }
+
+    public virtual DbSet<BlogCommentModerationLog> BlogCommentModerationLogs { get; set; }
+
+    public virtual DbSet<BlogCommentViolationCount> BlogCommentViolationCounts { get; set; }
+
     public virtual DbSet<Brand> Brands { get; set; }
 
     public virtual DbSet<Campaign> Campaigns { get; set; }
@@ -1828,7 +1834,10 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.HasKey(e => e.ReviewBlogId).HasName("PK__ReviewBl__A19536C07ECC639B");
 
-            entity.HasIndex(e => new { e.BlogPostId, e.IsDeleted }, "IX_ReviewBlogs_BlogPost");
+            entity.HasIndex(e => new { e.BlogPostId, e.ModerationStatus, e.CreatedAt }, "IX_ReviewBlogs_BlogPost_Status");
+
+            entity.HasIndex(e => new { e.ModerationStatus, e.CreatedAt }, "IX_ReviewBlogs_Failed")
+                .HasFilter("([ModerationStatus]='Failed' OR [ModerationStatus]='Pending')");
 
             entity.Property(e => e.ReviewBlogId).HasColumnName("ReviewBlogID");
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
@@ -1837,7 +1846,16 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
-            entity.Ignore(e => e.IsFeatured);
+            entity.Property(e => e.HiddenAt).HasPrecision(0);
+            entity.Property(e => e.HiddenBy).HasColumnName("HiddenBy");
+            entity.Property(e => e.IsHidden).HasDefaultValue(false);
+            entity.Property(e => e.LastRetryAt).HasPrecision(0);
+            entity.Property(e => e.ManualReviewDeadline).HasPrecision(0);
+            entity.Property(e => e.ModerationStatus)
+                .HasMaxLength(20)
+                .IsUnicode(false)
+                .HasDefaultValue("Pending");
+            entity.Property(e => e.RetryCount).HasDefaultValue((byte)0);
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
             entity.HasOne(d => d.Account).WithMany(p => p.ReviewBlogs)
@@ -1849,6 +1867,10 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasForeignKey(d => d.BlogPostId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_ReviewBlogs_BlogPosts");
+
+            entity.HasOne(d => d.HiddenByNavigation).WithMany(p => p.ReviewBlogHiddenByNavigations)
+                .HasForeignKey(d => d.HiddenBy)
+                .HasConstraintName("FK_ReviewBlogs_HiddenBy");
         });
 
         modelBuilder.Entity<ReviewBlogReaction>(entity =>
@@ -1889,7 +1911,10 @@ public partial class SEP490ToyStoreContext : DbContext
         {
             entity.HasKey(e => e.ReplyBlogId).HasName("PK__ReviewBl__5996364139D7A15C");
 
-            entity.HasIndex(e => new { e.ReviewBlogId, e.IsDeleted }, "IX_ReviewBlogReplies_Review");
+            entity.HasIndex(e => new { e.ReviewBlogId, e.ModerationStatus, e.CreatedAt }, "IX_ReviewBlogReplies_Comment_Status");
+
+            entity.HasIndex(e => new { e.ModerationStatus, e.CreatedAt }, "IX_ReviewBlogReplies_Failed")
+                .HasFilter("([ModerationStatus]='Failed' OR [ModerationStatus]='Pending')");
 
             entity.Property(e => e.ReplyBlogId).HasColumnName("ReplyBlogID");
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
@@ -1897,6 +1922,16 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.HiddenAt).HasPrecision(0);
+            entity.Property(e => e.HiddenBy).HasColumnName("HiddenBy");
+            entity.Property(e => e.IsHidden).HasDefaultValue(false);
+            entity.Property(e => e.LastRetryAt).HasPrecision(0);
+            entity.Property(e => e.ManualReviewDeadline).HasPrecision(0);
+            entity.Property(e => e.ModerationStatus)
+                .HasMaxLength(20)
+                .IsUnicode(false)
+                .HasDefaultValue("Pending");
+            entity.Property(e => e.RetryCount).HasDefaultValue((byte)0);
             entity.Property(e => e.ParentReplyId).HasColumnName("ParentReplyID");
             entity.Property(e => e.ReplyToAccountId).HasColumnName("ReplyToAccountID");
             entity.Property(e => e.ReviewBlogId).HasColumnName("ReviewBlogID");
@@ -1906,6 +1941,10 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasForeignKey(d => d.AccountId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_ReviewBlogReplies_Accounts");
+
+            entity.HasOne(d => d.HiddenByNavigation).WithMany(p => p.ReviewBlogReplyHiddenByNavigations)
+                .HasForeignKey(d => d.HiddenBy)
+                .HasConstraintName("FK_ReviewBlogReplies_HiddenBy");
 
             entity.HasOne(d => d.ParentReply).WithMany(p => p.InverseParentReply)
                 .HasForeignKey(d => d.ParentReplyId)
@@ -1984,6 +2023,98 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasForeignKey(d => d.ReactionTypeId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_ReviewBlogReplyReactions_ReactionTypes");
+        });
+
+        modelBuilder.Entity<BlogCommentBanReason>(entity =>
+        {
+            entity.HasKey(e => e.BanReasonId).HasName("PK_BlogCommentBanReasons");
+
+            entity.Property(e => e.BanReasonId).HasColumnName("BanReasonID");
+            entity.Property(e => e.Content).HasMaxLength(255);
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
+        });
+
+        modelBuilder.Entity<BlogCommentModerationLog>(entity =>
+        {
+            entity.HasKey(e => e.LogId).HasName("PK_BlogCommentModerationLogs");
+
+            entity.HasIndex(e => new { e.CommentId, e.CreatedAt }, "IX_BCML_Comment")
+                .HasFilter("([CommentID] IS NOT NULL)");
+
+            entity.HasIndex(e => new { e.ReplyId, e.CreatedAt }, "IX_BCML_Reply")
+                .HasFilter("([ReplyID] IS NOT NULL)");
+
+            entity.HasIndex(e => new { e.Action, e.CreatedAt }, "IX_BCML_ManualReview")
+                .HasFilter("([Action]='ManualReview' OR [Action]='Failed')");
+
+            entity.Property(e => e.LogId).HasColumnName("LogID");
+            entity.Property(e => e.Action)
+                .HasMaxLength(20)
+                .IsUnicode(false);
+            entity.Property(e => e.BanReasonId).HasColumnName("BanReasonID");
+            entity.Property(e => e.CommentId).HasColumnName("CommentID");
+            entity.Property(e => e.ConfidenceScore).HasColumnType("decimal(5, 4)");
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.ModeratedBy).HasColumnName("ModeratedBy");
+            entity.Property(e => e.ModerationResult).HasColumnName("ModerationResult");
+            entity.Property(e => e.ModeratorType)
+                .HasMaxLength(10)
+                .IsUnicode(false);
+            entity.Property(e => e.ReplyId).HasColumnName("ReplyID");
+            entity.Property(e => e.TargetType)
+                .HasMaxLength(10)
+                .IsUnicode(false);
+
+            entity.HasOne(d => d.BanReason).WithMany(p => p.BlogCommentModerationLogs)
+                .HasForeignKey(d => d.BanReasonId)
+                .HasConstraintName("FK_BCML_BanReasons");
+
+            entity.HasOne(d => d.Comment).WithMany(p => p.BlogCommentModerationLogs)
+                .HasForeignKey(d => d.CommentId)
+                .HasConstraintName("FK_BCML_ReviewBlogs");
+
+            entity.HasOne(d => d.ModeratedByNavigation).WithMany(p => p.BlogCommentModerationLogs)
+                .HasForeignKey(d => d.ModeratedBy)
+                .HasConstraintName("FK_BCML_Accounts");
+
+            entity.HasOne(d => d.Reply).WithMany(p => p.BlogCommentModerationLogs)
+                .HasForeignKey(d => d.ReplyId)
+                .HasConstraintName("FK_BCML_ReviewBlogReplies");
+        });
+
+        modelBuilder.Entity<BlogCommentViolationCount>(entity =>
+        {
+            entity.HasKey(e => e.AccountId).HasName("PK_BlogCommentViolationCount");
+
+            entity.HasIndex(e => new { e.IsCommentBanned, e.BanExpiresAt }, "IX_BCVC_Banned")
+                .HasFilter("([IsCommentBanned]=(1))");
+
+            entity.Property(e => e.AccountId)
+                .ValueGeneratedNever()
+                .HasColumnName("AccountID");
+            entity.Property(e => e.BanExpiresAt).HasPrecision(0);
+            entity.Property(e => e.BannedAt).HasPrecision(0);
+            entity.Property(e => e.IsCommentBanned).HasDefaultValue(false);
+            entity.Property(e => e.LastViolatedAt).HasPrecision(0);
+            entity.Property(e => e.RateWindowAt).HasPrecision(0);
+            entity.Property(e => e.UnbannedAt).HasPrecision(0);
+            entity.Property(e => e.UnbannedBy).HasColumnName("UnbannedBy");
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
+            entity.Property(e => e.ViolationCount).HasDefaultValue((byte)0);
+            entity.Property(e => e.RateCount).HasDefaultValue((byte)0);
+
+            entity.HasOne(d => d.Account).WithOne(p => p.BlogCommentViolationCountAccount)
+                .HasForeignKey<BlogCommentViolationCount>(d => d.AccountId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_BCVC_Accounts");
+
+            entity.HasOne(d => d.UnbannedByNavigation).WithMany(p => p.BlogCommentViolationCountUnbannedByNavigations)
+                .HasForeignKey(d => d.UnbannedBy)
+                .HasConstraintName("FK_BCVC_UnbannedBy");
         });
 
         modelBuilder.Entity<ReviewProduct>(entity =>
