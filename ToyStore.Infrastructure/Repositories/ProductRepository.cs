@@ -28,6 +28,8 @@ public class ProductRepository : IProductRepository
         IReadOnlyCollection<short>? categoryIds = null,
         IReadOnlyCollection<int>? brandIds = null,
         IReadOnlyCollection<byte>? priceRangeIds = null,
+        decimal? minPrice = null,
+        decimal? maxPrice = null,
         IReadOnlyCollection<short>? materialIds = null,
         IReadOnlyCollection<byte>? ageIds = null,
         IReadOnlyCollection<byte>? sexIds = null,
@@ -73,6 +75,28 @@ public class ProductRepository : IProductRepository
         if (priceRangeIds is { Count: > 0 })
         {
             query = query.Where(x => x.PriceRangeId.HasValue && priceRangeIds.Contains(x.PriceRangeId.Value));
+        }
+
+        // Filter theo giá hiển thị thực tế (giá sale nếu có promotion, không thì giá gốc)
+        if (minPrice.HasValue)
+        {
+            query = query.Where(x =>
+                // Giá gốc >= minPrice
+                x.Price >= minPrice.Value
+                // HOẶC có promotion active với SalePrice >= minPrice
+                || x.ProductPromotions.Any(pp =>
+                    pp.IsActive && pp.SalePrice >= minPrice.Value));
+        }
+
+        if (maxPrice.HasValue)
+        {
+            query = query.Where(x =>
+                // Nếu có promotion active thì dùng SalePrice
+                (x.ProductPromotions.Any(pp => pp.IsActive)
+                    && x.ProductPromotions.Where(pp => pp.IsActive).Min(pp => pp.SalePrice) <= maxPrice.Value)
+                // HOẶC không có promotion thì dùng Price
+                || (!x.ProductPromotions.Any(pp => pp.IsActive)
+                    && x.Price <= maxPrice.Value));
         }
 
         if (materialIds is { Count: > 0 })
@@ -169,6 +193,8 @@ public class ProductRepository : IProductRepository
         IReadOnlyCollection<short>? categoryIds = null,
         IReadOnlyCollection<int>? brandIds = null,
         IReadOnlyCollection<byte>? priceRangeIds = null,
+        decimal? minPrice = null,
+        decimal? maxPrice = null,
         IReadOnlyCollection<short>? materialIds = null,
         IReadOnlyCollection<byte>? ageIds = null,
         IReadOnlyCollection<byte>? sexIds = null,
@@ -206,6 +232,28 @@ public class ProductRepository : IProductRepository
         if (priceRangeIds is { Count: > 0 })
         {
             query = query.Where(x => x.PriceRangeId.HasValue && priceRangeIds.Contains(x.PriceRangeId.Value));
+        }
+
+        // Filter theo giá hiển thị thực tế (giá sale nếu có promotion, không thì giá gốc)
+        if (minPrice.HasValue)
+        {
+            query = query.Where(x =>
+                // Giá gốc >= minPrice
+                x.Price >= minPrice.Value
+                // HOẶC có promotion active với SalePrice >= minPrice
+                || x.ProductPromotions.Any(pp =>
+                    pp.IsActive && pp.SalePrice >= minPrice.Value));
+        }
+
+        if (maxPrice.HasValue)
+        {
+            query = query.Where(x =>
+                // Nếu có promotion active thì dùng SalePrice
+                (x.ProductPromotions.Any(pp => pp.IsActive)
+                    && x.ProductPromotions.Where(pp => pp.IsActive).Min(pp => pp.SalePrice) <= maxPrice.Value)
+                // HOẶC không có promotion thì dùng Price
+                || (!x.ProductPromotions.Any(pp => pp.IsActive)
+                    && x.Price <= maxPrice.Value));
         }
 
         if (materialIds is { Count: > 0 })
