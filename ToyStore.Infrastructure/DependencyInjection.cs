@@ -211,6 +211,7 @@ public static class DependencyInjection
         services.TryAddScoped<ICartRealtimeService, NoOpCartRealtimeService>();
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddSingleton<ILoginAttemptService, LoginAttemptService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IProfileService, ProfileService>();
         services.AddScoped<ICustomerNotificationPreferencesService, CustomerNotificationPreferencesService>();

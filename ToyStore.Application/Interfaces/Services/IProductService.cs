@@ -23,6 +23,8 @@ public interface IProductService
         IReadOnlyCollection<short>? categoryIds = null,
         IReadOnlyCollection<int>? brandIds = null,
         IReadOnlyCollection<byte>? priceRangeIds = null,
+        decimal? minPrice = null,
+        decimal? maxPrice = null,
         IReadOnlyCollection<short>? materialIds = null,
         IReadOnlyCollection<byte>? ageIds = null,
         IReadOnlyCollection<byte>? sexIds = null,
