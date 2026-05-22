@@ -785,48 +785,196 @@ GO
 
 /* =============================================
    6. BLOG & CONTENT
+   Quản lý bài viết blog, lịch sử sinh nội dung AI,
+   comment, reaction của người dùng
 ============================================= */
+
+-- Danh mục blog (Education, Review, News, v.v.)
+-- Dùng để phân loại BlogPosts và gợi ý prompt AI
 CREATE TABLE [BlogCategories] (
-    [BlogCategoryID]      SMALLINT IDENTITY(1,1) PRIMARY KEY,
-    [BlogCategoriesName]  NVARCHAR(100) NOT NULL UNIQUE,
-    [CreatedAt]           DATETIME2(0) NOT NULL DEFAULT GETDATE()
+    [BlogCategoryID] SMALLINT IDENTITY(1,1) PRIMARY KEY,
+    [BlogCategoriesName] NVARCHAR(100) NOT NULL UNIQUE,
+    [CreatedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE()
 );
 GO
 
+-- Bảng chính lưu bài viết blog
+-- Hỗ trợ cả luồng viết tay (Staff) và sinh tự động (AI)
+-- Status workflow: Draft → Pending → Approved/Rejected → Scheduled → Published → Hidden
 CREATE TABLE [BlogPosts] (
-    [BlogPostID]     INT IDENTITY(1,1) PRIMARY KEY,
-    [AccountID]      INT NOT NULL,
-    [ApprovedBy]     INT NULL,
+    [BlogPostID] INT IDENTITY(1,1) PRIMARY KEY,
+    [AccountID] INT NOT NULL,          -- Staff tạo bài
+    [ApprovedBy] INT NULL,             -- Admin duyệt bài
     [BlogCategoryID] SMALLINT NOT NULL,
-    [BlogTitle]      NVARCHAR(255) NOT NULL,
-    [BlogContent]    NVARCHAR(MAX) NOT NULL,
-    [BlogThumbnail]  VARCHAR(500) NULL,
-    [Status] VARCHAR(10) NOT NULL CHECK ([Status] IN (
-     'Draft', 'Pending', 'Approved',
-     'Rejected', 'Scheduled', 'Published',
-     'Hidden'
-    )),
-    [Reason]         NVARCHAR(500) NULL,
-    [IsFeatured]     BIT NOT NULL DEFAULT 0,
-    [BlogAt]         DATETIME2(0) NULL,
-    [IsDeleted]      BIT NOT NULL DEFAULT 0,
-    [CreatedAt]      DATETIME2(0) NOT NULL DEFAULT GETDATE(),
-    [UpdatedAt]      DATETIME2(0) NULL,
-    CONSTRAINT [FK_BlogPosts_Accounts]       FOREIGN KEY ([AccountID])      REFERENCES [Accounts]([AccountID]),
-    CONSTRAINT [FK_BlogPosts_ApprovedBy]     FOREIGN KEY ([ApprovedBy])     REFERENCES [Accounts]([AccountID]),
-    CONSTRAINT [FK_BlogPosts_BlogCategories] FOREIGN KEY ([BlogCategoryID]) REFERENCES [BlogCategories]([BlogCategoryID])
+    [BlogTitle] NVARCHAR(255) NOT NULL,
+    [BlogContent] NVARCHAR(MAX) NOT NULL,
+    [BlogThumbnail] VARCHAR(500) NULL,
+
+    [Status] VARCHAR(20) NOT NULL DEFAULT 'Draft'
+        CONSTRAINT [CK_BlogPosts_Status]
+        CHECK ([Status] IN (
+            'Draft', 'Pending', 'Approved',
+            'Rejected', 'Scheduled', 'Published', 'Hidden'
+        )),
+
+    [Reason] NVARCHAR(500) NULL,       -- Lý do Rejected
+    [IsFeatured] BIT NOT NULL DEFAULT 0, -- Top 5 bài nổi bật, tự động cập nhật bởi SP_RecomputeFeaturedBlogs
+    [BlogAt] DATETIME2(0) NULL,        -- Thời điểm lên lịch đăng hoặc đã đăng
+    [IsDeleted] BIT NOT NULL DEFAULT 0,
+
+    -- Các field theo dõi trạng thái sinh nội dung AI
+    [IsAIGenerated] BIT NOT NULL DEFAULT 0,
+    [AIStatus] VARCHAR(20) NULL        -- Trạng thái job AI: Pending/Processing/Completed/Failed/Cancelled
+        CONSTRAINT [CK_BlogPosts_AIStatus]
+        CHECK ([AIStatus] IN (
+            'Pending', 'Processing', 'Completed', 'Failed', 'Cancelled'
+        )),
+    [AIPromptData] NVARCHAR(MAX) NULL, -- Dữ liệu prompt đã gửi cho AI
+    [AIError] NVARCHAR(500) NULL,      -- Thông báo lỗi nếu AI thất bại
+    [AIRequestedAt] DATETIME2(0) NULL, -- Thời điểm yêu cầu AI sinh nội dung
+    [AICompletedAt] DATETIME2(0) NULL, -- Thời điểm AI hoàn thành
+
+    [CreatedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    [UpdatedAt] DATETIME2(0) NULL,
+
+    CONSTRAINT [FK_BlogPosts_Accounts]
+        FOREIGN KEY ([AccountID]) REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [FK_BlogPosts_ApprovedBy]
+        FOREIGN KEY ([ApprovedBy]) REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [FK_BlogPosts_BlogCategories]
+        FOREIGN KEY ([BlogCategoryID]) REFERENCES [BlogCategories]([BlogCategoryID]),
+
+    -- Bài Scheduled/Published bắt buộc phải có BlogAt
+    CONSTRAINT [CK_BlogPosts_ScheduledHasBlogAt]
+        CHECK ([Status] NOT IN ('Scheduled', 'Published') OR [BlogAt] IS NOT NULL),
+    -- Bài Rejected bắt buộc phải có Reason
+    CONSTRAINT [CK_BlogPosts_RejectedNeedsReason]
+        CHECK ([Status] <> 'Rejected' OR [Reason] IS NOT NULL)
 );
 GO
 
+-- Bộ đếm thống kê cho từng bài blog
+-- Tách riêng để tránh lock bảng BlogPosts khi update thường xuyên
+-- LikeCount và CommentCount được duy trì tự động bởi các trigger bên dưới
 CREATE TABLE [BlogPostStats] (
-    [BlogPostID]    INT NOT NULL PRIMARY KEY,
-    [LikeCount]     INT NOT NULL DEFAULT 0,
-    [CommentCount]  INT NOT NULL DEFAULT 0,
-    [UpdatedAt]     DATETIME2(0) NULL,
+    [BlogPostID] INT NOT NULL PRIMARY KEY,
+    [LikeCount] INT NOT NULL DEFAULT 0,
+    [CommentCount] INT NOT NULL DEFAULT 0,
+    [UpdatedAt] DATETIME2(0) NULL,
+
     CONSTRAINT [FK_BlogPostStats_BlogPosts]
         FOREIGN KEY ([BlogPostID]) REFERENCES [BlogPosts]([BlogPostID])
 );
 GO
+
+-- Template prompt dùng để sinh nội dung AI
+-- Staff chọn template → hệ thống điền biến → gửi cho AI
+CREATE TABLE [AIPromptTemplates] (
+    [TemplateID] INT IDENTITY(1,1) PRIMARY KEY,
+    [TemplateName] NVARCHAR(100) NOT NULL UNIQUE,
+    [Description] NVARCHAR(255) NULL,
+    [PromptStructure] NVARCHAR(MAX) NOT NULL, -- Cấu trúc prompt với các placeholder
+    [DefaultTone] NVARCHAR(50) NULL,          -- Tone mặc định: formal/casual/friendly
+    [DefaultCategoryID] SMALLINT NULL,        -- Danh mục blog mặc định khi dùng template này
+    [IsActive] BIT NOT NULL DEFAULT 1,
+    [CreatedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    [UpdatedAt] DATETIME2(0) NULL,
+
+    CONSTRAINT [FK_AIPromptTemplates_BlogCategories]
+        FOREIGN KEY ([DefaultCategoryID]) REFERENCES [BlogCategories]([BlogCategoryID])
+);
+GO
+
+-- Hàng đợi các yêu cầu sinh nội dung AI
+-- Background job đọc từ bảng này theo Priority DESC, RequestedAt ASC
+-- Sau khi xử lý xong, kết quả được lưu vào AIBlogGenerationHistory
+CREATE TABLE [AIBlogQueue] (
+    [QueueID] INT IDENTITY(1,1) PRIMARY KEY,
+    [BlogPostID] INT NOT NULL,
+    [StaffID] INT NOT NULL,            -- Staff gửi yêu cầu
+    [TemplateID] INT NULL,             -- Template được dùng (nếu có)
+    [PromptData] NVARCHAR(MAX) NOT NULL, -- Dữ liệu prompt đầy đủ sau khi điền biến
+    [GeneratedContent] NVARCHAR(MAX) NULL, -- Nội dung AI trả về
+
+    [Status] VARCHAR(20) NOT NULL DEFAULT 'Pending'
+        CONSTRAINT [CK_AIBlogQueue_Status]
+        CHECK ([Status] IN (
+            'Pending', 'Processing', 'Completed',
+            'Failed', 'Cancelled'
+        )),
+
+    [Priority] INT NOT NULL DEFAULT 0, -- Ưu tiên cao hơn = xử lý trước
+    [RetryCount] INT NOT NULL DEFAULT 0,
+    [ErrorMessage] NVARCHAR(500) NULL,
+    [RequestedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    [ProcessedAt] DATETIME2(0) NULL,   -- Lúc bắt đầu xử lý, tự set bởi trg_AIBlogQueue_UpdateTime
+    [CompletedAt] DATETIME2(0) NULL,   -- Lúc hoàn thành, tự set bởi trg_AIBlogQueue_UpdateTime
+    [UpdatedAt] DATETIME2(0) NULL,
+
+    CONSTRAINT [FK_AIBlogQueue_BlogPosts]
+        FOREIGN KEY ([BlogPostID]) REFERENCES [BlogPosts]([BlogPostID]),
+    CONSTRAINT [FK_AIBlogQueue_Staff]
+        FOREIGN KEY ([StaffID]) REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [FK_AIBlogQueue_Template]
+        FOREIGN KEY ([TemplateID]) REFERENCES [AIPromptTemplates]([TemplateID])
+);
+GO
+
+-- Lịch sử toàn bộ lần sinh nội dung AI (audit trail)
+-- Mỗi lần retry tạo 1 row mới → không mất lịch sử
+-- IsAppliedToBlog = 1 nghĩa là lần sinh này đã được áp vào BlogPosts.BlogContent
+CREATE TABLE [AIBlogGenerationHistory] (
+    [HistoryID] BIGINT IDENTITY(1,1) PRIMARY KEY,
+    [BlogPostID] INT NOT NULL,
+    [QueueID] INT NULL,                -- Queue job tương ứng
+    [StaffID] INT NOT NULL,
+    [TemplateID] INT NULL,
+
+    -- Thông số gọi AI
+    [PromptData] NVARCHAR(MAX) NOT NULL,
+    [ModelName] NVARCHAR(100) NULL,    -- VD: claude-sonnet-4-6
+    [Temperature] DECIMAL(4,2) NULL,
+    [MaxTokens] INT NULL,
+    [Language] NVARCHAR(20) NULL,      -- VD: vi, en
+    [Tone] NVARCHAR(50) NULL,
+
+    -- Kết quả trả về
+    [GeneratedContent] NVARCHAR(MAX) NULL,
+    [ContentHash] VARCHAR(64) NULL,    -- Hash SHA-256 để phát hiện nội dung trùng lặp
+    [TokenInput] INT NULL,             -- Số token đầu vào (dùng để tính chi phí)
+    [TokenOutput] INT NULL,            -- Số token đầu ra
+    [LatencyMs] INT NULL,              -- Thời gian phản hồi (ms)
+
+    [Status] VARCHAR(20) NOT NULL
+        CONSTRAINT [CK_AIBlogGenerationHistory_Status]
+        CHECK ([Status] IN (
+            'Pending', 'Processing', 'Completed', 'Failed', 'Cancelled'
+        )),
+
+    [ErrorMessage] NVARCHAR(1000) NULL,
+    [RetryCount] INT NOT NULL DEFAULT 0,
+    [CorrelationId] VARCHAR(64) NULL,  -- ID liên kết các request trong cùng 1 luồng
+    [IdempotencyKey] VARCHAR(100) NULL, -- Tránh gọi AI trùng lặp khi retry
+    [IsAppliedToBlog] BIT NOT NULL DEFAULT 0,
+    [AppliedAt] DATETIME2(0) NULL,
+
+    [RequestedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    [ProcessedAt] DATETIME2(0) NULL,
+    [CompletedAt] DATETIME2(0) NULL,
+    [CreatedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    [UpdatedAt] DATETIME2(0) NULL,
+
+    CONSTRAINT [FK_AIBlogGenerationHistory_BlogPosts]
+        FOREIGN KEY ([BlogPostID]) REFERENCES [BlogPosts]([BlogPostID]),
+    CONSTRAINT [FK_AIBlogGenerationHistory_AIBlogQueue]
+        FOREIGN KEY ([QueueID]) REFERENCES [AIBlogQueue]([QueueID]),
+    CONSTRAINT [FK_AIBlogGenerationHistory_Staff]
+        FOREIGN KEY ([StaffID]) REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [FK_AIBlogGenerationHistory_Template]
+        FOREIGN KEY ([TemplateID]) REFERENCES [AIPromptTemplates]([TemplateID])
+);
+GO
+
 
 /* =============================================
    7. REVIEWS & REACTIONS (+ AI MODERATION)
@@ -1022,6 +1170,11 @@ CREATE TABLE [ReviewProductReactions] (
         UNIQUE ([AccountID], [ReviewProductID])
 );
 GO
+
+/* =============================================
+   7. REVIEWS & REACTIONS
+============================================= */
+
 CREATE TABLE [dbo].[ReviewBlogs] (
     [ReviewBlogID]     INT           IDENTITY(1,1) PRIMARY KEY,
     [BlogPostID]       INT           NOT NULL,
@@ -1200,11 +1353,6 @@ CREATE TABLE [dbo].[BlogCommentModerationLogs] (
 );
 GO
 
-CREATE NONCLUSTERED INDEX [IX_BCML_Comment]
-    ON [dbo].[BlogCommentModerationLogs]([CommentID],[CreatedAt] DESC)
-    WHERE [CommentID] IS NOT NULL;
-GO
-
 CREATE NONCLUSTERED INDEX [IX_BCML_Reply]
     ON [dbo].[BlogCommentModerationLogs]([ReplyID],[CreatedAt] DESC)
     WHERE [ReplyID] IS NOT NULL;
@@ -1283,9 +1431,6 @@ CREATE TABLE [dbo].[BlogPostReactions]
         CONSTRAINT [UQ_BlogPostReactions_AccountPost] UNIQUE ([AccountID], [BlogPostID])
     );
 
-CREATE NONCLUSTERED INDEX [IX_BlogPostReactions_Stats]
-    ON [dbo].[BlogPostReactions]([BlogPostID], [ReactionTypeID]);
-GO
 
 CREATE TABLE [dbo].[ReviewBlogReplyReactions]
     (
@@ -1299,11 +1444,11 @@ CREATE TABLE [dbo].[ReviewBlogReplyReactions]
         CONSTRAINT [FK_ReviewBlogReplyReactions_ReactionTypes] FOREIGN KEY ([ReactionTypeID]) REFERENCES [dbo].[ReactionTypes]([ReactionTypeID]),
         CONSTRAINT [UQ_ReviewBlogReplyReactions_AccountReply] UNIQUE ([AccountID], [ReplyBlogID])
     );
+/* =============================================
+   INDEXES
+============================================= */
 
-CREATE NONCLUSTERED INDEX [IX_ReviewBlogReplyReactions_Stats]
-    ON [dbo].[ReviewBlogReplyReactions]([ReplyBlogID], [ReactionTypeID]);
 
-GO
 CREATE INDEX [IX_BlogPostStats_Score]
 ON [BlogPostStats]([LikeCount] DESC, [CommentCount] DESC);
 GO
@@ -1362,6 +1507,73 @@ BEGIN
 END;
 GO
 
+-- Lọc bài blog theo trạng thái + IsDeleted (query phổ biến nhất ở listing page)
+CREATE INDEX [IX_BlogPosts_Status_IsDeleted]
+ON [BlogPosts]([Status], [IsDeleted]);
+GO
+
+-- Tìm bài sắp được publish theo lịch (background job dùng)
+CREATE INDEX [IX_BlogPosts_BlogAt]
+ON [BlogPosts]([BlogAt]);
+GO
+
+-- Background job quét các bài có AI đang xử lý (AIStatus = Processing/Pending)
+CREATE INDEX [IX_BlogPosts_AIStatus]
+ON [BlogPosts]([AIStatus]);
+GO
+
+
+-- Đếm reaction theo loại trên từng bài (VD: 10 Like, 5 Love)
+CREATE INDEX [IX_BlogPostReactions_Stats]
+ON [BlogPostReactions]([BlogPostID], [ReactionTypeID]);
+GO
+
+-- Đếm reaction theo loại trên từng reply
+CREATE INDEX [IX_ReviewBlogReplyReactions_Stats]
+ON [ReviewBlogReplyReactions]([ReplyBlogID], [ReactionTypeID]);
+GO
+
+-- Background job lấy job AI tiếp theo cần xử lý (theo Priority + thời gian)
+CREATE INDEX [IX_AIBlogQueue_Status]
+ON [AIBlogQueue]([Status], [Priority] DESC, [RequestedAt]);
+GO
+
+-- Xem lịch sử queue của 1 bài blog (mới nhất lên đầu)
+CREATE INDEX [IX_AIBlogQueue_BlogPost_RequestedAt]
+ON [AIBlogQueue]([BlogPostID], [RequestedAt] DESC, [QueueID] DESC);
+GO
+
+-- Xem lịch sử sinh AI của 1 bài blog (mới nhất lên đầu)
+CREATE INDEX [IX_AIBlogGenerationHistory_BlogPost_RequestedAt]
+ON [AIBlogGenerationHistory]([BlogPostID], [RequestedAt] DESC);
+GO
+
+-- Background job theo dõi các generation đang ở trạng thái nào
+CREATE INDEX [IX_AIBlogGenerationHistory_Status_RequestedAt]
+ON [AIBlogGenerationHistory]([Status], [RequestedAt]);
+GO
+
+-- Xem lịch sử Staff đã yêu cầu AI sinh nội dung
+CREATE INDEX [IX_AIBlogGenerationHistory_Staff_RequestedAt]
+ON [AIBlogGenerationHistory]([StaffID], [RequestedAt] DESC);
+GO
+
+-- Tìm kiếm generation theo CorrelationId (debug/trace)
+CREATE INDEX [IX_AIBlogGenerationHistory_CorrelationId]
+ON [AIBlogGenerationHistory]([CorrelationId])
+WHERE [CorrelationId] IS NOT NULL;
+GO
+
+-- Chặn gọi AI trùng lặp khi retry (idempotency check)
+CREATE UNIQUE INDEX [UQ_AIBlogGenerationHistory_IdempotencyKey]
+ON [AIBlogGenerationHistory]([IdempotencyKey])
+WHERE [IdempotencyKey] IS NOT NULL;
+GO
+
+-- Tìm các generation đã hoặc chưa được áp vào bài blog
+CREATE INDEX [IX_AIBlogGenerationHistory_Applied]
+ON [AIBlogGenerationHistory]([BlogPostID], [IsAppliedToBlog], [AppliedAt]);
+GO
 
 /* =============================================
    TRIGGERS
@@ -1369,7 +1581,8 @@ GO
 
 -- 1. Tự động tạo row BlogPostStats khi có BlogPost mới
 CREATE TRIGGER [trg_BlogPost_InitStats]
-ON [BlogPosts] AFTER INSERT
+ON [BlogPosts]
+AFTER INSERT
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -1383,52 +1596,66 @@ BEGIN
 END;
 GO
 
+
 -- 2. Cập nhật LikeCount khi react vào bài blog
 CREATE TRIGGER [trg_BlogPostReaction_UpdateLikeCount]
-ON [BlogPostReactions] AFTER INSERT, UPDATE, DELETE
+ON [BlogPostReactions]
+AFTER INSERT, DELETE
 AS
 BEGIN
     SET NOCOUNT ON;
-    WITH affected AS (
-        SELECT [BlogPostID] FROM inserted
-        UNION
-        SELECT [BlogPostID] FROM deleted
+    WITH delta AS (
+        SELECT [BlogPostID], COUNT(*) AS cnt FROM inserted GROUP BY [BlogPostID]
+        UNION ALL
+        SELECT [BlogPostID], -COUNT(*) AS cnt FROM deleted GROUP BY [BlogPostID]
+    ),
+    grouped AS (
+        SELECT [BlogPostID], SUM(cnt) AS net FROM delta GROUP BY [BlogPostID]
     )
     UPDATE s
-    SET
-        s.[LikeCount] = (
-            SELECT COUNT(*)
-            FROM [BlogPostReactions] bpr
-            WHERE bpr.[BlogPostID] = s.[BlogPostID]
-        ),
+    SET s.[LikeCount] = s.[LikeCount] + g.net,
         s.[UpdatedAt] = GETDATE()
     FROM [BlogPostStats] s
-    WHERE s.[BlogPostID] IN (SELECT [BlogPostID] FROM affected);
+    JOIN grouped g ON s.[BlogPostID] = g.[BlogPostID];
 END;
 GO
 
+
 -- 3. Cập nhật CommentCount khi có comment/xóa comment
 CREATE TRIGGER [trg_ReviewBlog_UpdateCommentCount]
-ON [ReviewBlogs] AFTER INSERT, UPDATE, DELETE
+ON [ReviewBlogs]
+AFTER INSERT, UPDATE, DELETE
 AS
 BEGIN
     SET NOCOUNT ON;
-    WITH affected AS (
-        SELECT [BlogPostID] FROM inserted
-        UNION
-        SELECT [BlogPostID] FROM deleted
+    WITH delta AS (
+        SELECT [BlogPostID], 1 AS sign
+        FROM inserted
+        WHERE [IsDeleted] = 0
+          AND NOT EXISTS (SELECT 1 FROM deleted d WHERE d.[ReviewBlogID] = inserted.[ReviewBlogID])
+        UNION ALL
+        SELECT [BlogPostID], -1
+        FROM deleted
+        WHERE [IsDeleted] = 0
+          AND NOT EXISTS (SELECT 1 FROM inserted i WHERE i.[ReviewBlogID] = deleted.[ReviewBlogID])
+        UNION ALL
+        SELECT i.[BlogPostID], -1
+        FROM inserted i JOIN deleted d ON i.[ReviewBlogID] = d.[ReviewBlogID]
+        WHERE d.[IsDeleted] = 0 AND i.[IsDeleted] = 1
+        UNION ALL
+        SELECT i.[BlogPostID], 1
+        FROM inserted i JOIN deleted d ON i.[ReviewBlogID] = d.[ReviewBlogID]
+        WHERE d.[IsDeleted] = 1 AND i.[IsDeleted] = 0
+    ),
+    grouped AS (
+        SELECT [BlogPostID], SUM(sign) AS net FROM delta GROUP BY [BlogPostID]
     )
     UPDATE s
-    SET
-        s.[CommentCount] = (
-            SELECT COUNT(*)
-            FROM [ReviewBlogs] rb
-            WHERE rb.[BlogPostID] = s.[BlogPostID]
-              AND rb.[IsDeleted] = 0
-        ),
+    SET s.[CommentCount] = s.[CommentCount] + g.net,
         s.[UpdatedAt] = GETDATE()
     FROM [BlogPostStats] s
-    WHERE s.[BlogPostID] IN (SELECT [BlogPostID] FROM affected);
+    JOIN grouped g ON s.[BlogPostID] = g.[BlogPostID]
+    WHERE g.net <> 0;
 END;
 GO
 
@@ -1462,6 +1689,165 @@ BEGIN
     JOIN TopFeatured tf ON bp.[BlogPostID] = tf.[BlogPostID];
 END;
 GO
+
+-- Index hỗ trợ query "bài nào account này đã react"
+CREATE INDEX [IX_BlogPostReactions_Account]
+ON [BlogPostReactions] ([AccountID])
+INCLUDE ([BlogPostID], [ReactionTypeID], [CreatedAt]);
+GO
+
+-- Tương tự trg_ReviewBlog_UpdateCommentCount nhưng cho reply
+-- Khi có reply mới/xóa/restore, CommentCount của bài blog cũng tăng/giảm theo
+-- Cần JOIN qua ReviewBlogs để lấy BlogPostID vì reply không trực tiếp biết BlogPostID
+CREATE TRIGGER [trg_ReviewBlogReply_UpdateCommentCount]
+ON [ReviewBlogReplies]
+AFTER INSERT, UPDATE, DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    WITH delta AS (
+        SELECT rb.[BlogPostID], 1 AS sign
+        FROM inserted i
+        JOIN [ReviewBlogs] rb ON rb.[ReviewBlogID] = i.[ReviewBlogID]
+        WHERE i.[IsDeleted] = 0
+          AND NOT EXISTS (SELECT 1 FROM deleted d WHERE d.[ReplyBlogID] = i.[ReplyBlogID])
+        UNION ALL
+        SELECT rb.[BlogPostID], -1
+        FROM deleted d
+        JOIN [ReviewBlogs] rb ON rb.[ReviewBlogID] = d.[ReviewBlogID]
+        WHERE d.[IsDeleted] = 0
+          AND NOT EXISTS (SELECT 1 FROM inserted i WHERE i.[ReplyBlogID] = d.[ReplyBlogID])
+        UNION ALL
+        SELECT rb.[BlogPostID], -1
+        FROM inserted i
+        JOIN deleted d ON i.[ReplyBlogID] = d.[ReplyBlogID]
+        JOIN [ReviewBlogs] rb ON rb.[ReviewBlogID] = i.[ReviewBlogID]
+        WHERE d.[IsDeleted] = 0 AND i.[IsDeleted] = 1
+        UNION ALL
+        SELECT rb.[BlogPostID], 1
+        FROM inserted i
+        JOIN deleted d ON i.[ReplyBlogID] = d.[ReplyBlogID]
+        JOIN [ReviewBlogs] rb ON rb.[ReviewBlogID] = i.[ReviewBlogID]
+        WHERE d.[IsDeleted] = 1 AND i.[IsDeleted] = 0
+    ),
+    grouped AS (
+        SELECT [BlogPostID], SUM(sign) AS net FROM delta GROUP BY [BlogPostID]
+    )
+    UPDATE s
+    SET s.[CommentCount] = s.[CommentCount] + g.net,
+        s.[UpdatedAt] = GETDATE()
+    FROM [BlogPostStats] s
+    JOIN grouped g ON s.[BlogPostID] = g.[BlogPostID]
+    WHERE g.net <> 0;
+END;
+GO
+
+-- Đồng bộ trạng thái AI từ AIBlogQueue ngược lên BlogPosts
+-- Mỗi khi queue job thay đổi status, tự động cập nhật các field AI trên BlogPosts
+-- Lấy queue job MỚI NHẤT của từng bài (theo RequestedAt DESC) để tránh dùng trạng thái cũ
+CREATE TRIGGER [trg_AIBlogQueue_SyncBlogPostAIStatus]
+ON [AIBlogQueue]
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    ;WITH affected_blog AS (
+        SELECT DISTINCT [BlogPostID] FROM inserted
+    ),
+    latest_queue AS (
+        SELECT * FROM (
+            SELECT q.*, ROW_NUMBER() OVER (
+                PARTITION BY q.[BlogPostID]
+                ORDER BY q.[RequestedAt] DESC, q.[QueueID] DESC
+            ) AS rn
+            FROM [AIBlogQueue] q
+            INNER JOIN affected_blog ab ON ab.[BlogPostID] = q.[BlogPostID]
+        ) ranked
+        WHERE ranked.rn = 1
+    )
+    UPDATE bp SET
+        bp.[IsAIGenerated] = CASE WHEN lq.[Status] = 'Completed' THEN 1 ELSE bp.[IsAIGenerated] END,
+        bp.[AIStatus] = CASE
+            WHEN lq.[Status] IN ('Pending','Processing','Completed','Failed','Cancelled')
+            THEN lq.[Status] ELSE bp.[AIStatus] END,
+        bp.[AIPromptData]  = lq.[PromptData],
+        bp.[AIError]       = CASE WHEN lq.[Status] = 'Failed' THEN lq.[ErrorMessage] ELSE NULL END,
+        bp.[AIRequestedAt] = lq.[RequestedAt],
+        bp.[AICompletedAt] = CASE
+            WHEN lq.[Status] IN ('Completed','Failed','Cancelled')
+            THEN ISNULL(lq.[CompletedAt], GETDATE()) ELSE NULL END,
+        bp.[UpdatedAt] = GETDATE()
+    FROM [BlogPosts] bp
+    INNER JOIN latest_queue lq ON bp.[BlogPostID] = lq.[BlogPostID];
+END;
+GO
+
+-- Index hỗ trợ load thread reply (lấy reply con theo comment cha, lọc chưa xóa)
+CREATE INDEX [IX_ReviewBlogReplies_Parent]
+ON [ReviewBlogReplies] ([ParentReplyID], [IsDeleted])
+INCLUDE ([AccountID], [Comment], [CreatedAt])
+WHERE [ParentReplyID] IS NOT NULL;
+GO
+
+-- Index hỗ trợ trg_ReviewBlog_UpdateCommentCount và query lịch sử comment của account
+CREATE INDEX [IX_ReviewBlogs_Account]
+ON [ReviewBlogs] ([AccountID], [IsDeleted])
+INCLUDE ([BlogPostID], [CreatedAt]);
+GO
+
+
+
+-- Stored Procedure tính lại top 5 bài featured
+-- Gọi thủ công hoặc qua background job định kỳ (không dùng trigger để tránh lock toàn bảng)
+-- Logic: reset hết IsFeatured=0 → set top 5 theo (LikeCount + CommentCount) DESC
+CREATE OR ALTER PROCEDURE [dbo].[SP_RecomputeFeaturedBlogs]
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRANSACTION;
+    UPDATE [BlogPosts]
+    SET [IsFeatured] = 0
+    WHERE [IsFeatured] = 1 AND [IsDeleted] = 0 AND [Status] = 'Published';
+
+    WITH TopFeatured AS (
+        SELECT TOP 5 bp.[BlogPostID]
+        FROM [BlogPosts] bp
+        JOIN [BlogPostStats] s ON bp.[BlogPostID] = s.[BlogPostID]
+        WHERE bp.[IsDeleted] = 0 AND bp.[Status] = 'Published'
+        ORDER BY (s.[LikeCount] + s.[CommentCount]) DESC,
+                  s.[LikeCount] DESC,
+                  bp.[CreatedAt] DESC
+    )
+    UPDATE bp SET bp.[IsFeatured] = 1
+    FROM [BlogPosts] bp
+    JOIN TopFeatured tf ON bp.[BlogPostID] = tf.[BlogPostID];
+    COMMIT;
+END;
+GO
+
+-- Tự động set ProcessedAt và CompletedAt trên AIBlogQueue
+-- ProcessedAt: set lần đầu khi status chuyển sang Processing
+-- CompletedAt: set lần đầu khi status chuyển sang Completed/Failed/Cancelled
+-- Dùng IS NULL để không ghi đè nếu đã có giá trị từ trước
+CREATE TRIGGER [trg_AIBlogQueue_UpdateTime]
+ON [AIBlogQueue]
+AFTER UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE q SET
+        q.[ProcessedAt] = CASE
+            WHEN i.[Status] = 'Processing' AND q.[ProcessedAt] IS NULL
+            THEN GETDATE() ELSE q.[ProcessedAt] END,
+        q.[CompletedAt] = CASE
+            WHEN i.[Status] IN ('Completed','Failed','Cancelled') AND q.[CompletedAt] IS NULL
+            THEN GETDATE() ELSE q.[CompletedAt] END,
+        q.[UpdatedAt] = GETDATE()
+    FROM [AIBlogQueue] q
+    JOIN inserted i ON q.[QueueID] = i.[QueueID];
+END;
+GO
+
 
 /* =============================================
    8. PAYMENT & WALLET

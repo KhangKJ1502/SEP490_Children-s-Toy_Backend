@@ -31,4 +31,8 @@
     <ProjectReference Include="..\ToyStore.Chatbot\ToyStore.Chatbot.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="wwwroot\" />
+  </ItemGroup>
+
 </Project>
