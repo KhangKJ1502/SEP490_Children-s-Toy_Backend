@@ -5,6 +5,9 @@ namespace ToyStore.Application.Validators.CustomerChildren;
 
 public class UpdateChildValidator : AbstractValidator<UpdateChildDto>
 {
+    private const int MaxChildAgeYears = 25;
+    private const int MaxPastYears = 100;
+
     public UpdateChildValidator()
     {
         RuleFor(x => x.FullName)
@@ -16,7 +19,13 @@ public class UpdateChildValidator : AbstractValidator<UpdateChildDto>
             .When(x => !string.IsNullOrEmpty(x.NickName));
 
         RuleFor(x => x.Dob)
-            .LessThan(System.DateTime.UtcNow).WithMessage("Date of birth must be a past date.")
+            .Cascade(CascadeMode.Stop)
+            .Must(dob => dob.HasValue && dob.Value.Date <= System.DateTime.UtcNow.Date)
+                .WithMessage("Date of birth must be a past date.")
+            .Must(dob => dob.HasValue && dob.Value.Date >= System.DateTime.UtcNow.Date.AddYears(-MaxPastYears))
+                .WithMessage("Date of birth must not be more than 100 years ago.")
+            .Must(dob => dob.HasValue && dob.Value.Date >= System.DateTime.UtcNow.Date.AddYears(-MaxChildAgeYears))
+                .WithMessage("Child age must be 25 or younger.")
             .When(x => x.Dob.HasValue);
     }
 }
