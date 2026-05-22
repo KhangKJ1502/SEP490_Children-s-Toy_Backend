@@ -12,6 +12,7 @@ public interface ICheckoutService
     Task<Result<CheckoutPreviewResponseDto>> PreviewAsync(
         int accountId,
         int addressId,
+        string paymentMethod,
         string? orderVoucherCode,
         string? shippingVoucherCode,
         IReadOnlyList<CheckoutConfirmItemDto>? itemsSubset,

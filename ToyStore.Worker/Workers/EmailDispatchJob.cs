@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using ToyStore.Application.Constants;
 using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Services;
@@ -17,17 +18,20 @@ public class EmailDispatchJob : BackgroundService
     private readonly IServiceProvider _services;
     private readonly ILogger<EmailDispatchJob> _logger;
     private readonly ITimeProvider _timeProvider;
+    private readonly IConfiguration _configuration;
     private readonly TimeSpan _interval    = TimeSpan.FromSeconds(30);
     private readonly TimeSpan _retryAfter  = TimeSpan.FromMinutes(2);
 
     public EmailDispatchJob(
         IServiceProvider services, 
         ILogger<EmailDispatchJob> logger,
-        ITimeProvider timeProvider)
+        ITimeProvider timeProvider,
+        IConfiguration configuration)
     {
         _services     = services;
         _logger       = logger;
         _timeProvider = timeProvider;
+        _configuration = configuration;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -75,11 +79,19 @@ public class EmailDispatchJob : BackgroundService
         {
             try
             {
+                var absoluteActionTarget = string.IsNullOrEmpty(delivery.ActionTarget)
+                    ? null
+                    : delivery.ActionTarget.StartsWith("http") 
+                        ? delivery.ActionTarget 
+                        : (delivery.RecipientType == RecipientTypes.Customer 
+                            ? _configuration["FrontendUrls:Customer"] ?? "http://localhost:3000" 
+                            : _configuration["FrontendUrls:Admin"] ?? "http://localhost:3001") + delivery.ActionTarget;
+
                 var emailMsg = new EmailMessage(
                     ToEmail:  delivery.Account.Email,
                     ToName:   delivery.Account.AccountName,
                     Subject:  delivery.Title,
-                    HtmlBody: BuildHtmlBody(delivery.Title, delivery.Message, delivery.ActionTarget));
+                    HtmlBody: BuildHtmlBody(delivery.Title, delivery.Message, absoluteActionTarget));
 
                 await emailSender.SendAsync(emailMsg, ct);
 

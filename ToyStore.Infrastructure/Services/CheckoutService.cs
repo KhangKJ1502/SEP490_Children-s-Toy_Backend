@@ -59,11 +59,11 @@ public class CheckoutService : ICheckoutService
         _timeProvider = timeProvider;
     }
 
-    // ── Preview ───────────────────────────────────────────────────────────────
 
     public async Task<Result<CheckoutPreviewResponseDto>> PreviewAsync(
         int accountId,
         int addressId,
+        string paymentMethod,
         string? orderVoucherCode,
         string? shippingVoucherCode,
         IReadOnlyList<CheckoutConfirmItemDto>? itemsSubset,
@@ -111,9 +111,11 @@ public class CheckoutService : ICheckoutService
             {
                 var currentPrice = PriceHelper.ResolveCurrentPrice(p, _timeProvider.UtcNow);
                 subTotal += currentPrice * ci.Quantity;
-                totalWeightGrams += _sePayOpts.DefaultItemWeightGrams * ci.Quantity;
+                totalWeightGrams += _ghnOpts.DefaultItemWeight * ci.Quantity;
             }
         }
+
+        var normalizedPaymentMethod = string.IsNullOrWhiteSpace(paymentMethod) ? PayMethodCod : paymentMethod;
 
         if (!string.IsNullOrWhiteSpace(orderVoucherCode)
             && !string.IsNullOrWhiteSpace(shippingVoucherCode)
@@ -126,21 +128,33 @@ public class CheckoutService : ICheckoutService
         // Gọi GHN fee — không block checkout nếu fail
         decimal shippingFee = 0;
         DateTime? estimatedDelivery = null;
-        var feeReq = BuildFeeRequest(address, Math.Max(totalWeightGrams, 1));
-        var feeResult = await _ghnClient.GetFeeAsync(feeReq, cancellationToken);
-        if (feeResult.IsSuccess)
+        var feeReq = BuildFeeRequest(address, Math.Max(totalWeightGrams, 1), subTotal, 0m);
+        int? preferredTypeId = _ghnOpts.FeeServiceTypeId > 0 ? _ghnOpts.FeeServiceTypeId : null;
+        var resolveResult = await _ghnClient.ResolveServiceIdAsync(address.DistrictId ?? 0, preferredTypeId, cancellationToken);
+        if (resolveResult.IsSuccess)
         {
-            shippingFee = feeResult.Data!.Fee;
+            var resolvedServiceId = resolveResult.Data;
+            feeReq.ServiceId = resolvedServiceId;
+            feeReq.CodValue = normalizedPaymentMethod == PayMethodCod ? subTotal : 0m;
+            var feeResult = await _ghnClient.GetFeeAsync(feeReq, cancellationToken);
+            if (feeResult.IsSuccess)
+                shippingFee = feeResult.Data!.Fee;
+
             var ldReq = new LeadtimeRequestDTO
             {
                 FromDistrictId = _ghnOpts.FromDistrictId,
                 FromWardCode = _ghnOpts.FromWardCode,
                 ToDistrictId = address.DistrictId ?? 0,
                 ToWardCode = address.WardCode ?? string.Empty,
-                ServiceId = feeResult.Data.ServiceId
+                ServiceId = resolvedServiceId
             };
             var ldResult = await _ghnClient.GetLeadtimeAsync(ldReq, cancellationToken);
             if (ldResult.IsSuccess) estimatedDelivery = ldResult.Data!.EstimatedDeliveryTime;
+        }
+        else
+        {
+            _logger.LogWarning("GHN service resolution failed for district {DistrictId}: {Error}",
+                address.DistrictId, resolveResult.ErrorMessage);
         }
 
         // Tính voucher discount
@@ -182,6 +196,34 @@ public class CheckoutService : ICheckoutService
         var discountAmount = Math.Min(orderDiscount + shippingDiscount, totalBeforeDiscount);
         var totalAmount = Math.Max(totalBeforeDiscount - discountAmount, 0m);
 
+        if (normalizedPaymentMethod == PayMethodCod && shippingFee > 0)
+        {
+            feeReq.CodValue = totalAmount;
+            var feeResult = await _ghnClient.GetFeeAsync(feeReq, cancellationToken);
+            if (feeResult.IsSuccess && feeResult.Data!.Fee > 0 && feeResult.Data!.Fee != shippingFee)
+            {
+                shippingFee = feeResult.Data.Fee;
+
+                if (!string.IsNullOrWhiteSpace(shippingVoucherCode))
+                {
+                    var voucherResult = await CalculateVoucherDiscountAsync(
+                        shippingVoucherCode,
+                        accountId,
+                        subTotal,
+                        shippingFee,
+                        "SHIPPING_FEE",
+                        cancellationToken);
+                    if (!voucherResult.IsSuccess)
+                        return Result<CheckoutPreviewResponseDto>.BusinessError(voucherResult.ErrorMessage ?? "Invalid voucher.");
+                    shippingDiscount = voucherResult.Data;
+                }
+
+                totalBeforeDiscount = subTotal + shippingFee;
+                discountAmount = Math.Min(orderDiscount + shippingDiscount, totalBeforeDiscount);
+                totalAmount = Math.Max(totalBeforeDiscount - discountAmount, 0m);
+            }
+        }
+
         return Result<CheckoutPreviewResponseDto>.Success(new CheckoutPreviewResponseDto
         {
             SubTotal = subTotal,
@@ -195,8 +237,6 @@ public class CheckoutService : ICheckoutService
             ItemErrors = itemErrors
         });
     }
-
-    // ── Confirm ───────────────────────────────────────────────────────────────
 
     public async Task<Result<CheckoutConfirmResponseDto>> ConfirmAsync(
         int accountId,
@@ -251,7 +291,7 @@ public class CheckoutService : ICheckoutService
 
         // Tính SubTotal từ Products.Price tại thời điểm checkout (có tính Flash Sale/Promotion)
         decimal subTotal = request.Items.Sum(i => PriceHelper.ResolveCurrentPrice(productMap[i.ProductId], _timeProvider.UtcNow) * (int)i.Quantity);
-        int totalWeightGrams = request.Items.Sum(i => _sePayOpts.DefaultItemWeightGrams * (int)i.Quantity);
+        int totalWeightGrams = request.Items.Sum(i => _ghnOpts.DefaultItemWeight * (int)i.Quantity);
 
         // Validate confirm items against active cart (phòng client gửi items không có trong giỏ)
         var activeCart = await _uow.Carts.GetByAccountIdWithItemsAsync(accountId, cancellationToken);
@@ -288,12 +328,20 @@ public class CheckoutService : ICheckoutService
         }
 
         // Lấy phí ship thật
-        var feeReq = BuildFeeRequest(address, Math.Max(totalWeightGrams, 1));
+        var feeReq = BuildFeeRequest(address, Math.Max(totalWeightGrams, 1), subTotal, 0m);
+        int? preferredServiceTypeId = _ghnOpts.FeeServiceTypeId > 0 ? _ghnOpts.FeeServiceTypeId : null;
+        var resolveResult = await _ghnClient.ResolveServiceIdAsync(address.DistrictId ?? 0, preferredServiceTypeId, cancellationToken);
+        if (!resolveResult.IsSuccess)
+            return Result<CheckoutConfirmResponseDto>.BusinessError("Could not calculate shipping fee. Please try again.");
+
+        int resolvedServiceId = resolveResult.Data;
+        feeReq.ServiceId = resolvedServiceId;
+        feeReq.CodValue = request.PaymentMethod == PayMethodCod ? subTotal : 0m;
         var feeResult = await _ghnClient.GetFeeAsync(feeReq, cancellationToken);
         if (!feeResult.IsSuccess)
             return Result<CheckoutConfirmResponseDto>.BusinessError("Could not calculate shipping fee. Please try again.");
+
         decimal shippingFee = feeResult.Data!.Fee;
-        int resolvedServiceId = feeResult.Data!.ServiceId;
         DateTime? estimatedDelivery = null;
         var ldReq = new LeadtimeRequestDTO
         {
@@ -350,6 +398,19 @@ public class CheckoutService : ICheckoutService
                 return Result<CheckoutConfirmResponseDto>.BusinessError(voucherCheck);
 
             shippingDiscount = Math.Min(CalculateDiscount(shippingVoucher, shippingFee), shippingFee);
+        }
+
+        if (request.PaymentMethod == PayMethodCod && shippingFee > 0)
+        {
+            feeReq.CodValue = Math.Max(subTotal + shippingFee - (orderDiscount + shippingDiscount), 0m);
+            var feeRetryResult = await _ghnClient.GetFeeAsync(feeReq, cancellationToken);
+            if (feeRetryResult.IsSuccess && feeRetryResult.Data!.Fee > 0 && feeRetryResult.Data.Fee != shippingFee)
+            {
+                shippingFee = feeRetryResult.Data.Fee;
+
+                if (!string.IsNullOrWhiteSpace(shippingVoucherCode) && shippingVoucher is not null)
+                    shippingDiscount = Math.Min(CalculateDiscount(shippingVoucher, shippingFee), shippingFee);
+            }
         }
 
         var discountAmount = orderDiscount + shippingDiscount;
@@ -830,18 +891,18 @@ public class CheckoutService : ICheckoutService
         return null;
     }
 
-    private FeeRequestDTO BuildFeeRequest(Address address, int weightGrams) => new()
+    private FeeRequestDTO BuildFeeRequest(Address address, int weightGrams, decimal insuranceValue, decimal codValue) => new()
     {
         FromDistrictId = _ghnOpts.FromDistrictId,
         FromWardCode = _ghnOpts.FromWardCode,
         ToDistrictId = address.DistrictId ?? 0,
         ToWardCode = address.WardCode ?? string.Empty,
         Weight = Math.Max(weightGrams, 1),
-        Length = 20,
-        Width = 15,
-        Height = 10,
-        InsuranceValue = 0,
-        CodValue = 0
+        Length = _ghnOpts.DefaultLength,
+        Width = _ghnOpts.DefaultWidth,
+        Height = _ghnOpts.DefaultHeight,
+        InsuranceValue = insuranceValue,
+        CodValue = codValue
     };
 
     private string GenerateOrderCode()

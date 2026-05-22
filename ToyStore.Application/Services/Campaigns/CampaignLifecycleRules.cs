@@ -729,7 +729,7 @@ public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
                 return await BuildProductScheduleBoundsAsync(dto, campaign.ReferenceId.Value, gMin, gMax, ct);
 
             default:
-                dto.ReferenceHintWarning = "Loại reference không hỗ trợ tính khung giờ chi tiết.";
+                dto.ReferenceHintWarning = "Reference type does not support detailed timeframes.";
                 dto.IsFeasible = gMin <= gMax;
                 return Result<CampaignScheduleBoundsDto>.Success(dto);
         }
@@ -746,7 +746,7 @@ public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
         if (v is null || v.IsDeleted || v.Status != "Active")
         {
             dto.ReferenceHintWarning =
-                $"Không tìm thấy voucher Active — chỉ hiển thị giới hạn chung hệ thống (sau {_settings.MinLeadMinutes} phút, trong {_settings.MaxFutureDays} ngày).";
+                $"Active voucher not found - showing system defaults (after {_settings.MinLeadMinutes} mins, within {_settings.MaxFutureDays} days).";
             dto.EarliestUtc = gMin;
             dto.LatestUtc = gMax;
             dto.IsFeasible = gMin <= gMax;
@@ -773,7 +773,7 @@ public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
         if (p is null || p.IsDeleted || p.Status is not ("Active" or "Scheduled"))
         {
             dto.ReferenceHintWarning =
-                "Không tìm thấy khuyến mãi Active/Scheduled — chỉ hiển thị giới hạn chung hệ thống.";
+                "Active/Scheduled promotion not found - showing system defaults.";
             dto.EarliestUtc = gMin;
             dto.LatestUtc = gMax;
             dto.IsFeasible = gMin <= gMax;
@@ -788,7 +788,7 @@ public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
             var activeSlots = p.PromotionTimeSlots.Where(s => !s.IsDeleted).ToList();
             if (activeSlots.Count == 0)
             {
-                dto.ReferenceHintWarning = "Flash sale không có time slot — chỉ hiển thị giới hạn chung.";
+                dto.ReferenceHintWarning = "Flash sale has no time slots - showing system defaults.";
                 dto.EarliestUtc = gMin;
                 dto.LatestUtc = gMax;
                 dto.IsFeasible = gMin <= gMax;
@@ -817,7 +817,7 @@ public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
         var p = await _uow.Products.GetByIdAsync(productId, ct);
         if (p is null || p.IsDeleted)
         {
-            dto.ReferenceHintWarning = "Không tìm thấy sản phẩm — chỉ hiển thị giới hạn chung.";
+            dto.ReferenceHintWarning = "Product not found - showing system defaults.";
             dto.EarliestUtc = gMin;
             dto.LatestUtc = gMax;
             dto.IsFeasible = gMin <= gMax;
