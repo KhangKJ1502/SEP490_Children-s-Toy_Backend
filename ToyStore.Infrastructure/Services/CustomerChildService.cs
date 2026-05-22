@@ -1,3 +1,4 @@
+using System;
 using AutoMapper;
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.DTOs.CustomerChildren;
@@ -10,6 +11,9 @@ namespace ToyStore.Infrastructure.Services;
 public class CustomerChildService : ICustomerChildService
 {
     private const int MaxChildrenPerUser = 4;
+    private const int MaxChildAgeYears = 25;
+    private const int MaxPastYears = 100;
+    private const int MaxChildProfileEdits = 2;
     private const byte CustomerRoleId = 1;
 
     private readonly IUnitOfWork _unitOfWork;
@@ -25,11 +29,11 @@ public class CustomerChildService : ICustomerChildService
         ILogger<CustomerChildService> logger,
         ITimeProvider timeProvider)
     {
-        _unitOfWork         = unitOfWork;
+        _unitOfWork = unitOfWork;
         _currentUserService = currentUserService;
-        _mapper             = mapper;
-        _logger             = logger;
-        _timeProvider       = timeProvider;
+        _mapper = mapper;
+        _logger = logger;
+        _timeProvider = timeProvider;
     }
 
     public async Task<Result<List<CustomerChildDto>>> GetMyChildrenAsync(CancellationToken cancellationToken = default)
@@ -60,15 +64,21 @@ public class CustomerChildService : ICustomerChildService
                 ["FullName"] = ["Full name is required."]
             });
 
-        if (dto.Dob == default || dto.Dob > _timeProvider.UtcNow)
+        if (dto.Dob == default)
             return Result<CustomerChildDto>.ValidationFailure(new Dictionary<string, string[]>
             {
                 ["Dob"] = ["Date of birth must be a valid past date."]
             });
 
+        if (!IsValidChildDob(dto.Dob, _timeProvider.UtcNow, out var dobError))
+            return Result<CustomerChildDto>.ValidationFailure(new Dictionary<string, string[]>
+            {
+                ["Dob"] = [dobError!]
+            });
+
         var count = await _unitOfWork.CustomerChildren.CountAsync(x => x.AccountId == accountId && !x.IsDeleted);
 
-        if (count >= 4)
+        if (count >= MaxChildrenPerUser)
             return Result<CustomerChildDto>.BusinessError($"You can only have a maximum of {MaxChildrenPerUser} children profiles.");
 
         var child = new CustomerChild
@@ -79,6 +89,7 @@ public class CustomerChildService : ICustomerChildService
             Dob = dto.Dob,
             SexId = dto.SexId,
             IsDeleted = false,
+            EditCount = 0,
             CreatedAt = _timeProvider.UtcNow,
             UpdatedAt = null
         };
@@ -123,26 +134,58 @@ public class CustomerChildService : ICustomerChildService
                 ["FullName"] = ["Full name cannot be empty."]
             });
 
-        if (dto.Dob.HasValue && dto.Dob.Value > _timeProvider.UtcNow)
+        if (dto.Dob.HasValue && !IsValidChildDob(dto.Dob.Value, _timeProvider.UtcNow, out var dobError))
             return Result<CustomerChildDto>.ValidationFailure(new Dictionary<string, string[]>
             {
-                ["Dob"] = ["Date of birth must be a valid past date."]
+                ["Dob"] = [dobError!]
             });
+
+        if (child.EditCount >= MaxChildProfileEdits)
+            return Result<CustomerChildDto>.BusinessError($"You can only edit a child profile up to {MaxChildProfileEdits} times.");
+
+        var hasChanges = false;
+
+        if (dto.FullName != null)
+        {
+            var trimmed = dto.FullName.Trim();
+            if (!string.Equals(trimmed, child.FullName, StringComparison.Ordinal))
+            {
+                child.FullName = trimmed;
+                hasChanges = true;
+            }
+        }
+
+        if (dto.NickName != null)
+        {
+            var trimmed = string.IsNullOrWhiteSpace(dto.NickName) ? null : dto.NickName.Trim();
+            if (!string.Equals(trimmed, child.NickName, StringComparison.Ordinal))
+            {
+                child.NickName = trimmed;
+                hasChanges = true;
+            }
+        }
+
+        if (dto.Dob.HasValue && dto.Dob.Value != child.Dob)
+        {
+            child.Dob = dto.Dob.Value;
+            hasChanges = true;
+        }
+
+        if (dto.SexId.HasValue && dto.SexId.Value != child.SexId)
+        {
+            child.SexId = dto.SexId.Value;
+            hasChanges = true;
+        }
+
+        if (!hasChanges)
+            return Result<CustomerChildDto>.Success(_mapper.Map<CustomerChildDto>(child));
+
+        child.EditCount += 1;
+        child.UpdatedAt = _timeProvider.UtcNow;
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            if (dto.FullName != null)
-                child.FullName = dto.FullName.Trim();
-            if (dto.NickName != null)
-                child.NickName = string.IsNullOrWhiteSpace(dto.NickName) ? null : dto.NickName.Trim();
-            if (dto.Dob.HasValue)
-                child.Dob = dto.Dob.Value;
-            if (dto.SexId.HasValue)
-                child.SexId = dto.SexId.Value;
-
-            child.UpdatedAt = _timeProvider.UtcNow;
-
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
         }
@@ -191,5 +234,39 @@ public class CustomerChildService : ICustomerChildService
 
         _logger.LogInformation("Child {ChildId} soft-deleted by account {AccountId}.", childId, accountId);
         return Result.Success();
+    }
+
+    private static bool IsValidChildDob(DateTime dob, DateTime nowUtc, out string? errorMessage)
+    {
+        var today = nowUtc.Date;
+        if (dob.Date > today)
+        {
+            errorMessage = "Date of birth must be a valid past date.";
+            return false;
+        }
+
+        var ageYears = CalculateAge(dob.Date, today);
+        if (ageYears > MaxPastYears)
+        {
+            errorMessage = "Date of birth must not be more than 100 years ago.";
+            return false;
+        }
+
+        if (ageYears > MaxChildAgeYears)
+        {
+            errorMessage = "Child age must be 25 or younger.";
+            return false;
+        }
+
+        errorMessage = null;
+        return true;
+    }
+
+    private static int CalculateAge(DateTime dobDate, DateTime today)
+    {
+        var age = today.Year - dobDate.Year;
+        if (dobDate > today.AddYears(-age))
+            age -= 1;
+        return age;
     }
 }

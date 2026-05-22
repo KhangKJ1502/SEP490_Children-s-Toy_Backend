@@ -28,6 +28,7 @@ public class NotificationsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<ApiResponse<PaginatedResponse<NotificationListDto>>>> GetNotifications(
         [FromQuery] string? status,
+        [FromQuery] string? type,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
         CancellationToken ct = default)
@@ -38,8 +39,8 @@ public class NotificationsController : ControllerBase
         page     = Math.Max(1, page);
         pageSize = Math.Min(50, Math.Max(1, pageSize));
 
-        var total       = await _unitOfWork.Deliveries.CountBellNotificationsAsync(accountId.Value, status, ct);
-        var deliveries  = await _unitOfWork.Deliveries.GetBellNotificationsAsync(accountId.Value, status, page, pageSize, ct);
+        var total       = await _unitOfWork.Deliveries.CountBellNotificationsAsync(accountId.Value, status, type, ct);
+        var deliveries  = await _unitOfWork.Deliveries.GetBellNotificationsAsync(accountId.Value, status, type, page, pageSize, ct);
         var unreadCount = await _unitOfWork.Deliveries.GetUnreadCountAsync(accountId.Value, ct);
 
         var dtos = deliveries.Select(d => new NotificationListDto

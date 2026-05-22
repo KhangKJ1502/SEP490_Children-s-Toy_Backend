@@ -63,7 +63,7 @@ public sealed class CampaignApprovedExpireJob : BackgroundService
 
                 await uow.Campaigns.SystemCancelWithAuditAsync(
                     id,
-                    "Hết hạn phê duyệt (tự động).",
+                    "Approval expired (automatic).",
                     actor,
                     now,
                     ct);
@@ -79,8 +79,8 @@ public sealed class CampaignApprovedExpireJob : BackgroundService
                         RecipientAccountId = nid,
                         RecipientType      = RecipientTypes.Staff,
                         NotificationType   = NotificationTypes.System,
-                        Title              = "Chiến dịch hết hạn phê duyệt",
-                        Message            = $"Chiến dịch '{name}' đã bị hủy vì quá hạn lịch phê duyệt. Vui lòng tạo hoặc gửi duyệt lại nếu cần.",
+                        Title              = "Campaign approval expired",
+                        Message            = $"Campaign '{name}' has been cancelled due to expired approval schedule. Please recreate or resubmit if needed.",
                         SendBell           = true,
                         SendEmail          = false,
                         IdempotencyKey     = $"campaign-approved-expired:{id}:{nid}:{now:yyyyMMddHH}"

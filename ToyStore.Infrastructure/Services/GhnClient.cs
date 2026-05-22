@@ -80,12 +80,12 @@ public sealed class GhnClient : IGhnClient
         }
 
         var feeResult = await PostAsync<GhnFeeData>("v2/shipping-order/fee", payload, "fee", cancellationToken);
-        
+
         // Cố gắng resolve service_id nếu GHN bắt buộc (trường hợp hiếm)
         if (!feeResult.IsSuccess && feeResult.ErrorMessage != null && feeResult.ErrorMessage.Contains("service_id"))
         {
             _logger.LogWarning("GHN fee API requires service_id. Falling back to ResolveServiceIdAsync...");
-            var resolveResult = await ResolveServiceIdAsync(request.ToDistrictId, null, cancellationToken);
+            var resolveResult = await ResolveServiceIdInternalAsync(request.ToDistrictId, null, cancellationToken);
             if (resolveResult.IsSuccess)
             {
                 payload.Remove("service_type_id");
@@ -147,7 +147,7 @@ public sealed class GhnClient : IGhnClient
 
         var dtos = (result.Data ?? []).Select(p => new GhnProvinceDto
         {
-            ProvinceId   = p.ProvinceId,
+            ProvinceId = p.ProvinceId,
             ProvinceName = p.ProvinceName,
             ProvinceCode = p.Code
         }).ToList();
@@ -165,8 +165,8 @@ public sealed class GhnClient : IGhnClient
 
         var dtos = (result.Data ?? []).Select(d => new GhnDistrictDto
         {
-            DistrictId   = d.DistrictId,
-            ProvinceId   = d.ProvinceId,
+            DistrictId = d.DistrictId,
+            ProvinceId = d.ProvinceId,
             DistrictName = d.DistrictName
         }).ToList();
         return Result<List<GhnDistrictDto>>.Success(dtos);
@@ -183,11 +183,31 @@ public sealed class GhnClient : IGhnClient
 
         var dtos = (result.Data ?? []).Select(w => new GhnWardDto
         {
-            WardCode   = w.WardCode,
+            WardCode = w.WardCode,
             DistrictId = w.DistrictId,
-            WardName   = w.WardName
+            WardName = w.WardName
         }).ToList();
         return Result<List<GhnWardDto>>.Success(dtos);
+    }
+
+    public async Task<Result<int>> ResolveServiceIdAsync(
+        int toDistrictId,
+        int? preferredServiceTypeId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var resolveResult = await ResolveServiceIdInternalAsync(toDistrictId, preferredServiceTypeId, cancellationToken);
+        if (resolveResult.IsSuccess)
+            return resolveResult;
+
+        if (_ghnOptions.DefaultServiceId > 0)
+        {
+            _logger.LogWarning(
+                "GHN dynamic service resolution failed: {Error}. Falling back to DefaultServiceId={DefaultId}",
+                resolveResult.ErrorMessage, _ghnOptions.DefaultServiceId);
+            return Result<int>.Success(_ghnOptions.DefaultServiceId);
+        }
+
+        return resolveResult;
     }
 
     // ── Tao don van chuyen ──────────────────────────────────────────────────
@@ -210,8 +230,8 @@ public sealed class GhnClient : IGhnClient
         {
             // 1. Resolve tu preferred type hoac mac dinh cua route
             int? preferredTypeId = _ghnOptions.FeeServiceTypeId > 0 ? _ghnOptions.FeeServiceTypeId : null;
-            var resolveResult = await ResolveServiceIdAsync(request.ToDistrictId, preferredTypeId, cancellationToken);
-            
+            var resolveResult = await ResolveServiceIdInternalAsync(request.ToDistrictId, preferredTypeId, cancellationToken);
+
             if (resolveResult.IsSuccess)
             {
                 resolvedServiceId = resolveResult.Data;
@@ -220,7 +240,7 @@ public sealed class GhnClient : IGhnClient
             else if (_ghnOptions.DefaultServiceId > 0)
             {
                 // 2. Fallback ve default hardcoded neu resolve loi
-                _logger.LogWarning("GHN dynamic service resolution failed: {Error}. Falling back to DefaultServiceId={DefaultId}", 
+                _logger.LogWarning("GHN dynamic service resolution failed: {Error}. Falling back to DefaultServiceId={DefaultId}",
                     resolveResult.ErrorMessage, _ghnOptions.DefaultServiceId);
                 resolvedServiceId = _ghnOptions.DefaultServiceId;
                 resolvedServiceTypeId = _ghnOptions.FeeServiceTypeId > 0 ? _ghnOptions.FeeServiceTypeId : null;
@@ -288,7 +308,7 @@ public sealed class GhnClient : IGhnClient
         });
     }
 
-    private async Task<Result<int>> ResolveServiceIdAsync(
+    private async Task<Result<int>> ResolveServiceIdInternalAsync(
         int toDistrictId,
         int? preferredServiceTypeId,
         CancellationToken cancellationToken)
@@ -310,7 +330,7 @@ public sealed class GhnClient : IGhnClient
             return MapFailure<int, List<GhnAvailableServiceData>>(servicesResult);
 
         var services = servicesResult.Data ?? [];
-        _logger.LogInformation("GHN available services for district {ToDistrictId}: {Services}", 
+        _logger.LogInformation("GHN available services for district {ToDistrictId}: {Services}",
             toDistrictId, string.Join(", ", services.Select(s => $"{s.ShortName}(id={s.ServiceId}, type={s.ServiceTypeId})")));
 
         var selected = services

@@ -19,8 +19,8 @@ public class SaleResolver : IBusinessObjectResolver
     public IReadOnlyList<PlaceholderInfoDto> AvailablePlaceholders =>
     [
         new() { Token = "{{PromotionName}}", Description = "Promotion campaign name" },
-        new() { Token = "{{StartDate}}",     Description = "Start (dd/MM/yyyy HH:mm, giờ VN)" },
-        new() { Token = "{{EndDate}}",       Description = "End (dd/MM/yyyy HH:mm, giờ VN)" },
+        new() { Token = "{{StartDate}}",     Description = "Start (dd/MM/yyyy HH:mm, VN time)" },
+        new() { Token = "{{EndDate}}",       Description = "End (dd/MM/yyyy HH:mm, VN time)" },
         new() { Token = "{{PromotionId}}",   Description = "Promotion ID" }
     ];
 

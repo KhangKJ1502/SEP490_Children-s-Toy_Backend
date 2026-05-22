@@ -28,13 +28,16 @@ public class DeliveryRepository : IDeliveryRepository
                           && d.Status == status, ct);
     }
 
-    public async Task<List<Delivery>> GetBellNotificationsAsync(int accountId, string? status, int page, int pageSize, CancellationToken ct = default)
+    public async Task<List<Delivery>> GetBellNotificationsAsync(int accountId, string? status, string? type, int page, int pageSize, CancellationToken ct = default)
     {
         var query = _db.Deliveries
             .Where(d => d.AccountId == accountId && d.Channel == NotificationChannels.WebBell && !d.IsDeleted);
 
         if (!string.IsNullOrEmpty(status))
             query = query.Where(d => d.Status == status);
+
+        if (!string.IsNullOrEmpty(type))
+            query = query.Where(d => d.NotificationType == type);
 
         return await query
             .OrderByDescending(d => d.CreatedAt)
@@ -43,13 +46,16 @@ public class DeliveryRepository : IDeliveryRepository
             .ToListAsync(ct);
     }
 
-    public async Task<int> CountBellNotificationsAsync(int accountId, string? status, CancellationToken ct = default)
+    public async Task<int> CountBellNotificationsAsync(int accountId, string? status, string? type, CancellationToken ct = default)
     {
         var query = _db.Deliveries
             .Where(d => d.AccountId == accountId && d.Channel == NotificationChannels.WebBell && !d.IsDeleted);
 
         if (!string.IsNullOrEmpty(status))
             query = query.Where(d => d.Status == status);
+
+        if (!string.IsNullOrEmpty(type))
+            query = query.Where(d => d.NotificationType == type);
 
         return await query.CountAsync(ct);
     }

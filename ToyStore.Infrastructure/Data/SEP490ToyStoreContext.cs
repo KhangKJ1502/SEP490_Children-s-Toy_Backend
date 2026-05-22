@@ -640,7 +640,7 @@ public partial class SEP490ToyStoreContext : DbContext
         modelBuilder.Entity<CampaignScheduleLog>(entity =>
         {
             entity.HasKey(e => e.LogId);
-            
+
             entity.ToTable("CampaignScheduleLogs", "Notification", t =>
             {
                 t.HasCheckConstraint("CK_CSL_Action", "[Action] IN ('Scheduled', 'Rescheduled')");
@@ -674,7 +674,7 @@ public partial class SEP490ToyStoreContext : DbContext
         modelBuilder.Entity<CampaignReferenceSnapshot>(entity =>
         {
             entity.HasKey(e => e.SnapshotId);
-            
+
             entity.ToTable("CampaignReferenceSnapshots", "Notification", t =>
             {
                 t.HasCheckConstraint("CK_CRS_ReferenceType", "[ReferenceType] IN ('VOUCHER', 'PRODUCT', 'BLOG', 'SALE', 'OTHER')");
@@ -2830,6 +2830,9 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.FullName).HasMaxLength(100);
             entity.Property(e => e.NickName).HasMaxLength(50);
             entity.Property(e => e.BirthdayNotifiedYear).HasColumnName("BirthdayNotifiedYear");
+            entity.Property(e => e.EditCount)
+                .HasColumnName("EditCount")
+                .HasDefaultValue(0);
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");

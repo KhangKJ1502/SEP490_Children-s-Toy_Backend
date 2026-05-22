@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs.Notifications;
@@ -22,17 +23,20 @@ public class EmailChannel : INotificationChannel
     private readonly IEmailSender _emailSender;
     private readonly ITimeProvider _timeProvider;
     private readonly ILogger<EmailChannel> _logger;
+    private readonly IConfiguration _configuration;
 
     public EmailChannel(
         IUnitOfWork unitOfWork,
         IEmailSender emailSender,
         ITimeProvider timeProvider,
-        ILogger<EmailChannel> logger)
+        ILogger<EmailChannel> logger,
+        IConfiguration configuration)
     {
         _unitOfWork  = unitOfWork;
         _emailSender = emailSender;
         _timeProvider = timeProvider;
         _logger      = logger;
+        _configuration = configuration;
     }
 
     public async Task SendAsync(NotificationDeliveryRequest request, CancellationToken ct = default)
@@ -86,11 +90,19 @@ public class EmailChannel : INotificationChannel
 
         try
         {
+            var absoluteActionTarget = string.IsNullOrEmpty(request.ActionTarget)
+                ? null
+                : request.ActionTarget.StartsWith("http") 
+                    ? request.ActionTarget 
+                    : (request.RecipientType == RecipientTypes.Customer 
+                        ? _configuration["FrontendUrls:Customer"] ?? "http://localhost:3000" 
+                        : _configuration["FrontendUrls:Admin"] ?? "http://localhost:3001") + request.ActionTarget;
+
             var emailMsg = new EmailMessage(
                 ToEmail:  account.Email,
                 ToName:   account.AccountName,
                 Subject:  request.Title,
-                HtmlBody: BuildHtmlBody(request.Title, request.Message, request.ActionTarget));
+                HtmlBody: BuildHtmlBody(request.Title, request.Message, absoluteActionTarget));
 
             await _emailSender.SendAsync(emailMsg, ct);
 

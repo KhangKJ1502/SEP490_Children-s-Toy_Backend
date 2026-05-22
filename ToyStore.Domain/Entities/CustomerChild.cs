@@ -19,8 +19,10 @@ public partial class CustomerChild
 
     public short? BirthdayNotifiedYear { get; set; }
 
+    public int EditCount { get; set; }
+
     public bool IsDeleted { get; set; }
-    
+
 
     public DateTime CreatedAt { get; set; }
 
