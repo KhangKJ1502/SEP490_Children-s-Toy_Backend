@@ -557,7 +557,9 @@ public class BlogService : IBlogService
             return Result<BlogReviewDto>.NotFound("Review", created.ReviewBlogId);
         }
 
-        return Result<BlogReviewDto>.Success(MapReview(loaded));
+        await SendAiRejectedReviewNotificationAsync(loaded, cancellationToken);
+
+        return Result<BlogReviewDto>.Success(await MapReviewAsync(loaded, cancellationToken));
     }
 
     public async Task<Result<BlogReviewReplyDto>> CreateBlogReviewReplyAsync(int reviewBlogId, CreateBlogReviewReplyDto dto, CancellationToken cancellationToken = default)
@@ -631,7 +633,9 @@ public class BlogService : IBlogService
             return Result<BlogReviewReplyDto>.NotFound("Reply", created.ReplyBlogId);
         }
 
-        return Result<BlogReviewReplyDto>.Success(MapReply(loaded));
+        await SendAiRejectedReplyNotificationAsync(loaded, cancellationToken);
+
+        return Result<BlogReviewReplyDto>.Success(await MapReplyAsync(loaded, cancellationToken));
     }
 
     public async Task<Result<bool>> RemoveBlogReviewAsync(int reviewBlogId, CancellationToken cancellationToken = default)
@@ -1449,6 +1453,28 @@ public class BlogService : IBlogService
         return dto;
     }
 
+    private async Task SendAiRejectedReviewNotificationAsync(ReviewBlog review, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(review.ModerationStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var latestRejectedLog = await _unitOfWork.Blogs.GetLatestRejectedCommentLogAsync(review.ReviewBlogId, cancellationToken);
+        await SendReviewStatusNotificationAsync(review, RejectedStatus, latestRejectedLog?.BanReasonId, cancellationToken);
+    }
+
+    private async Task SendAiRejectedReplyNotificationAsync(ReviewBlogReply reply, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(reply.ModerationStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var latestRejectedLog = await _unitOfWork.Blogs.GetLatestRejectedReplyLogAsync(reply.ReplyBlogId, cancellationToken);
+        await SendReplyStatusNotificationAsync(reply, RejectedStatus, latestRejectedLog?.BanReasonId, cancellationToken);
+    }
+
     private async Task SendReviewStatusNotificationAsync(ReviewBlog review, string moderationStatus, byte? banReasonId, CancellationToken cancellationToken)
     {
         try
@@ -1477,7 +1503,7 @@ public class BlogService : IBlogService
             {
                 RecipientAccountId = review.AccountId,
                 RecipientType = RecipientTypes.Customer,
-                NotificationType = NotificationTypes.Blog,
+                NotificationType = NotificationTypes.System,
                 Title = "Review status updated",
                 Message = message,
                 SendBell = true,
@@ -1520,7 +1546,7 @@ public class BlogService : IBlogService
             {
                 RecipientAccountId = reply.AccountId,
                 RecipientType = RecipientTypes.Customer,
-                NotificationType = NotificationTypes.Blog,
+                NotificationType = NotificationTypes.System,
                 Title = "Reply status updated",
                 Message = message,
                 SendBell = true,
@@ -1548,7 +1574,7 @@ public class BlogService : IBlogService
             {
                 RecipientAccountId = accountId,
                 RecipientType = RecipientTypes.Customer,
-                NotificationType = NotificationTypes.Blog,
+                NotificationType = NotificationTypes.System,
                 Title = "Blog comment permission restored",
                 Message = "Your blog comment permission has been restored.",
                 SendBell = true,
