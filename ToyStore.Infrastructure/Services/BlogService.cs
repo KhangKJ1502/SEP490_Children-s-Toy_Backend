@@ -1,9 +1,11 @@
 using AutoMapper;
+using FluentValidation;
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.Common.Models;
 using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Blogs;
+using ToyStore.Application.DTOs.Notifications;
 using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
@@ -24,6 +26,10 @@ public class BlogService : IBlogService
     private const string PublishedStatus = "Published";
     private const string RejectedStatus = "Rejected";
     private const string HiddenStatus = "Hidden";
+    private const string ModerationPending = "Pending";
+    private const string ModerationApproved = "Approved";
+    private const string ManualReviewStatus = "ManualReview";
+    private const int CommentRateLimitPerMinute = 5;
     private const string ApprovePublishNowDecision = "ApprovePublishNow";
     private const string ApproveKeepScheduleDecision = "ApproveKeepSchedule";
 
@@ -36,23 +42,32 @@ public class BlogService : IBlogService
     private readonly ICurrentUserService _currentUserService;
     private readonly IDomainEventPublisher _eventPublisher;
     private readonly IMapper _mapper;
+    private readonly INotificationDispatcher _notificationDispatcher;
+    private readonly IValidator<UpdateBlogReviewPermissionDto> _permissionValidator;
     private readonly ILogger<BlogService> _logger;
     private readonly ITimeProvider _timeProvider;
+    private readonly IBlogCommentModerationGateway _blogCommentModerationGateway;
 
     public BlogService(
         IUnitOfWork unitOfWork,
         ICurrentUserService currentUserService,
         IDomainEventPublisher eventPublisher,
         IMapper mapper,
+        INotificationDispatcher notificationDispatcher,
+        IValidator<UpdateBlogReviewPermissionDto> permissionValidator,
         ILogger<BlogService> logger,
-        ITimeProvider timeProvider)
+        ITimeProvider timeProvider,
+        IBlogCommentModerationGateway blogCommentModerationGateway)
     {
         _unitOfWork         = unitOfWork;
         _currentUserService = currentUserService;
         _eventPublisher     = eventPublisher;
         _mapper             = mapper;
+        _notificationDispatcher = notificationDispatcher;
+        _permissionValidator = permissionValidator;
         _logger             = logger;
         _timeProvider       = timeProvider;
+        _blogCommentModerationGateway = blogCommentModerationGateway;
     }
 
     public async Task<Result<PaginatedResponse<BlogListDto>>> GetBlogsForAdminAsync(
@@ -460,10 +475,16 @@ public class BlogService : IBlogService
 
         var includeHidden = IsPrivilegedUser();
         var reviews = await _unitOfWork.Blogs.GetReviewsByBlogIdAsync(blogPostId, includeHidden, cancellationToken);
+        reviews = reviews
+            .Where(x => IsReviewVisibleToCurrentUser(x))
+            .ToList();
         var reviewIds = reviews.Select(x => x.ReviewBlogId).ToList();
         var replies = reviewIds.Count == 0
             ? new List<ReviewBlogReply>()
             : await _unitOfWork.Blogs.GetRepliesByReviewIdsAsync(reviewIds, includeHidden, cancellationToken);
+        replies = replies
+            .Where(x => IsReplyVisibleToCurrentUser(x))
+            .ToList();
 
         var reviewCounts = await _unitOfWork.Blogs.GetReviewReactionCountsByIdsAsync(reviewIds, cancellationToken);
         var replyIds = replies.Select(x => x.ReplyBlogId).ToList();
@@ -505,16 +526,31 @@ public class BlogService : IBlogService
             return Result<BlogReviewDto>.BusinessError("Only published blogs can be reviewed.");
         }
 
+        var permission = await ValidateCommentPermissionAsync(_currentUserService.AccountId, cancellationToken);
+        if (!permission.IsSuccess)
+        {
+            return Result<BlogReviewDto>.BusinessError(permission.ErrorMessage ?? "Commenting is temporarily unavailable.");
+        }
+
         var entity = new ReviewBlog
         {
             BlogPostId = blogPostId,
             AccountId = _currentUserService.AccountId,
             Comment = comment,
+            ModerationStatus = ModerationPending,
+            RetryCount = 0,
+            LastRetryAt = null,
+            ManualReviewDeadline = null,
             IsDeleted = false,
             CreatedAt = _timeProvider.UtcNow
         };
 
         var created = await _unitOfWork.Blogs.CreateReviewAsync(entity, cancellationToken);
+        var aiModerated = await _blogCommentModerationGateway.ModerateCommentAsync(created.ReviewBlogId, cancellationToken);
+        if (!aiModerated)
+        {
+            _logger.LogWarning("AI moderation did not accept blog comment {ReviewBlogId}", created.ReviewBlogId);
+        }
         var loaded = await _unitOfWork.Blogs.GetReviewByIdAsync(created.ReviewBlogId, cancellationToken);
         if (loaded == null)
         {
@@ -537,9 +573,14 @@ public class BlogService : IBlogService
             return Result<BlogReviewReplyDto>.NotFound("Review", reviewBlogId);
         }
 
-        if (review.IsDeleted && !IsPrivilegedUser())
+        if (review.IsDeleted || review.IsHidden)
         {
             return Result<BlogReviewReplyDto>.BusinessError("Cannot reply to hidden review.");
+        }
+
+        if (!string.Equals(review.ModerationStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<BlogReviewReplyDto>.BusinessError("Only approved review can be replied.");
         }
 
         var comment = dto.Comment?.Trim() ?? string.Empty;
@@ -557,6 +598,12 @@ public class BlogService : IBlogService
             }
         }
 
+        var permission = await ValidateCommentPermissionAsync(_currentUserService.AccountId, cancellationToken);
+        if (!permission.IsSuccess)
+        {
+            return Result<BlogReviewReplyDto>.BusinessError(permission.ErrorMessage ?? "Commenting is temporarily unavailable.");
+        }
+
         var entity = new ReviewBlogReply
         {
             ReviewBlogId = reviewBlogId,
@@ -564,11 +611,20 @@ public class BlogService : IBlogService
             ParentReplyId = dto.ParentReplyId,
             ReplyToAccountId = dto.ReplyToAccountId,
             Comment = comment,
+            ModerationStatus = ModerationPending,
+            RetryCount = 0,
+            LastRetryAt = null,
+            ManualReviewDeadline = null,
             IsDeleted = false,
             CreatedAt = _timeProvider.UtcNow
         };
 
         var created = await _unitOfWork.Blogs.CreateReplyAsync(entity, cancellationToken);
+        var aiModerated = await _blogCommentModerationGateway.ModerateReplyAsync(created.ReplyBlogId, cancellationToken);
+        if (!aiModerated)
+        {
+            _logger.LogWarning("AI moderation did not accept blog reply {ReplyBlogId}", created.ReplyBlogId);
+        }
         var loaded = await _unitOfWork.Blogs.GetReplyByIdAsync(created.ReplyBlogId, cancellationToken);
         if (loaded == null)
         {
@@ -622,9 +678,16 @@ public class BlogService : IBlogService
 
         var reviews = await _unitOfWork.Blogs.GetPagedReviewsForManagementAsync(pageNumber, pageSize, searchTerm, status, cancellationToken);
         var reviewIds = reviews.Select(x => x.ReviewBlogId).ToList();
-        var replies = reviewIds.Count == 0
+        var allReplies = reviewIds.Count == 0
             ? new List<ReviewBlogReply>()
             : await _unitOfWork.Blogs.GetRepliesByReviewIdsAsync(reviewIds, includeHidden: true, cancellationToken);
+        var replies = allReplies
+            .Where(x =>
+                !x.IsDeleted &&
+                !x.IsHidden &&
+                (string.Equals(x.ModerationStatus, ManualReviewStatus, StringComparison.OrdinalIgnoreCase)
+                 || string.Equals(x.ModerationStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
         var reviewCounts = await _unitOfWork.Blogs.GetReviewReactionCountsByIdsAsync(reviewIds, cancellationToken);
         var replyIds = replies.Select(x => x.ReplyBlogId).ToList();
         var replyCounts = await _unitOfWork.Blogs.GetReplyReactionCountsByIdsAsync(replyIds, cancellationToken);
@@ -636,6 +699,22 @@ public class BlogService : IBlogService
             replyCounts,
             new Dictionary<int, string>(),
             new Dictionary<int, string>());
+
+        foreach (var reviewDto in mapped)
+        {
+            var latestRejectedLog = await _unitOfWork.Blogs.GetLatestRejectedCommentLogAsync(reviewDto.ReviewBlogId, cancellationToken);
+            reviewDto.BanReasonId = latestRejectedLog?.BanReasonId;
+            reviewDto.BanReasonContent = latestRejectedLog?.BanReason?.Content;
+
+            var replyDtos = FlattenReplies(reviewDto.Replies);
+            foreach (var replyDto in replyDtos)
+            {
+                var latestRejectedReplyLog = await _unitOfWork.Blogs.GetLatestRejectedReplyLogAsync(replyDto.ReplyBlogId, cancellationToken);
+                replyDto.BanReasonId = latestRejectedReplyLog?.BanReasonId;
+                replyDto.BanReasonContent = latestRejectedReplyLog?.BanReason?.Content;
+            }
+        }
+
         var totalCount = await _unitOfWork.Blogs.CountReviewsForManagementAsync(searchTerm, status, cancellationToken);
         return Result<PaginatedResponse<BlogReviewDto>>.Success(new PaginatedResponse<BlogReviewDto>(mapped, totalCount, pageNumber, pageSize));
     }
@@ -653,17 +732,57 @@ public class BlogService : IBlogService
             return Result<BlogReviewDto>.NotFound("Review", reviewBlogId);
         }
 
-        var isHidden = ParseHiddenStatus(dto.Status);
-        if (!isHidden.HasValue)
+        var nextStatus = dto.ModerationStatus?.Trim() ?? string.Empty;
+        var isAllowedStatus =
+            string.Equals(nextStatus, ManualReviewStatus, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(nextStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(nextStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase);
+
+        if (!isAllowedStatus)
         {
-            return Result<BlogReviewDto>.Failure("VALIDATION_ERROR", "Status must be Visible or Hidden.");
+            return Result<BlogReviewDto>.Failure("VALIDATION_ERROR", "ModerationStatus must be ManualReview, Approved, or Rejected.");
         }
 
-        review.IsDeleted = isHidden.Value;
+        if (string.Equals(nextStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase) && !dto.BanReasonId.HasValue)
+        {
+            return Result<BlogReviewDto>.Failure("VALIDATION_ERROR", "BanReasonId is required when ModerationStatus is Rejected.");
+        }
+
+        if (dto.BanReasonId.HasValue)
+        {
+            var banReasons = await _unitOfWork.Blogs.GetBlogCommentBanReasonsAsync(cancellationToken);
+            if (!banReasons.Any(x => x.BanReasonId == dto.BanReasonId.Value))
+            {
+                return Result<BlogReviewDto>.Failure("VALIDATION_ERROR", "BanReasonId is invalid.");
+            }
+        }
+
+        if (string.Equals(review.ModerationStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(nextStatus, ManualReviewStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<BlogReviewDto>.Failure("VALIDATION_ERROR", "Approved review cannot be changed back to ManualReview.");
+        }
+
+        review.ModerationStatus = nextStatus;
         review.UpdatedAt = _timeProvider.UtcNow;
         await _unitOfWork.Blogs.UpdateReviewAsync(review, cancellationToken);
+
+        await _unitOfWork.Blogs.AddCommentModerationLogAsync(new BlogCommentModerationLog
+        {
+            TargetType = "Comment",
+            CommentId = review.ReviewBlogId,
+            // Current schema CK_BCML_ModeratorConsistency only allows Admin with non-null ModeratedBy.
+            ModeratorType = "Admin",
+            ModeratedBy = _currentUserService.AccountId > 0 ? _currentUserService.AccountId : null,
+            Action = string.Equals(nextStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase) ? "Overridden" : nextStatus,
+            BanReasonId = string.Equals(nextStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase) ? dto.BanReasonId : null,
+            CreatedAt = _timeProvider.UtcNow
+        }, cancellationToken);
+
+        await SendReviewStatusNotificationAsync(review, nextStatus, dto.BanReasonId, cancellationToken);
+
         var updated = await _unitOfWork.Blogs.GetReviewByIdAsync(reviewBlogId, cancellationToken);
-        return Result<BlogReviewDto>.Success(MapReview(updated!));
+        return Result<BlogReviewDto>.Success(await MapReviewAsync(updated!, cancellationToken));
     }
 
     public async Task<Result<BlogReviewReplyDto>> UpdateBlogReplyStatusAsync(int replyBlogId, UpdateBlogReviewStatusDto dto, CancellationToken cancellationToken = default)
@@ -679,17 +798,147 @@ public class BlogService : IBlogService
             return Result<BlogReviewReplyDto>.NotFound("Reply", replyBlogId);
         }
 
-        var isHidden = ParseHiddenStatus(dto.Status);
-        if (!isHidden.HasValue)
+        var nextStatus = dto.ModerationStatus?.Trim() ?? string.Empty;
+        var isAllowedStatus =
+            string.Equals(nextStatus, ManualReviewStatus, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(nextStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(nextStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase);
+
+        if (!isAllowedStatus)
         {
-            return Result<BlogReviewReplyDto>.Failure("VALIDATION_ERROR", "Status must be Visible or Hidden.");
+            return Result<BlogReviewReplyDto>.Failure("VALIDATION_ERROR", "ModerationStatus must be ManualReview, Approved, or Rejected.");
         }
 
-        reply.IsDeleted = isHidden.Value;
+        if (string.Equals(nextStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase) && !dto.BanReasonId.HasValue)
+        {
+            return Result<BlogReviewReplyDto>.Failure("VALIDATION_ERROR", "BanReasonId is required when ModerationStatus is Rejected.");
+        }
+
+        if (dto.BanReasonId.HasValue)
+        {
+            var banReasons = await _unitOfWork.Blogs.GetBlogCommentBanReasonsAsync(cancellationToken);
+            if (!banReasons.Any(x => x.BanReasonId == dto.BanReasonId.Value))
+            {
+                return Result<BlogReviewReplyDto>.Failure("VALIDATION_ERROR", "BanReasonId is invalid.");
+            }
+        }
+
+        if (string.Equals(reply.ModerationStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(nextStatus, ManualReviewStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<BlogReviewReplyDto>.Failure("VALIDATION_ERROR", "Approved reply cannot be changed back to ManualReview.");
+        }
+
+        reply.ModerationStatus = nextStatus;
         reply.UpdatedAt = _timeProvider.UtcNow;
         await _unitOfWork.Blogs.UpdateReplyAsync(reply, cancellationToken);
+
+        await _unitOfWork.Blogs.AddCommentModerationLogAsync(new BlogCommentModerationLog
+        {
+            TargetType = "Reply",
+            ReplyId = reply.ReplyBlogId,
+            ModeratorType = "Admin",
+            ModeratedBy = _currentUserService.AccountId > 0 ? _currentUserService.AccountId : null,
+            Action = string.Equals(nextStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase) ? "Overridden" : nextStatus,
+            BanReasonId = string.Equals(nextStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase) ? dto.BanReasonId : null,
+            CreatedAt = _timeProvider.UtcNow
+        }, cancellationToken);
+
+        await SendReplyStatusNotificationAsync(reply, nextStatus, dto.BanReasonId, cancellationToken);
+
         var updated = await _unitOfWork.Blogs.GetReplyByIdAsync(replyBlogId, cancellationToken);
-        return Result<BlogReviewReplyDto>.Success(MapReply(updated!));
+        return Result<BlogReviewReplyDto>.Success(await MapReplyAsync(updated!, cancellationToken));
+    }
+
+    public async Task<Result<List<BlogCommentBanReasonDto>>> GetBlogCommentBanReasonsAsync(CancellationToken cancellationToken = default)
+    {
+        if (!IsPrivilegedUser())
+        {
+            return Result<List<BlogCommentBanReasonDto>>.Unauthorized();
+        }
+
+        var reasons = await _unitOfWork.Blogs.GetBlogCommentBanReasonsAsync(cancellationToken);
+        var mapped = reasons.Select(x => new BlogCommentBanReasonDto
+        {
+            BanReasonId = x.BanReasonId,
+            Content = x.Content,
+            CreatedAt = x.CreatedAt
+        }).ToList();
+
+        return Result<List<BlogCommentBanReasonDto>>.Success(mapped);
+    }
+
+    public async Task<Result<PaginatedResponse<BlogReviewPermissionDto>>> GetBlogReviewPermissionsAsync(
+        int pageNumber = 1,
+        int pageSize = 10,
+        string? searchTerm = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsPrivilegedUser())
+        {
+            return Result<PaginatedResponse<BlogReviewPermissionDto>>.Unauthorized();
+        }
+
+        if (pageNumber < 1 || pageSize < 1 || pageSize > 100)
+        {
+            return Result<PaginatedResponse<BlogReviewPermissionDto>>.Failure("VALIDATION_ERROR", "Invalid pagination values.");
+        }
+
+        var states = await _unitOfWork.Blogs.GetPagedBannedCommentAccountsAsync(pageNumber, pageSize, searchTerm, cancellationToken);
+        var totalCount = await _unitOfWork.Blogs.CountBannedCommentAccountsAsync(searchTerm, cancellationToken);
+        var mapped = _mapper.Map<List<BlogReviewPermissionDto>>(states);
+
+        return Result<PaginatedResponse<BlogReviewPermissionDto>>.Success(
+            new PaginatedResponse<BlogReviewPermissionDto>(mapped, totalCount, pageNumber, pageSize));
+    }
+
+    public async Task<Result<BlogReviewPermissionDto>> UpdateBlogReviewPermissionAsync(
+        int accountId,
+        UpdateBlogReviewPermissionDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsPrivilegedUser())
+        {
+            return Result<BlogReviewPermissionDto>.Unauthorized();
+        }
+
+        if (accountId <= 0)
+        {
+            return Result<BlogReviewPermissionDto>.Failure("VALIDATION_ERROR", "AccountId must be greater than 0.");
+        }
+
+        var validationResult = await _permissionValidator.ValidateAsync(dto, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            var errors = validationResult.Errors
+                .GroupBy(x => x.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ErrorMessage).ToArray());
+            return Result<BlogReviewPermissionDto>.ValidationFailure(errors);
+        }
+
+        var state = await _unitOfWork.Blogs.GetCommentPermissionStateAsync(accountId, cancellationToken);
+        if (state == null)
+        {
+            return Result<BlogReviewPermissionDto>.NotFound("Blog comment permission", accountId);
+        }
+
+        if (!state.IsCommentBanned)
+        {
+            return Result<BlogReviewPermissionDto>.Failure("VALIDATION_ERROR", "This account is not currently banned from blog comments.");
+        }
+
+        var now = _timeProvider.UtcNow;
+        state.IsCommentBanned = false;
+        state.BanExpiresAt = null;
+        state.UnbannedAt = now;
+        state.UnbannedBy = _currentUserService.AccountId > 0 ? _currentUserService.AccountId : null;
+        state.UpdatedAt = now;
+
+        await _unitOfWork.Blogs.UpdateCommentPermissionStateAsync(state, cancellationToken);
+        await SendBlogCommentPermissionRestoredNotificationAsync(state.AccountId, cancellationToken);
+
+        var updated = await _unitOfWork.Blogs.GetCommentPermissionStateAsync(accountId, cancellationToken);
+        return Result<BlogReviewPermissionDto>.Success(_mapper.Map<BlogReviewPermissionDto>(updated!));
     }
 
     public async Task<Result<ReactionSummaryDto>> ReactToBlogAsync(int blogPostId, UpsertReactionDto dto, CancellationToken cancellationToken = default)
@@ -1148,6 +1397,7 @@ public class BlogService : IBlogService
             AccountImageUrl = review.Account?.ImageUrl,
             Comment = review.Comment ?? string.Empty,
             Status = review.IsDeleted ? "Hidden" : "Visible",
+            ModerationStatus = review.ModerationStatus,
             LikeCount = GetReactionCount(counts, ReactionLike),
             LoveCount = GetReactionCount(counts, ReactionLove),
             HahaCount = GetReactionCount(counts, ReactionHaha),
@@ -1155,6 +1405,15 @@ public class BlogService : IBlogService
             CreatedAt = review.CreatedAt,
             UpdatedAt = review.UpdatedAt
         };
+    }
+
+    private async Task<BlogReviewDto> MapReviewAsync(ReviewBlog review, CancellationToken cancellationToken)
+    {
+        var dto = MapReview(review);
+        var latestRejectedLog = await _unitOfWork.Blogs.GetLatestRejectedCommentLogAsync(review.ReviewBlogId, cancellationToken);
+        dto.BanReasonId = latestRejectedLog?.BanReasonId;
+        dto.BanReasonContent = latestRejectedLog?.BanReason?.Content;
+        return dto;
     }
 
     private static BlogReviewReplyDto MapReply(ReviewBlogReply reply, Dictionary<string, int>? counts = null, string? currentUserReaction = null)
@@ -1171,6 +1430,7 @@ public class BlogService : IBlogService
             ReplyToAccountName = reply.ReplyToAccount?.AccountName,
             Comment = reply.Comment,
             Status = reply.IsDeleted ? "Hidden" : "Visible",
+            ModerationStatus = reply.ModerationStatus,
             LikeCount = GetReactionCount(counts, ReactionLike),
             LoveCount = GetReactionCount(counts, ReactionLove),
             HahaCount = GetReactionCount(counts, ReactionHaha),
@@ -1178,6 +1438,144 @@ public class BlogService : IBlogService
             CreatedAt = reply.CreatedAt,
             UpdatedAt = reply.UpdatedAt
         };
+    }
+
+    private async Task<BlogReviewReplyDto> MapReplyAsync(ReviewBlogReply reply, CancellationToken cancellationToken)
+    {
+        var dto = MapReply(reply);
+        var latestRejectedLog = await _unitOfWork.Blogs.GetLatestRejectedReplyLogAsync(reply.ReplyBlogId, cancellationToken);
+        dto.BanReasonId = latestRejectedLog?.BanReasonId;
+        dto.BanReasonContent = latestRejectedLog?.BanReason?.Content;
+        return dto;
+    }
+
+    private async Task SendReviewStatusNotificationAsync(ReviewBlog review, string moderationStatus, byte? banReasonId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (review.AccountId <= 0)
+            {
+                return;
+            }
+
+            var message = $"Your review status has been updated to {moderationStatus}.";
+            if (string.Equals(moderationStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase))
+            {
+                var reason = string.Empty;
+                if (banReasonId.HasValue)
+                {
+                    var reasons = await _unitOfWork.Blogs.GetBlogCommentBanReasonsAsync(cancellationToken);
+                    reason = reasons.FirstOrDefault(x => x.BanReasonId == banReasonId.Value)?.Content ?? string.Empty;
+                }
+
+                message = string.IsNullOrWhiteSpace(reason)
+                    ? "Your review has been rejected."
+                    : $"Your review has been rejected because: {reason}.";
+            }
+
+            await _notificationDispatcher.DispatchAsync(new NotificationContext
+            {
+                RecipientAccountId = review.AccountId,
+                RecipientType = RecipientTypes.Customer,
+                NotificationType = NotificationTypes.Blog,
+                Title = "Review status updated",
+                Message = message,
+                SendBell = true,
+                SendEmail = false,
+                ActionTarget = $"/blog/{review.BlogPostId}",
+                IdempotencyKey = $"blog-review-moderation:{review.ReviewBlogId}:{review.AccountId}:{moderationStatus}:{DateTime.UtcNow.Ticks}"
+            }, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send blog review moderation notification for review {ReviewBlogId}", review.ReviewBlogId);
+        }
+    }
+
+    private async Task SendReplyStatusNotificationAsync(ReviewBlogReply reply, string moderationStatus, byte? banReasonId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (reply.AccountId <= 0)
+            {
+                return;
+            }
+
+            var message = $"Your reply status has been updated to {moderationStatus}.";
+            if (string.Equals(moderationStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase))
+            {
+                var reason = string.Empty;
+                if (banReasonId.HasValue)
+                {
+                    var reasons = await _unitOfWork.Blogs.GetBlogCommentBanReasonsAsync(cancellationToken);
+                    reason = reasons.FirstOrDefault(x => x.BanReasonId == banReasonId.Value)?.Content ?? string.Empty;
+                }
+
+                message = string.IsNullOrWhiteSpace(reason)
+                    ? "Your reply has been rejected."
+                    : $"Your reply has been rejected because: {reason}.";
+            }
+
+            await _notificationDispatcher.DispatchAsync(new NotificationContext
+            {
+                RecipientAccountId = reply.AccountId,
+                RecipientType = RecipientTypes.Customer,
+                NotificationType = NotificationTypes.Blog,
+                Title = "Reply status updated",
+                Message = message,
+                SendBell = true,
+                SendEmail = false,
+                ActionTarget = $"/blog/{reply.ReviewBlog?.BlogPostId ?? 0}#reply-{reply.ReplyBlogId}",
+                IdempotencyKey = $"blog-reply-moderation:{reply.ReplyBlogId}:{reply.AccountId}:{moderationStatus}:{DateTime.UtcNow.Ticks}"
+            }, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send blog reply moderation notification for reply {ReplyBlogId}", reply.ReplyBlogId);
+        }
+    }
+
+    private async Task SendBlogCommentPermissionRestoredNotificationAsync(int accountId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (accountId <= 0)
+            {
+                return;
+            }
+
+            await _notificationDispatcher.DispatchAsync(new NotificationContext
+            {
+                RecipientAccountId = accountId,
+                RecipientType = RecipientTypes.Customer,
+                NotificationType = NotificationTypes.Blog,
+                Title = "Blog comment permission restored",
+                Message = "Your blog comment permission has been restored.",
+                SendBell = true,
+                SendEmail = false,
+                ActionTarget = "/blog",
+                IdempotencyKey = $"blog-comment-permission-restored:{accountId}:{DateTime.UtcNow.Ticks}"
+            }, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send blog comment permission restored notification for account {AccountId}", accountId);
+        }
+    }
+
+    private static List<BlogReviewReplyDto> FlattenReplies(IEnumerable<BlogReviewReplyDto> replies)
+    {
+        var result = new List<BlogReviewReplyDto>();
+        foreach (var reply in replies)
+        {
+            result.Add(reply);
+            if (reply.Replies.Count > 0)
+            {
+                result.AddRange(FlattenReplies(reply.Replies));
+            }
+        }
+
+        return result;
     }
 
     private async Task<ReactionSummaryDto> BuildBlogSummaryAsync(int blogPostId, CancellationToken cancellationToken)
@@ -1259,5 +1657,51 @@ public class BlogService : IBlogService
         }
 
         return await _unitOfWork.Blogs.GetReactionTypeByCodeAsync(normalized, cancellationToken);
+    }
+
+    private bool IsReviewVisibleToCurrentUser(ReviewBlog review)
+    {
+        if (IsPrivilegedUser())
+        {
+            return true;
+        }
+
+        var isOwner = _currentUserService.AccountId > 0 && review.AccountId == _currentUserService.AccountId;
+        return string.Equals(review.ModerationStatus, ModerationApproved, StringComparison.OrdinalIgnoreCase) || isOwner;
+    }
+
+    private bool IsReplyVisibleToCurrentUser(ReviewBlogReply reply)
+    {
+        if (IsPrivilegedUser())
+        {
+            return true;
+        }
+
+        var isOwner = _currentUserService.AccountId > 0 && reply.AccountId == _currentUserService.AccountId;
+        return string.Equals(reply.ModerationStatus, ModerationApproved, StringComparison.OrdinalIgnoreCase) || isOwner;
+    }
+
+    private async Task<Result<bool>> ValidateCommentPermissionAsync(int accountId, CancellationToken cancellationToken)
+    {
+        var now = _timeProvider.UtcNow;
+
+        var (isLocked, _) = await _unitOfWork.Blogs.CheckAndRefreshCommentLockAsync(accountId, now, cancellationToken);
+        if (isLocked)
+        {
+            return Result<bool>.BusinessError("Tài khoản đang bị khóa comment");
+        }
+
+        var isRateLimited = await _unitOfWork.Blogs.IncrementRateAndCheckCommentLimitAsync(
+            accountId,
+            now,
+            CommentRateLimitPerMinute,
+            windowMinutes: 1,
+            cancellationToken);
+        if (isRateLimited)
+        {
+            return Result<bool>.BusinessError("Vui lòng chờ trước khi comment tiếp");
+        }
+
+        return Result<bool>.Success(true);
     }
 }

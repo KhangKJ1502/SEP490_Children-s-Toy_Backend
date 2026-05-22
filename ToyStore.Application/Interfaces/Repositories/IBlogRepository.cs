@@ -93,6 +93,14 @@ public interface IBlogRepository
 
     Task<int> CountReviewsForManagementAsync(string? searchTerm, string? status, CancellationToken cancellationToken = default);
 
+    Task<List<BlogCommentBanReason>> GetBlogCommentBanReasonsAsync(CancellationToken cancellationToken = default);
+
+    Task<BlogCommentModerationLog?> GetLatestRejectedCommentLogAsync(int reviewBlogId, CancellationToken cancellationToken = default);
+
+    Task<BlogCommentModerationLog?> GetLatestRejectedReplyLogAsync(int replyBlogId, CancellationToken cancellationToken = default);
+
+    Task AddCommentModerationLogAsync(BlogCommentModerationLog log, CancellationToken cancellationToken = default);
+
     Task<ReactionType?> GetReactionTypeByCodeAsync(string reactionCode, CancellationToken cancellationToken = default);
 
     Task<BlogPostReaction?> GetBlogReactionAsync(int blogPostId, int accountId, CancellationToken cancellationToken = default);
@@ -135,5 +143,33 @@ public interface IBlogRepository
     Task<Dictionary<int, string>> GetMyReplyReactionsByIdsAsync(
         List<int> replyBlogIds,
         int accountId,
+        CancellationToken cancellationToken = default);
+
+    Task<(bool IsLocked, DateTime? LockedUntil)> CheckAndRefreshCommentLockAsync(
+        int accountId,
+        DateTime utcNow,
+        CancellationToken cancellationToken = default);
+
+    Task<List<BlogCommentViolationCount>> GetPagedBannedCommentAccountsAsync(
+        int pageNumber,
+        int pageSize,
+        string? searchTerm,
+        CancellationToken cancellationToken = default);
+
+    Task<int> CountBannedCommentAccountsAsync(string? searchTerm, CancellationToken cancellationToken = default);
+
+    Task<BlogCommentViolationCount?> GetCommentPermissionStateAsync(
+        int accountId,
+        CancellationToken cancellationToken = default);
+
+    Task UpdateCommentPermissionStateAsync(
+        BlogCommentViolationCount entity,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> IncrementRateAndCheckCommentLimitAsync(
+        int accountId,
+        DateTime utcNow,
+        int limit,
+        int windowMinutes,
         CancellationToken cancellationToken = default);
 }

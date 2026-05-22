@@ -160,6 +160,7 @@ public class BlogRepository : IBlogRepository
         return _context.ReviewBlogReplies
             .Include(x => x.Account)
             .Include(x => x.ReplyToAccount)
+            .Include(x => x.ReviewBlog)
             .FirstOrDefaultAsync(x => x.ReplyBlogId == replyBlogId, cancellationToken);
     }
 
@@ -206,6 +207,40 @@ public class BlogRepository : IBlogRepository
     public Task<int> CountReviewsForManagementAsync(string? searchTerm, string? status, CancellationToken cancellationToken = default)
     {
         return BuildReviewManagementQuery(searchTerm, status).CountAsync(cancellationToken);
+    }
+
+    public Task<List<BlogCommentBanReason>> GetBlogCommentBanReasonsAsync(CancellationToken cancellationToken = default)
+    {
+        return _context.BlogCommentBanReasons
+            .AsNoTracking()
+            .OrderBy(x => x.BanReasonId)
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<BlogCommentModerationLog?> GetLatestRejectedCommentLogAsync(int reviewBlogId, CancellationToken cancellationToken = default)
+    {
+        return _context.BlogCommentModerationLogs
+            .AsNoTracking()
+            .Include(x => x.BanReason)
+            .Where(x => x.TargetType == "Comment" && x.CommentId == reviewBlogId && x.Action == "Rejected")
+            .OrderByDescending(x => x.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public Task<BlogCommentModerationLog?> GetLatestRejectedReplyLogAsync(int replyBlogId, CancellationToken cancellationToken = default)
+    {
+        return _context.BlogCommentModerationLogs
+            .AsNoTracking()
+            .Include(x => x.BanReason)
+            .Where(x => x.TargetType == "Reply" && x.ReplyId == replyBlogId && x.Action == "Rejected")
+            .OrderByDescending(x => x.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task AddCommentModerationLogAsync(BlogCommentModerationLog log, CancellationToken cancellationToken = default)
+    {
+        await _context.BlogCommentModerationLogs.AddAsync(log, cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
     }
 
     public Task<ReactionType?> GetReactionTypeByCodeAsync(string reactionCode, CancellationToken cancellationToken = default)
@@ -454,6 +489,143 @@ public class BlogRepository : IBlogRepository
         return raw.ToDictionary(x => x.ReplyBlogId, x => x.Code);
     }
 
+    public async Task<(bool IsLocked, DateTime? LockedUntil)> CheckAndRefreshCommentLockAsync(
+        int accountId,
+        DateTime utcNow,
+        CancellationToken cancellationToken = default)
+    {
+        var state = await GetOrCreateViolationStateAsync(accountId, utcNow, cancellationToken);
+        if (!state.IsCommentBanned)
+        {
+            return (false, null);
+        }
+
+        if (state.BanExpiresAt.HasValue && state.BanExpiresAt.Value <= utcNow)
+        {
+            state.IsCommentBanned = false;
+            state.UnbannedAt = utcNow;
+            state.UpdatedAt = utcNow;
+            await _context.SaveChangesAsync(cancellationToken);
+            return (false, null);
+        }
+
+        return (true, state.BanExpiresAt);
+    }
+
+    public Task<List<BlogCommentViolationCount>> GetPagedBannedCommentAccountsAsync(
+        int pageNumber,
+        int pageSize,
+        string? searchTerm,
+        CancellationToken cancellationToken = default)
+    {
+        return BuildBannedCommentAccountsQuery(searchTerm)
+            .OrderByDescending(x => x.BannedAt ?? x.UpdatedAt)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<int> CountBannedCommentAccountsAsync(string? searchTerm, CancellationToken cancellationToken = default)
+    {
+        return BuildBannedCommentAccountsQuery(searchTerm).CountAsync(cancellationToken);
+    }
+
+    public Task<BlogCommentViolationCount?> GetCommentPermissionStateAsync(
+        int accountId,
+        CancellationToken cancellationToken = default)
+    {
+        return _context.BlogCommentViolationCounts
+            .Include(x => x.Account)
+            .Include(x => x.UnbannedByNavigation)
+            .FirstOrDefaultAsync(x => x.AccountId == accountId, cancellationToken);
+    }
+
+    public async Task UpdateCommentPermissionStateAsync(
+        BlogCommentViolationCount entity,
+        CancellationToken cancellationToken = default)
+    {
+        _context.BlogCommentViolationCounts.Update(entity);
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<bool> IncrementRateAndCheckCommentLimitAsync(
+        int accountId,
+        DateTime utcNow,
+        int limit,
+        int windowMinutes,
+        CancellationToken cancellationToken = default)
+    {
+        var state = await GetOrCreateViolationStateAsync(accountId, utcNow, cancellationToken);
+        var windowStart = utcNow.AddMinutes(-windowMinutes);
+
+        if (!state.RateWindowAt.HasValue || state.RateWindowAt.Value <= windowStart)
+        {
+            state.RateWindowAt = utcNow;
+            state.RateCount = 1;
+            state.UpdatedAt = utcNow;
+            await _context.SaveChangesAsync(cancellationToken);
+            return false;
+        }
+
+        var next = state.RateCount + 1;
+        state.RateCount = next > byte.MaxValue ? byte.MaxValue : (byte)next;
+        state.UpdatedAt = utcNow;
+        await _context.SaveChangesAsync(cancellationToken);
+        return state.RateCount >= limit;
+    }
+
+    private async Task<BlogCommentViolationCount> GetOrCreateViolationStateAsync(
+        int accountId,
+        DateTime utcNow,
+        CancellationToken cancellationToken)
+    {
+        var state = await _context.BlogCommentViolationCounts
+            .FirstOrDefaultAsync(x => x.AccountId == accountId, cancellationToken);
+        if (state != null)
+        {
+            return state;
+        }
+
+        state = new BlogCommentViolationCount
+        {
+            AccountId = accountId,
+            ViolationCount = 0,
+            LastViolatedAt = null,
+            UpdatedAt = utcNow,
+            IsCommentBanned = false,
+            BannedAt = null,
+            BanExpiresAt = null,
+            UnbannedAt = null,
+            UnbannedBy = null,
+            RateCount = 0,
+            RateWindowAt = null
+        };
+
+        await _context.BlogCommentViolationCounts.AddAsync(state, cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
+        return state;
+    }
+
+    private IQueryable<BlogCommentViolationCount> BuildBannedCommentAccountsQuery(string? searchTerm)
+    {
+        var query = _context.BlogCommentViolationCounts
+            .AsNoTracking()
+            .Include(x => x.Account)
+            .Include(x => x.UnbannedByNavigation)
+            .Where(x => x.IsCommentBanned && !x.Account.IsDeleted);
+
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var term = searchTerm.Trim();
+            query = query.Where(x =>
+                x.Account.AccountName.Contains(term)
+                || x.Account.Email.Contains(term)
+                || x.AccountId.ToString().Contains(term));
+        }
+
+        return query;
+    }
+
     private IQueryable<BlogPost> BuildQuery(
         string? searchTerm,
         string? status,
@@ -546,11 +718,10 @@ public class BlogRepository : IBlogRepository
             .OrderByDescending(x => x.CreatedAt)
             .AsQueryable();
 
-        if (!string.IsNullOrWhiteSpace(status))
-        {
-            var isHidden = string.Equals(status.Trim(), "Hidden", StringComparison.OrdinalIgnoreCase);
-            query = query.Where(x => x.IsDeleted == isHidden);
-        }
+        query = query.Where(x =>
+            !x.IsDeleted &&
+            !x.IsHidden &&
+            (x.ModerationStatus == "ManualReview" || x.ModerationStatus == "Approved"));
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {

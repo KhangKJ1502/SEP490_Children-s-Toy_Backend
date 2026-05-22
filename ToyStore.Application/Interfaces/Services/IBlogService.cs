@@ -110,6 +110,19 @@ public interface IBlogService
 
     Task<Result<BlogReviewReplyDto>> UpdateBlogReplyStatusAsync(int replyBlogId, UpdateBlogReviewStatusDto dto, CancellationToken cancellationToken = default);
 
+    Task<Result<List<BlogCommentBanReasonDto>>> GetBlogCommentBanReasonsAsync(CancellationToken cancellationToken = default);
+
+    Task<Result<PaginatedResponse<BlogReviewPermissionDto>>> GetBlogReviewPermissionsAsync(
+        int pageNumber = 1,
+        int pageSize = 10,
+        string? searchTerm = null,
+        CancellationToken cancellationToken = default);
+
+    Task<Result<BlogReviewPermissionDto>> UpdateBlogReviewPermissionAsync(
+        int accountId,
+        UpdateBlogReviewPermissionDto dto,
+        CancellationToken cancellationToken = default);
+
     Task<Result<ReactionSummaryDto>> ReactToBlogAsync(int blogPostId, UpsertReactionDto dto, CancellationToken cancellationToken = default);
 
     Task<Result<bool>> RemoveBlogReactionAsync(int blogPostId, CancellationToken cancellationToken = default);
