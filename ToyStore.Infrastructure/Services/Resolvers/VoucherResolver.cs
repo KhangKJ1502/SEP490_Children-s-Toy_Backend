@@ -21,7 +21,7 @@ public class VoucherResolver : IBusinessObjectResolver
         new() { Token = "{{VoucherCode}}",    Description = "Voucher code" },
         new() { Token = "{{DiscountValue}}",  Description = "Discount value (numeric)" },
         new() { Token = "{{DiscountType}}",   Description = "Discount type (PERCENT / AMOUNT)" },
-        new() { Token = "{{ExpiryDate}}",     Description = "Expiry (dd/MM/yyyy HH:mm, giờ VN)" },
+        new() { Token = "{{ExpiryDate}}",     Description = "Expiry (dd/MM/yyyy HH:mm, VN time)" },
         new() { Token = "{{VoucherName}}",    Description = "Voucher name" }
     ];
 

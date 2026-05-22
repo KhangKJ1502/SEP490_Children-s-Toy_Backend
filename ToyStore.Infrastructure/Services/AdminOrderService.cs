@@ -349,15 +349,24 @@ public class AdminOrderService : IAdminOrderService
             ? order.TotalAmount
             : 0m;
 
-        // Phan giai serviceId tu serviceType hoac GhnOptions mac dinh
+        // Resolve serviceId: honour admin's explicit choice first, otherwise use the same
+        // ResolveServiceIdAsync logic as checkout so the fee estimate matches the actual waybill.
         int serviceId = 0;
         if (int.TryParse(request.ServiceType, out var parsedServiceId) && parsedServiceId > 0)
         {
             serviceId = parsedServiceId;
         }
+        else
+        {
+            int? preferredTypeId = _ghnOptions.FeeServiceTypeId > 0 ? _ghnOptions.FeeServiceTypeId : null;
+            var resolveResult = await _ghnClient.ResolveServiceIdAsync(
+                order.ShippingDistrictId, preferredTypeId, cancellationToken);
+            if (resolveResult.IsSuccess)
+                serviceId = resolveResult.Data;
+        }
 
         // Tinh toan trong luong / kich thuoc don gian tu so luong san pham
-        var totalWeight = Math.Max(order.OrderDetails.Sum(d => d.Quantity) * 300, 100); // 300g/item
+        var totalWeight = Math.Max(order.OrderDetails.Sum(d => d.Quantity) * _ghnOptions.DefaultItemWeight, 100);
         var ghnRequest = new ShippingOrderCreateRequestDto
         {
             ClientOrderCode = order.OrderCode,
@@ -370,9 +379,9 @@ public class AdminOrderService : IAdminOrderService
             InsuranceValue  = order.SubTotal,
             CodAmount       = codAmount,
             Weight          = totalWeight,
-            Length          = 30,
-            Width           = 30,
-            Height          = 10,
+            Length          = _ghnOptions.DefaultLength,
+            Width           = _ghnOptions.DefaultWidth,
+            Height          = _ghnOptions.DefaultHeight,
             Note            = request.Note,
             RequiredNote    = !string.IsNullOrWhiteSpace(request.RequiredNote) ? request.RequiredNote : "KHONGCHOXEMHANG",
             Items           = order.OrderDetails.Select(d => new ShippingOrderCreateItemDto
@@ -380,7 +389,7 @@ public class AdminOrderService : IAdminOrderService
                 Name     = d.ProductName,
                 Quantity = d.Quantity,
                 Price    = d.UnitPrice,
-                Weight   = 300
+                Weight   = _ghnOptions.DefaultItemWeight
             }).ToList()
         };
 
@@ -414,9 +423,9 @@ public class AdminOrderService : IAdminOrderService
                 estimatedDelivery = leadtimeResult.Data!.EstimatedDeliveryTime;
         }
 
-        // Lay phi van chuyen thuc te
+        // Fetch the actual fee using the SAME resolved service_id as checkout (CheckoutService.ConfirmAsync).
+        // Both use ResolveServiceIdAsync → GetFeeAsync(ServiceId) → identical GHN pricing path.
         decimal actualFee = 0m;
-        if (resolvedServiceId > 0)
         {
             var feeResult = await _ghnClient.GetFeeAsync(new FeeRequestDTO
             {
@@ -427,10 +436,10 @@ public class AdminOrderService : IAdminOrderService
                 InsuranceValue = order.SubTotal,
                 CodValue       = codAmount,
                 Weight         = totalWeight,
-                Length         = 30,
-                Width          = 30,
-                Height         = 10,
-                ServiceId      = resolvedServiceId
+                Length         = _ghnOptions.DefaultLength,
+                Width          = _ghnOptions.DefaultWidth,
+                Height         = _ghnOptions.DefaultHeight,
+                ServiceId      = serviceId  // same ResolveServiceIdAsync path as checkout
             }, cancellationToken);
 
             if (feeResult.IsSuccess)
@@ -462,6 +471,9 @@ public class AdminOrderService : IAdminOrderService
             order.StatusId          = shippedId;
             order.ShippedAt         = now;
             order.ActualShippingFee = actualFee > 0 ? actualFee : null;
+            // Sync EstimatedShippingFee with the real GHN fee so customers see the accurate price
+            if (actualFee > 0)
+                order.EstimatedShippingFee = actualFee;
             order.ShippingOrderCode = ghnData.OrderCode;
             order.UpdatedAt         = now;
 

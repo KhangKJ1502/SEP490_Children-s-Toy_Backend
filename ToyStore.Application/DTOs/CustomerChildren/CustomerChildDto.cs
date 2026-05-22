@@ -8,6 +8,7 @@ public class CustomerChildDto
     public DateTime Dob { get; set; }
     public byte? SexId { get; set; }
     public string? SexName { get; set; }
+    public int EditCount { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }

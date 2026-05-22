@@ -19,7 +19,7 @@ public class CheckoutController : ControllerBase
 
     public CheckoutController(ICheckoutService checkout, ICurrentUserService currentUser)
     {
-        _checkout    = checkout;
+        _checkout = checkout;
         _currentUser = currentUser;
     }
 
@@ -35,7 +35,15 @@ public class CheckoutController : ControllerBase
         var accountId = _currentUser.AccountId;
         var orderVoucher = query.OrderVoucherCode ?? query.VoucherCode;
         var shippingVoucher = query.ShippingVoucherCode;
-        var result = await _checkout.PreviewAsync(accountId, query.AddressId, orderVoucher, shippingVoucher, query.Items, ct);
+        var paymentMethod = string.IsNullOrWhiteSpace(query.PaymentMethod) ? "SHIP_COD" : query.PaymentMethod;
+        var result = await _checkout.PreviewAsync(
+            accountId,
+            query.AddressId,
+            paymentMethod,
+            orderVoucher,
+            shippingVoucher,
+            query.Items,
+            ct);
         return result.ToActionResult();
     }
 
@@ -72,6 +80,7 @@ public class CheckoutController : ControllerBase
 public class CheckoutPreviewQueryDto
 {
     public int AddressId { get; set; }
+    public string? PaymentMethod { get; set; }
     public string? OrderVoucherCode { get; set; }
     public string? ShippingVoucherCode { get; set; }
 

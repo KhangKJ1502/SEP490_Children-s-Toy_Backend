@@ -24,4 +24,10 @@ public sealed class GhnOptions
     public int RetryCount { get; set; } = 3;
 
     public int TimeoutSeconds { get; set; } = 30;
+
+    // Default weight and dimensions per item for shipping fee calculation (if not specified in products)
+    public int DefaultItemWeight { get; set; } = 300; // Grams
+    public int DefaultLength { get; set; } = 30; // cm
+    public int DefaultWidth { get; set; } = 30; // cm
+    public int DefaultHeight { get; set; } = 10; // cm
 }
