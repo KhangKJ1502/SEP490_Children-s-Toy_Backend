@@ -18,5 +18,11 @@ public class BlogProfile : Profile
 
         CreateMap<BlogPost, BlogDetailDto>()
             .IncludeBase<BlogPost, BlogListDto>();
+
+        CreateMap<BlogCommentViolationCount, BlogReviewPermissionDto>()
+            .ForMember(dest => dest.AccountName, opt => opt.MapFrom(src => src.Account.AccountName))
+            .ForMember(dest => dest.Email, opt => opt.MapFrom(src => src.Account.Email))
+            .ForMember(dest => dest.AccountImageUrl, opt => opt.MapFrom(src => src.Account.ImageUrl))
+            .ForMember(dest => dest.UnbannedByName, opt => opt.MapFrom(src => src.UnbannedByNavigation != null ? src.UnbannedByNavigation.AccountName : null));
     }
 }

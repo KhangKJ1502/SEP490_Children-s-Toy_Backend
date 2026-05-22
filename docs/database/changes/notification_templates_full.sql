@@ -65,8 +65,8 @@ BEGIN TRY
     INSERT INTO @Tpl VALUES
     ('REVIEW_STAFF_REPLIED', 'SYSTEM', N'Phản hồi đánh giá sản phẩm {{ProductName}}',
      N'Nhân viên CSKH vừa trả lời đánh giá của bạn cho sản phẩm {{ProductName}}.'),
-    ('BLOG_COMMENT_REPLIED', 'SYSTEM', N'Phản hồi bình luận bài viết {{BlogTitle}}',
-     N'Bình luận của bạn trên bài viết {{BlogTitle}} vừa có lượt trả lời mới.');
+    ('BLOG_COMMENT_REPLIED', 'SYSTEM', N'Blog comment reply: {{BlogTitle}}',
+     N'Someone replied to your comment on {{BlogTitle}}.');
 
     -- Thông báo cho Staff
     INSERT INTO @Tpl VALUES
@@ -108,8 +108,8 @@ BEGIN TRY
      N'Lỗi đồng bộ trạng thái vận chuyển cho đơn {{OrderCode}}: {{ErrorMessage}}.'),
     ('ADMIN_DAMAGE_LOST',      'SYSTEM', N'Hàng hóa thất lạc/hư hỏng',
      N'Ghi nhận đơn hàng {{OrderCode}} bị hư hỏng hoặc thất lạc trong quá trình vận chuyển.'),
-    ('ADMIN_BLOG_PENDING',     'SYSTEM', N'Duyệt bài viết {{BlogTitle}}',
-     N'Bài viết {{BlogTitle}} vừa được gửi và đang chờ bạn phê duyệt.'),
+    ('ADMIN_BLOG_PENDING',     'SYSTEM', N'Blog pending approval: {{BlogTitle}}',
+     N'Blog post {{BlogTitle}} was submitted and is waiting for your approval.'),
     ('ADMIN_ORDER_QUEUED',     'SYSTEM', N'Đơn hàng {{OrderCode}} đang chờ phân công',
      N'Đơn hàng {{OrderCode}} chưa được phân công do {{Reason}}. Vui lòng xử lý thủ công.'),
     ('ADMIN_SHIFT_ENDED_PENDING', 'SYSTEM', N'Ca {{ShiftName}} kết thúc còn đơn chờ',
