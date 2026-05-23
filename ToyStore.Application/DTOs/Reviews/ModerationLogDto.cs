@@ -16,5 +16,7 @@ public class ModerationLogDto
     
     public string? Reason { get; set; }
     
+    public string? AiModelVersion { get; set; }
+    
     public DateTime CreatedAt { get; set; }
 }
