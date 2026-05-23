@@ -47,12 +47,13 @@ public class VoucherRepository : IVoucherRepository
             query = query.Where(x => x.Status == normalizedStatus);
         }
 
-        query = ApplySorting(query, sortBy, sortDesc);
+        var orderedQuery = query.OrderBy(x => x.Status == "Pending" ? 0 : 1);
+        var sortedQuery = ApplySorting(orderedQuery, sortBy, sortDesc);
 
-        var totalCount = await query.CountAsync(cancellationToken);
+        var totalCount = await sortedQuery.CountAsync(cancellationToken);
         var skip = (pageNumber - 1) * pageSize;
 
-        var entities = await query
+        var entities = await sortedQuery
             .Skip(skip)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
@@ -115,33 +116,33 @@ public class VoucherRepository : IVoucherRepository
                 cancellationToken);
     }
 
-    private static IQueryable<Voucher> ApplySorting(IQueryable<Voucher> query, string? sortBy, bool sortDesc)
+    private static IQueryable<Voucher> ApplySorting(IOrderedQueryable<Voucher> query, string? sortBy, bool sortDesc)
     {
         var normalizedSortBy = sortBy?.Trim().ToLowerInvariant();
 
         return normalizedSortBy switch
         {
             "vouchercode" => sortDesc
-                ? query.OrderByDescending(x => x.VoucherCode)
-                : query.OrderBy(x => x.VoucherCode),
+                ? query.ThenByDescending(x => x.VoucherCode)
+                : query.ThenBy(x => x.VoucherCode),
             "vouchername" => sortDesc
-                ? query.OrderByDescending(x => x.VoucherName)
-                : query.OrderBy(x => x.VoucherName),
+                ? query.ThenByDescending(x => x.VoucherName)
+                : query.ThenBy(x => x.VoucherName),
             "discountvalue" => sortDesc
-                ? query.OrderByDescending(x => x.DiscountValue)
-                : query.OrderBy(x => x.DiscountValue),
+                ? query.ThenByDescending(x => x.DiscountValue)
+                : query.ThenBy(x => x.DiscountValue),
             "startdate" => sortDesc
-                ? query.OrderByDescending(x => x.StartDate)
-                : query.OrderBy(x => x.StartDate),
+                ? query.ThenByDescending(x => x.StartDate)
+                : query.ThenBy(x => x.StartDate),
             "enddate" => sortDesc
-                ? query.OrderByDescending(x => x.EndDate)
-                : query.OrderBy(x => x.EndDate),
+                ? query.ThenByDescending(x => x.EndDate)
+                : query.ThenBy(x => x.EndDate),
             "status" => sortDesc
-                ? query.OrderByDescending(x => x.Status)
-                : query.OrderBy(x => x.Status),
+                ? query.ThenByDescending(x => x.Status)
+                : query.ThenBy(x => x.Status),
             _ => sortDesc
-                ? query.OrderByDescending(x => x.CreatedAt)
-                : query.OrderBy(x => x.CreatedAt)
+                ? query.ThenByDescending(x => x.CreatedAt)
+                : query.ThenBy(x => x.CreatedAt)
         };
     }
 }

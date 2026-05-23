@@ -269,6 +269,11 @@ public class PromotionService : IPromotionService
         // Nếu là yêu cầu xoá (Soft Delete)
         if (request.IsDeleted == true)
         {
+            if (string.Equals(existingPromotion.Status, "Active", StringComparison.OrdinalIgnoreCase))
+            {
+                return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot delete an Active promotion.");
+            }
+
             existingPromotion.IsDeleted = true;
             existingPromotion.UpdatedAt = _timeProvider.UtcNow;
 
@@ -298,8 +303,14 @@ public class PromotionService : IPromotionService
 
                 // Allow updating status, description and priority
                 existingPromotion.Status = request.Status;
-                existingPromotion.Description = request.Description;
-                existingPromotion.Priority = request.Priority.Value;
+                if (request.Description != null)
+                {
+                    existingPromotion.Description = request.Description;
+                }
+                if (request.Priority.HasValue)
+                {
+                    existingPromotion.Priority = request.Priority.Value;
+                }
                 existingPromotion.UpdatedAt = _timeProvider.UtcNow;
             }
             else if (existingPromotion.Status == "Inactive")
@@ -336,8 +347,14 @@ public class PromotionService : IPromotionService
                 else
                 {
                     // Allow updating description and priority even when staying Inactive
-                    existingPromotion.Description = request.Description;
-                    existingPromotion.Priority = request.Priority.Value;
+                    if (request.Description != null)
+                    {
+                        existingPromotion.Description = request.Description;
+                    }
+                    if (request.Priority.HasValue)
+                    {
+                        existingPromotion.Priority = request.Priority.Value;
+                    }
                 }
             }
             else
