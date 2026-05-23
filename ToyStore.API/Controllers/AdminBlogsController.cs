@@ -276,62 +276,17 @@ public class AdminBlogsController : ControllerBase
             return StatusCode(502, new { code = "AI_SERVICE_UNAVAILABLE", message = "Unable to call AI service." });
         }
 
-        BlogDetailDto? blog;
-        if (request.BlogPostId.HasValue && request.BlogPostId.Value > 0)
-        {
-            var existingResult = await _blogService.GetBlogDetailsAsync(request.BlogPostId.Value, cancellationToken);
-            if (!existingResult.IsSuccess || existingResult.Data == null)
-            {
-                return ToAiErrorResult(existingResult.ErrorCode ?? "BLOG_NOT_FOUND", existingResult.ErrorMessage ?? "Blog not found.", 404);
-            }
-
-            var updateResult = await _blogService.UpdateBlogAsync(
-                request.BlogPostId.Value,
-                new UpdateBlogDto
-                {
-                    BlogCategoryId = (short)request.DefaultCategoryId,
-                    BlogTitle = string.IsNullOrWhiteSpace(aiGenerated.Title) ? request.Title.Trim() : aiGenerated.Title.Trim(),
-                    BlogContent = aiGenerated.Content,
-                    BlogThumbnail = existingResult.Data.BlogThumbnail,
-                    BlogAt = existingResult.Data.BlogAt
-                },
-                cancellationToken);
-
-            if (!updateResult.IsSuccess || updateResult.Data == null)
-            {
-                return ToAiErrorResult(updateResult.ErrorCode ?? "UPDATE_BLOG_FAILED", updateResult.ErrorMessage ?? "Unable to update blog.", 400);
-            }
-
-            blog = updateResult.Data;
-        }
-        else
-        {
-            var createResult = await _blogService.CreateBlogAsync(
-                new CreateBlogDto
-                {
-                    BlogCategoryId = (short)request.DefaultCategoryId,
-                    BlogTitle = string.IsNullOrWhiteSpace(aiGenerated.Title) ? request.Title.Trim() : aiGenerated.Title.Trim(),
-                    BlogContent = aiGenerated.Content,
-                    BlogThumbnail = null,
-                    BlogAt = null
-                },
-                cancellationToken);
-
-            if (!createResult.IsSuccess || createResult.Data == null)
-            {
-                return ToAiErrorResult(createResult.ErrorCode ?? "CREATE_BLOG_FAILED", createResult.ErrorMessage ?? "Unable to create blog.", 400);
-            }
-
-            blog = createResult.Data;
-        }
+        var generatedTitle = string.IsNullOrWhiteSpace(aiGenerated.Title)
+            ? request.Title.Trim()
+            : aiGenerated.Title.Trim();
 
         return Ok(new AiBlogGenerateResult
         {
-            BlogPostId = blog.BlogPostId,
+            BlogPostId = request.BlogPostId.GetValueOrDefault(0),
             HistoryId = null,
-            Title = blog.BlogTitle,
-            BlogContent = blog.BlogContent,
-            BlogCategoryId = blog.BlogCategoryId,
+            Title = generatedTitle,
+            BlogContent = aiGenerated.Content,
+            BlogCategoryId = request.DefaultCategoryId,
             PromptData = request.PromptStructure,
             AiStatus = "Success",
             AiError = null

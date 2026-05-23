@@ -238,6 +238,11 @@ public class VoucherService : IVoucherService
         // Nếu là yêu cầu xoá (Soft Delete)
         if (normalizedRequest.IsDeleted == true)
         {
+            if (string.Equals(existingVoucher.Status, "Active", StringComparison.OrdinalIgnoreCase))
+            {
+                return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Cannot delete an Active voucher.");
+            }
+
             existingVoucher.IsDeleted = true;
             existingVoucher.UpdatedAt = _timeProvider.UtcNow;
 
