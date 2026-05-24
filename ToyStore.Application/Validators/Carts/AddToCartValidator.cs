@@ -13,8 +13,6 @@ public class AddToCartValidator : AbstractValidator<AddToCartDto>
 
         RuleFor(x => x.Quantity)
             .GreaterThan((short)0)
-            .WithMessage("Quantity must be greater than 0.")
-            .LessThanOrEqualTo((short)100)
-            .WithMessage("Quantity must not exceed 100.");
+            .WithMessage("Quantity must be greater than 0.");
     }
 }
