@@ -889,6 +889,10 @@ public class BlogService : IBlogService
         var states = await _unitOfWork.Blogs.GetPagedBannedCommentAccountsAsync(pageNumber, pageSize, searchTerm, cancellationToken);
         var totalCount = await _unitOfWork.Blogs.CountBannedCommentAccountsAsync(searchTerm, cancellationToken);
         var mapped = _mapper.Map<List<BlogReviewPermissionDto>>(states);
+        foreach (var item in mapped)
+        {
+            NormalizePermissionDates(item);
+        }
 
         return Result<PaginatedResponse<BlogReviewPermissionDto>>.Success(
             new PaginatedResponse<BlogReviewPermissionDto>(mapped, totalCount, pageNumber, pageSize));
@@ -940,7 +944,9 @@ public class BlogService : IBlogService
         await SendBlogCommentPermissionRestoredNotificationAsync(state.AccountId, cancellationToken);
 
         var updated = await _unitOfWork.Blogs.GetCommentPermissionStateAsync(accountId, cancellationToken);
-        return Result<BlogReviewPermissionDto>.Success(_mapper.Map<BlogReviewPermissionDto>(updated!));
+        var mapped = _mapper.Map<BlogReviewPermissionDto>(updated!);
+        NormalizePermissionDates(mapped);
+        return Result<BlogReviewPermissionDto>.Success(mapped);
     }
 
     public async Task<Result<ReactionSummaryDto>> ReactToBlogAsync(int blogPostId, UpsertReactionDto dto, CancellationToken cancellationToken = default)
@@ -1404,8 +1410,8 @@ public class BlogService : IBlogService
             LoveCount = GetReactionCount(counts, ReactionLove),
             HahaCount = GetReactionCount(counts, ReactionHaha),
             CurrentUserReaction = currentUserReaction,
-            CreatedAt = review.CreatedAt,
-            UpdatedAt = review.UpdatedAt
+            CreatedAt = AsUtc(review.CreatedAt),
+            UpdatedAt = AsUtc(review.UpdatedAt)
         };
     }
 
@@ -1437,9 +1443,30 @@ public class BlogService : IBlogService
             LoveCount = GetReactionCount(counts, ReactionLove),
             HahaCount = GetReactionCount(counts, ReactionHaha),
             CurrentUserReaction = currentUserReaction,
-            CreatedAt = reply.CreatedAt,
-            UpdatedAt = reply.UpdatedAt
+            CreatedAt = AsUtc(reply.CreatedAt),
+            UpdatedAt = AsUtc(reply.UpdatedAt)
         };
+    }
+
+    private static DateTime AsUtc(DateTime value)
+    {
+        return value.Kind == DateTimeKind.Utc
+            ? value
+            : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+    }
+
+    private static DateTime? AsUtc(DateTime? value)
+    {
+        return value.HasValue ? AsUtc(value.Value) : null;
+    }
+
+    private static void NormalizePermissionDates(BlogReviewPermissionDto dto)
+    {
+        dto.BannedAt = AsUtc(dto.BannedAt);
+        dto.BanExpiresAt = AsUtc(dto.BanExpiresAt);
+        dto.UnbannedAt = AsUtc(dto.UnbannedAt);
+        dto.LastViolatedAt = AsUtc(dto.LastViolatedAt);
+        dto.UpdatedAt = AsUtc(dto.UpdatedAt);
     }
 
     private async Task<BlogReviewReplyDto> MapReplyAsync(ReviewBlogReply reply, CancellationToken cancellationToken)

@@ -24,6 +24,9 @@ builder.Services.AddHostedService<UpdateUserProfilesJob>();
 builder.Services.AddHostedService<OrderStatusWorker>();
 builder.Services.AddHostedService<PromotionStatusJob>();
 builder.Services.AddHostedService<BlogPublishWorker>();
+builder.Services.AddHostedService<BlogCommentModerationPollJob>();
+builder.Services.AddHostedService<BlogCommentManualReviewTimeoutJob>();
+builder.Services.AddHostedService<BlogCommentPermissionUnlockJob>();
 
 // Notification pipeline
 builder.Services.AddHostedService<OutboxProcessorJob>();
