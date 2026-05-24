@@ -200,7 +200,8 @@ public class CampaignService : ICampaignService
             Title = d.Title,
             Message = d.Message,
             ReadAt = d.ReadAt,
-            CreatedAt = d.CreatedAt
+            CreatedAt = d.CreatedAt,
+            IsClicked = d.DeliveryActions.Any(a => string.Equals(a.ActionType, "Click", StringComparison.OrdinalIgnoreCase))
         }).ToList();
 
         var response = new PaginatedResponse<CampaignDeliveryDto>(deliveryDtos, totalCount, pageNumber, pageSize);
@@ -276,7 +277,8 @@ public class CampaignService : ICampaignService
             return Result<CampaignDto>.NotFound("Campaign", dto.CampaignId);
 
         if (!EditableStatuses.Contains(existing.Status))
-            return Result<CampaignDto>.BusinessError(
+            return Result<CampaignDto>.Failure(
+                ToyStore.Application.Campaigns.CampaignErrorCodes.InvalidStatusTransition,
                 $"Campaign cannot be edited in status '{existing.Status}'. Only Draft and Rejected campaigns can be modified.");
 
         var isDuplicate = await _unitOfWork.Campaigns.ExistsByNameAsync(
@@ -785,13 +787,12 @@ public class CampaignService : ICampaignService
     }
 
     /// <summary>
-    /// Admin must not see or open another user's Draft until they submit for review.
+    /// Any viewer (Admin or Staff) must not see or open another user's Draft
+    /// until it is submitted for review (PendingApproval+).
     /// </summary>
     private bool ShouldHideDraftCampaignFromCurrentAdminViewer(Campaign campaign)
     {
         if (campaign.Status != "Draft")
-            return false;
-        if (!string.Equals(_currentUser.RoleName, "Admin", StringComparison.OrdinalIgnoreCase))
             return false;
         return campaign.CreatedByAccountId != _currentUser.AccountId;
     }

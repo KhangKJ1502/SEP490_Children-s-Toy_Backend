@@ -66,23 +66,12 @@ public sealed class GhnClient : IGhnClient
             ["height"] = request.Height
         };
 
-        if (request.ServiceId is > 0)
-        {
-            payload["service_id"] = request.ServiceId.Value;
-        }
-        else
-        {
-            // GHN fee API supports passing service_type_id directly, avoiding the need to resolve service_id first!
-            int typeId = request.ServiceTypeId is > 0
-                ? request.ServiceTypeId.Value
-                : (_ghnOptions.FeeServiceTypeId > 0 ? _ghnOptions.FeeServiceTypeId : 2);
-            payload["service_type_id"] = typeId;
-        }
+        payload["service_type_id"] = 2;
 
         var feeResult = await PostAsync<GhnFeeData>("v2/shipping-order/fee", payload, "fee", cancellationToken);
 
         // Cố gắng resolve service_id nếu GHN bắt buộc (trường hợp hiếm)
-        if (!feeResult.IsSuccess && feeResult.ErrorMessage != null && feeResult.ErrorMessage.Contains("service_id"))
+        /*if (!feeResult.IsSuccess && feeResult.ErrorMessage != null && feeResult.ErrorMessage.Contains("service_id"))
         {
             _logger.LogWarning("GHN fee API requires service_id. Falling back to ResolveServiceIdAsync...");
             var resolveResult = await ResolveServiceIdInternalAsync(request.ToDistrictId, null, cancellationToken);
@@ -92,7 +81,7 @@ public sealed class GhnClient : IGhnClient
                 payload["service_id"] = resolveResult.Data;
                 feeResult = await PostAsync<GhnFeeData>("v2/shipping-order/fee", payload, "fee_retry", cancellationToken);
             }
-        }
+        }*/
 
         if (!feeResult.IsSuccess)
         {
@@ -117,7 +106,7 @@ public sealed class GhnClient : IGhnClient
             from_ward_code = request.FromWardCode,
             to_district_id = request.ToDistrictId,
             to_ward_code = request.ToWardCode,
-            service_id = request.ServiceId
+            service_type_id = 2
         };
 
         var leadtimeResult = await PostAsync<GhnLeadtimeData>(
@@ -252,32 +241,30 @@ public sealed class GhnClient : IGhnClient
             }
         }
 
-        var payload = new
+        var payload = new Dictionary<string, object>
         {
-            payment_type_id = 2,
-            note = request.Note ?? string.Empty,
-            required_note = request.RequiredNote,
-            from_name = _shopAddressOptions.Name,
-            from_phone = _shopAddressOptions.Phone,
-            from_address = _shopAddressOptions.AddressLine,
-            from_ward_name = _shopAddressOptions.WardName,
-            from_district_name = _shopAddressOptions.DistrictName,
-            to_name = request.ToName,
-            to_phone = request.ToPhone,
-            to_address = request.ToAddress,
-            to_ward_code = request.ToWardCode,
-            to_district_id = request.ToDistrictId,
-            cod_amount = RoundToInt(request.CodAmount),
-            content = $"Order {request.ClientOrderCode}",
-            weight = request.Weight,
-            length = request.Length,
-            width = request.Width,
-            height = request.Height,
-            insurance_value = Math.Min(RoundToInt(request.InsuranceValue), 5000000),
-            service_id = resolvedServiceId,
-            service_type_id = resolvedServiceTypeId,
-            client_order_code = request.ClientOrderCode,
-            items = request.Items.Select(x => new
+            ["payment_type_id"] = 2,
+            ["note"] = request.Note ?? string.Empty,
+            ["required_note"] = request.RequiredNote,
+            ["from_name"] = _shopAddressOptions.Name,
+            ["from_phone"] = _shopAddressOptions.Phone,
+            ["from_address"] = _shopAddressOptions.AddressLine,
+            ["from_ward_name"] = _shopAddressOptions.WardName,
+            ["from_district_name"] = _shopAddressOptions.DistrictName,
+            ["to_name"] = request.ToName,
+            ["to_phone"] = request.ToPhone,
+            ["to_address"] = request.ToAddress,
+            ["to_ward_code"] = request.ToWardCode,
+            ["to_district_id"] = request.ToDistrictId,
+            ["cod_amount"] = RoundToInt(request.CodAmount),
+            ["content"] = $"Order {request.ClientOrderCode}",
+            ["weight"] = request.Weight,
+            ["length"] = request.Length,
+            ["width"] = request.Width,
+            ["height"] = request.Height,
+            ["insurance_value"] = Math.Min(RoundToInt(request.InsuranceValue), 5000000),
+            ["client_order_code"] = request.ClientOrderCode,
+            ["items"] = request.Items.Select(x => new
             {
                 name = x.Name,
                 quantity = x.Quantity,
@@ -285,6 +272,8 @@ public sealed class GhnClient : IGhnClient
                 weight = x.Weight
             }).ToList()
         };
+
+        payload["service_type_id"] = 2;
 
         var createResult = await PostAsync<GhnCreateOrderData>(
             "v2/shipping-order/create", payload, "create_order", cancellationToken);
