@@ -85,17 +85,17 @@ public class ProductRepository : IProductRepository
                 x.Price >= minPrice.Value
                 // HOẶC có promotion active với SalePrice >= minPrice
                 || x.ProductPromotions.Any(pp =>
-                    pp.IsActive && pp.SalePrice >= minPrice.Value));
+                    !pp.IsDeleted && pp.SalePrice >= minPrice.Value));
         }
 
         if (maxPrice.HasValue)
         {
             query = query.Where(x =>
                 // Nếu có promotion active thì dùng SalePrice
-                (x.ProductPromotions.Any(pp => pp.IsActive)
-                    && x.ProductPromotions.Where(pp => pp.IsActive).Min(pp => pp.SalePrice) <= maxPrice.Value)
+                (x.ProductPromotions.Any(pp => !pp.IsDeleted)
+                    && x.ProductPromotions.Where(pp => !pp.IsDeleted).Min(pp => pp.SalePrice) <= maxPrice.Value)
                 // HOẶC không có promotion thì dùng Price
-                || (!x.ProductPromotions.Any(pp => pp.IsActive)
+                || (!x.ProductPromotions.Any(pp => !pp.IsDeleted)
                     && x.Price <= maxPrice.Value));
         }
 
@@ -242,17 +242,17 @@ public class ProductRepository : IProductRepository
                 x.Price >= minPrice.Value
                 // HOẶC có promotion active với SalePrice >= minPrice
                 || x.ProductPromotions.Any(pp =>
-                    pp.IsActive && pp.SalePrice >= minPrice.Value));
+                    !pp.IsDeleted && pp.SalePrice >= minPrice.Value));
         }
 
         if (maxPrice.HasValue)
         {
             query = query.Where(x =>
                 // Nếu có promotion active thì dùng SalePrice
-                (x.ProductPromotions.Any(pp => pp.IsActive)
-                    && x.ProductPromotions.Where(pp => pp.IsActive).Min(pp => pp.SalePrice) <= maxPrice.Value)
+                (x.ProductPromotions.Any(pp => !pp.IsDeleted)
+                    && x.ProductPromotions.Where(pp => !pp.IsDeleted).Min(pp => pp.SalePrice) <= maxPrice.Value)
                 // HOẶC không có promotion thì dùng Price
-                || (!x.ProductPromotions.Any(pp => pp.IsActive)
+                || (!x.ProductPromotions.Any(pp => !pp.IsDeleted)
                     && x.Price <= maxPrice.Value));
         }
 
@@ -566,6 +566,10 @@ public class ProductRepository : IProductRepository
             existing.ProductDetail.AgeId = product.ProductDetail.AgeId;
             existing.ProductDetail.SexId = product.ProductDetail.SexId;
             existing.ProductDetail.OriginId = product.ProductDetail.OriginId;
+            existing.ProductDetail.WeightGram = product.ProductDetail.WeightGram;
+            existing.ProductDetail.LengthCm = product.ProductDetail.LengthCm;
+            existing.ProductDetail.WidthCm = product.ProductDetail.WidthCm;
+            existing.ProductDetail.HeightCm = product.ProductDetail.HeightCm;
         }
 
         if (product.ProductImage != null)

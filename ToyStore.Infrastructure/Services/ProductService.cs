@@ -304,11 +304,19 @@ public class ProductService : IProductService
         _mapper.Map(dto, existing);
         existing.ProductId = productId;
 
-        if (dto.Description != null || dto.MaterialId.HasValue || dto.AgeId.HasValue || dto.SexId.HasValue || dto.OriginId.HasValue)
+        if (dto.Description != null || dto.MaterialId.HasValue || dto.AgeId.HasValue || dto.SexId.HasValue || dto.OriginId.HasValue
+            || dto.WeightGram.HasValue || dto.LengthCm.HasValue || dto.WidthCm.HasValue || dto.HeightCm.HasValue)
         {
             if (existing.ProductDetail == null)
             {
-                existing.ProductDetail = new ProductDetail { ProductId = productId };
+                existing.ProductDetail = new ProductDetail
+                {
+                    ProductId = productId,
+                    WeightGram = dto.WeightGram ?? 1,
+                    LengthCm = dto.LengthCm ?? 1,
+                    WidthCm = dto.WidthCm ?? 1,
+                    HeightCm = dto.HeightCm ?? 1
+                };
             }
 
             if (dto.Description != null)
@@ -330,6 +338,22 @@ public class ProductService : IProductService
             if (dto.OriginId.HasValue)
             {
                 existing.ProductDetail.OriginId = dto.OriginId;
+            }
+            if (dto.WeightGram.HasValue)
+            {
+                existing.ProductDetail.WeightGram = dto.WeightGram.Value;
+            }
+            if (dto.LengthCm.HasValue)
+            {
+                existing.ProductDetail.LengthCm = dto.LengthCm.Value;
+            }
+            if (dto.WidthCm.HasValue)
+            {
+                existing.ProductDetail.WidthCm = dto.WidthCm.Value;
+            }
+            if (dto.HeightCm.HasValue)
+            {
+                existing.ProductDetail.HeightCm = dto.HeightCm.Value;
             }
         }
 
@@ -601,6 +625,10 @@ public class ProductService : IProductService
                || dto.AgeId.HasValue
                || dto.SexId.HasValue
                || dto.OriginId.HasValue
+               || dto.WeightGram.HasValue
+               || dto.LengthCm.HasValue
+               || dto.WidthCm.HasValue
+               || dto.HeightCm.HasValue
                || !string.IsNullOrWhiteSpace(dto.MainImageUrl)
                || dto.AdditionalImageUrls != null;
     }

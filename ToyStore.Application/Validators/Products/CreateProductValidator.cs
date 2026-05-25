@@ -81,6 +81,18 @@ public class CreateProductValidator : AbstractValidator<CreateProductDto>
             .GreaterThan((byte)0).WithMessage("Origin ID must be greater than 0.")
             .When(x => x.OriginId.HasValue);
 
+        RuleFor(x => x.WeightGram)
+            .GreaterThan(0).WithMessage("Weight (gram) must be greater than 0.");
+
+        RuleFor(x => x.LengthCm)
+            .GreaterThan(0).WithMessage("Length (cm) must be greater than 0.");
+
+        RuleFor(x => x.WidthCm)
+            .GreaterThan(0).WithMessage("Width (cm) must be greater than 0.");
+
+        RuleFor(x => x.HeightCm)
+            .GreaterThan(0).WithMessage("Height (cm) must be greater than 0.");
+
         RuleFor(x => x.MainImageUrl)
             .NotEmpty().WithMessage("Main image is required.")
             .Must(ProductValidationRules.HasValidImageUrlLength)
