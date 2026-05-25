@@ -17,5 +17,4 @@ public class CreatePromotionProductSlotDto
     /// <summary>Số lượng tối đa được bán trong slot. Bắt buộc, phải lớn hơn 0.</summary>
     public int SaleQuantity { get; set; }
 
-    public bool IsActive { get; set; } = true;
 }

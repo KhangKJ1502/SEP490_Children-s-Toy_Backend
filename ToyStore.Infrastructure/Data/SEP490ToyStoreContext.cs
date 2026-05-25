@@ -1659,7 +1659,7 @@ public partial class SEP490ToyStoreContext : DbContext
         {
             entity.HasKey(e => new { e.ProductId, e.PromotionId });
 
-            entity.HasIndex(e => new { e.ProductId, e.IsActive }, "IX_ProductPromotions_ProductID_Active");
+            entity.HasIndex(e => e.ProductId, "IX_ProductPromotions_ProductID_Active");
 
             entity.HasIndex(e => e.PromotionId, "IX_ProductPromotions_PromotionID");
 
@@ -1669,7 +1669,6 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
             entity.Property(e => e.DiscountPercent).HasColumnType("decimal(5, 2)");
-            entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.Property(e => e.SalePrice).HasColumnType("decimal(12, 2)");
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
@@ -1765,17 +1764,16 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.HasIndex(e => new { e.TimeSlotId, e.ProductId }, "UQ_PromotionProductSlots_SlotProduct").IsUnique();
 
             // Tra cứu sản phẩm flash-sale đang active theo slot
-            entity.HasIndex(e => new { e.TimeSlotId, e.IsActive }, "IX_PromotionProductSlots_Slot_Active");
+            entity.HasIndex(e => e.TimeSlotId, "IX_PromotionProductSlots_Slot_Active");
 
             // Tra cứu ngược: sản phẩm đang tham gia slot nào
-            entity.HasIndex(e => new { e.ProductId, e.IsActive }, "IX_PromotionProductSlots_Product");
+            entity.HasIndex(e => e.ProductId, "IX_PromotionProductSlots_Product");
 
             entity.Property(e => e.SlotProductId).HasColumnName("SlotProductID");
             entity.Property(e => e.TimeSlotId).HasColumnName("TimeSlotID");
             entity.Property(e => e.ProductId).HasColumnName("ProductID");
             entity.Property(e => e.SalePrice).HasColumnType("decimal(12, 2)");
             entity.Property(e => e.DiscountPercent).HasColumnType("decimal(5, 2)");
-            entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.Property(e => e.SoldQuantity).HasDefaultValue(0);
             entity.Property(e => e.ReservedQuantity).HasDefaultValue(0);
             entity.Property(e => e.CreatedAt)

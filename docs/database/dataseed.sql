@@ -1,4 +1,3 @@
-
 /* =================================================================
    DataSeed FULL v5.3 – SEP490_ToyStore
    Cập nhật theo Schema v3.2
@@ -13,7 +12,6 @@
    [NEW-36] ReviewModerationLogs     – log kiểm duyệt AI + Staff
    [NEW-37] CampaignApprovalLogs     – lịch sử duyệt chiến dịch
    [NEW-39] DeliveryActions          – hành động đọc/click thông báo
-   [NEW-41] ChatConversations        – phiên hội thoại chatbot
             ChatMessages             – tin nhắn trong phiên hội thoại
    [NEW-42] Interaction.Events       – sự kiện hành vi người dùng
    [NEW-43] Recommendation.Widgets  – cấu hình widget gợi ý
@@ -181,11 +179,13 @@ SET IDENTITY_INSERT [dbo].[Brands] OFF;
 SET IDENTITY_INSERT [dbo].[PriceRanges] ON;
 IF NOT EXISTS (SELECT 1 FROM [dbo].[PriceRanges] WHERE PriceRangeID = 1)
     INSERT INTO [dbo].[PriceRanges] (PriceRangeID, PriceRangeMin, PriceRangeMax, CreatedAt) VALUES
-    (1,       0,   199000,'2024-01-05 08:00:00'),
-    (2,  200000,   499000,'2024-01-05 08:00:00'),
-    (3,  500000,   999000,'2024-01-05 08:00:00'),
-    (4, 1000000,  4999000,'2024-01-05 08:00:00'),
-    (5, 5000000, 99999000,'2024-01-05 08:00:00');
+    (1,        0,    199000,'2024-01-05 08:00:00'),  -- 0 - 199K
+    (2,   200000,    499000,'2024-01-05 08:00:00'),  -- 200K - 499K
+    (3,   500000,    999000,'2024-01-05 08:00:00'),  -- 500K - 999K
+    (4,  1000000,   1999000,'2024-01-05 08:00:00'),  -- 1M - 1.999M
+    (5,  2000000,   4999000,'2024-01-05 08:00:00'),  -- 2M - 4.999M
+    (6,  5000000,   9999000,'2024-01-05 08:00:00'),  -- 5M - 9.999M
+    (7, 10000000, 999999000,'2024-01-05 08:00:00');  -- 10M+
 SET IDENTITY_INSERT [dbo].[PriceRanges] OFF;
 
 SET IDENTITY_INSERT [dbo].[StatusOrders] ON;
@@ -214,63 +214,6 @@ SET IDENTITY_INSERT [dbo].[ReactionTypes] OFF;
 GO
 
 /* ══════════════════════════════════════════════════════════════
-   SECTION 6 – PROVINCES / DISTRICTS / WARDS
-══════════════════════════════════════════════════════════════ */
-PRINT N'[6] Provinces, Districts, Wards...';
-IF NOT EXISTS (SELECT 1 FROM [dbo].[Provinces] WHERE ProvinceId = 1)
-    INSERT INTO [dbo].[Provinces] (ProvinceId, ProvinceName, ProvinceCode, IsActive) VALUES
-    (1, N'TP. Hồ Chí Minh', 'HCM', 1),
-    (2, N'Hà Nội',          'HNI', 1),
-    (3, N'Đà Nẵng',        'DNG', 1),
-    (4, N'Cần Thơ',        'CTH', 1),
-    (5, N'Bình Dương',     'BDG', 1);
-
-IF NOT EXISTS (SELECT 1 FROM [dbo].[Districts] WHERE DistrictId = 101)
-    INSERT INTO [dbo].[Districts] (DistrictId, ProvinceId, DistrictName, IsActive) VALUES
-    (101, 1, N'Quận 1',      1),(102, 1, N'Quận 3',      1),(103, 1, N'Quận 5',      1),
-    (104, 1, N'Quận 7',      1),(105, 1, N'Thủ Đức',    1),(201, 2, N'Hoàn Kiếm',  1),
-    (202, 2, N'Đống Đa',    1),(203, 2, N'Thanh Xuân',  1),(204, 2, N'Cầu Giấy',   1),
-    (205, 2, N'Hà Đông',    1),(301, 3, N'Hải Châu',    1),(302, 3, N'Sơn Trà',    1),
-    (401, 4, N'Ninh Kiều',  1),(501, 5, N'Thuận An',    1);
-
-IF NOT EXISTS (SELECT 1 FROM [dbo].[Wards] WHERE WardCode = 'W10101')
-    INSERT INTO [dbo].[Wards] (WardCode, DistrictId, WardName, IsActive) VALUES
-    ('W10101',101,N'Phường Bến Nghé',          1),('W10102',101,N'Phường Đa Kao',            1),
-    ('W10201',102,N'Phường Võ Thị Sáu',       1),('W10301',103,N'Phường Nguyễn Cư Trinh',   1),
-    ('W10401',104,N'Phường Tân Phú',          1),('W10501',105,N'Phường Linh Chiểu',       1),
-    ('W20101',201,N'Phường Hoàn Kiếm',        1),('W20201',202,N'Phường Văn Miếu',         1),
-    ('W20301',203,N'Phường Nhân Chính',       1),('W20401',204,N'Phường Dịch Vọng',        1),
-    ('W20501',205,N'Phường Mộ Lao',          1),('W30101',301,N'Phường Hải Châu 1',      1),
-    ('W40101',401,N'Phường An Hòa',          1),('W50101',501,N'Phường An Phú',          1);
-GO
-
-/* ══════════════════════════════════════════════════════════════
-   SECTION 7 – ADDRESSES
-══════════════════════════════════════════════════════════════ */
-PRINT N'[7] Addresses...';
-IF NOT EXISTS (SELECT 1 FROM [dbo].[Addresses])
-BEGIN
-    DECLARE @addrData TABLE (Email VARCHAR(100), AddressLine NVARCHAR(500),
-        WardCode VARCHAR(20), DistrictId INT, ProvinceId INT, IsDefault BIT);
-    INSERT INTO @addrData VALUES
-    ('lananh.pham@gmail.com',  N'72 Lê Lợi, P. Bến Nghé',          'W10101',101,1,1),
-    ('lananh.pham@gmail.com',  N'12 Nguyễn Huệ, P. Đa Kao',         'W10102',101,1,0),
-    ('hung.nguyen88@gmail.com',N'15 Trần Phú, P. Mộ Lao',           'W20501',205,2,1),
-    ('bauchau.vu@gmail.com',   N'88 Nguyễn Trãi, P. Nhân Chính',    'W20301',203,2,1),
-    ('mtuando@outlook.com',    N'34 Đinh Tiên Hoàng, P. Đa Kao',    'W10102',101,1,1),
-    ('thuha.hoang@gmail.com',  N'120 Lê Văn Lương, P. Nhân Chính',  'W20301',203,2,1);
-
-    INSERT INTO [dbo].[Addresses]
-        (AccountID, RecipientName, PhoneNumber, AddressLine,
-         WardCode, DistrictId, ProvinceId, IsDefault, CreatedAt)
-    SELECT a.AccountID, a.AccountName, a.PhoneNumber,
-           d.AddressLine, d.WardCode, d.DistrictId, d.ProvinceId, d.IsDefault, GETDATE()
-    FROM Accounts a
-    JOIN @addrData d ON a.Email = d.Email;
-END
-GO
-
-/* ══════════════════════════════════════════════════════════════
    SECTION 8 – PRODUCTS (30 sản phẩm)
 ══════════════════════════════════════════════════════════════ */
 PRINT N'[8] Products...';
@@ -280,7 +223,7 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[Products] WHERE ProductID = 1)
         (ProductID,ProductName,Price,Quantity,ProductStatus,CategoryID,BrandID,PriceRangeID,StockThreshold,CreatedAt)
     VALUES
     ( 1,N'Lego City Trạm Cảnh Sát Trung Tâm 668 Mảnh',        1290000, 45,'Active', 1,1,4,10,'2024-02-01 08:00:00'),
-    ( 2,N'Lego Technic Siêu Xe Bugatti Chiron 3599 Mảnh',      5990000,  8,'Active', 1,1,5, 3,'2024-02-03 08:00:00'),
+    ( 2,N'Lego Technic Siêu Xe Bugatti Chiron 3599 Mảnh',      5990000,  8,'Active', 1,1,6, 3,'2024-02-03 08:00:00'),
     ( 3,N'Lego Friends Nhà Nghỉ Dưỡng Malia 699 Mảnh',        1590000, 22,'Active', 1,1,4, 5,'2024-02-05 08:00:00'),
     ( 4,N'Bộ Xếp Hình Gỗ Phương Tiện Giao Thông 36 Khối',      420000,180,'Active', 2,5,2,20,'2024-02-08 08:00:00'),
     ( 5,N'Xếp Hình Gỗ Bảng Chữ Cái 52 Khối Màu Sắc',          350000,200,'Active', 2,5,2,30,'2024-02-10 08:00:00'),
@@ -459,18 +402,18 @@ BEGIN
     DECLARE @pSale INT = (SELECT TOP 1 PromotionID FROM Promotions WHERE PromotionName=N'Sale Hè Rực Rỡ 2026');
     DECLARE @pBTS  INT = (SELECT TOP 1 PromotionID FROM Promotions WHERE PromotionName=N'Back To School 2026');
     INSERT INTO [dbo].[ProductPromotions]
-        (ProductID,PromotionID,SalePrice,DiscountPercent,SaleQuantity,SoldQuantity,ReservedQuantity,IsActive,CreatedAt)
+        (ProductID,PromotionID,SalePrice,DiscountPercent,SaleQuantity,SoldQuantity,ReservedQuantity,CreatedAt)
     VALUES
-    ( 1,@pSale,1099000,14.88,30, 8,0,1,'2026-03-20 02:00:00'),
-    ( 2,@pSale,4990000,16.69, 5, 1,0,1,'2026-03-20 02:00:00'),
-    ( 3,@pSale,1290000,18.87,15, 3,0,1,'2026-03-20 02:00:00'),
-    (11,@pSale, 449000,17.61,20, 5,0,1,'2026-03-20 02:00:00'),
-    (17,@pSale, 699000,16.79,15, 4,0,1,'2026-03-20 02:00:00'),
-    (20,@pSale, 299000,16.71,30, 9,0,1,'2026-03-20 02:00:00'),
-    ( 6,@pBTS,   69000,18.82,NULL,0,0,1,'2026-07-01 02:00:00'),
-    ( 7,@pBTS,  149000,18.92,NULL,0,0,1,'2026-07-01 02:00:00'),
-    (29,@pBTS,   70000,20.45,NULL,0,0,1,'2026-07-01 02:00:00'),
-    ( 8,@pBTS,  299000,20.27,NULL,0,0,1,'2026-07-01 02:00:00');
+    ( 1,@pSale,1099000,14.88,30, 8,0,'2026-03-20 02:00:00'),
+    ( 2,@pSale,4990000,16.69, 5, 1,0,'2026-03-20 02:00:00'),
+    ( 3,@pSale,1290000,18.87,15, 3,0,'2026-03-20 02:00:00'),
+    (11,@pSale, 449000,17.61,20, 5,0,'2026-03-20 02:00:00'),
+    (17,@pSale, 699000,16.79,15, 4,0,'2026-03-20 02:00:00'),
+    (20,@pSale, 299000,16.71,30, 9,0,'2026-03-20 02:00:00'),
+    ( 6,@pBTS,   69000,18.82,NULL,0,0,'2026-07-01 02:00:00'),
+    ( 7,@pBTS,  149000,18.92,NULL,0,0,'2026-07-01 02:00:00'),
+    (29,@pBTS,   70000,20.45,NULL,0,0,'2026-07-01 02:00:00'),
+    ( 8,@pBTS,  299000,20.27,NULL,0,0,'2026-07-01 02:00:00');
 END
 GO
 
@@ -485,15 +428,15 @@ BEGIN
     DECLARE @s3 INT=(SELECT TOP 1 TimeSlotID FROM PromotionTimeSlots WHERE StartAt='2026-05-05 02:00:00');
     DECLARE @s4 INT=(SELECT TOP 1 TimeSlotID FROM PromotionTimeSlots WHERE StartAt='2026-05-05 13:00:00');
     INSERT INTO [dbo].[PromotionProductSlots]
-        (TimeSlotID,ProductID,SalePrice,DiscountPercent,SaleQuantity,SoldQuantity,ReservedQuantity,IsActive,CreatedAt)
+        (TimeSlotID,ProductID,SalePrice,DiscountPercent,SaleQuantity,SoldQuantity,ReservedQuantity,CreatedAt)
     VALUES
-    (@s1,24,197000,50.13,10,0,0,1,'2026-04-15 03:00:00'),
-    (@s1,13, 39000,54.12,50,0,0,1,'2026-04-15 03:00:00'),
-    (@s2,17,420000,50.00,12,0,0,1,'2026-04-15 03:00:00'),
-    (@s3, 1,645000,50.00,20,0,0,1,'2026-04-15 03:00:00'),
-    (@s3,20,179000,50.14,30,0,0,1,'2026-04-15 03:00:00'),
-    (@s4, 2,2995000,50.00,5,0,0,1,'2026-04-15 03:00:00'),
-    (@s4,29, 40000,54.55,100,0,0,1,'2026-04-15 03:00:00');
+    (@s1,24,197000,50.13,10,0,0,'2026-04-15 03:00:00'),
+    (@s1,13, 39000,54.12,50,0,0,'2026-04-15 03:00:00'),
+    (@s2,17,420000,50.00,12,0,0,'2026-04-15 03:00:00'),
+    (@s3, 1,645000,50.00,20,0,0,'2026-04-15 03:00:00'),
+    (@s3,20,179000,50.14,30,0,0,'2026-04-15 03:00:00'),
+    (@s4, 2,2995000,50.00,5,0,0,'2026-04-15 03:00:00'),
+    (@s4,29, 40000,54.55,100,0,0,'2026-04-15 03:00:00');
 END
 GO
 
@@ -790,7 +733,7 @@ BEGIN
     SELECT AccountID, GETDATE() FROM Accounts WHERE RoleID=1;
 
     INSERT INTO [dbo].[CartItems]
-        (CartID,ProductID,Quantity,PriceAtThatTime,CurrentPrice,IsSelected,AddedAt)
+        (CartID,ProductID,Quantity,PriceAtThatTime,CurrentPrice,AddedAt)
     SELECT c.CartID, v.ProductID, v.Qty, v.Pr, v.Pr, 1, GETDATE()
     FROM Cart c
     JOIN Accounts a ON a.AccountID=c.AccountID
@@ -1022,9 +965,9 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[ShiftTemplates] WHERE ShiftTemplateID=1)
     INSERT INTO [dbo].[ShiftTemplates]
         (ShiftTemplateID,ShiftName,StartTime,EndTime,MaxOrdersPerShift,IsActive,CreatedAt)
     VALUES
-    (1,N'Ca Sáng', '07:00:00','12:00:00',25,1,'2026-01-01 08:00:00'),
-    (2,N'Ca Chiều','12:00:00','17:00:00',25,1,'2026-01-01 08:00:00'),
-    (3,N'Ca Tối',  '17:00:00','22:00:00',20,1,'2026-01-01 08:00:00');
+    (1,N'Morning Shift', '07:00:00','12:00:00',20,1,'2026-01-01 08:00:00'),
+    (2,N'Afternoon Shift','12:00:00','17:00:00',25,1,'2026-01-01 08:00:00'),
+    (3,N'Evening Shift',  '17:00:00','22:00:00',25,1,'2026-01-01 08:00:00');
 SET IDENTITY_INSERT [dbo].[ShiftTemplates] OFF;
 GO
 
@@ -1072,10 +1015,10 @@ END
 GO
 
 /* [FIX-01] StaffShiftCapacity:
-   Trigger đã INSERT row khi WorkSchedules được tạo.
-   Chỉ UPDATE CurrentLoad để phản ánh đúng trạng thái ca.
-   CurrentLoad = MaxLoad khi Completed, MaxLoad/2 khi OnDuty, 0 khi Scheduled. */
-PRINT N'[33-FIX] StaffShiftCapacity – UPDATE CurrentLoad (trigger đã tạo rows)...';
+   Rows were already INSERTed by the trigger when WorkSchedules was created.
+   Only UPDATE CurrentLoad to reflect the correct shift status.
+   CurrentLoad = MaxLoad when Completed, MaxLoad/2 when OnDuty, 0 when Scheduled. */
+PRINT N'[33-FIX] StaffShiftCapacity – UPDATE CurrentLoad (rows already created by trigger)...';
 UPDATE ssc
 SET
     ssc.CurrentLoad = CASE ws.Status
@@ -1131,37 +1074,97 @@ GO
 PRINT N'[35] Notification Templates, Campaigns, Deliveries...';
 BEGIN TRY
     BEGIN TRAN;
-
     DECLARE @Tpl TABLE (
         TemplateCode    VARCHAR(50)   NOT NULL PRIMARY KEY,
         UsageScope      VARCHAR(10)   NOT NULL,
         TitleTemplate   NVARCHAR(255) NOT NULL,
         MessageTemplate NVARCHAR(500) NOT NULL
     );
-
     INSERT INTO @Tpl VALUES
-    ('ORDER_PLACED',          'SYSTEM', N'Đặt hàng thành công',           N'Đơn hàng {{OrderCode}} đã được ghi nhận.'),
-    ('ORDER_CONFIRMED',       'SYSTEM', N'Đơn hàng {{OrderCode}} đã xác nhận', N'Shop đã xác nhận và đang chuẩn bị hàng.'),
-    ('ORDER_SHIPPING',        'SYSTEM', N'Đơn hàng đang trên đường giao', N'Đơn {{OrderCode}} đã bàn giao cho shipper.'),
-    ('ORDER_DELIVERED',       'SYSTEM', N'Giao hàng thành công',          N'Đơn {{OrderCode}} đã giao. Đừng quên đánh giá!'),
-    ('ORDER_CANCELLED',       'SYSTEM', N'Đơn hàng đã hủy',               N'Đơn {{OrderCode}} đã bị hủy. Lý do: {{CancelReason}}.'),
-    ('PAYMENT_SUCCESS',       'SYSTEM', N'Thanh toán thành công',         N'Bạn đã thanh toán {{Amount}} cho đơn {{OrderCode}}.'),
-    ('PAYMENT_FAILED',        'SYSTEM', N'Thanh toán thất bại',           N'Thanh toán đơn {{OrderCode}} không thành công.'),
-    ('WALLET_TOPUP',          'SYSTEM', N'Nạp ví thành công',             N'Ví đã được nạp {{Amount}}. Số dư: {{Balance}}.'),
-    ('WALLET_REFUND',         'SYSTEM', N'Hoàn tiền vào ví',              N'Hoàn {{Amount}} từ đơn {{OrderCode}} vào ví.'),
-    ('PRODUCT_BACK_IN_STOCK', 'SYSTEM', N'{{ProductName}} có hàng trở lại',N'Sản phẩm bạn quan tâm đã có hàng!'),
-    ('REVIEW_STAFF_REPLIED',  'SYSTEM', N'Phản hồi đánh giá {{ProductName}}', N'Nhân viên vừa phản hồi đánh giá của bạn.'),
-    ('STAFF_NEW_ORDER',       'SYSTEM', N'Đơn mới: {{OrderCode}}',        N'Đơn {{OrderCode}} cần xử lý.'),
-    ('MERCH_LOW_STOCK',       'SYSTEM', N'Cảnh báo sắp hết hàng',        N'Chỉ còn {{Quantity}} sản phẩm {{ProductName}}.'),
-    ('FLASH_SALE_STARTED',    'ADMIN',  N'⚡ {{PromotionName}} đã bắt đầu!',N'Flash sale từ {{StartDate}} đến {{EndDate}}. Mua ngay!'),
-    ('VOUCHER_NEW',           'ADMIN',  N'🎁 Bạn nhận voucher {{VoucherCode}}', N'Mã {{VoucherCode}} giảm {{DiscountValue}}. HSD: {{ExpiryDate}}!'),
-    ('BIRTHDAY_CUSTOMER',     'ADMIN',  N'🎂 Chúc mừng sinh nhật {{CustomerName}}!', N'ToyHouse có quà đặc biệt dành cho bạn!');
+    -- Orders (Customer)
+    ('ORDER_PLACED',             'SYSTEM', N'Order Placed Successfully',                    N'Order {{OrderCode}} ({{TotalAmount}} VND) has been recorded.'),
+    ('ORDER_CONFIRMED',          'SYSTEM', N'Order {{OrderCode}} Confirmed',                N'The shop has confirmed and is preparing your items.'),
+    ('ORDER_PACKING',            'SYSTEM', N'Order {{OrderCode}} Is Being Packed',          N'Your order {{OrderCode}} is currently being carefully packed by our staff.'),
+    ('ORDER_SHIPPING',           'SYSTEM', N'Your Order Is On Its Way',                    N'Order {{OrderCode}} has been handed off to shipper {{ShipperName}}. Please keep your phone nearby.'),
+    ('ORDER_DELIVERED',          'SYSTEM', N'Order Delivered Successfully',                 N'Order {{OrderCode}} has been delivered. Don''t forget to leave a review!'),
+    ('ORDER_CANCELLED',          'SYSTEM', N'Order Cancelled',                             N'Order {{OrderCode}} has been cancelled. Reason: {{CancelReason}}.'),
+    ('ORDER_DELIVERY_FAILED',    'SYSTEM', N'Delivery Failed',                             N'Delivery for order {{OrderCode}} was unsuccessful. Please contact customer support.'),
+    ('ORDER_ASSIGNED',           'SYSTEM', N'Order Assigned: {{OrderCode}}',               N'Order {{OrderCode}} from {{CustomerName}} has been assigned to you. Total: {{TotalAmount}}. Please process it during your current shift.'),
+    
+    -- Payment & Wallet
+    ('PAYMENT_SUCCESS',          'SYSTEM', N'Payment Successful',                          N'You have paid {{Amount}} VND for order {{OrderCode}}.'),
+    ('PAYMENT_FAILED',           'SYSTEM', N'Payment Failed',                              N'Payment for order {{OrderCode}} was unsuccessful.'),
+    ('WALLET_TOPUP',             'SYSTEM', N'Wallet Top-Up Successful',                    N'Your wallet has been topped up with {{Amount}}. Balance: {{Balance}}.'),
+    ('WALLET_REFUND',            'SYSTEM', N'Refund to Wallet',                            N'{{Amount}} VND from order {{OrderCode}} has been refunded to your wallet.'),
+    ('REFUND_APPROVED',          'SYSTEM', N'Refund Request Approved',                     N'Your refund request for order {{OrderCode}} has been approved. {{Amount}} VND will be credited to your wallet.'),
+    ('REFUND_REJECTED',          'SYSTEM', N'Refund Request Rejected',                     N'Your refund request for order {{OrderCode}} has been rejected. Please contact customer support if you need assistance.'),
+    ('REFUND_COMPLETED',         'SYSTEM', N'Refund Completed',                            N'{{Amount}} VND from order {{OrderCode}} has been successfully refunded to your wallet.'),
+    
+    -- Products & Inventory
+    ('PRODUCT_BACK_IN_STOCK',    'SYSTEM', N'{{ProductName}} Is Back in Stock',            N'Good news! {{ProductName}} is now back in stock at {{Price}}. Shop before it runs out!'),
+    ('WISHLIST_PRICE_DROP',      'SYSTEM', N'Price Drop on {{ProductName}}',               N'{{ProductName}} in your wishlist is now on sale for only {{Price}}.'),
+    
+    -- Reviews & Blog
+    ('REVIEW_STAFF_REPLIED',     'SYSTEM', N'Reply to Your Review on {{ProductName}}',     N'A staff member just replied to your review.'),
+    ('BLOG_COMMENT_REPLIED',     'SYSTEM', N'Reply to Your Comment on {{BlogTitle}}',      N'Your comment on the post {{BlogTitle}} has received a new reply.'),
+    
+    -- Staff Notifications
+    ('STAFF_NEW_ORDER',          'SYSTEM', N'New Order: {{OrderCode}}',                    N'Order {{OrderCode}} ({{TotalAmount}} VND) needs to be processed.'),
+    ('STAFF_CANCEL_REQUEST',     'SYSTEM', N'Cancellation Request for Order {{OrderCode}}',N'Customer {{CustomerName}} has submitted a cancellation request for order {{OrderCode}}. Reason: {{Reason}}.'),
+    ('STAFF_REFUND_REQUEST',     'SYSTEM', N'Refund Request for Order {{OrderCode}}',      N'Customer {{CustomerName}} has requested a refund for order {{OrderCode}}.'),
+    ('STAFF_REVIEW_MODERATION',  'SYSTEM', N'New Review Pending Moderation',               N'A new {{Rating}}-star review for {{ProductName}} is awaiting your moderation.'),
+    ('STAFF_LOW_RATING',         'SYSTEM', N'Low Rating Alert',                            N'{{ProductName}} has just received a {{Rating}}-star review. Please check and take action.'),
+    ('STAFF_SHIFT_STARTED',      'SYSTEM', N'Shift {{ShiftName}} Has Started',             N'Your shift {{ShiftName}} has started. Have a productive shift!'),
+    
+    -- Merchandise Notifications
+    ('MERCH_READY_TO_PACK',      'SYSTEM', N'Order Ready for Packing',                     N'Order {{OrderCode}} is ready to be packed.'),
+    ('MERCH_PICKED_UP',          'SYSTEM', N'Parcel Picked Up by Shipper',                 N'The shipper has successfully picked up the parcel for order {{OrderCode}}.'),
+    ('MERCH_RETURNED',           'SYSTEM', N'Return Received at Warehouse',                N'Order {{OrderCode}} has been returned to the warehouse.'),
+    ('MERCH_LOW_STOCK',          'SYSTEM', N'Low Stock Warning',                           N'Only {{Quantity}} units of {{ProductName}} remaining.'),
+    ('MERCH_OUT_OF_STOCK',       'SYSTEM', N'Out of Stock Alert',                          N'{{ProductName}} is completely out of stock in the warehouse.'),
+    
+    -- Admin Notifications
+    ('ADMIN_PAYMENT_ERROR',      'SYSTEM', N'Payment Gateway Error',                       N'Payment gateway {{GatewayName}} reported an error: {{ErrorMessage}}.'),
+    ('ADMIN_JOB_FAILED',         'SYSTEM', N'Background Job Failed',                       N'Background Job {{JobName}} has failed. Please check the logs.'),
+    ('ADMIN_OUTBOX_STUCK',       'SYSTEM', N'Outbox Event Stuck',                          N'Outbox event {{EventType}} ({{EventId}}) has reached the retry limit. Please check the logs.'),
+    ('ADMIN_SHIPPING_ERROR',     'SYSTEM', N'Shipping Sync Error',                         N'Error syncing shipping status for order {{OrderCode}}: {{ErrorMessage}}.'),
+    ('ADMIN_DAMAGE_LOST',        'SYSTEM', N'Damaged or Lost Shipment',                    N'Order {{OrderCode}} has been reported as damaged or lost during delivery.'),
+    ('ADMIN_BLOG_PENDING',       'SYSTEM', N'Blog Post Pending Approval: {{BlogTitle}}',   N'The post {{BlogTitle}} has been submitted and is awaiting your approval.'),
+    ('ADMIN_ORDER_QUEUED',       'SYSTEM', N'Order {{OrderCode}} Awaiting Assignment',     N'Order {{OrderCode}} has not been assigned due to: {{Reason}}. Please handle manually.'),
+    ('ADMIN_SHIFT_ENDED_PENDING','SYSTEM', N'Shift {{ShiftName}} Ended with Pending Orders',N'Shift {{ShiftName}} (Staff #{{AccountId}}) has ended with {{CurrentLoad}} orders still in progress.'),
+    
+    -- Admin / Marketing
+    ('FLASH_SALE_STARTED',       'ADMIN',  N'⚡ {{PromotionName}} Has Started!',           N'Flash sale runs from {{StartDate}} to {{EndDate}}. Shop now!'),
+    ('VOUCHER_NEW',              'ADMIN',  N'🎁 You''ve Received Voucher {{VoucherCode}}', N'Code {{VoucherCode}} gives {{DiscountValue}} off ({{DiscountType}}). Expires: {{ExpiryDate}}!'),
+    ('VOUCHER_EXPIRING',         'ADMIN',  N'⏰ Voucher {{VoucherCode}} Is Expiring Soon!',N'Don''t miss out on code {{VoucherCode}} ({{DiscountValue}} off). It expires on {{ExpiryDate}}. Use it now!'),
+    ('BIRTHDAY_CUSTOMER',        'SYSTEM', N'🎂 Happy Birthday, {{CustomerName}}!',        N'ToyHouse has a special gift just for you!'),
+    ('BIRTHDAY_CHILD',           'SYSTEM', N'🎂 Happy Birthday, {{ChildName}}!',           N'ToyStore wishes {{ChildName}} health and joy. Pick out their favorite toy today!'),
+    
+    ('BLOG_CAMPAIGN_NEW_POST',     'ADMIN', N'📝 New Post: {{BlogTitle}}',                 N'A new blog post "{{BlogTitle}}" has just been published. Read it now and share your thoughts!'),
+    ('BLOG_CAMPAIGN_FEATURED',     'ADMIN', N'⭐ Featured This Week: {{BlogTitle}}',        N'"{{BlogTitle}}" has been selected as our featured post this week. Don''t miss it!'),
+    ('BLOG_CAMPAIGN_WEEKLY_DIGEST','ADMIN', N'📰 ToyHouse Weekly Digest',                  N'This week''s highlights are now available. Tap to explore!'),
+    ('BLOG_CAMPAIGN_TOPIC_ALERT',  'ADMIN', N'🔔 New Posts in "{{CategoryName}}"',         N'There are new posts in the "{{CategoryName}}" category you follow. Check them out!');
 
+    -- Insert only templates that do not already exist
     INSERT INTO [Notification].[Templates]
         ([TemplateCode],[UsageScope],[TitleTemplate],[MessageTemplate],[IsActive],[IsDeleted],[CreatedAt])
-    SELECT t.TemplateCode,t.UsageScope,t.TitleTemplate,t.MessageTemplate,1,0,GETDATE()
+    SELECT t.TemplateCode, t.UsageScope, t.TitleTemplate, t.MessageTemplate, 1, 0, GETDATE()
     FROM @Tpl t
-    WHERE NOT EXISTS (SELECT 1 FROM [Notification].[Templates] db WHERE db.TemplateCode=t.TemplateCode);
+    WHERE NOT EXISTS (
+        SELECT 1 FROM [Notification].[Templates] db
+        WHERE db.TemplateCode = t.TemplateCode
+    );
+
+    -- Re-activate any templates that were soft-deactivated and Update Message if they exist
+    UPDATE db
+    SET 
+        db.IsActive = 1, 
+        db.IsDeleted = 0,
+        db.TitleTemplate = t.TitleTemplate,
+        db.MessageTemplate = t.MessageTemplate,
+        db.UpdatedAt = GETDATE()
+    FROM [Notification].[Templates] db
+    JOIN @Tpl t ON t.TemplateCode = db.TemplateCode;
 
     COMMIT TRAN;
     PRINT N'✅ Notification templates: OK';
@@ -1173,59 +1176,110 @@ BEGIN CATCH
 END CATCH
 GO
 
-DECLARE @admCamp INT=(SELECT TOP 1 AccountID FROM Accounts WHERE Email='admin@toyhouse.vn');
+
+-- ============================================================
+-- Campaigns
+-- ============================================================
+DECLARE @admCamp INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'admin@toyhouse.vn');
+
 IF NOT EXISTS (SELECT 1 FROM [Notification].[Campaigns])
     INSERT INTO [Notification].[Campaigns]
-        (CampaignName,TemplateCode,SourceType,TargetType,Status,
-         CreatedByAccountID,IsDeleted,CreatedAt)
+        (CampaignName, TemplateCode, SourceType, TargetType, Status,
+         CreatedByAccountID, IsDeleted, CreatedAt)
     VALUES
-    (N'Thông Báo Sale Hè 2026',        'FLASH_SALE_STARTED','ADMIN','ALL',  'Sent',@admCamp,0,'2026-03-28 08:00:00'),
-    (N'Gửi Voucher Welcome Khách Mới', 'VOUCHER_NEW',       'ADMIN','ALL',  'Sent',@admCamp,0,'2026-01-01 08:00:00'),
-    (N'Nhắc Đánh Giá Sau Giao Hàng',  'ORDER_DELIVERED',   'SYSTEM','INDIVIDUAL','Sent',NULL,0,'2026-04-01 00:00:00');
+    (N'Summer Sale 2026 Announcement',     'FLASH_SALE_STARTED', 'ADMIN',  'ALL',        'Sent', @admCamp, 0, '2026-03-28 08:00:00'),
+    (N'Welcome Voucher for New Customers', 'VOUCHER_NEW',        'ADMIN',  'ALL',        'Sent', @admCamp, 0, '2026-01-01 08:00:00'),
+    (N'Post-Delivery Review Reminder',     'ORDER_DELIVERED',    'SYSTEM', 'INDIVIDUAL', 'Sent', NULL,     0, '2026-04-01 00:00:00');
 GO
 
+-- ============================================================
+-- Campaign Stats
+-- ============================================================
 IF NOT EXISTS (SELECT 1 FROM [Notification].[CampaignStats])
-    INSERT INTO [Notification].[CampaignStats] (CampaignID,TotalSent,TotalRead,TotalClicked,ComputedAt)
-    SELECT CampaignID,
-           CASE CampaignName WHEN N'Thông Báo Sale Hè 2026' THEN 5 WHEN N'Gửi Voucher Welcome Khách Mới' THEN 5 ELSE 4 END,
-           CASE CampaignName WHEN N'Thông Báo Sale Hè 2026' THEN 4 WHEN N'Gửi Voucher Welcome Khách Mới' THEN 4 ELSE 3 END,
-           CASE CampaignName WHEN N'Thông Báo Sale Hè 2026' THEN 2 WHEN N'Gửi Voucher Welcome Khách Mới' THEN 3 ELSE 2 END,
-           GETDATE()
+    INSERT INTO [Notification].[CampaignStats]
+        (CampaignID, TotalSent, TotalRead, TotalClicked, ComputedAt)
+    SELECT
+        CampaignID,
+        CASE CampaignName
+            WHEN N'Summer Sale 2026 Announcement'     THEN 5
+            WHEN N'Welcome Voucher for New Customers' THEN 5
+            ELSE 4
+        END,
+        CASE CampaignName
+            WHEN N'Summer Sale 2026 Announcement'     THEN 4
+            WHEN N'Welcome Voucher for New Customers' THEN 4
+            ELSE 3
+        END,
+        CASE CampaignName
+            WHEN N'Summer Sale 2026 Announcement'     THEN 2
+            WHEN N'Welcome Voucher for New Customers' THEN 3
+            ELSE 2
+        END,
+        GETDATE()
     FROM [Notification].[Campaigns];
 GO
 
-DECLARE @cmpSale INT=(SELECT TOP 1 CampaignID FROM [Notification].[Campaigns] WHERE CampaignName=N'Thông Báo Sale Hè 2026');
-DECLARE @cmpRv   INT=(SELECT TOP 1 CampaignID FROM [Notification].[Campaigns] WHERE CampaignName=N'Nhắc Đánh Giá Sau Giao Hàng');
+-- ============================================================
+-- Deliveries
+-- ============================================================
+DECLARE @cmpSale INT = (SELECT TOP 1 CampaignID FROM [Notification].[Campaigns] WHERE CampaignName = N'Summer Sale 2026 Announcement');
+DECLARE @cmpRv   INT = (SELECT TOP 1 CampaignID FROM [Notification].[Campaigns] WHERE CampaignName = N'Post-Delivery Review Reminder');
 
+-- Order placed notifications
 INSERT INTO [Notification].[Deliveries]
-    (AccountID,CampaignID,TemplateCode,RecipientType,NotificationType,
-     Title,Message,Payload,Status,IdempotencyKey,CreatedAt)
-SELECT o.AccountID,@cmpSale,'ORDER_PLACED','CUSTOMER','ORDER',
-    N'Đặt hàng thành công',
-    N'Đơn hàng '+o.OrderCode+N' đã được xác nhận. Chúng mình đang chuẩn bị hàng!',
-    '{"orderId":'+CAST(o.OrderID AS VARCHAR)+',"orderCode":"'+o.OrderCode+'"}',
-    'Unread','DLV-'+o.OrderCode, o.OrderDate
+    (AccountID, CampaignID, TemplateCode, RecipientType, NotificationType,
+     Title, Message, Payload, Status, IdempotencyKey, CreatedAt)
+SELECT
+    o.AccountID,
+    @cmpSale,
+    'ORDER_PLACED',
+    'CUSTOMER',
+    'ORDER',
+    N'Order Placed Successfully',
+    N'Order ' + o.OrderCode + N' has been confirmed. We are preparing your items!',
+    '{"orderId":' + CAST(o.OrderID AS VARCHAR) + ',"orderCode":"' + o.OrderCode + '"}',
+    'Unread',
+    'DLV-' + o.OrderCode,
+    o.OrderDate
 FROM Orders o
-WHERE NOT EXISTS (SELECT 1 FROM [Notification].[Deliveries] d WHERE d.IdempotencyKey='DLV-'+o.OrderCode);
+WHERE NOT EXISTS (
+    SELECT 1 FROM [Notification].[Deliveries] d
+    WHERE d.IdempotencyKey = 'DLV-' + o.OrderCode
+);
 
+-- Post-delivery review reminder notifications
 INSERT INTO [Notification].[Deliveries]
-    (AccountID,CampaignID,TemplateCode,RecipientType,NotificationType,
-     Title,Message,Payload,Status,IdempotencyKey,CreatedAt)
-SELECT o.AccountID,@cmpRv,'ORDER_DELIVERED','CUSTOMER','ORDER',
-    N'Đánh giá sản phẩm nhận xu thưởng!',
-    N'Đơn hàng '+o.OrderCode+N' đã giao thành công. Đánh giá ngay để nhận 50 xu!',
-    '{"orderId":'+CAST(o.OrderID AS VARCHAR)+',"orderCode":"'+o.OrderCode+'"}',
-    'Unread','DLV-RV-'+o.OrderCode, DATEADD(DAY,1,o.DeliveredAt)
+    (AccountID, CampaignID, TemplateCode, RecipientType, NotificationType,
+     Title, Message, Payload, Status, IdempotencyKey, CreatedAt)
+SELECT
+    o.AccountID,
+    @cmpRv,
+    'ORDER_DELIVERED',
+    'CUSTOMER',
+    'ORDER',
+    N'Review Your Products and Earn Reward Points!',
+    N'Order ' + o.OrderCode + N' has been successfully delivered. Leave a review now to earn 50 coins!',
+    '{"orderId":' + CAST(o.OrderID AS VARCHAR) + ',"orderCode":"' + o.OrderCode + '"}',
+    'Unread',
+    'DLV-RV-' + o.OrderCode,
+    DATEADD(DAY, 1, o.DeliveredAt)
 FROM Orders o
-WHERE o.StatusID IN (6,7) AND o.DeliveredAt IS NOT NULL
-  AND NOT EXISTS (SELECT 1 FROM [Notification].[Deliveries] d WHERE d.IdempotencyKey='DLV-RV-'+o.OrderCode);
+WHERE o.StatusID IN (6, 7)
+  AND o.DeliveredAt IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM [Notification].[Deliveries] d
+      WHERE d.IdempotencyKey = 'DLV-RV-' + o.OrderCode
+  );
 
-UPDATE d SET d.Status='Read', d.ReadAt=DATEADD(HOUR,2,d.CreatedAt)
+-- Mark delivered-order notifications as Read
+UPDATE d
+SET d.Status = 'Read',
+    d.ReadAt  = DATEADD(HOUR, 2, d.CreatedAt)
 FROM [Notification].[Deliveries] d
-JOIN Orders o ON o.OrderID=CAST(JSON_VALUE(d.Payload,'$.orderId') AS INT)
-WHERE o.StatusID IN (6,7) AND d.Status='Unread';
+JOIN Orders o ON o.OrderID = CAST(JSON_VALUE(d.Payload, '$.orderId') AS INT)
+WHERE o.StatusID IN (6, 7)
+  AND d.Status = 'Unread';
 GO
-
 /* ══════════════════════════════════════════════════════════════
    SECTION 36 – REVIEW MODERATION LOGS  [NEW]
    Ghi log kết quả kiểm duyệt tự động (AI) và thủ công (Staff)
@@ -1355,181 +1409,20 @@ END
 GO
 
 /* ══════════════════════════════════════════════════════════════
-   SECTION 41 – CHAT CONVERSATIONS & MESSAGES  [NEW]
+   SECTION 43 – RECOMMENDATION WIDGETS
 ══════════════════════════════════════════════════════════════ */
-PRINT N'[41-NEW] ChatConversations, ChatMessages...';
-IF NOT EXISTS (SELECT 1 FROM [dbo].[ChatConversations])
-BEGIN
-    /* Mỗi customer có 1 phiên chat */
-    INSERT INTO [dbo].[ChatConversations] (AccountID, SessionID, Status, CreatedAt)
-    SELECT a.AccountID,
-           'SESS-' + UPPER(LEFT(REPLACE(CAST(NEWID() AS VARCHAR(36)),'-',''),12)),
-           'BotActive',
-           DATEADD(DAY, -3, GETDATE())
-    FROM Accounts a
-    WHERE a.RoleID = 1;
-
-    /* Seed tin nhắn mẫu cho từng phiên */
-    INSERT INTO [dbo].[ChatMessages] (ConversationID, SenderType, Content, CreatedAt)
-    SELECT c.ConversationID, v.SenderType, v.Content, v.MsgAt
-    FROM ChatConversations c
-    JOIN Accounts a ON a.AccountID = c.AccountID
-    CROSS APPLY (VALUES
-        ('User',  N'Xin chào! Tôi muốn tìm đồ chơi phù hợp cho bé 5 tuổi.',          DATEADD(MINUTE,  0, c.CreatedAt)),
-        ('Bot',   N'Chào bạn! ToyHouse rất vui được hỗ trợ. Bé yêu thích loại đồ chơi nào: lắp ráp, nhân vật hay vận động?', DATEADD(MINUTE, 1, c.CreatedAt)),
-        ('User',  N'Bé thích lắp ráp và khủng long.',                                  DATEADD(MINUTE,  2, c.CreatedAt)),
-        ('Bot',   N'Tuyệt! Mình gợi ý bộ Lego City hoặc Mô Hình Khủng Long T-Rex Tỉ Lệ 1:10 – rất phù hợp cho bé 5 tuổi.', DATEADD(MINUTE, 3, c.CreatedAt))
-    ) AS v(SenderType, Content, MsgAt)
-    WHERE a.RoleID = 1;
-END
-GO
-
-/* ══════════════════════════════════════════════════════════════
-   SECTION 42 – INTERACTION EVENTS  [NEW]
-   Sự kiện hành vi người dùng: view, add_to_cart, wishlist, purchase
-══════════════════════════════════════════════════════════════ */
-PRINT N'[42-NEW] Interaction.Events...';
-IF NOT EXISTS (SELECT 1 FROM [Interaction].[Events])
-BEGIN
-    INSERT INTO [Interaction].[Events]
-        (AccountID, SessionID, EventType, EntityID, EntityType,
-         Source, DeviceType, CreatedAt)
-    SELECT a.AccountID, 'SESS-SEED-' + CAST(a.AccountID AS VARCHAR),
-           v.EventType, CAST(v.ProductID AS VARCHAR), 'Product',
-           'web', 'desktop', v.EvAt
-    FROM Accounts a
-    JOIN (VALUES
-        /* lananh xem và mua sp 1 */
-        ('lananh.pham@gmail.com', 'view',         1, '2026-02-13 09:00:00'),
-        ('lananh.pham@gmail.com', 'add_to_cart',  1, '2026-02-13 09:15:00'),
-        ('lananh.pham@gmail.com', 'purchase',      1, '2026-02-14 10:30:00'),
-        ('lananh.pham@gmail.com', 'view',          2, '2026-02-15 10:00:00'),
-        ('lananh.pham@gmail.com', 'view',         17, '2026-02-16 11:00:00'),
-        /* hung xem và mua sp 26 */
-        ('hung.nguyen88@gmail.com','view',        26, '2026-04-09 14:00:00'),
-        ('hung.nguyen88@gmail.com','add_to_cart', 26, '2026-04-09 14:20:00'),
-        ('hung.nguyen88@gmail.com','purchase',     26, '2026-04-10 08:15:00'),
-        ('hung.nguyen88@gmail.com','view',          1, '2026-04-11 10:00:00'),
-        ('hung.nguyen88@gmail.com','view',          9, '2026-03-21 09:00:00'),
-        /* bauchau xem sp 17 (đã đặt rồi hủy) */
-        ('bauchau.vu@gmail.com',  'view',         17, '2026-03-04 14:00:00'),
-        ('bauchau.vu@gmail.com',  'add_to_cart',  17, '2026-03-05 16:00:00'),
-        ('bauchau.vu@gmail.com',  'view',         18, '2026-03-10 10:00:00'),
-        /* mtuando xem và mua sp 22 */
-        ('mtuando@outlook.com',   'view',         22, '2026-02-17 08:00:00'),
-        ('mtuando@outlook.com',   'add_to_cart',  22, '2026-02-17 09:00:00'),
-        ('mtuando@outlook.com',   'purchase',      22, '2026-02-18 09:00:00'),
-        ('mtuando@outlook.com',   'view',          1, '2026-04-17 15:00:00'),
-        /* thuha xem và mua sp 20 */
-        ('thuha.hoang@gmail.com', 'view',         20, '2026-02-24 10:00:00'),
-        ('thuha.hoang@gmail.com', 'add_to_cart',  20, '2026-02-24 11:00:00'),
-        ('thuha.hoang@gmail.com', 'purchase',      20, '2026-02-25 09:00:00'),
-        ('thuha.hoang@gmail.com', 'view',         11, '2026-04-02 09:00:00')
-    ) AS v(Email, EventType, ProductID, EvAt) ON a.Email = v.Email;
-END
-GO
-
-/* ══════════════════════════════════════════════════════════════
-   SECTION 43 – RECOMMENDATION ENGINE  [NEW]
-   Widgets, TrendingProducts, UserProductScores, ItemSimilarities
-══════════════════════════════════════════════════════════════ */
-PRINT N'[43-NEW] Recommendation.Widgets...';
+PRINT N'[43] Recommendation.Widgets...';
 IF NOT EXISTS (SELECT 1 FROM [Recommendation].[Widgets])
     INSERT INTO [Recommendation].[Widgets]
-        (WidgetCode, WidgetName, Algorithm, MaxItems, FallbackAlgo, IsActive, Config, CreatedAt)
+        ([WidgetCode], [WidgetName], [Algorithm], [MaxItems], [FallbackAlgo], [IsActive])
     VALUES
-    ('HOME_TRENDING',    N'Trending trang chủ',       'trending',     10, 'popularity',   1, N'{"window_hours":24}',     GETDATE()),
-    ('HOME_POPULAR',     N'Phổ biến trang chủ',       'popularity',   12, NULL,            1, N'{"min_purchases":5}',    GETDATE()),
-    ('PRODUCT_SIMILAR',  N'Sản phẩm tương tự',        'item_cf',       8, 'content_based', 1, N'{"min_score":0.3}',      GETDATE()),
-    ('CART_CROSS_SELL',  N'Gợi ý thêm vào giỏ',       'item_cf',       6, 'popularity',    1, N'{"max_price_ratio":2}',  GETDATE()),
-    ('USER_PERSONAL',    N'Gợi ý cá nhân hóa',        'user_cf',      10, 'trending',      1, N'{"min_interactions":3}', GETDATE()),
-    ('CATEGORY_BEST',    N'Bán chạy theo danh mục',   'popularity',    8, NULL,            1, N'{"scope":"category"}',   GETDATE());
+        ('homepage_trending',  N'Xu hướng hôm nay',         'trending',       10, 'popular', 1),
+        ('pdp_similar',        N'Sản phẩm tương tự',        'content_based',  8,  'popular', 1),
+        ('pdp_also_bought',    N'Khách hàng cũng mua',      'collaborative',  8,  'trending', 1),
+        ('after_purchase',     N'Mua tiếp theo',            'collaborative',  8,  'trending', 1),
+        ('homepage_personal',  N'Gợi ý dành riêng cho bạn', 'weighted_score', 12, 'trending', 1);
 GO
 
-PRINT N'[43-NEW] Recommendation.TrendingProducts...';
-IF NOT EXISTS (SELECT 1 FROM [Recommendation].[TrendingProducts])
-    INSERT INTO [Recommendation].[TrendingProducts]
-        (ProductID, Scope, Score, ViewCount, PurchaseCount, Rank, WindowHours, ComputedAt)
-    VALUES
-    ( 1,'global',9850.00, 85,12, 1,24,GETDATE()),
-    (20,'global',8720.50, 76,11, 2,24,GETDATE()),
-    (17,'global',7430.25, 62, 9, 3,24,GETDATE()),
-    (26,'global',6980.75, 55, 8, 4,24,GETDATE()),
-    (22,'global',6120.00, 48, 7, 5,24,GETDATE()),
-    (29,'global',5850.50, 95, 6, 6,24,GETDATE()),
-    (24,'global',5200.25, 44, 6, 7,24,GETDATE()),
-    ( 9,'global',4890.00, 40, 5, 8,24,GETDATE()),
-    ( 4,'global',4560.75, 38, 5, 9,24,GETDATE()),
-    (13,'global',4230.50, 35, 4,10,24,GETDATE()),
-    /* Category-scoped: Lego */
-    ( 1,'cat_1', 9200.00, 85,12, 1,48,GETDATE()),
-    ( 2,'cat_1', 4100.00, 32, 3, 2,48,GETDATE()),
-    ( 3,'cat_1', 3800.50, 28, 3, 3,48,GETDATE()),
-    /* Category-scoped: Búp bê & Thú bông */
-    (20,'cat_9', 8500.00, 76,11, 1,48,GETDATE()),
-    (21,'cat_9', 4200.25, 38, 5, 2,48,GETDATE()),
-    /* Category-scoped: Mô hình */
-    (22,'cat_10',6000.00, 48, 7, 1,48,GETDATE()),
-    (23,'cat_10',3100.00, 28, 3, 2,48,GETDATE());
-GO
-
-PRINT N'[43-NEW] Recommendation.UserProductScores...';
-IF NOT EXISTS (SELECT 1 FROM [Recommendation].[UserProductScores])
-BEGIN
-    INSERT INTO [Recommendation].[UserProductScores]
-        (AccountID, ProductID, Score, ViewCount, CartCount, PurchaseCount, WishlistCount, LastInteractedAt, ComputedAt)
-    SELECT a.AccountID, v.ProductID,
-           (v.ViewCount * 1.0 + v.CartCount * 3.0 + v.PurchaseCount * 10.0 + v.WishlistCount * 2.0) AS Score,
-           v.ViewCount, v.CartCount, v.PurchaseCount, v.WishlistCount,
-           v.LastAt, GETDATE()
-    FROM Accounts a
-    JOIN (VALUES
-        ('lananh.pham@gmail.com',  1, 2,1,1,0,'2026-04-08 08:00:00'),
-        ('lananh.pham@gmail.com',  2, 1,0,0,1,'2026-02-15 10:00:00'),
-        ('lananh.pham@gmail.com',  4, 1,0,1,0,'2026-04-08 08:00:00'),
-        ('lananh.pham@gmail.com', 17, 1,0,0,0,'2026-02-16 11:00:00'),
-        ('lananh.pham@gmail.com', 23, 0,0,0,1,'2026-04-10 10:00:00'),
-        ('hung.nguyen88@gmail.com', 1, 1,0,0,1,'2026-04-11 10:00:00'),
-        ('hung.nguyen88@gmail.com', 9, 1,0,1,0,'2026-03-25 08:00:00'),
-        ('hung.nguyen88@gmail.com',26, 2,1,1,0,'2026-04-10 08:15:00'),
-        ('hung.nguyen88@gmail.com',27, 0,0,0,1,'2026-05-03 08:00:00'),
-        ('bauchau.vu@gmail.com',  17, 1,1,0,0,'2026-03-05 16:00:00'),
-        ('bauchau.vu@gmail.com',  18, 1,0,0,1,'2026-03-10 10:00:00'),
-        ('mtuando@outlook.com',    1, 1,0,0,0,'2026-04-17 15:00:00'),
-        ('mtuando@outlook.com',   22, 2,1,1,1,'2026-02-22 10:00:00'),
-        ('thuha.hoang@gmail.com',  3, 0,0,0,1,'2026-04-10 10:00:00'),
-        ('thuha.hoang@gmail.com', 11, 1,0,0,0,'2026-04-02 09:00:00'),
-        ('thuha.hoang@gmail.com', 12, 0,0,0,1,'2026-04-05 09:00:00'),
-        ('thuha.hoang@gmail.com', 20, 2,1,1,0,'2026-02-28 11:00:00')
-    ) AS v(Email,ProductID,ViewCount,CartCount,PurchaseCount,WishlistCount,LastAt) ON a.Email=v.Email;
-END
-GO
-
-PRINT N'[43-NEW] Recommendation.ItemSimilarities...';
-IF NOT EXISTS (SELECT 1 FROM [Recommendation].[ItemSimilarities])
-    INSERT INTO [Recommendation].[ItemSimilarities]
-        (SourceProductID, SimilarProductID, SimilarityScore, AlgorithmType, CreatedAt)
-    VALUES
-    /* Lego City ↔ các Lego khác */
-    (1, 2, 0.8821, 'cf',       GETDATE()),
-    (1, 3, 0.8345, 'cf',       GETDATE()),
-    (1, 4, 0.4210, 'content',  GETDATE()),
-    /* Barbie ↔ Barbie */
-    (20,21, 0.9120, 'cf',      GETDATE()),
-    (20,19, 0.5630, 'content', GETDATE()),
-    /* Siêu nhân ↔ Mô hình */
-    (22,23, 0.8750, 'cf',      GETDATE()),
-    (22,24, 0.4890, 'cf',      GETDATE()),
-    /* Gấu bông ↔ gấu bông */
-    (17,18, 0.9200, 'cf',      GETDATE()),
-    (17,19, 0.8100, 'cf',      GETDATE()),
-    /* RC ↔ RC */
-    (26,27, 0.8650, 'cf',      GETDATE()),
-    (26,28, 0.6320, 'cf',      GETDATE()),
-    /* Đất nặn ↔ thẻ học */
-    (29, 6, 0.4150, 'content', GETDATE()),
-    (29, 7, 0.3980, 'content', GETDATE());
-GO
 
 /* ══════════════════════════════════════════════════════════════
    SECTION 44 – WALLET PIN ATTEMPTS  [NEW]
@@ -1655,8 +1548,6 @@ SELECT 'Notification.CampaignApprovalLogs  [NEW]',        COUNT(*)           FRO
 SELECT 'Notification.CampaignStats',                      COUNT(*)           FROM [Notification].[CampaignStats]       UNION ALL
 SELECT 'Notification.Deliveries',                         COUNT(*)           FROM [Notification].[Deliveries]          UNION ALL
 SELECT 'Notification.DeliveryActions   [NEW]',            COUNT(*)           FROM [Notification].[DeliveryActions]     UNION ALL
-SELECT 'ChatConversations              [NEW]',            COUNT(*)           FROM ChatConversations                    UNION ALL
-SELECT 'ChatMessages                   [NEW]',            COUNT(*)           FROM ChatMessages                         UNION ALL
 SELECT 'Interaction.Events             [NEW]',            COUNT(*)           FROM [Interaction].[Events]               UNION ALL
 SELECT 'Recommendation.Widgets         [NEW]',            COUNT(*)           FROM [Recommendation].[Widgets]           UNION ALL
 SELECT 'Recommendation.TrendingProducts [NEW]',           COUNT(*)           FROM [Recommendation].[TrendingProducts]  UNION ALL

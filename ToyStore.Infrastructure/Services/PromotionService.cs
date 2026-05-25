@@ -429,7 +429,6 @@ public class PromotionService : IPromotionService
                         existingPp.SalePrice = incomingPp.SalePrice;
                         existingPp.DiscountPercent = incomingPp.DiscountPercent;
                         existingPp.SaleQuantity = incomingPp.SaleQuantity;
-                        existingPp.IsActive = incomingPp.IsActive;
                         existingPp.UpdatedAt = _timeProvider.UtcNow;
                         existingPp.IsDeleted = false;
                     }
@@ -517,7 +516,6 @@ public class PromotionService : IPromotionService
                                     existingP.SalePrice = incomingP.SalePrice;
                                     existingP.DiscountPercent = incomingP.DiscountPercent;
                                     existingP.SaleQuantity = incomingP.SaleQuantity;
-                                    existingP.IsActive = incomingP.IsActive;
                                     existingP.UpdatedAt = _timeProvider.UtcNow;
                                     existingP.IsDeleted = false;
                                 }

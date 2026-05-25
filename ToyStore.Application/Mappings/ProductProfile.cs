@@ -166,8 +166,7 @@ public class ProductProfile : Profile
 
         // 1. Flash Sale (Ưu tiên hàng đầu)
         var activeFlashSale = src.PromotionProductSlots
-            .Where(pps => pps.IsActive
-                         && pps.TimeSlot != null
+            .Where(pps => pps.TimeSlot != null
                          && string.Equals(pps.TimeSlot.Status, "Active", StringComparison.OrdinalIgnoreCase)
                          && pps.TimeSlot.StartAt <= now
                          && pps.TimeSlot.EndAt >= now
@@ -187,8 +186,7 @@ public class ProductProfile : Profile
 
         // 2. Regular Promotion
         var bestRegularPromotion = src.ProductPromotions
-            .Where(pp => pp.IsActive
-                         && pp.Promotion != null
+            .Where(pp => pp.Promotion != null
                          && !pp.Promotion.IsDeleted
                          && (string.Equals(pp.Promotion.Status, "Active", StringComparison.OrdinalIgnoreCase)
                              || string.Equals(pp.Promotion.Status, "Scheduled", StringComparison.OrdinalIgnoreCase))

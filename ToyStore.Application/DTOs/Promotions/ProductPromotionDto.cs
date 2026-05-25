@@ -21,5 +21,4 @@ public class ProductPromotionDto
 
     public int Stock { get; set; }
 
-    public bool IsActive { get; set; }
 }

@@ -31,5 +31,4 @@ public class PromotionProductSlotDto
 
     public int ReservedQuantity { get; set; }
 
-    public bool IsActive { get; set; }
 }
