@@ -886,9 +886,9 @@ public class BlogService : IBlogService
             return Result<PaginatedResponse<BlogReviewPermissionDto>>.Failure("VALIDATION_ERROR", "Invalid pagination values.");
         }
 
-        var states = await _unitOfWork.Blogs.GetPagedBannedCommentAccountsAsync(pageNumber, pageSize, searchTerm, cancellationToken);
-        var totalCount = await _unitOfWork.Blogs.CountBannedCommentAccountsAsync(searchTerm, cancellationToken);
-        var mapped = _mapper.Map<List<BlogReviewPermissionDto>>(states);
+        var accounts = await _unitOfWork.Blogs.GetPagedCustomerCommentPermissionAccountsAsync(pageNumber, pageSize, searchTerm, cancellationToken);
+        var totalCount = await _unitOfWork.Blogs.CountCustomerCommentPermissionAccountsAsync(searchTerm, cancellationToken);
+        var mapped = accounts.Select(MapPermissionFromAccount).ToList();
         foreach (var item in mapped)
         {
             NormalizePermissionDates(item);
@@ -923,12 +923,7 @@ public class BlogService : IBlogService
         }
 
         var state = await _unitOfWork.Blogs.GetCommentPermissionStateAsync(accountId, cancellationToken);
-        if (state == null)
-        {
-            return Result<BlogReviewPermissionDto>.NotFound("Blog comment permission", accountId);
-        }
-
-        if (!state.IsCommentBanned)
+        if (state == null || !state.IsCommentBanned)
         {
             return Result<BlogReviewPermissionDto>.Failure("VALIDATION_ERROR", "This account is not currently banned from blog comments.");
         }
@@ -1458,6 +1453,27 @@ public class BlogService : IBlogService
     private static DateTime? AsUtc(DateTime? value)
     {
         return value.HasValue ? AsUtc(value.Value) : null;
+    }
+
+    private static BlogReviewPermissionDto MapPermissionFromAccount(Account account)
+    {
+        var state = account.BlogCommentViolationCountAccount;
+        return new BlogReviewPermissionDto
+        {
+            AccountId = account.AccountId,
+            AccountName = account.AccountName,
+            Email = account.Email,
+            AccountImageUrl = account.ImageUrl,
+            ViolationCount = state?.ViolationCount ?? 0,
+            IsCommentBanned = state?.IsCommentBanned ?? false,
+            BannedAt = state?.BannedAt,
+            BanExpiresAt = state?.BanExpiresAt,
+            UnbannedAt = state?.UnbannedAt,
+            UnbannedBy = state?.UnbannedBy,
+            UnbannedByName = state?.UnbannedByNavigation?.AccountName,
+            LastViolatedAt = state?.LastViolatedAt,
+            UpdatedAt = state?.UpdatedAt
+        };
     }
 
     private static void NormalizePermissionDates(BlogReviewPermissionDto dto)
