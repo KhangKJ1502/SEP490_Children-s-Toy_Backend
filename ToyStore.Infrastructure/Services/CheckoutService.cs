@@ -36,6 +36,7 @@ public class CheckoutService : ICheckoutService
     private const string PayMethodCod = "SHIP_COD";
     private const string PayMethodSepay = "SE_PAY";
     private const string PayMethodWallet = "WALLET";
+    private const decimal MaxCheckoutSubTotal = 100_000_000m;
 
     public CheckoutService(
         IUnitOfWork uow,
@@ -113,6 +114,12 @@ public class CheckoutService : ICheckoutService
                 subTotal += currentPrice * ci.Quantity;
                 totalWeightGrams += _ghnOpts.DefaultItemWeight * ci.Quantity;
             }
+        }
+
+        if (subTotal >= MaxCheckoutSubTotal)
+        {
+            return Result<CheckoutPreviewResponseDto>.BusinessError(
+                "Cart total must be below 100,000,000 VND to proceed to checkout.");
         }
 
         var normalizedPaymentMethod = string.IsNullOrWhiteSpace(paymentMethod) ? PayMethodCod : paymentMethod;
@@ -292,6 +299,12 @@ public class CheckoutService : ICheckoutService
         // Tính SubTotal từ Products.Price tại thời điểm checkout (có tính Flash Sale/Promotion)
         decimal subTotal = request.Items.Sum(i => PriceHelper.ResolveCurrentPrice(productMap[i.ProductId], _timeProvider.UtcNow) * (int)i.Quantity);
         int totalWeightGrams = request.Items.Sum(i => _ghnOpts.DefaultItemWeight * (int)i.Quantity);
+
+        if (subTotal >= MaxCheckoutSubTotal)
+        {
+            return Result<CheckoutConfirmResponseDto>.BusinessError(
+                "Cart total must be below 100,000,000 VND to proceed to checkout.");
+        }
 
         // Validate confirm items against active cart (phòng client gửi items không có trong giỏ)
         var activeCart = await _uow.Carts.GetByAccountIdWithItemsAsync(accountId, cancellationToken);

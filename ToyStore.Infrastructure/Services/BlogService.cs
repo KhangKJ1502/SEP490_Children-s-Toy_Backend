@@ -551,13 +551,12 @@ public class BlogService : IBlogService
         {
             _logger.LogWarning("AI moderation did not accept blog comment {ReviewBlogId}", created.ReviewBlogId);
         }
+        _unitOfWork.Detach(created);
         var loaded = await _unitOfWork.Blogs.GetReviewByIdAsync(created.ReviewBlogId, cancellationToken);
         if (loaded == null)
         {
             return Result<BlogReviewDto>.NotFound("Review", created.ReviewBlogId);
         }
-
-        await SendAiRejectedReviewNotificationAsync(loaded, cancellationToken);
 
         return Result<BlogReviewDto>.Success(await MapReviewAsync(loaded, cancellationToken));
     }
@@ -627,13 +626,12 @@ public class BlogService : IBlogService
         {
             _logger.LogWarning("AI moderation did not accept blog reply {ReplyBlogId}", created.ReplyBlogId);
         }
+        _unitOfWork.Detach(created);
         var loaded = await _unitOfWork.Blogs.GetReplyByIdAsync(created.ReplyBlogId, cancellationToken);
         if (loaded == null)
         {
             return Result<BlogReviewReplyDto>.NotFound("Reply", created.ReplyBlogId);
         }
-
-        await SendAiRejectedReplyNotificationAsync(loaded, cancellationToken);
 
         return Result<BlogReviewReplyDto>.Success(await MapReplyAsync(loaded, cancellationToken));
     }
@@ -891,6 +889,10 @@ public class BlogService : IBlogService
         var states = await _unitOfWork.Blogs.GetPagedBannedCommentAccountsAsync(pageNumber, pageSize, searchTerm, cancellationToken);
         var totalCount = await _unitOfWork.Blogs.CountBannedCommentAccountsAsync(searchTerm, cancellationToken);
         var mapped = _mapper.Map<List<BlogReviewPermissionDto>>(states);
+        foreach (var item in mapped)
+        {
+            NormalizePermissionDates(item);
+        }
 
         return Result<PaginatedResponse<BlogReviewPermissionDto>>.Success(
             new PaginatedResponse<BlogReviewPermissionDto>(mapped, totalCount, pageNumber, pageSize));
@@ -942,7 +944,9 @@ public class BlogService : IBlogService
         await SendBlogCommentPermissionRestoredNotificationAsync(state.AccountId, cancellationToken);
 
         var updated = await _unitOfWork.Blogs.GetCommentPermissionStateAsync(accountId, cancellationToken);
-        return Result<BlogReviewPermissionDto>.Success(_mapper.Map<BlogReviewPermissionDto>(updated!));
+        var mapped = _mapper.Map<BlogReviewPermissionDto>(updated!);
+        NormalizePermissionDates(mapped);
+        return Result<BlogReviewPermissionDto>.Success(mapped);
     }
 
     public async Task<Result<ReactionSummaryDto>> ReactToBlogAsync(int blogPostId, UpsertReactionDto dto, CancellationToken cancellationToken = default)
@@ -1406,8 +1410,8 @@ public class BlogService : IBlogService
             LoveCount = GetReactionCount(counts, ReactionLove),
             HahaCount = GetReactionCount(counts, ReactionHaha),
             CurrentUserReaction = currentUserReaction,
-            CreatedAt = review.CreatedAt,
-            UpdatedAt = review.UpdatedAt
+            CreatedAt = AsUtc(review.CreatedAt),
+            UpdatedAt = AsUtc(review.UpdatedAt)
         };
     }
 
@@ -1439,9 +1443,30 @@ public class BlogService : IBlogService
             LoveCount = GetReactionCount(counts, ReactionLove),
             HahaCount = GetReactionCount(counts, ReactionHaha),
             CurrentUserReaction = currentUserReaction,
-            CreatedAt = reply.CreatedAt,
-            UpdatedAt = reply.UpdatedAt
+            CreatedAt = AsUtc(reply.CreatedAt),
+            UpdatedAt = AsUtc(reply.UpdatedAt)
         };
+    }
+
+    private static DateTime AsUtc(DateTime value)
+    {
+        return value.Kind == DateTimeKind.Utc
+            ? value
+            : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+    }
+
+    private static DateTime? AsUtc(DateTime? value)
+    {
+        return value.HasValue ? AsUtc(value.Value) : null;
+    }
+
+    private static void NormalizePermissionDates(BlogReviewPermissionDto dto)
+    {
+        dto.BannedAt = AsUtc(dto.BannedAt);
+        dto.BanExpiresAt = AsUtc(dto.BanExpiresAt);
+        dto.UnbannedAt = AsUtc(dto.UnbannedAt);
+        dto.LastViolatedAt = AsUtc(dto.LastViolatedAt);
+        dto.UpdatedAt = AsUtc(dto.UpdatedAt);
     }
 
     private async Task<BlogReviewReplyDto> MapReplyAsync(ReviewBlogReply reply, CancellationToken cancellationToken)
@@ -1453,29 +1478,11 @@ public class BlogService : IBlogService
         return dto;
     }
 
-    private async Task SendAiRejectedReviewNotificationAsync(ReviewBlog review, CancellationToken cancellationToken)
-    {
-        if (!string.Equals(review.ModerationStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        var latestRejectedLog = await _unitOfWork.Blogs.GetLatestRejectedCommentLogAsync(review.ReviewBlogId, cancellationToken);
-        await SendReviewStatusNotificationAsync(review, RejectedStatus, latestRejectedLog?.BanReasonId, cancellationToken);
-    }
-
-    private async Task SendAiRejectedReplyNotificationAsync(ReviewBlogReply reply, CancellationToken cancellationToken)
-    {
-        if (!string.Equals(reply.ModerationStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        var latestRejectedLog = await _unitOfWork.Blogs.GetLatestRejectedReplyLogAsync(reply.ReplyBlogId, cancellationToken);
-        await SendReplyStatusNotificationAsync(reply, RejectedStatus, latestRejectedLog?.BanReasonId, cancellationToken);
-    }
-
-    private async Task SendReviewStatusNotificationAsync(ReviewBlog review, string moderationStatus, byte? banReasonId, CancellationToken cancellationToken)
+    private async Task SendReviewStatusNotificationAsync(
+        ReviewBlog review,
+        string moderationStatus,
+        byte? banReasonId,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -1484,7 +1491,8 @@ public class BlogService : IBlogService
                 return;
             }
 
-            var message = $"Your review status has been updated to {moderationStatus}.";
+            var title = "Comment status updated";
+            var message = $"Your comment status has been updated to {moderationStatus}.";
             if (string.Equals(moderationStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase))
             {
                 var reason = string.Empty;
@@ -1494,9 +1502,10 @@ public class BlogService : IBlogService
                     reason = reasons.FirstOrDefault(x => x.BanReasonId == banReasonId.Value)?.Content ?? string.Empty;
                 }
 
+                title = "Comment status updated";
                 message = string.IsNullOrWhiteSpace(reason)
-                    ? "Your review has been rejected."
-                    : $"Your review has been rejected because: {reason}.";
+                    ? "Your comment has been rejected."
+                    : $"Your comment has been rejected because: {reason}.";
             }
 
             await _notificationDispatcher.DispatchAsync(new NotificationContext
@@ -1504,7 +1513,7 @@ public class BlogService : IBlogService
                 RecipientAccountId = review.AccountId,
                 RecipientType = RecipientTypes.Customer,
                 NotificationType = NotificationTypes.System,
-                Title = "Review status updated",
+                Title = title,
                 Message = message,
                 SendBell = true,
                 SendEmail = false,
@@ -1518,7 +1527,11 @@ public class BlogService : IBlogService
         }
     }
 
-    private async Task SendReplyStatusNotificationAsync(ReviewBlogReply reply, string moderationStatus, byte? banReasonId, CancellationToken cancellationToken)
+    private async Task SendReplyStatusNotificationAsync(
+        ReviewBlogReply reply,
+        string moderationStatus,
+        byte? banReasonId,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -1527,6 +1540,7 @@ public class BlogService : IBlogService
                 return;
             }
 
+            var title = "Reply status updated";
             var message = $"Your reply status has been updated to {moderationStatus}.";
             if (string.Equals(moderationStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase))
             {
@@ -1537,6 +1551,7 @@ public class BlogService : IBlogService
                     reason = reasons.FirstOrDefault(x => x.BanReasonId == banReasonId.Value)?.Content ?? string.Empty;
                 }
 
+                title = "Reply status updated";
                 message = string.IsNullOrWhiteSpace(reason)
                     ? "Your reply has been rejected."
                     : $"Your reply has been rejected because: {reason}.";
@@ -1547,7 +1562,7 @@ public class BlogService : IBlogService
                 RecipientAccountId = reply.AccountId,
                 RecipientType = RecipientTypes.Customer,
                 NotificationType = NotificationTypes.System,
-                Title = "Reply status updated",
+                Title = title,
                 Message = message,
                 SendBell = true,
                 SendEmail = false,

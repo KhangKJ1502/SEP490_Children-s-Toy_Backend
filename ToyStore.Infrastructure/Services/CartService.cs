@@ -90,7 +90,6 @@ public class CartService : ICartService
             existingItem.RemovedAt = null;
             existingItem.UpdatedAt = now;
             existingItem.CurrentPrice = currentPrice;
-            existingItem.IsSelected = true;
             if (existingItem.PriceAtThatTime <= 0)
             {
                 existingItem.PriceAtThatTime = currentPrice;
@@ -112,7 +111,6 @@ public class CartService : ICartService
                 Quantity = dto.Quantity,
                 PriceAtThatTime = currentPrice,
                 CurrentPrice = currentPrice,
-                IsSelected = true,
                 AddedAt = now
             };
             _unitOfWork.Carts.AddItem(item);
