@@ -514,22 +514,24 @@ public class BlogRepository : IBlogRepository
         return (true, state.BanExpiresAt);
     }
 
-    public Task<List<BlogCommentViolationCount>> GetPagedBannedCommentAccountsAsync(
+    public Task<List<Account>> GetPagedCustomerCommentPermissionAccountsAsync(
         int pageNumber,
         int pageSize,
         string? searchTerm,
         CancellationToken cancellationToken = default)
     {
-        return BuildBannedCommentAccountsQuery(searchTerm)
-            .OrderByDescending(x => x.BannedAt ?? x.UpdatedAt)
+        return BuildCustomerCommentPermissionAccountsQuery(searchTerm)
+            .OrderByDescending(x => x.BlogCommentViolationCountAccount != null && x.BlogCommentViolationCountAccount.IsCommentBanned)
+            .ThenByDescending(x => x.BlogCommentViolationCountAccount != null ? x.BlogCommentViolationCountAccount.BannedAt : null)
+            .ThenBy(x => x.AccountName)
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
     }
 
-    public Task<int> CountBannedCommentAccountsAsync(string? searchTerm, CancellationToken cancellationToken = default)
+    public Task<int> CountCustomerCommentPermissionAccountsAsync(string? searchTerm, CancellationToken cancellationToken = default)
     {
-        return BuildBannedCommentAccountsQuery(searchTerm).CountAsync(cancellationToken);
+        return BuildCustomerCommentPermissionAccountsQuery(searchTerm).CountAsync(cancellationToken);
     }
 
     public Task<BlogCommentViolationCount?> GetCommentPermissionStateAsync(
@@ -608,20 +610,21 @@ public class BlogRepository : IBlogRepository
         return state;
     }
 
-    private IQueryable<BlogCommentViolationCount> BuildBannedCommentAccountsQuery(string? searchTerm)
+    private IQueryable<Account> BuildCustomerCommentPermissionAccountsQuery(string? searchTerm)
     {
-        var query = _context.BlogCommentViolationCounts
+        var query = _context.Accounts
             .AsNoTracking()
-            .Include(x => x.Account)
-            .Include(x => x.UnbannedByNavigation)
-            .Where(x => x.IsCommentBanned && !x.Account.IsDeleted);
+            .Include(x => x.Role)
+            .Include(x => x.BlogCommentViolationCountAccount)
+                .ThenInclude(state => state.UnbannedByNavigation)
+            .Where(x => !x.IsDeleted && x.Role.RoleName == "Customer");
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
             var term = searchTerm.Trim();
             query = query.Where(x =>
-                x.Account.AccountName.Contains(term)
-                || x.Account.Email.Contains(term)
+                x.AccountName.Contains(term)
+                || x.Email.Contains(term)
                 || x.AccountId.ToString().Contains(term));
         }
 

@@ -1522,9 +1522,13 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasColumnName("ProductID");
             entity.Property(e => e.AgeId).HasColumnName("AgeID");
             entity.Property(e => e.Description).HasMaxLength(1500);
+            entity.Property(e => e.HeightCm).HasColumnName("HeightCm");
+            entity.Property(e => e.LengthCm).HasColumnName("LengthCm");
             entity.Property(e => e.MaterialId).HasColumnName("MaterialID");
             entity.Property(e => e.OriginId).HasColumnName("OriginID");
             entity.Property(e => e.SexId).HasColumnName("SexID");
+            entity.Property(e => e.WeightGram).HasColumnName("WeightGram");
+            entity.Property(e => e.WidthCm).HasColumnName("WidthCm");
 
             entity.HasOne(d => d.Age).WithMany(p => p.ProductDetails)
                 .HasForeignKey(d => d.AgeId)
@@ -1607,7 +1611,7 @@ public partial class SEP490ToyStoreContext : DbContext
         {
             entity.HasKey(e => new { e.ProductId, e.PromotionId });
 
-            entity.HasIndex(e => new { e.ProductId, e.IsActive }, "IX_ProductPromotions_ProductID_Active");
+            entity.HasIndex(e => e.ProductId, "IX_ProductPromotions_ProductID_Active");
 
             entity.HasIndex(e => e.PromotionId, "IX_ProductPromotions_PromotionID");
 
@@ -1617,7 +1621,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
             entity.Property(e => e.DiscountPercent).HasColumnType("decimal(5, 2)");
-            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.IsDeleted).HasDefaultValue(false);
             entity.Property(e => e.SalePrice).HasColumnType("decimal(12, 2)");
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
@@ -1713,17 +1717,17 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.HasIndex(e => new { e.TimeSlotId, e.ProductId }, "UQ_PromotionProductSlots_SlotProduct").IsUnique();
 
             // Tra cứu sản phẩm flash-sale đang active theo slot
-            entity.HasIndex(e => new { e.TimeSlotId, e.IsActive }, "IX_PromotionProductSlots_Slot_Active");
+            entity.HasIndex(e => e.TimeSlotId, "IX_PromotionProductSlots_Slot_Active");
 
             // Tra cứu ngược: sản phẩm đang tham gia slot nào
-            entity.HasIndex(e => new { e.ProductId, e.IsActive }, "IX_PromotionProductSlots_Product");
+            entity.HasIndex(e => e.ProductId, "IX_PromotionProductSlots_Product");
 
             entity.Property(e => e.SlotProductId).HasColumnName("SlotProductID");
             entity.Property(e => e.TimeSlotId).HasColumnName("TimeSlotID");
             entity.Property(e => e.ProductId).HasColumnName("ProductID");
             entity.Property(e => e.SalePrice).HasColumnType("decimal(12, 2)");
             entity.Property(e => e.DiscountPercent).HasColumnType("decimal(5, 2)");
-            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.IsDeleted).HasDefaultValue(false);
             entity.Property(e => e.SoldQuantity).HasDefaultValue(0);
             entity.Property(e => e.ReservedQuantity).HasDefaultValue(0);
             entity.Property(e => e.CreatedAt)
@@ -1857,6 +1861,8 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<ReviewBlogReply>(entity =>
         {
+            entity.ToTable("ReviewBlogReplies", tb => tb.HasTrigger("trg_ReviewBlogReply_UpdateCommentCount"));
+
             entity.HasKey(e => e.ReplyBlogId).HasName("PK__ReviewBl__5996364139D7A15C");
 
             entity.HasIndex(e => new { e.ReviewBlogId, e.ModerationStatus, e.CreatedAt }, "IX_ReviewBlogReplies_Comment_Status");

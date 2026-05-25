@@ -60,6 +60,10 @@ public class ProductProfile : Profile
             .ForMember(dest => dest.SexName, opt => opt.MapFrom(src => src.ProductDetail != null && src.ProductDetail.Sex != null ? src.ProductDetail.Sex.SexName : null))
             .ForMember(dest => dest.OriginId, opt => opt.MapFrom(src => src.ProductDetail != null ? src.ProductDetail.OriginId : null))
             .ForMember(dest => dest.OriginName, opt => opt.MapFrom(src => src.ProductDetail != null && src.ProductDetail.Origin != null ? src.ProductDetail.Origin.OriginName : null))
+            .ForMember(dest => dest.WeightGram, opt => opt.MapFrom(src => src.ProductDetail != null ? (int?)src.ProductDetail.WeightGram : null))
+            .ForMember(dest => dest.LengthCm, opt => opt.MapFrom(src => src.ProductDetail != null ? (int?)src.ProductDetail.LengthCm : null))
+            .ForMember(dest => dest.WidthCm, opt => opt.MapFrom(src => src.ProductDetail != null ? (int?)src.ProductDetail.WidthCm : null))
+            .ForMember(dest => dest.HeightCm, opt => opt.MapFrom(src => src.ProductDetail != null ? (int?)src.ProductDetail.HeightCm : null))
             .ForMember(dest => dest.MainImageUrl, opt => opt.MapFrom(src => src.ProductImage != null ? src.ProductImage.ImageUrl : null))
             .ForMember(dest => dest.AverageRating, opt => opt.MapFrom(src =>
                 src.ReviewProducts
@@ -122,7 +126,8 @@ public class ProductProfile : Profile
     private static ProductDetail? BuildProductDetail(CreateProductDto src)
     {
         if (string.IsNullOrWhiteSpace(src.Description) && !src.MaterialId.HasValue &&
-            !src.AgeId.HasValue && !src.SexId.HasValue && !src.OriginId.HasValue)
+            !src.AgeId.HasValue && !src.SexId.HasValue && !src.OriginId.HasValue &&
+            src.WeightGram <= 0 && src.LengthCm <= 0 && src.WidthCm <= 0 && src.HeightCm <= 0)
         {
             return null;
         }
@@ -133,7 +138,11 @@ public class ProductProfile : Profile
             MaterialId = src.MaterialId,
             AgeId = src.AgeId,
             SexId = src.SexId,
-            OriginId = src.OriginId
+            OriginId = src.OriginId,
+            WeightGram = src.WeightGram,
+            LengthCm = src.LengthCm,
+            WidthCm = src.WidthCm,
+            HeightCm = src.HeightCm
         };
     }
 
@@ -166,7 +175,7 @@ public class ProductProfile : Profile
 
         // 1. Flash Sale (Ưu tiên hàng đầu)
         var activeFlashSale = src.PromotionProductSlots
-            .Where(pps => pps.IsActive
+            .Where(pps => !pps.IsDeleted
                          && pps.TimeSlot != null
                          && string.Equals(pps.TimeSlot.Status, "Active", StringComparison.OrdinalIgnoreCase)
                          && pps.TimeSlot.StartAt <= now
@@ -187,7 +196,7 @@ public class ProductProfile : Profile
 
         // 2. Regular Promotion
         var bestRegularPromotion = src.ProductPromotions
-            .Where(pp => pp.IsActive
+            .Where(pp => !pp.IsDeleted
                          && pp.Promotion != null
                          && !pp.Promotion.IsDeleted
                          && (string.Equals(pp.Promotion.Status, "Active", StringComparison.OrdinalIgnoreCase)
