@@ -37,6 +37,12 @@ public class BlogService : IBlogService
     {
         PendingStatus
     };
+    private static readonly HashSet<string> AdminVisibleStatuses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        PendingStatus,
+        PublishedStatus,
+        ScheduledStatus
+    };
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUserService _currentUserService;
@@ -80,7 +86,26 @@ public class BlogService : IBlogService
         bool featuredOnly = false,
         CancellationToken cancellationToken = default)
     {
-        return await GetPagedBlogsAsync(pageNumber, pageSize, sortBy, sortDesc, searchTerm, status, featuredOnly, null, false, cancellationToken);
+        var normalizedStatus = status?.Trim();
+        if (!string.IsNullOrWhiteSpace(normalizedStatus)
+            && !AdminVisibleStatuses.Contains(normalizedStatus))
+        {
+            return Result<PaginatedResponse<BlogListDto>>.Success(
+                new PaginatedResponse<BlogListDto>(new List<BlogListDto>(), 0, pageNumber, pageSize));
+        }
+
+        return await GetPagedBlogsAsync(
+            pageNumber,
+            pageSize,
+            sortBy,
+            sortDesc,
+            searchTerm,
+            status,
+            featuredOnly,
+            null,
+            false,
+            cancellationToken,
+            AdminVisibleStatuses);
     }
 
     public async Task<Result<PaginatedResponse<BlogListDto>>> GetBlogsForStaffAsync(
@@ -245,6 +270,10 @@ public class BlogService : IBlogService
             {
                 return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "BlogAt is required when submitting Draft to Pending.");
             }
+            if (string.IsNullOrWhiteSpace(blog.BlogThumbnail))
+            {
+                return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "Thumbnail is required when submitting Draft to Pending.");
+            }
 
             blog.Status = PendingStatus;
         }
@@ -298,6 +327,17 @@ public class BlogService : IBlogService
         if (!blog.BlogAt.HasValue)
         {
             return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "BlogAt is required when submitting Draft to Pending.");
+        }
+
+        if (string.IsNullOrWhiteSpace(blog.BlogThumbnail))
+        {
+            return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "Thumbnail is required when submitting Draft to Pending.");
+        }
+
+        var validateResult = await ValidateWriteInputAsync(blog.BlogCategoryId, blog.BlogTitle, blog.BlogContent, cancellationToken);
+        if (validateResult != null)
+        {
+            return validateResult;
         }
 
         blog.Status = PendingStatus;
@@ -1210,7 +1250,8 @@ public class BlogService : IBlogService
         bool featuredOnly,
         int? createdByAccountId,
         bool onlyPublished,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyCollection<string>? allowedStatuses = null)
     {
         if (pageNumber < 1)
         {
@@ -1232,9 +1273,10 @@ public class BlogService : IBlogService
             featuredOnly,
             createdByAccountId,
             onlyPublished,
+            allowedStatuses,
             cancellationToken);
 
-        var totalCount = await _unitOfWork.Blogs.CountAsync(searchTerm, status, featuredOnly, createdByAccountId, onlyPublished, cancellationToken);
+        var totalCount = await _unitOfWork.Blogs.CountAsync(searchTerm, status, featuredOnly, createdByAccountId, onlyPublished, allowedStatuses, cancellationToken);
         var mapped = _mapper.Map<List<BlogListDto>>(items);
         return Result<PaginatedResponse<BlogListDto>>.Success(new PaginatedResponse<BlogListDto>(mapped, totalCount, pageNumber, pageSize));
     }
