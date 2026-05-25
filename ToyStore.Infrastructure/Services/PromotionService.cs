@@ -163,6 +163,14 @@ public class PromotionService : IPromotionService
 
         if (request.ProductPromotions != null && request.ProductPromotions.Any())
         {
+            if (string.Equals(promotion.PromotionType, "DISCOUNT", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var pp in request.ProductPromotions)
+                {
+                    pp.SaleQuantity = null;
+                }
+            }
+
             var productIds = request.ProductPromotions.Select(p => p.ProductId).Distinct().ToList();
             var products = await _unitOfWork.Products.GetByIdsAsync(productIds, cancellationToken);
 
@@ -389,6 +397,15 @@ public class PromotionService : IPromotionService
 
             if (request.ProductPromotions != null)
             {
+                if (string.Equals(existingPromotion.PromotionType, "DISCOUNT", StringComparison.OrdinalIgnoreCase)
+                    || (request.PromotionType != null && string.Equals(request.PromotionType, "DISCOUNT", StringComparison.OrdinalIgnoreCase)))
+                {
+                    foreach (var pp in request.ProductPromotions)
+                    {
+                        pp.SaleQuantity = null;
+                    }
+                }
+
                 var productIds = request.ProductPromotions.Select(p => p.ProductId).Distinct().ToList();
                 var products = await _unitOfWork.Products.GetByIdsAsync(productIds, cancellationToken);
 
@@ -429,7 +446,6 @@ public class PromotionService : IPromotionService
                         existingPp.SalePrice = incomingPp.SalePrice;
                         existingPp.DiscountPercent = incomingPp.DiscountPercent;
                         existingPp.SaleQuantity = incomingPp.SaleQuantity;
-                        existingPp.IsActive = incomingPp.IsActive;
                         existingPp.UpdatedAt = _timeProvider.UtcNow;
                         existingPp.IsDeleted = false;
                     }
@@ -517,7 +533,6 @@ public class PromotionService : IPromotionService
                                     existingP.SalePrice = incomingP.SalePrice;
                                     existingP.DiscountPercent = incomingP.DiscountPercent;
                                     existingP.SaleQuantity = incomingP.SaleQuantity;
-                                    existingP.IsActive = incomingP.IsActive;
                                     existingP.UpdatedAt = _timeProvider.UtcNow;
                                     existingP.IsDeleted = false;
                                 }

@@ -229,7 +229,7 @@ public class ProductProfile : Profile
     {
         var active = GetActivePromotionData(src);
         if (active == null || src.Price <= 0) return null;
-        
+
         return (int)Math.Round((1 - (active.Value.SalePrice / src.Price)) * 100);
     }
 

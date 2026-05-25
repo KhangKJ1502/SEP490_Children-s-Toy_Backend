@@ -510,13 +510,13 @@ public class CheckoutService : ICheckoutService
                     {
                         // SE_PAY: Tăng ReservedQuantity
                         sql = "UPDATE PromotionProductSlots SET ReservedQuantity = ReservedQuantity + {0} " +
-                              "WHERE SlotProductID = {1} AND SoldQuantity + ReservedQuantity + {0} <= SaleQuantity AND IsActive = 1";
+                              "WHERE SlotProductID = {1} AND SoldQuantity + ReservedQuantity + {0} <= SaleQuantity";
                     }
                     else
                     {
                         // COD/Wallet: Tăng SoldQuantity
                         sql = "UPDATE PromotionProductSlots SET SoldQuantity = SoldQuantity + {0} " +
-                              "WHERE SlotProductID = {1} AND SoldQuantity + ReservedQuantity + {0} <= SaleQuantity AND IsActive = 1";
+                              "WHERE SlotProductID = {1} AND SoldQuantity + ReservedQuantity + {0} <= SaleQuantity";
                     }
 
                     var flashAffected = await _db.Database.ExecuteSqlRawAsync(sql, new object[] { (int)item.Quantity, flashSaleSlot.SlotProductId }, cancellationToken);
