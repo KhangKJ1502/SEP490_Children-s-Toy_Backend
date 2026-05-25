@@ -196,12 +196,8 @@ public class ProductProfile : Profile
 
         // 2. Regular Promotion
         var bestRegularPromotion = src.ProductPromotions
-<<<<<<< HEAD
-            .Where(pp => pp.Promotion != null
-=======
             .Where(pp => !pp.IsDeleted
                          && pp.Promotion != null
->>>>>>> dbf37f2c5fd5b2064b29c988ff02a65ca4cda02a
                          && !pp.Promotion.IsDeleted
                          && (string.Equals(pp.Promotion.Status, "Active", StringComparison.OrdinalIgnoreCase)
                              || string.Equals(pp.Promotion.Status, "Scheduled", StringComparison.OrdinalIgnoreCase))
@@ -233,7 +229,7 @@ public class ProductProfile : Profile
     {
         var active = GetActivePromotionData(src);
         if (active == null || src.Price <= 0) return null;
-        
+
         return (int)Math.Round((1 - (active.Value.SalePrice / src.Price)) * 100);
     }
 

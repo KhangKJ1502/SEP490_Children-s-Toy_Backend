@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using ToyStore.Domain.Entities;
 
@@ -1727,10 +1725,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.ProductId).HasColumnName("ProductID");
             entity.Property(e => e.SalePrice).HasColumnType("decimal(12, 2)");
             entity.Property(e => e.DiscountPercent).HasColumnType("decimal(5, 2)");
-<<<<<<< HEAD
-=======
             entity.Property(e => e.IsDeleted).HasDefaultValue(false);
->>>>>>> dbf37f2c5fd5b2064b29c988ff02a65ca4cda02a
             entity.Property(e => e.SoldQuantity).HasDefaultValue(0);
             entity.Property(e => e.ReservedQuantity).HasDefaultValue(0);
             entity.Property(e => e.CreatedAt)
