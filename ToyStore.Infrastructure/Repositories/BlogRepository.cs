@@ -24,9 +24,10 @@ public class BlogRepository : IBlogRepository
         bool featuredOnly = false,
         int? createdByAccountId = null,
         bool onlyPublished = false,
+        IReadOnlyCollection<string>? allowedStatuses = null,
         CancellationToken cancellationToken = default)
     {
-        var query = BuildQuery(searchTerm, status, featuredOnly, createdByAccountId, onlyPublished);
+        var query = BuildQuery(searchTerm, status, featuredOnly, createdByAccountId, onlyPublished, allowedStatuses);
         query = ApplySorting(query, sortBy, sortDesc);
 
         return await query
@@ -41,9 +42,10 @@ public class BlogRepository : IBlogRepository
         bool featuredOnly = false,
         int? createdByAccountId = null,
         bool onlyPublished = false,
+        IReadOnlyCollection<string>? allowedStatuses = null,
         CancellationToken cancellationToken = default)
     {
-        return BuildQuery(searchTerm, status, featuredOnly, createdByAccountId, onlyPublished).CountAsync(cancellationToken);
+        return BuildQuery(searchTerm, status, featuredOnly, createdByAccountId, onlyPublished, allowedStatuses).CountAsync(cancellationToken);
     }
 
     public Task<BlogPost?> GetByIdAsync(int blogPostId, CancellationToken cancellationToken = default)
@@ -634,7 +636,8 @@ public class BlogRepository : IBlogRepository
         string? status,
         bool featuredOnly,
         int? createdByAccountId,
-        bool onlyPublished)
+        bool onlyPublished,
+        IReadOnlyCollection<string>? allowedStatuses)
     {
         IQueryable<BlogPost> query = _context.BlogPosts
             .AsNoTracking()
@@ -665,6 +668,15 @@ public class BlogRepository : IBlogRepository
             {
                 query = query.Where(x => x.Status.ToLower() == normalizedStatus);
             }
+        }
+
+        if (allowedStatuses != null && allowedStatuses.Count > 0)
+        {
+            var normalizedAllowedStatuses = allowedStatuses
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim().ToLowerInvariant())
+                .ToList();
+            query = query.Where(x => normalizedAllowedStatuses.Contains(x.Status.ToLower()));
         }
 
         if (featuredOnly)
