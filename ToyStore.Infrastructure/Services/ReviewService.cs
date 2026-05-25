@@ -529,6 +529,27 @@ public class ReviewService : IReviewService
                 }, cancellationToken);
             }
 
+            if (dto.ModerationStatus == "Rejected")
+            {
+                var delivery = new Delivery
+                {
+                    AccountId = review.AccountId,
+                    RecipientType = "CUSTOMER",
+                    Channel = "WEB_BELL",
+                    NotificationType = "SYSTEM",
+                    Title = "Đánh giá của bạn không được duyệt",
+                    Message = string.IsNullOrWhiteSpace(dto.Reason)
+                        ? "Đánh giá sản phẩm của bạn không được duyệt do vi phạm quy chuẩn nội dung."
+                        : $"Đánh giá sản phẩm của bạn không được duyệt do vi phạm quy chuẩn nội dung: {dto.Reason}",
+                    Payload = System.Text.Json.JsonSerializer.Serialize(new { reviewId = review.ReviewId, reason = dto.Reason }),
+                    Status = "Unread",
+                    ActionTarget = "/profile/reviews",
+                    IdempotencyKey = $"moderation:review:{reviewId}:rejected",
+                    CreatedAt = now
+                };
+                _unitOfWork.Deliveries.Add(delivery);
+            }
+
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
