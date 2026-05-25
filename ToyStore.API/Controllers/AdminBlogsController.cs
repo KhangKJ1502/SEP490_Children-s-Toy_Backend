@@ -1,9 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Net.Http.Json;
 using ToyStore.API.Extensions;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Blogs;
 using ToyStore.Application.Interfaces.Services;
+using ToyStore.Infrastructure.Options;
+using Microsoft.Extensions.Options;
 
 namespace ToyStore.API.Controllers;
 
@@ -12,23 +15,71 @@ public class UploadAdminBlogThumbnailRequest
     public IFormFile File { get; set; } = default!;
 }
 
+public class AiBlogGenerateRequest
+{
+    public int? BlogPostId { get; set; }
+    public string? Action { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string PromptStructure { get; set; } = string.Empty;
+    public string? DefaultTone { get; set; }
+    public int DefaultCategoryId { get; set; }
+    public bool? IsActive { get; set; }
+}
+
+public class AiBlogGenerateResult
+{
+    public int BlogPostId { get; set; }
+    public int? HistoryId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string BlogContent { get; set; } = string.Empty;
+    public int BlogCategoryId { get; set; }
+    public string PromptData { get; set; } = string.Empty;
+    public string AiStatus { get; set; } = "Success";
+    public string? AiError { get; set; }
+}
+
+internal sealed class PythonBlogGenerateRequest
+{
+    public string Action { get; set; } = "Generate";
+    public string Title { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string PromptStructure { get; set; } = string.Empty;
+    public string DefaultTone { get; set; } = "Friendly";
+    public int DefaultCategoryId { get; set; }
+    public string? SourceContent { get; set; }
+}
+
+internal sealed class PythonBlogGenerateResponse
+{
+    public string Title { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
+}
+
 [ApiController]
 [Route("api/admin")]
 [Authorize(Roles = "Admin,Staff")]
 public class AdminBlogsController : ControllerBase
 {
     private const string BlogThumbnailFolder = "SEP490_Blogs";
+    private const string AiModerationHttpClientName = "AI_MODERATION";
     private readonly IBlogService _blogService;
     private readonly IImageUploadService _imageUploadService;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IOptions<AiModerationOptions> _aiModerationOptions;
     private readonly ILogger<AdminBlogsController> _logger;
 
     public AdminBlogsController(
         IBlogService blogService,
         IImageUploadService imageUploadService,
+        IHttpClientFactory httpClientFactory,
+        IOptions<AiModerationOptions> aiModerationOptions,
         ILogger<AdminBlogsController> logger)
     {
         _blogService = blogService;
         _imageUploadService = imageUploadService;
+        _httpClientFactory = httpClientFactory;
+        _aiModerationOptions = aiModerationOptions;
         _logger = logger;
     }
 
@@ -153,6 +204,93 @@ public class AdminBlogsController : ControllerBase
     {
         var result = await _blogService.UpdateFeaturedAsync(blogPostId, dto, cancellationToken);
         return result.ToActionResult();
+    }
+
+    [HttpPost("ai-blogs/generate")]
+    public async Task<ActionResult<AiBlogGenerateResult>> GenerateBlogWithAi(
+        [FromBody] AiBlogGenerateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        static ActionResult<AiBlogGenerateResult> ToAiErrorResult(string code, string message, int statusCode = 400)
+            => new ObjectResult(new { code, message }) { StatusCode = statusCode };
+
+        if (string.IsNullOrWhiteSpace(request.Title) || string.IsNullOrWhiteSpace(request.PromptStructure) || request.DefaultCategoryId <= 0)
+        {
+            return BadRequest(new { code = "VALIDATION_ERROR", message = "Title, PromptStructure, and Category are required." });
+        }
+        if (request.DefaultCategoryId > short.MaxValue)
+        {
+            return BadRequest(new { code = "VALIDATION_ERROR", message = "Category is invalid." });
+        }
+
+        var action = string.IsNullOrWhiteSpace(request.Action) ? "Generate" : request.Action.Trim();
+        var tone = string.IsNullOrWhiteSpace(request.DefaultTone) ? "Friendly" : request.DefaultTone.Trim();
+
+        string? sourceContent = null;
+        if (request.BlogPostId.HasValue && request.BlogPostId.Value > 0)
+        {
+            var existingResult = await _blogService.GetBlogDetailsAsync(request.BlogPostId.Value, cancellationToken);
+            if (!existingResult.IsSuccess || existingResult.Data == null)
+            {
+                return ToAiErrorResult(existingResult.ErrorCode ?? "BLOG_NOT_FOUND", existingResult.ErrorMessage ?? "Blog not found.", 404);
+            }
+            sourceContent = existingResult.Data.BlogContent;
+        }
+
+        PythonBlogGenerateResponse? aiGenerated;
+        try
+        {
+            using var client = _httpClientFactory.CreateClient(AiModerationHttpClientName);
+            using var aiRequest = new HttpRequestMessage(HttpMethod.Post, "/moderation/blog-content/generate")
+            {
+                Content = JsonContent.Create(new PythonBlogGenerateRequest
+                {
+                    Action = action,
+                    Title = request.Title.Trim(),
+                    Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
+                    PromptStructure = request.PromptStructure.Trim(),
+                    DefaultTone = tone,
+                    DefaultCategoryId = request.DefaultCategoryId,
+                    SourceContent = sourceContent
+                })
+            };
+            aiRequest.Headers.Add("X-Internal-Key", _aiModerationOptions.Value.InternalApiKey);
+
+            using var aiResponse = await client.SendAsync(aiRequest, cancellationToken);
+            if (!aiResponse.IsSuccessStatusCode)
+            {
+                var aiErrorBody = await aiResponse.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning("AI blog generate failed. Status={StatusCode}, Body={Body}", aiResponse.StatusCode, aiErrorBody);
+                return StatusCode((int)aiResponse.StatusCode, new { code = "AI_GENERATE_ERROR", message = "AI generation failed.", detail = aiErrorBody });
+            }
+
+            aiGenerated = await aiResponse.Content.ReadFromJsonAsync<PythonBlogGenerateResponse>(cancellationToken: cancellationToken);
+            if (aiGenerated == null || string.IsNullOrWhiteSpace(aiGenerated.Content))
+            {
+                return StatusCode(502, new { code = "AI_GENERATE_EMPTY", message = "AI returned empty content." });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "AI blog generate call threw exception.");
+            return StatusCode(502, new { code = "AI_SERVICE_UNAVAILABLE", message = "Unable to call AI service." });
+        }
+
+        var generatedTitle = string.IsNullOrWhiteSpace(aiGenerated.Title)
+            ? request.Title.Trim()
+            : aiGenerated.Title.Trim();
+
+        return Ok(new AiBlogGenerateResult
+        {
+            BlogPostId = request.BlogPostId.GetValueOrDefault(0),
+            HistoryId = null,
+            Title = generatedTitle,
+            BlogContent = aiGenerated.Content,
+            BlogCategoryId = request.DefaultCategoryId,
+            PromptData = request.PromptStructure,
+            AiStatus = "Success",
+            AiError = null
+        });
     }
 
     [HttpPost("blogs/thumbnail/upload")]

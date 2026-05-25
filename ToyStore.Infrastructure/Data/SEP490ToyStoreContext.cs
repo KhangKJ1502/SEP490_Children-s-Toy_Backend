@@ -62,10 +62,6 @@ public partial class SEP490ToyStoreContext : DbContext
 
     public virtual DbSet<Category> Categories { get; set; }
 
-    public virtual DbSet<ChatConversation> ChatConversations { get; set; }
-
-    public virtual DbSet<ChatMessage> ChatMessages { get; set; }
-
     public virtual DbSet<Delivery> Deliveries { get; set; }
 
     public virtual DbSet<DeliveryAction> DeliveryActions { get; set; }
@@ -821,54 +817,6 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasForeignKey(d => d.SuperCategoryId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Categories_SuperCategories");
-        });
-
-        modelBuilder.Entity<ChatConversation>(entity =>
-        {
-            entity.HasKey(e => e.ConversationId).HasName("PK__ChatConv__C050D8976B6EBDD1");
-
-            entity.Property(e => e.ConversationId).HasColumnName("ConversationID");
-            entity.Property(e => e.AccountId).HasColumnName("AccountID");
-            entity.Property(e => e.CreatedAt)
-                .HasPrecision(0)
-                .HasDefaultValueSql("(getdate())");
-            entity.Property(e => e.SessionId)
-                .HasMaxLength(100)
-                .IsUnicode(false)
-                .HasColumnName("SessionID");
-            entity.Property(e => e.Status)
-                .HasMaxLength(15)
-                .IsUnicode(false)
-                .HasDefaultValue("BotActive");
-            entity.Property(e => e.UpdatedAt).HasPrecision(0);
-
-            entity.HasOne(d => d.Account).WithMany(p => p.ChatConversations)
-                .HasForeignKey(d => d.AccountId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_ChatConversations_Accounts");
-        });
-
-        modelBuilder.Entity<ChatMessage>(entity =>
-        {
-            entity.HasKey(e => e.MessageId).HasName("PK__ChatMess__C87C037CD7DE7F70");
-
-            entity.HasIndex(e => new { e.ConversationId, e.CreatedAt }, "IX_ChatMessages_Conversation").IsDescending(false, true);
-
-            entity.Property(e => e.MessageId).HasColumnName("MessageID");
-            entity.Property(e => e.Content).HasMaxLength(1000);
-            entity.Property(e => e.ConversationId).HasColumnName("ConversationID");
-            entity.Property(e => e.CreatedAt)
-                .HasPrecision(0)
-                .HasDefaultValueSql("(getdate())");
-            entity.Property(e => e.Payload).HasMaxLength(2000);
-            entity.Property(e => e.SenderType)
-                .HasMaxLength(10)
-                .IsUnicode(false);
-
-            entity.HasOne(d => d.Conversation).WithMany(p => p.ChatMessages)
-                .HasForeignKey(d => d.ConversationId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_ChatMessages_ChatConversations");
         });
 
         modelBuilder.Entity<Delivery>(entity =>

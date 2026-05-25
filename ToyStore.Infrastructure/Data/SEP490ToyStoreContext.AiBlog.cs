@@ -13,6 +13,8 @@ public partial class SEP490ToyStoreContext
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<CartItem>().Ignore(e => e.IsSelected);
+
         modelBuilder.Entity<AiPromptTemplate>(entity =>
         {
             entity.HasKey(e => e.TemplateId);

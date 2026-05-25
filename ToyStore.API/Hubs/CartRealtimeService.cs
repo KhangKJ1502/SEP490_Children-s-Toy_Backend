@@ -38,14 +38,8 @@ public class CartRealtimeService : ICartRealtimeService
         var userId = accountId.ToString();
         _logger.LogInformation("Publishing cart realtime event {EventName} to account {AccountId}.", eventName, accountId);
 
-        var publishToUserTask = _hubContext.Clients
+        return _hubContext.Clients
             .User(userId)
             .SendAsync(eventName, response, cancellationToken);
-
-        var publishToGroupTask = _hubContext.Clients
-            .Group(CartHub.BuildUserGroup(accountId))
-            .SendAsync(eventName, response, cancellationToken);
-
-        return Task.WhenAll(publishToUserTask, publishToGroupTask);
     }
 }

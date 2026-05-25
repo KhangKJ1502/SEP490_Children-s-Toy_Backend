@@ -13,7 +13,8 @@ public class CartProfile : Profile
             .ForMember(dest => dest.ProductStatus, opt => opt.MapFrom(src => src.Product.ProductStatus))
             .ForMember(dest => dest.MainImageUrl, opt => opt.MapFrom(src => src.Product.ProductImage != null ? src.Product.ProductImage.ImageUrl : null))
             .ForMember(dest => dest.StockQuantity, opt => opt.MapFrom(src => src.Product.Quantity))
-            .ForMember(dest => dest.LineTotal, opt => opt.MapFrom(src => src.CurrentPrice * src.Quantity));
+            .ForMember(dest => dest.LineTotal, opt => opt.MapFrom(src => src.CurrentPrice * src.Quantity))
+            .ForMember(dest => dest.IsSelected, opt => opt.MapFrom(_ => true));
 
         CreateMap<Cart, CartDto>()
             .ForMember(dest => dest.TotalItem, opt => opt.Ignore())

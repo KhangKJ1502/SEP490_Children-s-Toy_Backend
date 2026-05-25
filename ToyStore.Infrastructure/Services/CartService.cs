@@ -12,6 +12,9 @@ namespace ToyStore.Infrastructure.Services;
 
 public class CartService : ICartService
 {
+    private const decimal MaxCartSubTotal = 100_000_000m;
+    private const string MaxCartSubTotalExceededMessage = "Cart total cannot exceed 100,000,000 VND.";
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUserService _currentUserService;
     private readonly ICartRealtimeService _cartRealtimeService;
@@ -73,8 +76,10 @@ public class CartService : ICartService
 
         var cart = await EnsureCartAsync(accountId, cancellationToken);
         var existingItem = await _unitOfWork.Carts.GetItemByProductAsync(cart.CartId, dto.ProductId, cancellationToken);
+        var cartWithItems = await _unitOfWork.Carts.GetByAccountIdWithItemsAsync(accountId, cancellationToken);
         var now = _timeProvider.UtcNow;
         var currentPrice = PriceHelper.ResolveCurrentPrice(product, now);
+        var currentSubTotal = CalculateCartSubTotal(cartWithItems);
 
         if (existingItem != null)
         {
@@ -86,11 +91,18 @@ public class CartService : ICartService
                     $"Cart quantity has reached the maximum available stock ({product.Quantity}).");
             }
 
+            var existingActiveItem = cartWithItems?.CartItems.FirstOrDefault(x => x.ProductId == dto.ProductId && x.RemovedAt == null);
+            var previousLineTotal = existingActiveItem == null ? 0m : existingActiveItem.CurrentPrice * existingActiveItem.Quantity;
+            var projectedSubTotal = currentSubTotal - previousLineTotal + (currentPrice * mergedQty);
+            if (IsCartSubTotalExceeded(projectedSubTotal))
+            {
+                return Result<CartDto>.BusinessError(MaxCartSubTotalExceededMessage);
+            }
+
             existingItem.Quantity = mergedQty;
             existingItem.RemovedAt = null;
             existingItem.UpdatedAt = now;
             existingItem.CurrentPrice = currentPrice;
-            existingItem.IsSelected = true;
             if (existingItem.PriceAtThatTime <= 0)
             {
                 existingItem.PriceAtThatTime = currentPrice;
@@ -105,6 +117,12 @@ public class CartService : ICartService
                     $"Cart quantity has reached the maximum available stock ({product.Quantity}).");
             }
 
+            var projectedSubTotal = currentSubTotal + (currentPrice * dto.Quantity);
+            if (IsCartSubTotalExceeded(projectedSubTotal))
+            {
+                return Result<CartDto>.BusinessError(MaxCartSubTotalExceededMessage);
+            }
+
             var item = new CartItem
             {
                 CartId = cart.CartId,
@@ -112,7 +130,6 @@ public class CartService : ICartService
                 Quantity = dto.Quantity,
                 PriceAtThatTime = currentPrice,
                 CurrentPrice = currentPrice,
-                IsSelected = true,
                 AddedAt = now
             };
             _unitOfWork.Carts.AddItem(item);
@@ -178,9 +195,20 @@ public class CartService : ICartService
                 $"Cart quantity has reached the maximum available stock ({item.Product.Quantity}).");
         }
 
+        var cartWithItems = await _unitOfWork.Carts.GetByAccountIdWithItemsAsync(accountId, cancellationToken);
+        var now = _timeProvider.UtcNow;
+        var nextUnitPrice = PriceHelper.ResolveCurrentPrice(item.Product, now);
+        var currentSubTotal = CalculateCartSubTotal(cartWithItems);
+        var previousLineTotal = item.CurrentPrice * item.Quantity;
+        var projectedSubTotal = currentSubTotal - previousLineTotal + (nextUnitPrice * dto.Quantity);
+        if (IsCartSubTotalExceeded(projectedSubTotal))
+        {
+            return Result<CartDto>.BusinessError(MaxCartSubTotalExceededMessage);
+        }
+
         item.Quantity = dto.Quantity;
-        item.CurrentPrice = PriceHelper.ResolveCurrentPrice(item.Product, _timeProvider.UtcNow);
-        item.UpdatedAt = _timeProvider.UtcNow;
+        item.CurrentPrice = nextUnitPrice;
+        item.UpdatedAt = now;
         _unitOfWork.Carts.UpdateItem(item);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -411,6 +439,10 @@ public class CartService : ICartService
         }
 
         var dto = _mapper.Map<CartDto>(cart!);
+        dto.Items = dto.Items
+            .OrderByDescending(x => x.AddedAt)
+            .ThenByDescending(x => x.CartItemId)
+            .ToList();
         dto.TotalItem = dto.Items.Count;
         dto.TotalQuantity = dto.Items.Sum(x => x.Quantity);
         dto.SubTotal = dto.Items.Sum(x => x.LineTotal);
@@ -454,4 +486,18 @@ public class CartService : ICartService
         var normalized = new string(productStatus.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
         return normalized is "INACTIVE" or "OUTOFSTOCK" or "DISCONTINUED";
     }
+
+    private static decimal CalculateCartSubTotal(Cart? cart)
+    {
+        if (cart == null)
+        {
+            return 0m;
+        }
+
+        return cart.CartItems
+            .Where(x => x.RemovedAt == null)
+            .Sum(x => x.CurrentPrice * x.Quantity);
+    }
+
+    private static bool IsCartSubTotalExceeded(decimal subtotal) => subtotal > MaxCartSubTotal;
 }

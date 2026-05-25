@@ -63,8 +63,6 @@ public partial class Account
 
     public virtual Cart? Cart { get; set; }
 
-    public virtual ICollection<ChatConversation> ChatConversations { get; set; } = new List<ChatConversation>();
-
     public virtual ICollection<Delivery> Deliveries { get; set; } = new List<Delivery>();
 
     public virtual ICollection<DeliveryAction> DeliveryActions { get; set; } = new List<DeliveryAction>();
