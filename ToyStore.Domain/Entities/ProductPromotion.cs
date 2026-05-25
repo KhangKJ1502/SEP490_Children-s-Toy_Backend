@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ToyStore.Domain.Entities;
 
@@ -19,7 +20,12 @@ public partial class ProductPromotion
 
     public int ReservedQuantity { get; set; }
 
-    public bool IsActive { get; set; }
+    [NotMapped]
+    public bool IsActive
+    {
+        get => !IsDeleted;
+        set => IsDeleted = !value;
+    }
 
     public bool IsDeleted { get; set; }
 
