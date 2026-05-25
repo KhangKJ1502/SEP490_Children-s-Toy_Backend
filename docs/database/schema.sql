@@ -337,7 +337,6 @@ CREATE TABLE [ProductPromotions] (
     [SaleQuantity]     INT           NULL,
     [SoldQuantity]     INT           NOT NULL DEFAULT 0,
     [ReservedQuantity] INT           NOT NULL DEFAULT 0,
-    [IsActive]         BIT           NOT NULL DEFAULT 1,
     [IsDeleted]     BIT NOT NULL DEFAULT 0,
     [CreatedAt]        DATETIME2(0)  NOT NULL DEFAULT GETUTCDATE(),
     [UpdatedAt]        DATETIME2(0)  NULL,
@@ -349,11 +348,11 @@ CREATE TABLE [ProductPromotions] (
 GO
 
 CREATE INDEX [IX_ProductPromotions_ProductID_Active]
-    ON [ProductPromotions] ([ProductID], [IsActive])
+    ON [ProductPromotions] ([ProductID])
     INCLUDE ([SalePrice], [PromotionID]);
 CREATE INDEX [IX_ProductPromotions_PromotionID]
     ON [ProductPromotions] ([PromotionID])
-    INCLUDE ([ProductID], [SalePrice], [IsActive]);
+    INCLUDE ([ProductID], [SalePrice]);
 GO
 
 /* -------------------------------------------------------
@@ -370,7 +369,6 @@ CREATE TABLE [PromotionProductSlots] (
     [SaleQuantity]     INT           NOT NULL CHECK ([SaleQuantity] > 0),
     [SoldQuantity]     INT           NOT NULL DEFAULT 0,
     [ReservedQuantity] INT           NOT NULL DEFAULT 0,
-    [IsActive]         BIT           NOT NULL DEFAULT 1,
     [IsDeleted]     BIT NOT NULL DEFAULT 0,
     [CreatedAt]        DATETIME2(0)  NOT NULL DEFAULT GETUTCDATE(),
     [UpdatedAt]        DATETIME2(0)  NULL,
@@ -383,11 +381,11 @@ GO
 
 /* Truy vấn sản phẩm flash-sale đang active theo slot */
 CREATE INDEX [IX_PromotionProductSlots_Slot_Active]
-    ON [PromotionProductSlots] ([TimeSlotID], [IsActive])
+    ON [PromotionProductSlots] ([TimeSlotID])
     INCLUDE ([ProductID], [SalePrice], [SaleQuantity], [SoldQuantity]);
 /* Truy vấn ngược: sản phẩm đang tham gia slot nào */
 CREATE INDEX [IX_PromotionProductSlots_Product]
-    ON [PromotionProductSlots] ([ProductID], [IsActive])
+    ON [PromotionProductSlots] ([ProductID])
     INCLUDE ([TimeSlotID], [SalePrice]);
 GO
 

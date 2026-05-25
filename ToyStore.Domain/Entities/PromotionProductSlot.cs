@@ -29,13 +29,6 @@ public partial class PromotionProductSlot
 
     public int ReservedQuantity { get; set; }
 
-    [NotMapped]
-    public bool IsActive
-    {
-        get => !IsDeleted;
-        set => IsDeleted = !value;
-    }
-
     public bool IsDeleted { get; set; }
 
     public DateTime CreatedAt { get; set; }

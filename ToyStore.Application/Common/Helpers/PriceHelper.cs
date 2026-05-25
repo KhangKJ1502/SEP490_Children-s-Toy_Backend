@@ -17,8 +17,7 @@ public static class PriceHelper
         if (product.ProductPromotions != null)
         {
             var bestRegularPromotion = product.ProductPromotions
-                .Where(pp => pp.IsActive
-                             && pp.Promotion != null
+                .Where(pp => pp.Promotion != null
                              && !pp.Promotion.IsDeleted
                              && (string.Equals(pp.Promotion.Status, "Active", StringComparison.OrdinalIgnoreCase)
                                  || string.Equals(pp.Promotion.Status, "Scheduled", StringComparison.OrdinalIgnoreCase))
@@ -45,8 +44,7 @@ public static class PriceHelper
         if (product.PromotionProductSlots == null) return null;
 
         return product.PromotionProductSlots
-            .Where(pps => pps.IsActive
-                         && pps.TimeSlot != null
+            .Where(pps => pps.TimeSlot != null
                          && string.Equals(pps.TimeSlot.Status, "Active", StringComparison.OrdinalIgnoreCase)
                          && pps.TimeSlot.StartAt <= now
                          && pps.TimeSlot.EndAt >= now
