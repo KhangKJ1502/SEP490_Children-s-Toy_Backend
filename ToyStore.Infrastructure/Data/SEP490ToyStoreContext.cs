@@ -1522,9 +1522,13 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasColumnName("ProductID");
             entity.Property(e => e.AgeId).HasColumnName("AgeID");
             entity.Property(e => e.Description).HasMaxLength(1500);
+            entity.Property(e => e.HeightCm).HasColumnName("HeightCm");
+            entity.Property(e => e.LengthCm).HasColumnName("LengthCm");
             entity.Property(e => e.MaterialId).HasColumnName("MaterialID");
             entity.Property(e => e.OriginId).HasColumnName("OriginID");
             entity.Property(e => e.SexId).HasColumnName("SexID");
+            entity.Property(e => e.WeightGram).HasColumnName("WeightGram");
+            entity.Property(e => e.WidthCm).HasColumnName("WidthCm");
 
             entity.HasOne(d => d.Age).WithMany(p => p.ProductDetails)
                 .HasForeignKey(d => d.AgeId)
@@ -1617,6 +1621,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
             entity.Property(e => e.DiscountPercent).HasColumnType("decimal(5, 2)");
+            entity.Property(e => e.IsDeleted).HasDefaultValue(false);
             entity.Property(e => e.SalePrice).HasColumnType("decimal(12, 2)");
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
@@ -1722,6 +1727,10 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.ProductId).HasColumnName("ProductID");
             entity.Property(e => e.SalePrice).HasColumnType("decimal(12, 2)");
             entity.Property(e => e.DiscountPercent).HasColumnType("decimal(5, 2)");
+<<<<<<< HEAD
+=======
+            entity.Property(e => e.IsDeleted).HasDefaultValue(false);
+>>>>>>> dbf37f2c5fd5b2064b29c988ff02a65ca4cda02a
             entity.Property(e => e.SoldQuantity).HasDefaultValue(0);
             entity.Property(e => e.ReservedQuantity).HasDefaultValue(0);
             entity.Property(e => e.CreatedAt)
@@ -1855,6 +1864,8 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<ReviewBlogReply>(entity =>
         {
+            entity.ToTable("ReviewBlogReplies", tb => tb.HasTrigger("trg_ReviewBlogReply_UpdateCommentCount"));
+
             entity.HasKey(e => e.ReplyBlogId).HasName("PK__ReviewBl__5996364139D7A15C");
 
             entity.HasIndex(e => new { e.ReviewBlogId, e.ModerationStatus, e.CreatedAt }, "IX_ReviewBlogReplies_Comment_Status");

@@ -566,6 +566,10 @@ public class ProductRepository : IProductRepository
             existing.ProductDetail.AgeId = product.ProductDetail.AgeId;
             existing.ProductDetail.SexId = product.ProductDetail.SexId;
             existing.ProductDetail.OriginId = product.ProductDetail.OriginId;
+            existing.ProductDetail.WeightGram = product.ProductDetail.WeightGram;
+            existing.ProductDetail.LengthCm = product.ProductDetail.LengthCm;
+            existing.ProductDetail.WidthCm = product.ProductDetail.WidthCm;
+            existing.ProductDetail.HeightCm = product.ProductDetail.HeightCm;
         }
 
         if (product.ProductImage != null)

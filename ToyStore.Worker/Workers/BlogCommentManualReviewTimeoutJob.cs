@@ -23,8 +23,7 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
     private const string TimeoutBanReasonContent =
         "Manual review was not completed within 24 hours, so the comment was automatically rejected";
     private const string TimeoutBanReasonPrefix = "Manual review was not completed within 24 hours";
-    private const int ViolationWindowDays = 15;
-    private const int ViolationThreshold = 3;
+    private const int ViolationThreshold = 20;
     private const int CommentLockDays = 7;
 
     public BlogCommentManualReviewTimeoutJob(
@@ -230,17 +229,7 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
         state.LastViolatedAt = nowUtc;
         state.UpdatedAt = nowUtc;
 
-        var since = nowUtc.AddDays(-ViolationWindowDays);
-        var rejectedCount = await db.BlogCommentModerationLogs
-            .Where(x => x.Action == "Rejected"
-                     && x.CreatedAt >= since
-                     && (
-                         (x.CommentId != null && db.ReviewBlogs.Any(c => c.ReviewBlogId == x.CommentId && c.AccountId == accountId))
-                         || (x.ReplyId != null && db.ReviewBlogReplies.Any(r => r.ReplyBlogId == x.ReplyId && r.AccountId == accountId))
-                     ))
-            .CountAsync(ct);
-
-        if (rejectedCount < ViolationThreshold)
+        if (state.ViolationCount < ViolationThreshold)
         {
             await db.SaveChangesAsync(ct);
             return;

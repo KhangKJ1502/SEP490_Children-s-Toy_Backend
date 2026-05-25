@@ -24,9 +24,10 @@ public class BlogRepository : IBlogRepository
         bool featuredOnly = false,
         int? createdByAccountId = null,
         bool onlyPublished = false,
+        IReadOnlyCollection<string>? allowedStatuses = null,
         CancellationToken cancellationToken = default)
     {
-        var query = BuildQuery(searchTerm, status, featuredOnly, createdByAccountId, onlyPublished);
+        var query = BuildQuery(searchTerm, status, featuredOnly, createdByAccountId, onlyPublished, allowedStatuses);
         query = ApplySorting(query, sortBy, sortDesc);
 
         return await query
@@ -41,9 +42,10 @@ public class BlogRepository : IBlogRepository
         bool featuredOnly = false,
         int? createdByAccountId = null,
         bool onlyPublished = false,
+        IReadOnlyCollection<string>? allowedStatuses = null,
         CancellationToken cancellationToken = default)
     {
-        return BuildQuery(searchTerm, status, featuredOnly, createdByAccountId, onlyPublished).CountAsync(cancellationToken);
+        return BuildQuery(searchTerm, status, featuredOnly, createdByAccountId, onlyPublished, allowedStatuses).CountAsync(cancellationToken);
     }
 
     public Task<BlogPost?> GetByIdAsync(int blogPostId, CancellationToken cancellationToken = default)
@@ -512,22 +514,24 @@ public class BlogRepository : IBlogRepository
         return (true, state.BanExpiresAt);
     }
 
-    public Task<List<BlogCommentViolationCount>> GetPagedBannedCommentAccountsAsync(
+    public Task<List<Account>> GetPagedCustomerCommentPermissionAccountsAsync(
         int pageNumber,
         int pageSize,
         string? searchTerm,
         CancellationToken cancellationToken = default)
     {
-        return BuildBannedCommentAccountsQuery(searchTerm)
-            .OrderByDescending(x => x.BannedAt ?? x.UpdatedAt)
+        return BuildCustomerCommentPermissionAccountsQuery(searchTerm)
+            .OrderByDescending(x => x.BlogCommentViolationCountAccount != null && x.BlogCommentViolationCountAccount.IsCommentBanned)
+            .ThenByDescending(x => x.BlogCommentViolationCountAccount != null ? x.BlogCommentViolationCountAccount.BannedAt : null)
+            .ThenBy(x => x.AccountName)
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
     }
 
-    public Task<int> CountBannedCommentAccountsAsync(string? searchTerm, CancellationToken cancellationToken = default)
+    public Task<int> CountCustomerCommentPermissionAccountsAsync(string? searchTerm, CancellationToken cancellationToken = default)
     {
-        return BuildBannedCommentAccountsQuery(searchTerm).CountAsync(cancellationToken);
+        return BuildCustomerCommentPermissionAccountsQuery(searchTerm).CountAsync(cancellationToken);
     }
 
     public Task<BlogCommentViolationCount?> GetCommentPermissionStateAsync(
@@ -606,20 +610,21 @@ public class BlogRepository : IBlogRepository
         return state;
     }
 
-    private IQueryable<BlogCommentViolationCount> BuildBannedCommentAccountsQuery(string? searchTerm)
+    private IQueryable<Account> BuildCustomerCommentPermissionAccountsQuery(string? searchTerm)
     {
-        var query = _context.BlogCommentViolationCounts
+        var query = _context.Accounts
             .AsNoTracking()
-            .Include(x => x.Account)
-            .Include(x => x.UnbannedByNavigation)
-            .Where(x => x.IsCommentBanned && !x.Account.IsDeleted);
+            .Include(x => x.Role)
+            .Include(x => x.BlogCommentViolationCountAccount)
+                .ThenInclude(state => state.UnbannedByNavigation)
+            .Where(x => !x.IsDeleted && x.Role.RoleName == "Customer");
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
             var term = searchTerm.Trim();
             query = query.Where(x =>
-                x.Account.AccountName.Contains(term)
-                || x.Account.Email.Contains(term)
+                x.AccountName.Contains(term)
+                || x.Email.Contains(term)
                 || x.AccountId.ToString().Contains(term));
         }
 
@@ -631,7 +636,8 @@ public class BlogRepository : IBlogRepository
         string? status,
         bool featuredOnly,
         int? createdByAccountId,
-        bool onlyPublished)
+        bool onlyPublished,
+        IReadOnlyCollection<string>? allowedStatuses)
     {
         IQueryable<BlogPost> query = _context.BlogPosts
             .AsNoTracking()
@@ -662,6 +668,15 @@ public class BlogRepository : IBlogRepository
             {
                 query = query.Where(x => x.Status.ToLower() == normalizedStatus);
             }
+        }
+
+        if (allowedStatuses != null && allowedStatuses.Count > 0)
+        {
+            var normalizedAllowedStatuses = allowedStatuses
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim().ToLowerInvariant())
+                .ToList();
+            query = query.Where(x => normalizedAllowedStatuses.Contains(x.Status.ToLower()));
         }
 
         if (featuredOnly)

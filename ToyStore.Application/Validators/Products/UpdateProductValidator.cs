@@ -86,6 +86,22 @@ public class UpdateProductValidator : AbstractValidator<UpdateProductDto>
             .GreaterThan((byte)0).WithMessage("Origin ID must be greater than 0.")
             .When(x => x.OriginId.HasValue);
 
+        RuleFor(x => x.WeightGram)
+            .GreaterThan(0).WithMessage("Weight (gram) must be greater than 0.")
+            .When(x => x.WeightGram.HasValue);
+
+        RuleFor(x => x.LengthCm)
+            .GreaterThan(0).WithMessage("Length (cm) must be greater than 0.")
+            .When(x => x.LengthCm.HasValue);
+
+        RuleFor(x => x.WidthCm)
+            .GreaterThan(0).WithMessage("Width (cm) must be greater than 0.")
+            .When(x => x.WidthCm.HasValue);
+
+        RuleFor(x => x.HeightCm)
+            .GreaterThan(0).WithMessage("Height (cm) must be greater than 0.")
+            .When(x => x.HeightCm.HasValue);
+
         RuleFor(x => x.MainImageUrl)
             .Must(ProductValidationRules.HasValidImageUrlLength)
             .WithMessage("Main image URL must not exceed 500 characters.")

@@ -20,6 +20,7 @@ public interface IBlogRepository
         bool featuredOnly = false,
         int? createdByAccountId = null,
         bool onlyPublished = false,
+        IReadOnlyCollection<string>? allowedStatuses = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -31,6 +32,7 @@ public interface IBlogRepository
         bool featuredOnly = false,
         int? createdByAccountId = null,
         bool onlyPublished = false,
+        IReadOnlyCollection<string>? allowedStatuses = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -150,13 +152,13 @@ public interface IBlogRepository
         DateTime utcNow,
         CancellationToken cancellationToken = default);
 
-    Task<List<BlogCommentViolationCount>> GetPagedBannedCommentAccountsAsync(
+    Task<List<Account>> GetPagedCustomerCommentPermissionAccountsAsync(
         int pageNumber,
         int pageSize,
         string? searchTerm,
         CancellationToken cancellationToken = default);
 
-    Task<int> CountBannedCommentAccountsAsync(string? searchTerm, CancellationToken cancellationToken = default);
+    Task<int> CountCustomerCommentPermissionAccountsAsync(string? searchTerm, CancellationToken cancellationToken = default);
 
     Task<BlogCommentViolationCount?> GetCommentPermissionStateAsync(
         int accountId,
