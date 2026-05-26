@@ -1,3 +1,4 @@
+
 /* =================================================================
    DataSeed FULL v5.3 – SEP490_ToyStore
    Cập nhật theo Schema v3.2
@@ -199,7 +200,9 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[StatusOrders] WHERE StatusID = 1)
     (6,'Delivered',  N'Đã giao thành công'),
     (7,'Completed',  N'Hoàn thành'),
     (8,'Cancelled',  N'Đã hủy'),
-    (9,'Refunded',   N'Đã hoàn tiền');
+    (9,'Refunded',   N'Đã hoàn tiền'),
+    (10,'Returning',        N'Đang hoàn hàng về kho'), 
+    (11,'ReturnCompleted',  N'Hàng đã về kho, chờ xử lý');
 SET IDENTITY_INSERT [dbo].[StatusOrders] OFF;
 
 SET IDENTITY_INSERT [dbo].[ReactionTypes] ON;
@@ -211,6 +214,21 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[ReactionTypes] WHERE ReactionTypeID = 1)
     (4,'wow',   N'Wow',       '2024-01-05 08:00:00'),
     (5,'sad',   N'Buồn',      '2024-01-05 08:00:00');
 SET IDENTITY_INSERT [dbo].[ReactionTypes] OFF;
+GO
+
+SET IDENTITY_INSERT [dbo].[StatusRefunds] ON;
+IF NOT EXISTS (SELECT 1 FROM [dbo].[StatusRefunds] WHERE StatusID = 1)
+    INSERT INTO [dbo].[StatusRefunds] (StatusID, StatusName, Description) VALUES
+    (1, 'RefundRequested',        N'Khách hàng yêu cầu hoàn tiền/trả hàng'),
+    (2, 'RefundApproved',         N'Yêu cầu được chấp nhận, chờ tạo vận đơn thu hồi'),
+    (3, 'RefundRejected',         N'Yêu cầu bị từ chối'),
+    (4, 'RefundPickupCreated',    N'Đã tạo đơn thu hồi GHN, chờ shipper lấy hàng'),
+    (5, 'RefundShipping',         N'Hàng hoàn đang trên đường về kho'),
+    (6, 'RefundReceived',         N'Kho đã nhận được hàng hoàn'),
+    (7, 'RefundInspectionPending', N'Hàng đang được kiểm tra chất lượng tại kho'),
+    (8, 'RefundCompleted',        N'Đã hoàn tiền cho khách & nhập kho thành công'),
+    (9, 'RefundCancelled',        N'Khách hàng đã hủy yêu cầu hoàn tiền');
+SET IDENTITY_INSERT [dbo].[StatusRefunds] OFF;
 GO
 
 /* ══════════════════════════════════════════════════════════════
@@ -260,38 +278,54 @@ GO
 ══════════════════════════════════════════════════════════════ */
 PRINT N'[9] ProductDetails...';
 IF NOT EXISTS (SELECT 1 FROM [dbo].[ProductDetails] WHERE ProductID = 1)
-    INSERT INTO [dbo].[ProductDetails] (ProductID, Description, MaterialID, AgeID, SexID, OriginID)
+    INSERT INTO [dbo].[ProductDetails]
+        (ProductID, Description, MaterialID, AgeID, SexID, OriginID,
+         WeightGram, LengthCm, WidthCm, HeightCm)
     VALUES
-    ( 1,N'Bộ Lego City 668 mảnh tái hiện trạm cảnh sát 3 tầng. Nhựa ABS EN71. Phù hợp 6+ tuổi.',1,4,1,5),
-    ( 2,N'Lego Technic 3599 mảnh siêu xe Bugatti Chiron tỉ lệ 1:8. Động cơ W16 mô phỏng. 18+ tuổi.',1,5,1,5),
-    ( 3,N'Lego Friends nhà nghỉ dưỡng với hồ bơi, spa, và 5 nhân vật. 8+ tuổi.',1,4,2,5),
-    ( 4,N'36 khối gỗ MDF sơn nước an toàn. Bo góc 5mm. Phù hợp 1–5 tuổi.',2,3,3,1),
-    ( 5,N'52 khối gỗ bảng chữ cái A-Z, a-z. Màu sắc rực rỡ. 2-5 tuổi.',2,2,3,1),
-    ( 6,N'120 thẻ 4D tích hợp AR – quét app xem 60 loài động vật sống động.',3,3,3,2),
-    ( 7,N'100 thẻ học toán từ 1-100. Hai mặt: số đếm và bài tập. 3-8 tuổi.',3,3,3,1),
-    ( 8,N'Kính hiển vi ScienceMax 3 mức zoom (40x/100x/400x), đèn LED, 12 tiêu bản.',1,4,3,3),
-    ( 9,N'Bộ thí nghiệm núi lửa phun trào gồm 12 thí nghiệm an toàn. 6+ tuổi.',1,4,3,3),
-    (10,N'Kính thiên văn 2 mức phóng đại (50x/100x). Kèm chân đế và bản đồ sao. 8+ tuổi.',1,4,3,3),
-    (11,N'Xe chòi chân hình vịt Donald: đèn LED + nhạc. Tải tối đa 30kg.',5,3,3,2),
-    (12,N'Xe đạp 3 bánh Disney Princess khung thép. Có tay vịn + ô che nắng. 2-5 tuổi.',4,3,2,2),
-    (13,N'Bóng cao su thiên nhiên size 5 họa tiết Boho. Lưu hóa 2 lớp.',5,3,3,1),
-    (14,N'Bóng đá FIFA Pro cao su lưu hóa size 4. Chống thấm nước.',5,4,1,3),
-    (15,N'Diều đại bàng sải cánh 1.4m, khung carbon, vải polyester 210T.',2,4,1,1),
-    (16,N'Diều rồng 3D sải cánh 1.8m. Khung carbon siêu bền. Gió 3-8 Beaufort.',2,4,1,1),
-    (17,N'Gấu bông khủng long Rex 80cm vải nhung siêu mềm, bông PP chống nấm.',3,2,2,2),
-    (18,N'Gấu trúc Panda 60cm nằm, vải nhung cao cấp, bông PP, giặt máy được.',3,2,3,2),
-    (19,N'Thỏ tai dài 45cm màu pastel. Vải nhung Hàn Quốc. Kèm hộp quà.',3,2,2,2),
-    (20,N'Barbie Dreamtopia Tiên Cá chính hãng Mattel. Tóc gradient tím-hồng, 3 bộ trang phục.',1,3,2,3),
-    (21,N'Barbie Fashionista set 6 trang phục đa phong cách. 3+ tuổi.',1,3,2,3),
-    (22,N'Siêu Nhân Gao Red Ranger Bandai Nhật, cao 18cm, 24 khớp xoay. Limited edition.',5,5,1,4),
-    (23,N'Kamen Rider Zero-One SHFiguarts cao 15cm, 30 khớp. Kèm 8 bàn tay thay thế.',5,5,1,4),
-    (24,N'T-Rex tỉ lệ 1:10, cao 25cm, dài 45cm. Hợp kim nhôm-nhựa ABS. Miệng lò xo.',4,4,1,3),
-    (25,N'Bộ 6 khủng long Jurassic World mini cao 8-12cm. Nhựa ABS mềm.',1,3,1,3),
-    (26,N'RC Traxxas TRX-Mini 1:16, brushless 2838KV, max 45km/h. Pin LiPo.',4,4,1,3),
-    (27,N'Xe RC drift bánh nhôm CNC. Tốc độ 30km/h. Sạc USB 90 phút.',4,4,1,2),
-    (28,N'Trực thăng RC Gyro 4 kênh 2.4GHz, con quay 6 trục. Bay 12-15 phút.',1,5,1,2),
-    (29,N'PlayDoh 24 màu chính hãng Hasbro, mỗi hộp 85g. Không độc, không gluten.',3,3,3,3),
-    (30,N'Bảng LCD 10 inch viết-vẽ-xóa tức thì. 1 pin CR2025 dùng 50.000 lần.',1,2,3,2);
+    -- Lego (1-3)
+    ( 1,N'Bộ Lego City 668 mảnh tái hiện trạm cảnh sát 3 tầng. Nhựa ABS EN71. Phù hợp 6+ tuổi.',          1,4,1,5,  900, 48, 28, 9),
+    ( 2,N'Lego Technic 3599 mảnh siêu xe Bugatti Chiron tỉ lệ 1:8. Động cơ W16 mô phỏng. 18+ tuổi.',     1,5,1,5, 3400, 58, 38,14),
+    ( 3,N'Lego Friends nhà nghỉ dưỡng với hồ bơi, spa, và 5 nhân vật. 8+ tuổi.',                          1,4,2,5, 1100, 53, 37,10),
+    -- Xếp hình gỗ (4-5)
+    ( 4,N'36 khối gỗ MDF sơn nước an toàn. Bo góc 5mm. Phù hợp 1–5 tuổi.',                               2,3,3,1,  650, 30, 20,10),
+    ( 5,N'52 khối gỗ bảng chữ cái A-Z, a-z. Màu sắc rực rỡ. 2-5 tuổi.',                                  2,2,3,1,  750, 32, 22,10),
+    -- Thẻ học (6-7)
+    ( 6,N'120 thẻ 4D tích hợp AR – quét app xem 60 loài động vật sống động.',                             3,3,3,2,  300, 22, 15, 5),
+    ( 7,N'100 thẻ học toán từ 1-100. Hai mặt: số đếm và bài tập. 3-8 tuổi.',                              3,3,3,1,  250, 21, 14, 4),
+    -- Khoa học (8-10)
+    ( 8,N'Kính hiển vi ScienceMax 3 mức zoom (40x/100x/400x), đèn LED, 12 tiêu bản.',                     1,4,3,3,  850, 30, 15,20),
+    ( 9,N'Bộ thí nghiệm núi lửa phun trào gồm 12 thí nghiệm an toàn. 6+ tuổi.',                          1,4,3,3,  420, 26, 20, 8),
+    (10,N'Kính thiên văn 2 mức phóng đại (50x/100x). Kèm chân đế và bản đồ sao. 8+ tuổi.',               1,4,3,3,  680, 55, 12,12),
+    -- Xe chòi chân / xe đạp (11-12)
+    (11,N'Xe chòi chân hình vịt Donald: đèn LED + nhạc. Tải tối đa 30kg.',                                5,3,3,2, 2800, 55, 35,42),
+    (12,N'Xe đạp 3 bánh Disney Princess khung thép. Có tay vịn + ô che nắng. 2-5 tuổi.',                  4,3,2,2, 4500, 76, 43,60),
+    -- Bóng (13-14)
+    (13,N'Bóng cao su thiên nhiên size 5 họa tiết Boho. Lưu hóa 2 lớp.',                                  5,3,3,1,  430, 22, 22,22),
+    (14,N'Bóng đá FIFA Pro cao su lưu hóa size 4. Chống thấm nước.',                                      5,4,1,3,  390, 20, 20,20),
+    -- Diều (15-16)
+    (15,N'Diều đại bàng sải cánh 1.4m, khung carbon, vải polyester 210T.',                                2,4,1,1,  280,140, 10, 5),
+    (16,N'Diều rồng 3D sải cánh 1.8m. Khung carbon siêu bền. Gió 3-8 Beaufort.',                         2,4,1,1,  350,180, 12, 6),
+    -- Gấu bông / thú nhồi bông (17-19)
+    (17,N'Gấu bông khủng long Rex 80cm vải nhung siêu mềm, bông PP chống nấm.',                           3,2,2,2,  900, 80, 35,40),
+    (18,N'Gấu trúc Panda 60cm nằm, vải nhung cao cấp, bông PP, giặt máy được.',                           3,2,3,2,  680, 60, 30,25),
+    (19,N'Thỏ tai dài 45cm màu pastel. Vải nhung Hàn Quốc. Kèm hộp quà.',                                3,2,2,2,  480, 45, 20,20),
+    -- Búp bê Barbie (20-21)
+    (20,N'Barbie Dreamtopia Tiên Cá chính hãng Mattel. Tóc gradient tím-hồng, 3 bộ trang phục.',         1,3,2,3,  280, 32, 10,30),
+    (21,N'Barbie Fashionista set 6 trang phục đa phong cách. 3+ tuổi.',                                   1,3,2,3,  320, 33, 12,30),
+    -- Siêu nhân / mô hình (22-23)
+    (22,N'Siêu Nhân Gao Red Ranger Bandai Nhật, cao 18cm, 24 khớp xoay. Limited edition.',                5,5,1,4,  180, 12,  8,18),
+    (23,N'Kamen Rider Zero-One SHFiguarts cao 15cm, 30 khớp. Kèm 8 bàn tay thay thế.',                   5,5,1,4,  160, 10,  8,15),
+    -- Khủng long (24-25)
+    (24,N'T-Rex tỉ lệ 1:10, cao 25cm, dài 45cm. Hợp kim nhôm-nhựa ABS. Miệng lò xo.',                   4,4,1,3,  520, 45, 18,25),
+    (25,N'Bộ 6 khủng long Jurassic World mini cao 8-12cm. Nhựa ABS mềm.',                                 1,3,1,3,  350, 30, 20, 8),
+    -- Xe RC (26-27)
+    (26,N'RC Traxxas TRX-Mini 1:16, brushless 2838KV, max 45km/h. Pin LiPo.',                             4,4,1,3,  680, 36, 22,14),
+    (27,N'Xe RC drift bánh nhôm CNC. Tốc độ 30km/h. Sạc USB 90 phút.',                                   4,4,1,2,  520, 34, 20,12),
+    -- Máy bay RC (28)
+    (28,N'Trực thăng RC Gyro 4 kênh 2.4GHz, con quay 6 trục. Bay 12-15 phút.',                            1,5,1,2,  280, 32, 32,12),
+    -- Đất nặn / bảng vẽ (29-30)
+    (29,N'PlayDoh 24 màu chính hãng Hasbro, mỗi hộp 85g. Không độc, không gluten.',                      3,3,3,3, 2040, 35, 24, 8),
+    (30,N'Bảng LCD 10 inch viết-vẽ-xóa tức thì. 1 pin CR2025 dùng 50.000 lần.',                          1,2,3,2,  210, 28, 18, 1);
 GO
 
 /* ══════════════════════════════════════════════════════════════
@@ -715,8 +749,8 @@ BEGIN
 
     IF @ord3 IS NOT NULL
         INSERT INTO [dbo].[OrderRefunds]
-            (OrderID,RefundReasonID,CustomerID,RequestedBy,ApprovedAmount,RefundStatus,CreatedAt)
-        VALUES (@ord3, @refR1, @refCust3, @refCust3, 840000,'Requested','2026-03-07 09:00:00');
+            (OrderID,RefundReasonID,CustomerID,RequestedBy,RefundCode,SubTotal,TotalAmount,ApprovedAmount,StatusID,CreatedAt)
+        VALUES (@ord3, @refR1, @refCust3, @refCust3, 'REF-2026-00001', 840000, 840000, 840000, 1, '2026-03-07 09:00:00');
 
     INSERT INTO [dbo].[RefundImages] (RefundID,ImageURL,CreatedAt)
     SELECT RefundID,'https://picsum.photos/seed/refund-'+CAST(RefundID AS VARCHAR)+'-a/400/400',GETDATE() FROM OrderRefunds;

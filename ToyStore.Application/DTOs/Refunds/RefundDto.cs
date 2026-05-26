@@ -24,6 +24,22 @@ public class RefundDto
     public string RefundStatus { get; set; } = null!;
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    public string? RefundCode { get; set; }
+    public string? ShippingOrderCode { get; set; }
+    public decimal ShippingFee { get; set; }
+    public decimal? SubTotal { get; set; }
+    public decimal? TotalAmount { get; set; }
+    public string? AdminNote { get; set; }
 
     public List<string> Images { get; set; } = new List<string>();
+    public List<RefundDetailDto> Details { get; set; } = new List<RefundDetailDto>();
+}
+
+public class RefundDetailDto
+{
+    public int ProductId { get; set; }
+    public string ProductName { get; set; } = null!;
+    public short Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal RefundAmount { get; set; }
 }

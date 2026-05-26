@@ -1,6 +1,7 @@
 using AutoMapper;
 using ToyStore.Application.DTOs.Orders;
 using ToyStore.Domain.Entities;
+using ToyStore.Domain.Enums;
 
 namespace ToyStore.Application.Mappings;
 
@@ -32,7 +33,7 @@ public class OrdersProfile : Profile
             .ForMember(d => d.Items, opt => opt.MapFrom(s => s.OrderDetails))
             .ForMember(d => d.TotalItems, opt => opt.MapFrom(s => s.OrderDetails.Count))
             .ForMember(d => d.HasActiveRefund, opt => opt.MapFrom(s => 
-                s.OrderRefunds.Any(r => r.RefundStatus == "Requested" || r.RefundStatus == "Approved")));
+                s.OrderRefunds.Any(r => r.StatusId == (byte)RefundStatusEnum.RefundRequested || r.StatusId == (byte)RefundStatusEnum.RefundApproved)));
 
         // Chi tiet don hang (customer)
         CreateMap<Order, CustomerOrderDetailDto>()
@@ -42,7 +43,7 @@ public class OrdersProfile : Profile
             .ForMember(d => d.Shipping, opt => opt.MapFrom(s =>
                 s.ShippingProviderTransactions.FirstOrDefault()))
             .ForMember(d => d.HasActiveRefund, opt => opt.MapFrom(s => 
-                s.OrderRefunds.Any(r => r.RefundStatus == "Requested" || r.RefundStatus == "Approved")));
+                s.OrderRefunds.Any(r => r.StatusId == (byte)RefundStatusEnum.RefundRequested || r.StatusId == (byte)RefundStatusEnum.RefundApproved)));
 
         // Chi tiet san pham trong don
         CreateMap<OrderDetail, AdminOrderDetailItemDto>();

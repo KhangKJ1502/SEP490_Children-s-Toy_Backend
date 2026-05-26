@@ -81,6 +81,8 @@ public partial class Account
 
     public virtual ICollection<OrderRefund> OrderRefundRequestedByNavigations { get; set; } = new List<OrderRefund>();
 
+    public virtual ICollection<RefundStatusHistory> RefundStatusHistories { get; set; } = new List<RefundStatusHistory>();
+
     public virtual ICollection<OrderStatusHistory> OrderStatusHistories { get; set; } = new List<OrderStatusHistory>();
 
     public virtual ICollection<PaymentHistory> PaymentHistories { get; set; } = new List<PaymentHistory>();

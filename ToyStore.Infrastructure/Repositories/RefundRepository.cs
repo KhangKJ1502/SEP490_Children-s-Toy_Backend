@@ -35,14 +35,16 @@ public class RefundRepository : IRefundRepository
     public async Task<PaginatedResponse<RefundListDto>> GetRefundsAsync(RefundFilterDto filter, CancellationToken cancellationToken = default)
     {
         var query = _dbSet
+            .Include(r => r.Status)
             .Include(r => r.Order).ThenInclude(o => o.Status)
             .Include(r => r.RefundReason)
             .Include(r => r.Customer)
             .Include(r => r.RequestedByNavigation)
+            .Where(r => !r.IsDeleted)
             .AsNoTracking();
 
         if (!string.IsNullOrEmpty(filter.RefundStatus))
-            query = query.Where(r => r.RefundStatus == filter.RefundStatus);
+            query = query.Where(r => r.Status.StatusName == filter.RefundStatus);
 
         if (filter.OrderId.HasValue)
             query = query.Where(r => r.OrderId == filter.OrderId.Value);
@@ -72,7 +74,7 @@ public class RefundRepository : IRefundRepository
                 RequestedByName = r.RequestedByNavigation != null ? r.RequestedByNavigation.AccountName : null,
                 RefundReasonContent = r.RefundReason != null ? r.RefundReason.Content : null,
                 ApprovedAmount = r.ApprovedAmount,
-                RefundStatus = r.RefundStatus,
+                RefundStatus = r.Status.StatusName,
                 CreatedAt = r.CreatedAt
             })
             .ToListAsync(cancellationToken);
@@ -83,14 +85,16 @@ public class RefundRepository : IRefundRepository
     public async Task<PaginatedResponse<RefundListDto>> GetAdminRefundsAsync(AdminRefundFilterDto filter, CancellationToken cancellationToken = default)
     {
         var query = _dbSet
+            .Include(r => r.Status)
             .Include(r => r.Order).ThenInclude(o => o.Status)
             .Include(r => r.RefundReason)
             .Include(r => r.Customer)
             .Include(r => r.RequestedByNavigation)
+            .Where(r => !r.IsDeleted)
             .AsNoTracking();
 
         if (!string.IsNullOrEmpty(filter.RefundStatus))
-            query = query.Where(r => r.RefundStatus == filter.RefundStatus);
+            query = query.Where(r => r.Status.StatusName == filter.RefundStatus);
 
         if (filter.OrderId.HasValue)
             query = query.Where(r => r.OrderId == filter.OrderId.Value);
@@ -137,7 +141,7 @@ public class RefundRepository : IRefundRepository
                 RequestedByName = r.RequestedByNavigation != null ? r.RequestedByNavigation.AccountName : null,
                 RefundReasonContent = r.RefundReason != null ? r.RefundReason.Content : null,
                 ApprovedAmount = r.ApprovedAmount,
-                RefundStatus = r.RefundStatus,
+                RefundStatus = r.Status.StatusName,
                 CreatedAt = r.CreatedAt
             })
             .ToListAsync(cancellationToken);
@@ -148,23 +152,43 @@ public class RefundRepository : IRefundRepository
     public async Task<OrderRefund?> GetByIdAsync(int id, CancellationToken cancellationToken = default)
     {
         return await _dbSet
+            .Include(r => r.Status)
             .Include(r => r.Order).ThenInclude(o => o.Status)
             .Include(r => r.RefundReason)
             .Include(r => r.Customer)
             .Include(r => r.RequestedByNavigation)
             .Include(r => r.RefundImages.Where(i => !i.IsDeleted))
-            .FirstOrDefaultAsync(r => r.RefundId == id, cancellationToken);
+            .Include(r => r.RefundDetails).ThenInclude(d => d.Product)
+            .Include(r => r.RefundStatusHistories).ThenInclude(h => h.Status)
+            .FirstOrDefaultAsync(r => r.RefundId == id && !r.IsDeleted, cancellationToken);
     }
 
     public async Task<OrderRefund?> GetByOrderIdAsync(int orderId, CancellationToken cancellationToken = default)
     {
         return await _dbSet
+            .Include(r => r.Status)
             .Include(r => r.Order).ThenInclude(o => o.Status)
             .Include(r => r.RefundReason)
             .Include(r => r.Customer)
             .Include(r => r.RequestedByNavigation)
             .Include(r => r.RefundImages.Where(i => !i.IsDeleted))
-            .FirstOrDefaultAsync(r => r.OrderId == orderId, cancellationToken);
+            .Include(r => r.RefundDetails).ThenInclude(d => d.Product)
+            .Include(r => r.RefundStatusHistories).ThenInclude(h => h.Status)
+            .FirstOrDefaultAsync(r => r.OrderId == orderId && !r.IsDeleted, cancellationToken);
+    }
+
+    public async Task<OrderRefund?> GetByShippingOrderCodeAsync(string code, CancellationToken cancellationToken = default)
+    {
+        return await _dbSet
+            .Include(r => r.Status)
+            .Include(r => r.Order).ThenInclude(o => o.Status)
+            .Include(r => r.RefundReason)
+            .Include(r => r.Customer)
+            .Include(r => r.RequestedByNavigation)
+            .Include(r => r.RefundImages.Where(i => !i.IsDeleted))
+            .Include(r => r.RefundDetails).ThenInclude(d => d.Product)
+            .Include(r => r.RefundStatusHistories).ThenInclude(h => h.Status)
+            .FirstOrDefaultAsync(r => r.ShippingOrderCode == code && !r.IsDeleted, cancellationToken);
     }
 
     public async Task<OrderRefund> AddAsync(OrderRefund refund, CancellationToken cancellationToken = default)

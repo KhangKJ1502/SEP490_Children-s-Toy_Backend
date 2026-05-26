@@ -82,12 +82,32 @@ public class PromotionStatusJob : BackgroundService
                 s.Status = "Expired";
                 s.UpdatedAt = nowUtc;
             }
+
+            // 5. Voucher Scheduled -> Active when StartDate <= nowUtc
+            var scheduledVouchers = await db.Vouchers
+                .Where(v => v.Status == "Scheduled" && !v.IsDeleted && v.StartDate <= nowUtc)
+                .ToListAsync(ct);
+            foreach (var v in scheduledVouchers)
+            {
+                v.Status = "Active";
+                v.UpdatedAt = nowUtc;
+            }
+
+            // 6. Voucher Active -> Expired when EndDate < nowUtc
+            var activeVouchers = await db.Vouchers
+                .Where(v => v.Status == "Active" && !v.IsDeleted && v.EndDate < nowUtc)
+                .ToListAsync(ct);
+            foreach (var v in activeVouchers)
+            {
+                v.Status = "Expired";
+                v.UpdatedAt = nowUtc;
+            }
             
-            int totalUpdated = scheduledPromotions.Count + activePromotions.Count + scheduledSlots.Count + activeSlots.Count;
+            int totalUpdated = scheduledPromotions.Count + activePromotions.Count + scheduledSlots.Count + activeSlots.Count + scheduledVouchers.Count + activeVouchers.Count;
             if (totalUpdated > 0)
             {
                 await db.SaveChangesAsync(ct);
-                message = $"Updated {scheduledPromotions.Count} scheduled promos, {activePromotions.Count} active promos, {scheduledSlots.Count} scheduled slots, {activeSlots.Count} active slots.";
+                message = $"Updated {scheduledPromotions.Count} scheduled promos, {activePromotions.Count} active promos, {scheduledSlots.Count} scheduled slots, {activeSlots.Count} active slots, {scheduledVouchers.Count} scheduled vouchers, {activeVouchers.Count} active vouchers.";
                 _logger.LogInformation("PromotionStatusJob: {Message}", message);
             }
             else

@@ -35,5 +35,15 @@ public class ShippingOrderCreateRequestDto
 
     public string RequiredNote { get; set; } = "KHONGCHOXEMHANG";
 
+    public string? FromName { get; set; }
+
+    public string? FromPhone { get; set; }
+
+    public string? FromAddress { get; set; }
+
+    public string? FromWardName { get; set; }
+
+    public string? FromDistrictName { get; set; }
+
     public List<ShippingOrderCreateItemDto> Items { get; set; } = [];
 }

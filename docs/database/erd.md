@@ -1,8 +1,9 @@
 # Entity Relationship Diagram — ToyStore (SEP490)
 
-> **Cập nhật lần cuối:** 2026-05-14
-> **Schema version:** v3.4 — Shift scheduling + auto assignment
+> **Cập nhật lần cuối:** 2026-05-26
+> **Schema version:** v3.5 — Add Refund/Return Tables
 > **SQL script đầy đủ:** [`docs/database/schema.sql`](./schema.sql)
+
 
 ---
 
@@ -525,18 +526,57 @@ erDiagram
         datetime2   CreatedAt
     }
 
-    OrderRefunds {
-        int         RefundID            PK
-        int         OrderID             FK
-        int         CustomerID          FK
-        int         RequestedBy         FK  "nullable"
-        int         ApprovedBy          FK  "nullable"
-        int         WalletTransactionID FK  "nullable"
-        varchar200  ImgURL
-        nvarchar500 Reason                  "nullable"
-        decimal12_0 ApprovedAmount
-        varchar20   RefundStatus            "default Requested"
+    StatusRefunds {
+        tinyint     StatusID   PK
+        varchar50   StatusName UK
+        nvarchar255 Description    "nullable"
         datetime2   CreatedAt
+        datetime2   UpdatedAt      "nullable"
+    }
+
+    OrderRefunds {
+        int         RefundID          PK
+        int         OrderID           FK
+        int         CustomerID        FK
+        tinyint     RefundReasonID    FK  "nullable"
+        int         RequestedBy       FK  "nullable"
+        int         ApprovedBy        FK  "nullable"
+        int         WalletTransactionID FK "nullable"
+        varchar30   RefundCode        UK
+        varchar50   ShippingOrderCode "nullable — GHN reverse shipping code"
+        nvarchar500 ReasonDetails     "nullable"
+        decimal12_0 SubTotal          "nullable"
+        decimal10_0 ShippingFee
+        decimal12_0 TotalAmount       "nullable"
+        decimal12_0 ApprovedAmount
+        tinyint     StatusID          FK
+        nvarchar1000 AdminNote        "nullable"
+        datetime2   ApprovedAt        "nullable"
+        datetime2   RejectedAt        "nullable"
+        datetime2   CompletedAt       "nullable"
+        datetime2   CancelledAt       "nullable"
+        bit         IsDeleted
+        datetime2   CreatedAt
+        datetime2   UpdatedAt         "nullable"
+    }
+
+    RefundDetails {
+        int         RefundDetailID  PK
+        int         RefundID        FK
+        int         ProductID       FK
+        smallint    Quantity        "CHECK > 0"
+        decimal12_0 UnitPrice
+        decimal12_0 RefundAmount
+        datetime2   CreatedAt
+    }
+
+    RefundStatusHistory {
+        int       HistoryID       PK
+        int       RefundID        FK
+        tinyint   StatusID        FK
+        int       ChangedBy       FK  "nullable"
+        nvarchar500 Note          "nullable"
+        datetime2 CreatedAt
     }
 
     %% ════════════════════════════════
@@ -670,11 +710,15 @@ erDiagram
     PaymentHistory       }o--||  Orders               : "lịch sử thanh toán"
     PaymentHistory       }o--||  Accounts             : "của user"
     PaymentHistory       }o--o|  WalletTransactions   : "giao dịch ví (nullable)"
-    OrderRefunds         }o--||  Orders               : "hoàn tiền đơn hàng"
-    OrderRefunds         }o--||  Accounts             : "khách hàng (CustomerID)"
-    OrderRefunds         }o--o|  Accounts             : "yêu cầu bởi (RequestedBy)"
-    OrderRefunds         }o--o|  Accounts             : "duyệt bởi (ApprovedBy)"
+    OrderRefunds         }o--||  Orders               : "yêu cầu cho đơn (OrderID)"
+    OrderRefunds         }o--||  Accounts             : "yêu cầu bởi khách hàng (CustomerID)"
+    OrderRefunds         }o--||  StatusRefunds        : "trạng thái (StatusID)"
     OrderRefunds         }o--o|  WalletTransactions   : "giao dịch hoàn tiền"
+    RefundDetails        }o--||  OrderRefunds         : "thuộc yêu cầu hoàn tiền"
+    RefundDetails        }o--||  Products             : "sản phẩm hoàn trả"
+    RefundStatusHistory  }o--||  OrderRefunds         : "lịch sử trạng thái"
+    RefundStatusHistory  }o--||  StatusRefunds        : "trạng thái mới"
+    RefundStatusHistory  }o--o|  Accounts             : "thay đổi bởi (ChangedBy)"
 
     NotificationDeliveries}o--|| Accounts            : "gửi cho user"
     NotificationDeliveries}o--|| NotificationTemplates : "dùng template"
@@ -696,7 +740,7 @@ erDiagram
 | 🏷️ Vouchers            | `VoucherTypes`, `Vouchers`, `OrderVouchers`, `VoucherUsageLogs`                                                                                                |
 | 📝 Blog & Content      | `BlogCategories`, `BlogPosts`, `BlogPostCategories`, `Banners`                                                                                                 |
 | ⭐ Reviews             | `ReviewProducts`, `ReviewProductImages`, `ReviewProductReplies`, `ReviewProductReactions`                                                                      |
-| 💳 Payment & Wallet    | `Wallets`, `WalletTransactions`, `PaymentHistory`, `OrderRefunds`                                                                                              |
+| 💳 Payment & Wallet    | `Wallets`, `WalletTransactions`, `PaymentHistory`, `StatusRefunds`, `OrderRefunds`, `RefundDetails`, `RefundStatusHistory` |
 | 🔔 Notification & Chat | `Notification.Templates`, `Notification.Deliveries`, `ChatConversations`, `ChatMessages`                                                                       |
 | 🤖 AI/System           | `Interaction.Events`, `Recommendation.ItemSimilarities`, `System.DomainEventOutbox`, `System.BackgroundJobs`                                                   |
 

@@ -47,6 +47,8 @@ public partial class Product
 
     public virtual ICollection<OrderDetail> OrderDetails { get; set; } = new List<OrderDetail>();
 
+    public virtual ICollection<RefundDetail> RefundDetails { get; set; } = new List<RefundDetail>();
+
     public virtual PriceRange? PriceRange { get; set; }
 
     public virtual ProductDetail? ProductDetail { get; set; }

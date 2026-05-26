@@ -8,4 +8,5 @@ public class CreateRefundDto
     public byte RefundReasonId { get; set; }
     public string? ReasonDetails { get; set; }
     public List<string> Images { get; set; } = new List<string>();
+    public List<CreateRefundItemDto> Items { get; set; } = new List<CreateRefundItemDto>();
 }
