@@ -22,4 +22,6 @@ public class CampaignDeliveryDto
     public DateTime? ReadAt { get; set; }
 
     public DateTime CreatedAt { get; set; }
+
+    public bool IsClicked { get; set; }
 }

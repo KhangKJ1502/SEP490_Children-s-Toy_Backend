@@ -154,10 +154,10 @@ public class CampaignsController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var accountId = GetAccountId();
-        if (accountId.HasValue)
-        {
-            dto.CreatedByAccountId = accountId.Value;
-        }
+        if (accountId is null) return Unauthorized();
+
+        // Always override from JWT — body value is ignored to prevent privilege escalation.
+        dto.CreatedByAccountId = accountId.Value;
 
         var result = await _campaignService.CreateCampaignAsync(dto, cancellationToken);
         return result.ToCreatedResult($"api/campaigns/{result.Data?.CampaignId}");

@@ -32,7 +32,8 @@ public class ProductResolver : IBusinessObjectResolver
             {
                 p.ProductId,
                 p.ProductName,
-                p.Price
+                p.Price,
+                ImageUrl = p.ProductImage != null ? p.ProductImage.ImageUrl : null
             })
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -41,6 +42,7 @@ public class ProductResolver : IBusinessObjectResolver
         return new ResolvedReferenceDto
         {
             DisplayName = product.ProductName,
+            ImageUrl = product.ImageUrl,
             DefaultActionTarget = $"/products/{product.ProductId}",
             Placeholders = new Dictionary<string, string>
             {

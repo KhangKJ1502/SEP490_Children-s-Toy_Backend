@@ -25,9 +25,6 @@ public class FeeRequestValidator : AbstractValidator<FeeRequestDTO>
             .NotEmpty().WithMessage("To ward code is required.")
             .MaximumLength(20).WithMessage("To ward code must not exceed 20 characters.");
 
-        RuleFor(x => x.ServiceId)
-            .GreaterThan(0).When(x => x.ServiceId.HasValue)
-            .WithMessage("Service ID must be greater than 0.");
 
         RuleFor(x => x.ServiceTypeId)
             .GreaterThan(0).When(x => x.ServiceTypeId.HasValue)

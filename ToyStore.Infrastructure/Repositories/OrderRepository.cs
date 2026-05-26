@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ToyStore.Application.Common.Helpers;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
@@ -193,6 +194,32 @@ public class OrderRepository : IOrderRepository
             s => s.StatusName,
             s => s.StatusId,
             StringComparer.OrdinalIgnoreCase);
+    }
+
+    public async Task<List<ShippingItem>> GetShippingItemsForOrderAsync(int orderId, CancellationToken cancellationToken = default)
+    {
+        return await _context.OrderDetails
+            .Where(od => od.OrderId == orderId)
+            .Join(_context.Products,
+                  od => od.ProductId, p => p.ProductId,
+                  (od, p) => new { od, p })
+            .Join(_context.ProductDetails,
+                  x => x.p.ProductId, pd => pd.ProductId,
+                  (x, pd) => new { x.od, x.p, pd })
+            .Join(_context.Categories,
+                  x => x.p.CategoryId, c => c.CategoryId,
+                  (x, c) => new ShippingItem(
+                      x.od.ProductId,
+                      x.od.ProductName,
+                      c.CategoryName,
+                      x.od.Quantity,
+                      x.od.UnitPrice,
+                      x.pd.WeightGram,
+                      x.pd.LengthCm,
+                      x.pd.WidthCm,
+                      x.pd.HeightCm
+                  ))
+            .ToListAsync(cancellationToken);
     }
 
     // ── Writes ────────────────────────────────────────────────────────────────

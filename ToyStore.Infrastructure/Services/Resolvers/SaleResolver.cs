@@ -39,6 +39,7 @@ public class SaleResolver : IBusinessObjectResolver
             .Where(ts => ts.PromotionId == referenceId && !ts.IsDeleted)
             .Include(ts => ts.PromotionProductSlots)
             .ThenInclude(pps => pps.Product)
+                .ThenInclude(p => p.ProductImage)
             .OrderBy(ts => ts.StartAt)
             .ToListAsync(cancellationToken);
 
@@ -58,6 +59,7 @@ public class SaleResolver : IBusinessObjectResolver
                         SlotProductId = pps.SlotProductId,
                         ProductId = pps.ProductId,
                         ProductName = pps.Product != null ? pps.Product.ProductName : $"#{pps.ProductId}",
+                        ImageUrl = pps.Product != null && pps.Product.ProductImage != null ? pps.Product.ProductImage.ImageUrl : null,
                         SalePrice = pps.SalePrice,
                         DiscountPercent = pps.DiscountPercent,
                         SaleQuantity = pps.SaleQuantity,

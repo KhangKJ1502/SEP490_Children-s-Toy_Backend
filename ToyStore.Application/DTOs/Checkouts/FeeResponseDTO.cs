@@ -7,5 +7,4 @@ public class FeeResponseDTO
 {
     public decimal Fee { get; set; }
 
-    public int ServiceId { get; set; }
 }
