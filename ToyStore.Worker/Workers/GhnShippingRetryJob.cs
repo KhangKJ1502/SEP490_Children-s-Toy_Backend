@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.DTOs.Checkouts;
 using ToyStore.Application.Interfaces.Services;
+using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Application.Common.Helpers;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Options;
 using Microsoft.Extensions.Options;
@@ -48,6 +50,8 @@ public class GhnShippingRetryJob : BackgroundService
         var ghnOpts       = scope.ServiceProvider.GetRequiredService<IOptions<GhnOptions>>().Value;
         var sePayOpts     = scope.ServiceProvider.GetRequiredService<IOptions<SePayOptions>>().Value;
 
+        var orderRepo     = scope.ServiceProvider.GetRequiredService<IOrderRepository>();
+
         // Tìm các đơn cần retry: có ShippingProviderTransaction chưa có ProviderOrderCode + RetryCount > 0
         var pendingShipments = await db.ShippingProviderTransactions
             .Include(t => t.Order)
@@ -73,6 +77,9 @@ public class GhnShippingRetryJob : BackgroundService
                     continue;
                 }
 
+                var shippingItems = await orderRepo.GetShippingItemsForOrderAsync(order.OrderId, ct);
+                var package = GhnPackageCalculator.Calculate(shippingItems);
+
                 var codAmount = order.PaymentMethod == "SHIP_COD" ? order.TotalAmount : 0m;
                 var ghnRequest = new ShippingOrderCreateRequestDto
                 {
@@ -82,31 +89,44 @@ public class GhnShippingRetryJob : BackgroundService
                     ToWardCode      = order.ShippingWardCode,
                     ToDistrictId    = order.ShippingDistrictId,
                     CodAmount       = codAmount,
-                    Weight          = Math.Max(order.OrderDetails.Sum(d => (int)d.Quantity) * sePayOpts.DefaultItemWeightGrams, 1),
-                    Length          = 20,
-                    Width           = 15,
-                    Height          = 10,
+                    Weight          = Math.Max(package.Weight, 1),
+                    Length          = package.Length,
+                    Width           = package.Width,
+                    Height          = package.Height,
                     InsuranceValue  = order.SubTotal,
                     ClientOrderCode = order.OrderCode,
-                    Items = order.OrderDetails.Select(d => new ShippingOrderCreateItemDto
+                    ServiceTypeId   = package.ServiceTypeId,
+                    Items = package.Items.Select(x => new ShippingOrderCreateItemDto
                     {
-                        Name     = d.ProductName,
-                        Quantity = d.Quantity,
-                        Price    = (int)d.UnitPrice,
-                        Weight   = sePayOpts.DefaultItemWeightGrams
+                        Name     = x.Name,
+                        Code     = x.Code,
+                        Quantity = x.Quantity,
+                        Price    = x.Price,
+                        Weight   = x.Weight,
+                        Length   = x.Length,
+                        Width    = x.Width,
+                        Height   = x.Height,
+                        Category = x.Category
                     }).ToList()
                 };
 
                 var result = await ghnClient.CreateOrderAsync(ghnRequest, ct);
                 if (result.IsSuccess)
                 {
-                    order.ShippingOrderCode   = result.Data!.OrderCode;
+                    decimal actualFee         = result.Data!.TotalFee;
+                    order.ShippingOrderCode   = result.Data.OrderCode;
                     txn.ProviderOrderCode     = result.Data.OrderCode;
                     txn.TrackingNumber        = result.Data.OrderCode;
                     txn.Status                = "ready_to_pick";
                     txn.EstimatedDelivery     = result.Data.ExpectedDeliveryTime;
                     txn.LastErrorMessage      = null;
                     txn.UpdatedAt             = _timeProvider.UtcNow;
+                    if (actualFee > 0)
+                    {
+                        txn.ShippingFee            = actualFee;
+                        order.ActualShippingFee    = actualFee;
+                        order.EstimatedShippingFee = actualFee;
+                    }
                     _logger.LogInformation("GHN retry success for Order {Code}: {GhnCode}",
                         order.OrderCode, result.Data.OrderCode);
                 }

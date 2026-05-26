@@ -147,9 +147,10 @@ public class TemplateRepository : ITemplateRepository
 
     public async Task<bool> IsUsedAsync(string templateCode, CancellationToken cancellationToken = default)
     {
+        var ignoredStatuses = new[] { "Draft", "Rejected", "Cancelled" };
         var isUsedInCampaigns = await _context.Campaigns
             .AsNoTracking()
-            .AnyAsync(x => x.TemplateCode == templateCode, cancellationToken);
+            .AnyAsync(x => x.TemplateCode == templateCode && !ignoredStatuses.Contains(x.Status), cancellationToken);
 
         if (isUsedInCampaigns) return true;
 

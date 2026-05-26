@@ -496,8 +496,9 @@ public class CampaignRepository : ICampaignRepository
             .Include(x => x.CampaignSchedule)
             .Where(x => !x.IsDeleted);
 
-        // Admin: hide other users' Draft campaigns until they submit for review (PendingApproval+).
-        if (forAdminList && viewerAccountId > 0)
+        // All authenticated users: hide Draft campaigns they did not create.
+        // Prevents Staff B from seeing Staff A's unsubmitted drafts in the list.
+        if (viewerAccountId > 0)
             q = q.Where(c => c.Status != "Draft" || c.CreatedByAccountId == viewerAccountId);
 
         if (!string.IsNullOrWhiteSpace(query.SearchTerm))

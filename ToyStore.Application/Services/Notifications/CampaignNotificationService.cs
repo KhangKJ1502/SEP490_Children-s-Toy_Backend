@@ -4,6 +4,7 @@ using ToyStore.Application.DTOs.Notifications;
 using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
+using ToyStore.Application.Common.Helpers;
 using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Services.Notifications;
@@ -249,6 +250,9 @@ public class CampaignNotificationService : ICampaignNotificationService
                         vars["DiscountType"] = voucher.DiscountType == "PERCENTAGE" ? "percentage discount" : "fixed discount";
                         vars["MinOrderAmount"] = voucher.MinOrderAmount.HasValue ? $"{voucher.MinOrderAmount.Value:N0} VND" : "0 VND";
                         vars["MaxDiscountCap"] = voucher.MaxDiscountCap.HasValue ? $"{voucher.MaxDiscountCap.Value:N0} VND" : "No limit";
+                        
+                        var voucherUtc = voucher.EndDate.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(voucher.EndDate, DateTimeKind.Utc) : voucher.EndDate.ToUniversalTime();
+                        vars["ExpiryDate"] = DateTimeHelper.FormatVietnamese(DateTimeHelper.ToVietnamTime(voucherUtc));
                     }
                     break;
 
@@ -266,6 +270,12 @@ public class CampaignNotificationService : ICampaignNotificationService
                     if (promo != null)
                     {
                         vars["PromotionName"] = promo.PromotionName;
+
+                        var startUtc = promo.StartDate.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(promo.StartDate, DateTimeKind.Utc) : promo.StartDate.ToUniversalTime();
+                        vars["StartDate"] = DateTimeHelper.FormatVietnamese(DateTimeHelper.ToVietnamTime(startUtc));
+
+                        var endUtc = promo.EndDate.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(promo.EndDate, DateTimeKind.Utc) : promo.EndDate.ToUniversalTime();
+                        vars["EndDate"] = DateTimeHelper.FormatVietnamese(DateTimeHelper.ToVietnamTime(endUtc));
                     }
                     break;
                     
@@ -274,6 +284,7 @@ public class CampaignNotificationService : ICampaignNotificationService
                     if (blog != null)
                     {
                         vars["BlogTitle"] = blog.BlogTitle;
+                        vars["CategoryName"] = blog.BlogCategory?.BlogCategoriesName ?? "General";
                     }
                     break;
             }
