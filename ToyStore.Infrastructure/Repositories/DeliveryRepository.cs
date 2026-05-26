@@ -166,6 +166,7 @@ public class DeliveryRepository : IDeliveryRepository
         var query = _db.Deliveries
             .AsNoTracking()
             .Include(d => d.Account)
+            .Include(d => d.DeliveryActions)
             .Where(d => d.CampaignId == campaignId && !d.IsDeleted);
 
         if (!string.IsNullOrWhiteSpace(status))

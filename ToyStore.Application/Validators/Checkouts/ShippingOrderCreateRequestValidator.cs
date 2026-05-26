@@ -38,8 +38,6 @@ public class ShippingOrderCreateRequestValidator : AbstractValidator<ShippingOrd
             .NotEmpty().WithMessage("To ward code is required.")
             .MaximumLength(20).WithMessage("To ward code must not exceed 20 characters.");
 
-        RuleFor(x => x.ServiceId)
-            .GreaterThan(0).WithMessage("Service ID must be greater than 0.");
 
         RuleFor(x => x.InsuranceValue)
             .GreaterThanOrEqualTo(0).WithMessage("Insurance value must be greater than or equal to 0.")

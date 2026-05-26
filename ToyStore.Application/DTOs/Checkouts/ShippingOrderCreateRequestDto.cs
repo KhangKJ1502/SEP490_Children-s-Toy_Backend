@@ -17,7 +17,7 @@ public class ShippingOrderCreateRequestDto
 
     public string ToWardCode { get; set; } = string.Empty;
 
-    public int ServiceId { get; set; }
+    public int ServiceTypeId { get; set; }
 
     public decimal InsuranceValue { get; set; }
 

@@ -12,6 +12,7 @@ using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
+using ToyStore.Application.Common.Helpers;
 using ToyStore.Infrastructure.Options;
 
 namespace ToyStore.Infrastructure.Services;
@@ -344,29 +345,27 @@ public class AdminOrderService : IAdminOrderService
             return Result<ShipOrderResponseDto>.Failure("CONFIGURATION_ERROR",
                 "Status 'Shipped' not found in database.");
 
+        // Lấy chi tiết các item kèm kích thước, cân nặng thực tế cho don hang
+        var shippingItems = await _unitOfWork.Orders.GetShippingItemsForOrderAsync(orderId, cancellationToken);
+        var package = GhnPackageCalculator.Calculate(
+            shippingItems,
+            _ghnOptions.DefaultItemWeight,
+            _ghnOptions.DefaultLength,
+            _ghnOptions.DefaultWidth,
+            _ghnOptions.DefaultHeight);
+
         // Xay dung request goi GHN
         var codAmount = string.Equals(order.PaymentMethod, "SHIP_COD", StringComparison.OrdinalIgnoreCase)
             ? order.TotalAmount
             : 0m;
 
-        // Resolve serviceId: honour admin's explicit choice first, otherwise use the same
-        // ResolveServiceIdAsync logic as checkout so the fee estimate matches the actual waybill.
-        int serviceId = 0;
-        if (int.TryParse(request.ServiceType, out var parsedServiceId) && parsedServiceId > 0)
+        // Resolve service_type_id: honour admin's explicit choice first, otherwise use package.ServiceTypeId
+        int serviceTypeId = package.ServiceTypeId;
+        if (int.TryParse(request.ServiceType, out var parsedServiceTypeId) && parsedServiceTypeId > 0)
         {
-            serviceId = parsedServiceId;
-        }
-        else
-        {
-            int? preferredTypeId = _ghnOptions.FeeServiceTypeId > 0 ? _ghnOptions.FeeServiceTypeId : null;
-            var resolveResult = await _ghnClient.ResolveServiceIdAsync(
-                order.ShippingDistrictId, preferredTypeId, cancellationToken);
-            if (resolveResult.IsSuccess)
-                serviceId = resolveResult.Data;
+            serviceTypeId = parsedServiceTypeId;
         }
 
-        // Tinh toan trong luong / kich thuoc don gian tu so luong san pham
-        var totalWeight = Math.Max(order.OrderDetails.Sum(d => d.Quantity) * _ghnOptions.DefaultItemWeight, 100);
         var ghnRequest = new ShippingOrderCreateRequestDto
         {
             ClientOrderCode = order.OrderCode,
@@ -375,21 +374,26 @@ public class AdminOrderService : IAdminOrderService
             ToAddress       = order.ShippingAddress,
             ToDistrictId    = order.ShippingDistrictId,
             ToWardCode      = order.ShippingWardCode,
-            ServiceId       = serviceId,
-            InsuranceValue  = order.SubTotal,
+            ServiceTypeId   = serviceTypeId,
+            InsuranceValue  = 0m,
             CodAmount       = codAmount,
-            Weight          = totalWeight,
-            Length          = _ghnOptions.DefaultLength,
-            Width           = _ghnOptions.DefaultWidth,
-            Height          = _ghnOptions.DefaultHeight,
+            Weight          = Math.Max(package.Weight, 1),
+            Length          = package.Length,
+            Width           = package.Width,
+            Height          = package.Height,
             Note            = request.Note,
             RequiredNote    = !string.IsNullOrWhiteSpace(request.RequiredNote) ? request.RequiredNote : "KHONGCHOXEMHANG",
-            Items           = order.OrderDetails.Select(d => new ShippingOrderCreateItemDto
+            Items           = package.Items.Select(x => new ShippingOrderCreateItemDto
             {
-                Name     = d.ProductName,
-                Quantity = d.Quantity,
-                Price    = d.UnitPrice,
-                Weight   = _ghnOptions.DefaultItemWeight
+                Name     = x.Name,
+                Code     = x.Code,
+                Quantity = x.Quantity,
+                Price    = x.Price,
+                Weight   = x.Weight,
+                Length   = x.Length,
+                Width    = x.Width,
+                Height   = x.Height,
+                Category = x.Category
             }).ToList()
         };
 
@@ -404,11 +408,10 @@ public class AdminOrderService : IAdminOrderService
         }
 
         var ghnData = ghnResult.Data!;
-        var resolvedServiceId = ghnData.ServiceId;
 
         // Lay leadtime (khong bat buoc, neu loi thi bo qua)
         DateTime? estimatedDelivery = ghnData.ExpectedDeliveryTime;
-        if (estimatedDelivery is null && resolvedServiceId > 0)
+        if (estimatedDelivery is null)
         {
             var leadtimeResult = await _ghnClient.GetLeadtimeAsync(new LeadtimeRequestDTO
             {
@@ -416,16 +419,16 @@ public class AdminOrderService : IAdminOrderService
                 FromWardCode   = _ghnOptions.FromWardCode,
                 ToDistrictId   = order.ShippingDistrictId,
                 ToWardCode     = order.ShippingWardCode,
-                ServiceId      = resolvedServiceId
+                ServiceTypeId  = serviceTypeId
             }, cancellationToken);
 
             if (leadtimeResult.IsSuccess && leadtimeResult.Data!.LeadtimeUnix > 0)
                 estimatedDelivery = leadtimeResult.Data!.EstimatedDeliveryTime;
         }
 
-        // Fetch the actual fee using the SAME resolved service_id as checkout (CheckoutService.ConfirmAsync).
-        // Both use ResolveServiceIdAsync → GetFeeAsync(ServiceId) → identical GHN pricing path.
-        decimal actualFee = 0m;
+        // Fetch the actual fee
+        decimal actualFee = ghnData.TotalFee;
+        if (actualFee <= 0)
         {
             var feeResult = await _ghnClient.GetFeeAsync(new FeeRequestDTO
             {
@@ -433,13 +436,13 @@ public class AdminOrderService : IAdminOrderService
                 FromWardCode   = _ghnOptions.FromWardCode,
                 ToDistrictId   = order.ShippingDistrictId,
                 ToWardCode     = order.ShippingWardCode,
-                InsuranceValue = order.SubTotal,
+                InsuranceValue = 0m,
                 CodValue       = codAmount,
-                Weight         = totalWeight,
-                Length         = _ghnOptions.DefaultLength,
-                Width          = _ghnOptions.DefaultWidth,
-                Height         = _ghnOptions.DefaultHeight,
-                ServiceId      = serviceId  // same ResolveServiceIdAsync path as checkout
+                Weight         = Math.Max(package.Weight, 1),
+                Length         = package.Length,
+                Width          = package.Width,
+                Height         = package.Height,
+                ServiceTypeId  = package.ServiceTypeId
             }, cancellationToken);
 
             if (feeResult.IsSuccess)
