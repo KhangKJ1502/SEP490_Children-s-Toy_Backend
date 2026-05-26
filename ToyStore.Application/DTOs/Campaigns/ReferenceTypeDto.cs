@@ -27,6 +27,8 @@ public class ResolvedReferenceDto
 {
     public string? DisplayName { get; set; }
 
+    public string? ImageUrl { get; set; }
+
     /// <summary>For SALE references: e.g. FLASH_SALE, DISCOUNT — used by admin UI for schedule hints.</summary>
     public string? PromotionType { get; set; }
 
@@ -65,6 +67,8 @@ public sealed class ResolvedFlashProductLineDto
     public int ProductId { get; set; }
 
     public string ProductName { get; set; } = string.Empty;
+
+    public string? ImageUrl { get; set; }
 
     public decimal SalePrice { get; set; }
 

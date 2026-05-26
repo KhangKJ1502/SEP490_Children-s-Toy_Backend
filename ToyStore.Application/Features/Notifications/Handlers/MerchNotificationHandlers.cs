@@ -171,8 +171,14 @@ public class OrderShippedHandler : IOutboxEventHandler
             },
             ReferenceId  = $"{orderId}",
             SendBell     = true,
-            SendEmail    = false,
+            SendEmail    = true,
             ActionTarget = $"/profile/orders/{orderId}",
+            Payload      = new Dictionary<string, object>
+            {
+                ["orderId"]        = orderId,
+                ["orderCode"]      = orderCode,
+                ["trackingNumber"] = trackingNumber
+            }
         }, ct);
     }
 }

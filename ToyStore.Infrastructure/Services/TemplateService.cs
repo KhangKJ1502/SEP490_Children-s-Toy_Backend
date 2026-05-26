@@ -87,6 +87,10 @@ public class TemplateService : ITemplateService
         CreateTemplateDto dto,
         CancellationToken cancellationToken = default)
     {
+        if (dto.TemplateCode != null) dto.TemplateCode = dto.TemplateCode.Trim();
+        if (dto.TitleTemplate != null) dto.TitleTemplate = dto.TitleTemplate.Trim();
+        if (dto.MessageTemplate != null) dto.MessageTemplate = dto.MessageTemplate.Trim();
+
         var validationResult = await _createTemplateValidator.ValidateAsync(dto, cancellationToken);
         if (!validationResult.IsValid)
         {
@@ -97,11 +101,7 @@ public class TemplateService : ITemplateService
             return Result<TemplateListDto>.ValidationFailure(errors);
         }
 
-        var normalizedCode = dto.TemplateCode.Trim();
-        var normalizedTitle = dto.TitleTemplate.Trim();
-        var normalizedMessage = dto.MessageTemplate.Trim();
-
-        var isDuplicate = await _unitOfWork.Templates.ExistsByCodeAsync(normalizedCode, cancellationToken);
+        var isDuplicate = await _unitOfWork.Templates.ExistsByCodeAsync(dto.TemplateCode, cancellationToken);
         if (isDuplicate)
         {
             return Result<TemplateListDto>.Conflict("Template code already exists.");
@@ -111,9 +111,9 @@ public class TemplateService : ITemplateService
         try
         {
             var created = await _unitOfWork.Templates.CreateAsync(
-                normalizedCode,
-                normalizedTitle,
-                normalizedMessage,
+                dto.TemplateCode,
+                dto.TitleTemplate,
+                dto.MessageTemplate,
                 dto.IsActive,
                 cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
@@ -139,6 +139,10 @@ public class TemplateService : ITemplateService
         {
             return Result<TemplateListDto>.Failure("VALIDATION_ERROR", "Template ID must be greater than 0.");
         }
+
+        if (dto.TemplateCode != null) dto.TemplateCode = dto.TemplateCode.Trim();
+        if (dto.TitleTemplate != null) dto.TitleTemplate = dto.TitleTemplate.Trim();
+        if (dto.MessageTemplate != null) dto.MessageTemplate = dto.MessageTemplate.Trim();
 
         var validationResult = await _updateTemplateValidator.ValidateAsync(dto, cancellationToken);
         if (!validationResult.IsValid)
@@ -172,12 +176,8 @@ public class TemplateService : ITemplateService
                 "Cannot edit template because it is already in use by campaigns or deliveries.");
         }
 
-        var normalizedCode = dto.TemplateCode.Trim();
-        var normalizedTitle = dto.TitleTemplate.Trim();
-        var normalizedMessage = dto.MessageTemplate.Trim();
-
         var isDuplicate = await _unitOfWork.Templates.ExistsByCodeExceptIdAsync(
-            normalizedCode,
+            dto.TemplateCode,
             templateId,
             cancellationToken);
         if (isDuplicate)
@@ -190,9 +190,9 @@ public class TemplateService : ITemplateService
         {
             var updated = await _unitOfWork.Templates.UpdateAsync(
                 templateId,
-                normalizedCode,
-                normalizedTitle,
-                normalizedMessage,
+                dto.TemplateCode,
+                dto.TitleTemplate,
+                dto.MessageTemplate,
                 dto.IsActive,
                 cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);

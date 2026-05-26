@@ -21,7 +21,6 @@ public class LeadtimeRequestValidator : AbstractValidator<LeadtimeRequestDTO>
             .NotEmpty().WithMessage("To ward code is required.")
             .MaximumLength(20).WithMessage("To ward code must not exceed 20 characters.");
 
-        RuleFor(x => x.ServiceId)
-            .GreaterThan(0).WithMessage("Service ID must be greater than 0.");
+
     }
 }

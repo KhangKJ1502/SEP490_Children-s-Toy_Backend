@@ -1,3 +1,5 @@
+using ToyStore.Application.Common.Helpers;
+
 namespace ToyStore.Application.DTOs.Checkouts;
 
 /// <summary>
@@ -8,8 +10,6 @@ public class FeeRequestDTO
     public int FromDistrictId { get; set; }
 
     public string FromWardCode { get; set; } = string.Empty;
-
-    public int? ServiceId { get; set; }
 
     public int? ServiceTypeId { get; set; }
 
@@ -28,4 +28,9 @@ public class FeeRequestDTO
     public int Width { get; set; }
 
     public int Height { get; set; }
+
+    /// <summary>
+    /// Optional item list — mirrors CreateOrderAsync payload so GHN calculates fee identically.
+    /// </summary>
+    public List<GhnItem>? Items { get; set; }
 }

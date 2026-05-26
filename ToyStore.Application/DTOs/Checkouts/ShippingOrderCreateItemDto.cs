@@ -12,4 +12,14 @@ public class ShippingOrderCreateItemDto
     public decimal Price { get; set; }
 
     public int Weight { get; set; }
+
+    public string Code { get; set; } = string.Empty;
+
+    public int Length { get; set; }
+
+    public int Width { get; set; }
+
+    public int Height { get; set; }
+
+    public string Category { get; set; } = string.Empty;
 }

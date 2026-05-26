@@ -13,5 +13,5 @@ public class LeadtimeRequestDTO
 
     public string ToWardCode { get; set; } = string.Empty;
 
-    public int ServiceId { get; set; }
+    public int? ServiceTypeId { get; set; }
 }
