@@ -10,5 +10,4 @@ public class CreateProductPromotionDto
 
     public int? SaleQuantity { get; set; }
 
-    public bool IsActive { get; set; } = true;
 }

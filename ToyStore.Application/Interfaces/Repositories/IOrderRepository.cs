@@ -1,3 +1,4 @@
+using ToyStore.Application.Common.Helpers;
 using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Interfaces.Repositories;
@@ -99,6 +100,11 @@ public interface IOrderRepository
     /// Lay map StatusName -> StatusID tu bang StatusOrders.
     /// </summary>
     Task<Dictionary<string, byte>> GetStatusMapAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lay danh sach cac item kem theo khoi luong va kich thuoc cua don hang de tinh phi van chuyen.
+    /// </summary>
+    Task<List<ShippingItem>> GetShippingItemsForOrderAsync(int orderId, CancellationToken cancellationToken = default);
 
     // ── Writes ────────────────────────────────────────────────────────────────
 

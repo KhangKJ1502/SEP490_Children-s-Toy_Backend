@@ -99,7 +99,6 @@ public class CheckoutService : ICheckoutService
             activeItems = activeAll;
         var itemErrors = new List<CheckoutPreviewItemErrorDto>();
         decimal subTotal = 0;
-        int totalWeightGrams = 0;
 
         foreach (var ci in activeItems)
         {
@@ -112,7 +111,6 @@ public class CheckoutService : ICheckoutService
             {
                 var currentPrice = PriceHelper.ResolveCurrentPrice(p, _timeProvider.UtcNow);
                 subTotal += currentPrice * ci.Quantity;
-                totalWeightGrams += _ghnOpts.DefaultItemWeight * ci.Quantity;
             }
         }
 
@@ -132,37 +130,93 @@ public class CheckoutService : ICheckoutService
                 "Cannot apply the same voucher code for both order and shipping.");
         }
 
-        // Gọi GHN fee — không block checkout nếu fail
+        // Lấy chi tiết cân nặng, chiều dài, rộng, cao thực tế của sản phẩm
+        var activeCartItems = activeItems
+            .Where(ci => ci.Product.ProductStatus == "Active" && ci.Product.Quantity >= ci.Quantity)
+            .ToList();
+
+        var activeProductIds = activeCartItems.Select(ci => ci.ProductId).ToList();
+
+        var productDetailsList = await _db.ProductDetails
+            .Where(pd => activeProductIds.Contains(pd.ProductId))
+            .Join(_db.Products,
+                  pd => pd.ProductId, p => p.ProductId,
+                  (pd, p) => new { pd, p })
+            .Join(_db.Categories,
+                  x => x.p.CategoryId, c => c.CategoryId,
+                  (x, c) => new { x.pd, x.p, c })
+            .ToListAsync(cancellationToken);
+
+        var detailsMap = productDetailsList.ToDictionary(x => x.p.ProductId);
+
+        var shippingItems = new List<ShippingItem>();
+        foreach (var ci in activeCartItems)
+        {
+            if (detailsMap.TryGetValue(ci.ProductId, out var details))
+            {
+                var currentPrice = PriceHelper.ResolveCurrentPrice(ci.Product, _timeProvider.UtcNow);
+                shippingItems.Add(new ShippingItem(
+                    ci.ProductId,
+                    ci.Product.ProductName,
+                    details.c.CategoryName,
+                    (int)ci.Quantity,
+                    currentPrice,
+                    details.pd.WeightGram,
+                    details.pd.LengthCm,
+                    details.pd.WidthCm,
+                    details.pd.HeightCm
+                ));
+            }
+        }
+
+        var package = GhnPackageCalculator.Calculate(
+            shippingItems,
+            _ghnOpts.DefaultItemWeight,
+            _ghnOpts.DefaultLength,
+            _ghnOpts.DefaultWidth,
+            _ghnOpts.DefaultHeight);
         decimal shippingFee = 0;
         DateTime? estimatedDelivery = null;
-        var feeReq = BuildFeeRequest(address, Math.Max(totalWeightGrams, 1), subTotal, 0m);
-        int? preferredTypeId = _ghnOpts.FeeServiceTypeId > 0 ? _ghnOpts.FeeServiceTypeId : null;
-        var resolveResult = await _ghnClient.ResolveServiceIdAsync(address.DistrictId ?? 0, preferredTypeId, cancellationToken);
-        if (resolveResult.IsSuccess)
+        var feeReq = new FeeRequestDTO
         {
-            var resolvedServiceId = resolveResult.Data;
-            feeReq.ServiceId = resolvedServiceId;
-            feeReq.CodValue = normalizedPaymentMethod == PayMethodCod ? subTotal : 0m;
-            var feeResult = await _ghnClient.GetFeeAsync(feeReq, cancellationToken);
-            if (feeResult.IsSuccess)
-                shippingFee = feeResult.Data!.Fee;
+            FromDistrictId = _ghnOpts.FromDistrictId,
+            FromWardCode = _ghnOpts.FromWardCode,
+            ToDistrictId = address.DistrictId ?? 0,
+            ToWardCode = address.WardCode ?? string.Empty,
+            Weight = Math.Max(package.Weight, 1),
+            Length = package.Length,
+            Width = package.Width,
+            Height = package.Height,
+            InsuranceValue = 0m,
+            ServiceTypeId = package.ServiceTypeId,
+            CodValue = 0m,
+            Items = package.Items
+        };
 
-            var ldReq = new LeadtimeRequestDTO
-            {
-                FromDistrictId = _ghnOpts.FromDistrictId,
-                FromWardCode = _ghnOpts.FromWardCode,
-                ToDistrictId = address.DistrictId ?? 0,
-                ToWardCode = address.WardCode ?? string.Empty,
-                ServiceId = resolvedServiceId
-            };
-            var ldResult = await _ghnClient.GetLeadtimeAsync(ldReq, cancellationToken);
-            if (ldResult.IsSuccess) estimatedDelivery = ldResult.Data!.EstimatedDeliveryTime;
+        // For COD orders pass subTotal so GHN applies the discounted COD shipping rate
+        feeReq.CodValue = normalizedPaymentMethod == PayMethodCod ? subTotal : 0m;
+        
+        var feeResult = await _ghnClient.GetFeeAsync(feeReq, cancellationToken);
+        if (feeResult.IsSuccess)
+        {
+            shippingFee = feeResult.Data!.Fee;
         }
         else
         {
-            _logger.LogWarning("GHN service resolution failed for district {DistrictId}: {Error}",
-                address.DistrictId, resolveResult.ErrorMessage);
+            _logger.LogWarning("GHN fee calculation failed for district {DistrictId}: {Error}",
+                address.DistrictId, feeResult.ErrorMessage);
         }
+
+        var ldReq = new LeadtimeRequestDTO
+        {
+            FromDistrictId = _ghnOpts.FromDistrictId,
+            FromWardCode = _ghnOpts.FromWardCode,
+            ToDistrictId = address.DistrictId ?? 0,
+            ToWardCode = address.WardCode ?? string.Empty,
+            ServiceTypeId = package.ServiceTypeId
+        };
+        var ldResult = await _ghnClient.GetLeadtimeAsync(ldReq, cancellationToken);
+        if (ldResult.IsSuccess) estimatedDelivery = ldResult.Data!.EstimatedDeliveryTime;
 
         // Tính voucher discount
         decimal orderDiscount = 0;
@@ -205,8 +259,8 @@ public class CheckoutService : ICheckoutService
 
         if (normalizedPaymentMethod == PayMethodCod && shippingFee > 0)
         {
-            feeReq.CodValue = totalAmount;
-            var feeResult = await _ghnClient.GetFeeAsync(feeReq, cancellationToken);
+            feeReq.CodValue = subTotal;
+            feeResult = await _ghnClient.GetFeeAsync(feeReq, cancellationToken);
             if (feeResult.IsSuccess && feeResult.Data!.Fee > 0 && feeResult.Data!.Fee != shippingFee)
             {
                 shippingFee = feeResult.Data.Fee;
@@ -239,7 +293,7 @@ public class CheckoutService : ICheckoutService
             OrderDiscountAmount = orderDiscount,
             ShippingDiscountAmount = shippingDiscount,
             TotalAmount = totalAmount,
-            TotalWeightGrams = totalWeightGrams,
+            TotalWeightGrams = package.Weight,
             EstimatedDeliveryTime = estimatedDelivery,
             ItemErrors = itemErrors
         });
@@ -298,7 +352,6 @@ public class CheckoutService : ICheckoutService
 
         // Tính SubTotal từ Products.Price tại thời điểm checkout (có tính Flash Sale/Promotion)
         decimal subTotal = request.Items.Sum(i => PriceHelper.ResolveCurrentPrice(productMap[i.ProductId], _timeProvider.UtcNow) * (int)i.Quantity);
-        int totalWeightGrams = request.Items.Sum(i => _ghnOpts.DefaultItemWeight * (int)i.Quantity);
 
         if (subTotal >= MaxCheckoutSubTotal)
         {
@@ -340,15 +393,67 @@ public class CheckoutService : ICheckoutService
             }
         }
 
-        // Lấy phí ship thật
-        var feeReq = BuildFeeRequest(address, Math.Max(totalWeightGrams, 1), subTotal, 0m);
-        int? preferredServiceTypeId = _ghnOpts.FeeServiceTypeId > 0 ? _ghnOpts.FeeServiceTypeId : null;
-        var resolveResult = await _ghnClient.ResolveServiceIdAsync(address.DistrictId ?? 0, preferredServiceTypeId, cancellationToken);
-        if (!resolveResult.IsSuccess)
-            return Result<CheckoutConfirmResponseDto>.BusinessError("Could not calculate shipping fee. Please try again.");
+        // Lấy chi tiết cân nặng, chiều dài, rộng, cao thực tế của sản phẩm cho Confirm
+        var confirmProductIds = request.Items.Select(i => i.ProductId).Distinct().ToList();
 
-        int resolvedServiceId = resolveResult.Data;
-        feeReq.ServiceId = resolvedServiceId;
+        var productDetailsList = await _db.ProductDetails
+            .Where(pd => confirmProductIds.Contains(pd.ProductId))
+            .Join(_db.Products,
+                  pd => pd.ProductId, p => p.ProductId,
+                  (pd, p) => new { pd, p })
+            .Join(_db.Categories,
+                  x => x.p.CategoryId, c => c.CategoryId,
+                  (x, c) => new { x.pd, x.p, c })
+            .ToListAsync(cancellationToken);
+
+        var detailsMap = productDetailsList.ToDictionary(x => x.p.ProductId);
+
+        var shippingItems = new List<ShippingItem>();
+        foreach (var item in request.Items)
+        {
+            if (detailsMap.TryGetValue(item.ProductId, out var details))
+            {
+                var p = productMap[item.ProductId];
+                var currentPrice = PriceHelper.ResolveCurrentPrice(p, _timeProvider.UtcNow);
+                shippingItems.Add(new ShippingItem(
+                    item.ProductId,
+                    p.ProductName,
+                    details.c.CategoryName,
+                    (int)item.Quantity,
+                    currentPrice,
+                    details.pd.WeightGram,
+                    details.pd.LengthCm,
+                    details.pd.WidthCm,
+                    details.pd.HeightCm
+                ));
+            }
+        }
+
+        var package = GhnPackageCalculator.Calculate(
+            shippingItems,
+            _ghnOpts.DefaultItemWeight,
+            _ghnOpts.DefaultLength,
+            _ghnOpts.DefaultWidth,
+            _ghnOpts.DefaultHeight);
+
+        // Lấy phí ship thật
+        var feeReq = new FeeRequestDTO
+        {
+            FromDistrictId = _ghnOpts.FromDistrictId,
+            FromWardCode = _ghnOpts.FromWardCode,
+            ToDistrictId = address.DistrictId ?? 0,
+            ToWardCode = address.WardCode ?? string.Empty,
+            Weight = Math.Max(package.Weight, 1),
+            Length = package.Length,
+            Width = package.Width,
+            Height = package.Height,
+            InsuranceValue = 0m,
+            ServiceTypeId = package.ServiceTypeId,
+            CodValue = 0m,
+            Items = package.Items
+        };
+
+        // For COD orders pass subTotal so GHN applies the discounted COD shipping rate
         feeReq.CodValue = request.PaymentMethod == PayMethodCod ? subTotal : 0m;
         var feeResult = await _ghnClient.GetFeeAsync(feeReq, cancellationToken);
         if (!feeResult.IsSuccess)
@@ -362,7 +467,7 @@ public class CheckoutService : ICheckoutService
             FromWardCode = _ghnOpts.FromWardCode,
             ToDistrictId = address.DistrictId ?? 0,
             ToWardCode = address.WardCode ?? string.Empty,
-            ServiceId = resolvedServiceId
+            ServiceTypeId = package.ServiceTypeId
         };
         var ldResult = await _ghnClient.GetLeadtimeAsync(ldReq, cancellationToken);
         if (ldResult.IsSuccess) estimatedDelivery = ldResult.Data!.EstimatedDeliveryTime;
@@ -415,7 +520,7 @@ public class CheckoutService : ICheckoutService
 
         if (request.PaymentMethod == PayMethodCod && shippingFee > 0)
         {
-            feeReq.CodValue = Math.Max(subTotal + shippingFee - (orderDiscount + shippingDiscount), 0m);
+            feeReq.CodValue = subTotal;
             var feeRetryResult = await _ghnClient.GetFeeAsync(feeReq, cancellationToken);
             if (feeRetryResult.IsSuccess && feeRetryResult.Data!.Fee > 0 && feeRetryResult.Data.Fee != shippingFee)
             {
@@ -510,13 +615,13 @@ public class CheckoutService : ICheckoutService
                     {
                         // SE_PAY: Tăng ReservedQuantity
                         sql = "UPDATE PromotionProductSlots SET ReservedQuantity = ReservedQuantity + {0} " +
-                              "WHERE SlotProductID = {1} AND SoldQuantity + ReservedQuantity + {0} <= SaleQuantity AND IsActive = 1";
+                              "WHERE SlotProductID = {1} AND SoldQuantity + ReservedQuantity + {0} <= SaleQuantity";
                     }
                     else
                     {
                         // COD/Wallet: Tăng SoldQuantity
                         sql = "UPDATE PromotionProductSlots SET SoldQuantity = SoldQuantity + {0} " +
-                              "WHERE SlotProductID = {1} AND SoldQuantity + ReservedQuantity + {0} <= SaleQuantity AND IsActive = 1";
+                              "WHERE SlotProductID = {1} AND SoldQuantity + ReservedQuantity + {0} <= SaleQuantity";
                     }
 
                     var flashAffected = await _db.Database.ExecuteSqlRawAsync(sql, new object[] { (int)item.Quantity, flashSaleSlot.SlotProductId }, cancellationToken);

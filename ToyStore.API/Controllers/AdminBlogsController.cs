@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using ToyStore.API.Extensions;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Blogs;
@@ -52,6 +54,11 @@ internal sealed class PythonBlogGenerateRequest
 
 internal sealed class PythonBlogGenerateResponse
 {
+    public string? Status { get; set; }
+    public string? Violation_Type { get; set; }
+    public string? Violated_Keyword { get; set; }
+    public string? Reason { get; set; }
+    public string[]? Suggestions { get; set; }
     public string Title { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
 }
@@ -264,7 +271,20 @@ public class AdminBlogsController : ControllerBase
                 return StatusCode((int)aiResponse.StatusCode, new { code = "AI_GENERATE_ERROR", message = "AI generation failed.", detail = aiErrorBody });
             }
 
-            aiGenerated = await aiResponse.Content.ReadFromJsonAsync<PythonBlogGenerateResponse>(cancellationToken: cancellationToken);
+            var aiRawJson = await aiResponse.Content.ReadAsStringAsync(cancellationToken);
+            var rawNode = JsonNode.Parse(aiRawJson);
+            if (rawNode is JsonObject blockedObj
+                && string.Equals(blockedObj["status"]?.GetValue<string>(), "blocked", StringComparison.OrdinalIgnoreCase))
+            {
+                return Ok(blockedObj);
+            }
+
+            aiGenerated = JsonSerializer.Deserialize<PythonBlogGenerateResponse>(
+                aiRawJson,
+                new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
             if (aiGenerated == null || string.IsNullOrWhiteSpace(aiGenerated.Content))
             {
                 return StatusCode(502, new { code = "AI_GENERATE_EMPTY", message = "AI returned empty content." });

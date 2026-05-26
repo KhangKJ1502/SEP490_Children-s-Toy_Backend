@@ -62,6 +62,14 @@ public class ProductDto
 
     public string? OriginName { get; set; }
 
+    public int? WeightGram { get; set; }
+
+    public int? LengthCm { get; set; }
+
+    public int? WidthCm { get; set; }
+
+    public int? HeightCm { get; set; }
+
     public string? MainImageUrl { get; set; }
 
     public List<string> AdditionalImageUrls { get; set; } = [];

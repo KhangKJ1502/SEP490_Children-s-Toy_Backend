@@ -17,6 +17,14 @@ public partial class ProductDetail
 
     public byte? OriginId { get; set; }
 
+    public int WeightGram { get; set; }
+
+    public int LengthCm { get; set; }
+
+    public int WidthCm { get; set; }
+
+    public int HeightCm { get; set; }
+
     public virtual Age? Age { get; set; }
 
     public virtual Material? Material { get; set; }

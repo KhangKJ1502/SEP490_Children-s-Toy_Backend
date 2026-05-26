@@ -122,7 +122,6 @@ public class PromotionRepository : IPromotionRepository
         bool inDiscount = await _context.ProductPromotions
             .Include(pp => pp.Promotion)
             .AnyAsync(pp => pp.ProductId == productId 
-                && pp.IsActive 
                 && !pp.IsDeleted
                 && !pp.Promotion.IsDeleted 
                 && (pp.Promotion.Status == "Active" || pp.Promotion.Status == "Scheduled"), cancellationToken);
@@ -134,7 +133,6 @@ public class PromotionRepository : IPromotionRepository
             .Include(pps => pps.TimeSlot)
             .ThenInclude(ts => ts.Promotion)
             .AnyAsync(pps => pps.ProductId == productId 
-                && pps.IsActive 
                 && !pps.IsDeleted
                 && !pps.TimeSlot.IsDeleted
                 && !pps.TimeSlot.Promotion.IsDeleted

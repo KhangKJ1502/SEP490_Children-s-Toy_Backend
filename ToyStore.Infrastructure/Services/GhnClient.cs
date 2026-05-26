@@ -54,34 +54,47 @@ public sealed class GhnClient : IGhnClient
     {
         var payload = new Dictionary<string, object>
         {
+            ["payment_type_id"] = 2, // Match create_order: shop contract rate (not retail)
             ["from_district_id"] = request.FromDistrictId,
-            ["from_ward_code"] = request.FromWardCode,
-            ["to_district_id"] = request.ToDistrictId,
-            ["to_ward_code"] = request.ToWardCode,
-            ["insurance_value"] = RoundToInt(request.InsuranceValue),
-            ["cod_value"] = RoundToInt(request.CodValue),
-            ["weight"] = request.Weight,
-            ["length"] = request.Length,
-            ["width"] = request.Width,
-            ["height"] = request.Height
+            ["from_ward_code"]   = request.FromWardCode,
+            ["to_district_id"]   = request.ToDistrictId,
+            ["to_ward_code"]     = request.ToWardCode,
+            ["insurance_value"]  = Math.Min(RoundToInt(request.InsuranceValue), 5000000),
+            ["cod_value"]        = RoundToInt(request.CodValue),
+            ["weight"]           = request.Weight,
+            ["length"]           = request.Length,
+            ["width"]            = request.Width,
+            ["height"]           = request.Height,
+            ["service_type_id"]  = (request.ServiceTypeId.HasValue && request.ServiceTypeId.Value > 0) ? request.ServiceTypeId.Value : 2
         };
 
-        payload["service_type_id"] = 2;
+        if (request.Items != null && request.Items.Any())
+        {
+            payload["items"] = request.Items.Select(i => new
+            {
+                name = i.Name,
+                code = i.Code,
+                quantity = i.Quantity,
+                price = i.Price,
+                length = i.Length,
+                width = i.Width,
+                height = i.Height,
+                weight = i.Weight,
+                category = string.IsNullOrWhiteSpace(i.Category) ? null : (object)new { level1 = i.Category }
+            }).ToList();
+        }
+
+        _logger.LogInformation(
+            "[GHN-FEE-REQUEST] to_district={ToDistrict} to_ward={ToWard} weight={Weight}g length={Length} width={Width} height={Height} service_type_id={ServiceTypeId} insurance={Insurance} cod={Cod}",
+            request.ToDistrictId, request.ToWardCode,
+            request.Weight, request.Length, request.Width, request.Height,
+            payload["service_type_id"],
+            RoundToInt(request.InsuranceValue), RoundToInt(request.CodValue));
 
         var feeResult = await PostAsync<GhnFeeData>("v2/shipping-order/fee", payload, "fee", cancellationToken);
 
-        // Cố gắng resolve service_id nếu GHN bắt buộc (trường hợp hiếm)
-        /*if (!feeResult.IsSuccess && feeResult.ErrorMessage != null && feeResult.ErrorMessage.Contains("service_id"))
-        {
-            _logger.LogWarning("GHN fee API requires service_id. Falling back to ResolveServiceIdAsync...");
-            var resolveResult = await ResolveServiceIdInternalAsync(request.ToDistrictId, null, cancellationToken);
-            if (resolveResult.IsSuccess)
-            {
-                payload.Remove("service_type_id");
-                payload["service_id"] = resolveResult.Data;
-                feeResult = await PostAsync<GhnFeeData>("v2/shipping-order/fee", payload, "fee_retry", cancellationToken);
-            }
-        }*/
+        if (feeResult.IsSuccess)
+            _logger.LogInformation("[GHN-FEE-RESPONSE] total_fee={Fee}", feeResult.Data!.Total);
 
         if (!feeResult.IsSuccess)
         {
@@ -91,8 +104,7 @@ public sealed class GhnClient : IGhnClient
 
         return Result<FeeResponseDTO>.Success(new FeeResponseDTO
         {
-            Fee = feeResult.Data!.Total,
-            ServiceId = request.ServiceId ?? 0 // Note: Not exact if service_type_id was used, but sufficient for preview
+            Fee = feeResult.Data!.Total
         });
     }
 
@@ -100,14 +112,16 @@ public sealed class GhnClient : IGhnClient
         LeadtimeRequestDTO request,
         CancellationToken cancellationToken = default)
     {
-        var payload = new
+        var payload = new Dictionary<string, object>
         {
-            from_district_id = request.FromDistrictId,
-            from_ward_code = request.FromWardCode,
-            to_district_id = request.ToDistrictId,
-            to_ward_code = request.ToWardCode,
-            service_type_id = 2
+            ["from_district_id"] = request.FromDistrictId,
+            ["from_ward_code"] = request.FromWardCode,
+            ["to_district_id"] = request.ToDistrictId,
+            ["to_ward_code"] = request.ToWardCode
         };
+
+        payload["service_type_id"] = request.ServiceTypeId ?? 2;
+
 
         var leadtimeResult = await PostAsync<GhnLeadtimeData>(
             "v2/shipping-order/leadtime", payload, "leadtime", cancellationToken);
@@ -179,25 +193,7 @@ public sealed class GhnClient : IGhnClient
         return Result<List<GhnWardDto>>.Success(dtos);
     }
 
-    public async Task<Result<int>> ResolveServiceIdAsync(
-        int toDistrictId,
-        int? preferredServiceTypeId = null,
-        CancellationToken cancellationToken = default)
-    {
-        var resolveResult = await ResolveServiceIdInternalAsync(toDistrictId, preferredServiceTypeId, cancellationToken);
-        if (resolveResult.IsSuccess)
-            return resolveResult;
 
-        if (_ghnOptions.DefaultServiceId > 0)
-        {
-            _logger.LogWarning(
-                "GHN dynamic service resolution failed: {Error}. Falling back to DefaultServiceId={DefaultId}",
-                resolveResult.ErrorMessage, _ghnOptions.DefaultServiceId);
-            return Result<int>.Success(_ghnOptions.DefaultServiceId);
-        }
-
-        return resolveResult;
-    }
 
     // ── Tao don van chuyen ──────────────────────────────────────────────────
 
@@ -210,35 +206,6 @@ public sealed class GhnClient : IGhnClient
             return Result<ShippingOrderCreateResponseDto>.Failure(
                 "CONFIGURATION_ERROR",
                 "ShopAddress configuration is incomplete. Check appsettings 'ShopAddress' section.");
-        }
-
-        int resolvedServiceId = request.ServiceId;
-        int? resolvedServiceTypeId = null;
-
-        if (resolvedServiceId <= 0)
-        {
-            // 1. Resolve tu preferred type hoac mac dinh cua route
-            int? preferredTypeId = _ghnOptions.FeeServiceTypeId > 0 ? _ghnOptions.FeeServiceTypeId : null;
-            var resolveResult = await ResolveServiceIdInternalAsync(request.ToDistrictId, preferredTypeId, cancellationToken);
-
-            if (resolveResult.IsSuccess)
-            {
-                resolvedServiceId = resolveResult.Data;
-                resolvedServiceTypeId = preferredTypeId;
-            }
-            else if (_ghnOptions.DefaultServiceId > 0)
-            {
-                // 2. Fallback ve default hardcoded neu resolve loi
-                _logger.LogWarning("GHN dynamic service resolution failed: {Error}. Falling back to DefaultServiceId={DefaultId}",
-                    resolveResult.ErrorMessage, _ghnOptions.DefaultServiceId);
-                resolvedServiceId = _ghnOptions.DefaultServiceId;
-                resolvedServiceTypeId = _ghnOptions.FeeServiceTypeId > 0 ? _ghnOptions.FeeServiceTypeId : null;
-            }
-            else
-            {
-                // 3. That bai hoan toan
-                return MapFailure<ShippingOrderCreateResponseDto, int>(resolveResult);
-            }
         }
 
         var payload = new Dictionary<string, object>
@@ -264,16 +231,26 @@ public sealed class GhnClient : IGhnClient
             ["height"] = request.Height,
             ["insurance_value"] = Math.Min(RoundToInt(request.InsuranceValue), 5000000),
             ["client_order_code"] = request.ClientOrderCode,
+            ["service_type_id"] = request.ServiceTypeId > 0 ? request.ServiceTypeId : 2,
             ["items"] = request.Items.Select(x => new
             {
                 name = x.Name,
+                code = string.IsNullOrWhiteSpace(x.Code) ? null : x.Code,
                 quantity = x.Quantity,
                 price = RoundToInt(x.Price),
-                weight = x.Weight
+                weight = x.Weight,
+                length = x.Length > 0 ? x.Length : (int?)null,
+                width = x.Width > 0 ? x.Width : (int?)null,
+                height = x.Height > 0 ? x.Height : (int?)null,
+                category = string.IsNullOrWhiteSpace(x.Category) ? null : (object)new { level1 = x.Category }
             }).ToList()
         };
 
-        payload["service_type_id"] = 2;
+        _logger.LogInformation(
+            "[GHN-CREATE-REQUEST] to_district={ToDistrict} to_ward={ToWard} weight={Weight}g length={Length} width={Width} height={Height} service_type_id={ServiceTypeId} insurance={Insurance} cod={Cod}",
+            request.ToDistrictId, request.ToWardCode,
+            request.Weight, request.Length, request.Width, request.Height,
+            payload["service_type_id"], RoundToInt(request.InsuranceValue), RoundToInt(request.CodAmount));
 
         var createResult = await PostAsync<GhnCreateOrderData>(
             "v2/shipping-order/create", payload, "create_order", cancellationToken);
@@ -292,66 +269,12 @@ public sealed class GhnClient : IGhnClient
         {
             OrderCode = createResult.Data.OrderCode,
             SortCode = createResult.Data.SortCode,
-            ServiceId = resolvedServiceId,
-            ExpectedDeliveryTime = createResult.Data.ExpectedDeliveryTime
+            ExpectedDeliveryTime = createResult.Data.ExpectedDeliveryTime,
+            TotalFee = createResult.Data.TotalFee
         });
     }
 
-    private async Task<Result<int>> ResolveServiceIdInternalAsync(
-        int toDistrictId,
-        int? preferredServiceTypeId,
-        CancellationToken cancellationToken)
-    {
-        var payload = new
-        {
-            shop_id = _ghnOptions.ShopId,
-            from_district = _ghnOptions.FromDistrictId,
-            to_district = toDistrictId
-        };
 
-        var servicesResult = await PostAsync<List<GhnAvailableServiceData>>(
-            "v2/shipping-order/available-services",
-            payload,
-            "available_services",
-            cancellationToken);
-
-        if (!servicesResult.IsSuccess)
-            return MapFailure<int, List<GhnAvailableServiceData>>(servicesResult);
-
-        var services = servicesResult.Data ?? [];
-        _logger.LogInformation("GHN available services for district {ToDistrictId}: {Services}",
-            toDistrictId, string.Join(", ", services.Select(s => $"{s.ShortName}(id={s.ServiceId}, type={s.ServiceTypeId})")));
-
-        var selected = services
-            .Where(s => s.ServiceId > 0)
-            .Where(s => !preferredServiceTypeId.HasValue || s.ServiceTypeId == preferredServiceTypeId.Value)
-            .OrderBy(s => s.ServiceId)
-            .FirstOrDefault();
-
-        // [CƠ CHẾ FALLBACK]
-        // Nếu tuyến đường không hỗ trợ loại dịch vụ mặc định (vd: 2 - Chuyển phát tiêu chuẩn)
-        // thì tự động lấy dịch vụ đầu tiên khả dụng mà GHN hỗ trợ để không bị chết API.
-        if (selected is null && preferredServiceTypeId.HasValue)
-        {
-            _logger.LogWarning("GHN preferred service_type_id={Type} not available. Falling back to any available service.", preferredServiceTypeId.Value);
-            selected = services
-                .Where(s => s.ServiceId > 0)
-                .OrderBy(s => s.ServiceId)
-                .FirstOrDefault();
-        }
-
-        if (selected is null)
-        {
-            var msg = "No GHN service found for this route.";
-            return Result<int>.Failure("GHN_SERVICE_UNAVAILABLE", msg);
-        }
-
-        _logger.LogInformation(
-            "Resolved GHN service_id={ServiceId} (type={ServiceTypeId}) for district={ToDistrictId}",
-            selected.ServiceId, selected.ServiceTypeId, toDistrictId);
-
-        return Result<int>.Success(selected.ServiceId);
-    }
 
     private async Task<Result<TData>> GetAsync<TData>(
         string path,
@@ -544,6 +467,7 @@ public sealed class GhnClient : IGhnClient
         [JsonPropertyName("order_code")] public string OrderCode { get; set; } = string.Empty;
         [JsonPropertyName("sort_code")] public string? SortCode { get; set; }
         [JsonPropertyName("expected_delivery_time")] public DateTime? ExpectedDeliveryTime { get; set; }
+        [JsonPropertyName("total_fee")] public decimal TotalFee { get; set; }
     }
 
     private sealed class GhnProvinceMdData

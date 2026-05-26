@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ToyStore.Domain.Entities;
 
@@ -27,8 +28,6 @@ public partial class PromotionProductSlot
     public int SoldQuantity { get; set; }
 
     public int ReservedQuantity { get; set; }
-
-    public bool IsActive { get; set; }
 
     public bool IsDeleted { get; set; }
 

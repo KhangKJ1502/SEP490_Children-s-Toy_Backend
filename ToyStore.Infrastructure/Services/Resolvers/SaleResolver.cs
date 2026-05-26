@@ -64,8 +64,7 @@ public class SaleResolver : IBusinessObjectResolver
                         DiscountPercent = pps.DiscountPercent,
                         SaleQuantity = pps.SaleQuantity,
                         SoldQuantity = pps.SoldQuantity,
-                        ReservedQuantity = pps.ReservedQuantity,
-                        IsActive = pps.IsActive
+                        ReservedQuantity = pps.ReservedQuantity
                     })
                     .ToList()
             })
