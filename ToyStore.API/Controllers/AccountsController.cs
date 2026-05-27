@@ -94,4 +94,18 @@ public class AccountsController : ControllerBase
         var result = await _accountService.UpdateAccountStatusAsync(accountId, dto, cancellationToken);
         return result.ToActionResult();
     }
+
+    /// <summary>
+    /// Admin đổi mật khẩu cho tài khoản Staff/Merchandise.
+    /// </summary>
+    [HttpPut("{accountId:int}/password")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> UpdateAccountPassword(
+        [FromRoute] int accountId,
+        [FromBody] UpdateAccountPasswordDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _accountService.UpdateAccountPasswordAsync(accountId, dto, cancellationToken);
+        return result.ToActionResult();
+    }
 }
