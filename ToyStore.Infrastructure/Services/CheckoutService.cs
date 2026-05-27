@@ -222,14 +222,30 @@ public class CheckoutService : ICheckoutService
         decimal orderDiscount = 0;
         decimal shippingDiscount = 0;
 
+        Voucher? orderVoucher = null;
         if (!string.IsNullOrWhiteSpace(orderVoucherCode))
         {
+            orderVoucher = await _uow.Vouchers.GetByCodeAsync(orderVoucherCode, cancellationToken);
+            if (orderVoucher is null)
+                return Result<CheckoutPreviewResponseDto>.BusinessError("Order voucher code does not exist.");
+
+            string target = orderVoucher.DiscountTarget;
+            if (!string.Equals(target, "ORDER_TOTAL", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(target, "FINAL_PRICE", StringComparison.OrdinalIgnoreCase))
+            {
+                return Result<CheckoutPreviewResponseDto>.BusinessError("Voucher is not applicable for this target.");
+            }
+
+            decimal baseAmount = string.Equals(target, "FINAL_PRICE", StringComparison.OrdinalIgnoreCase)
+                ? (subTotal + shippingFee)
+                : subTotal;
+
             var voucherResult = await CalculateVoucherDiscountAsync(
                 orderVoucherCode,
                 accountId,
                 subTotal,
-                subTotal,
-                "ORDER_TOTAL",
+                baseAmount,
+                target,
                 cancellationToken);
             if (!voucherResult.IsSuccess)
                 return Result<CheckoutPreviewResponseDto>.BusinessError(voucherResult.ErrorMessage ?? "Invalid voucher.");
@@ -277,6 +293,21 @@ public class CheckoutService : ICheckoutService
                     if (!voucherResult.IsSuccess)
                         return Result<CheckoutPreviewResponseDto>.BusinessError(voucherResult.ErrorMessage ?? "Invalid voucher.");
                     shippingDiscount = voucherResult.Data;
+                }
+
+                if (!string.IsNullOrWhiteSpace(orderVoucherCode) && orderVoucher is not null && string.Equals(orderVoucher.DiscountTarget, "FINAL_PRICE", StringComparison.OrdinalIgnoreCase))
+                {
+                    decimal baseAmount = subTotal + shippingFee;
+                    var voucherResult = await CalculateVoucherDiscountAsync(
+                        orderVoucherCode,
+                        accountId,
+                        subTotal,
+                        baseAmount,
+                        "FINAL_PRICE",
+                        cancellationToken);
+                    if (!voucherResult.IsSuccess)
+                        return Result<CheckoutPreviewResponseDto>.BusinessError(voucherResult.ErrorMessage ?? "Invalid voucher.");
+                    orderDiscount = voucherResult.Data;
                 }
 
                 totalBeforeDiscount = subTotal + shippingFee;
@@ -495,11 +526,22 @@ public class CheckoutService : ICheckoutService
             if (orderVoucher is null)
                 return Result<CheckoutConfirmResponseDto>.BusinessError("Voucher code does not exist.");
 
-            var voucherCheck = await ValidateVoucherAsync(orderVoucher, accountId, subTotal, "ORDER_TOTAL", cancellationToken);
+            string target = orderVoucher.DiscountTarget;
+            if (!string.Equals(target, "ORDER_TOTAL", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(target, "FINAL_PRICE", StringComparison.OrdinalIgnoreCase))
+            {
+                return Result<CheckoutConfirmResponseDto>.BusinessError("Voucher is not applicable for this target.");
+            }
+
+            var voucherCheck = await ValidateVoucherAsync(orderVoucher, accountId, subTotal, target, cancellationToken);
             if (!string.IsNullOrEmpty(voucherCheck))
                 return Result<CheckoutConfirmResponseDto>.BusinessError(voucherCheck);
 
-            orderDiscount = Math.Min(CalculateDiscount(orderVoucher, subTotal), subTotal);
+            decimal baseAmount = string.Equals(target, "FINAL_PRICE", StringComparison.OrdinalIgnoreCase)
+                ? (subTotal + shippingFee)
+                : subTotal;
+
+            orderDiscount = Math.Min(CalculateDiscount(orderVoucher, baseAmount), baseAmount);
         }
 
         if (!string.IsNullOrWhiteSpace(shippingVoucherCode))
@@ -528,6 +570,12 @@ public class CheckoutService : ICheckoutService
 
                 if (!string.IsNullOrWhiteSpace(shippingVoucherCode) && shippingVoucher is not null)
                     shippingDiscount = Math.Min(CalculateDiscount(shippingVoucher, shippingFee), shippingFee);
+
+                if (!string.IsNullOrWhiteSpace(orderVoucherCode) && orderVoucher is not null && string.Equals(orderVoucher.DiscountTarget, "FINAL_PRICE", StringComparison.OrdinalIgnoreCase))
+                {
+                    decimal baseAmount = subTotal + shippingFee;
+                    orderDiscount = Math.Min(CalculateDiscount(orderVoucher, baseAmount), baseAmount);
+                }
             }
         }
 
@@ -966,6 +1014,13 @@ public class CheckoutService : ICheckoutService
 
     private static decimal CalculateDiscount(Voucher v, decimal baseAmount)
     {
+        if (string.Equals(v.DiscountTarget, "FINAL_PRICE", StringComparison.OrdinalIgnoreCase))
+        {
+            decimal compDiscount = baseAmount > v.DiscountValue ? baseAmount - v.DiscountValue : 0m;
+            if (v.MaxDiscountCap.HasValue) compDiscount = Math.Min(compDiscount, v.MaxDiscountCap.Value);
+            return Math.Min(compDiscount, baseAmount);
+        }
+
         decimal discount = v.DiscountType switch
         {
             "PERCENTAGE" => baseAmount * v.DiscountValue / 100m,

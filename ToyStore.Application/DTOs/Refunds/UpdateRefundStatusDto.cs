@@ -4,4 +4,6 @@ public class UpdateRefundStatusDto
 {
     public string Status { get; set; } = null!;
     public string? RejectReason { get; set; }
+    public string? ShippingOrderCode { get; set; }
+    public string? AdminNote { get; set; }
 }

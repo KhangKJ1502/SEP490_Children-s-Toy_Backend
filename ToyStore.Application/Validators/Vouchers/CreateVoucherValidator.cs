@@ -34,7 +34,7 @@ public class CreateVoucherValidator : AbstractValidator<CreateVoucherDto>
         RuleFor(x => x.DiscountTarget)
             .NotEmpty().WithMessage("Discount target is required.")
             .Must(v => VoucherValidatorConstants.AllowedDiscountTargets.Contains(v.Trim()))
-            .WithMessage("Discount target must be either ORDER_TOTAL or SHIPPING_FEE.");
+            .WithMessage("Discount target must be ORDER_TOTAL, SHIPPING_FEE, or FINAL_PRICE.");
 
         RuleFor(x => x.Status)
             .NotEmpty().WithMessage("Status is required.")
@@ -60,11 +60,11 @@ public class CreateVoucherValidator : AbstractValidator<CreateVoucherDto>
             .When(x => IsPercentage(x.DiscountType))
             .WithMessage("Max discount cap is required for percentage vouchers.");
 
-        // MaxDiscountCap chỉ áp dụng cho loại PERCENTAGE
+        // MaxDiscountCap chỉ áp dụng cho loại PERCENTAGE, trừ khi target là FINAL_PRICE
         RuleFor(x => x.MaxDiscountCap)
             .Null()
-            .When(x => IsFixed(x.DiscountType))
-            .WithMessage("Max discount cap is only allowed for percentage vouchers.");
+            .When(x => IsFixed(x.DiscountType) && !string.Equals(x.DiscountTarget?.Trim(), "FINAL_PRICE", StringComparison.OrdinalIgnoreCase))
+            .WithMessage("Max discount cap is only allowed for percentage vouchers, unless the target is FINAL_PRICE.");
 
         RuleFor(x => x.MinOrderAmount)
             .GreaterThanOrEqualTo(0).When(x => x.MinOrderAmount.HasValue)
@@ -101,6 +101,34 @@ public class CreateVoucherValidator : AbstractValidator<CreateVoucherDto>
         RuleFor(x => x)
             .Must(x => !x.TotalQuantity.HasValue || !x.MaxUsagePerUser.HasValue || x.MaxUsagePerUser.Value <= x.TotalQuantity.Value)
             .WithMessage("Max usage per user must be less than or equal to total quantity.");
+
+        // Rules for FINAL_PRICE target
+        RuleFor(x => x.DiscountType)
+            .Must(t => string.Equals(t?.Trim(), "FIXED", StringComparison.OrdinalIgnoreCase))
+            .When(x => string.Equals(x.DiscountTarget?.Trim(), "FINAL_PRICE", StringComparison.OrdinalIgnoreCase))
+            .WithMessage("Discount type must be FIXED for FINAL_PRICE vouchers.");
+
+
+        RuleFor(x => x.MinOrderAmount)
+            .NotNull()
+            .When(x => string.Equals(x.DiscountTarget?.Trim(), "FINAL_PRICE", StringComparison.OrdinalIgnoreCase))
+            .WithMessage("Minimum order amount is required for FINAL_PRICE vouchers.")
+            .GreaterThan(0)
+            .When(x => string.Equals(x.DiscountTarget?.Trim(), "FINAL_PRICE", StringComparison.OrdinalIgnoreCase) && x.MinOrderAmount.HasValue)
+            .WithMessage("Minimum order amount must be greater than 0 for FINAL_PRICE vouchers.");
+
+        RuleFor(x => x.TotalQuantity)
+            .NotNull()
+            .When(x => string.Equals(x.DiscountTarget?.Trim(), "FINAL_PRICE", StringComparison.OrdinalIgnoreCase))
+            .WithMessage("Total quantity limit is required for FINAL_PRICE vouchers.");
+
+        RuleFor(x => x.MaxUsagePerUser)
+            .NotNull()
+            .When(x => string.Equals(x.DiscountTarget?.Trim(), "FINAL_PRICE", StringComparison.OrdinalIgnoreCase))
+            .WithMessage("Max usage per user is required for FINAL_PRICE vouchers.")
+            .Equal((short)1)
+            .When(x => string.Equals(x.DiscountTarget?.Trim(), "FINAL_PRICE", StringComparison.OrdinalIgnoreCase) && x.MaxUsagePerUser.HasValue)
+            .WithMessage("Max usage per user must be exactly 1 for FINAL_PRICE vouchers.");
     }
 
     private static bool IsPercentage(string discountType)

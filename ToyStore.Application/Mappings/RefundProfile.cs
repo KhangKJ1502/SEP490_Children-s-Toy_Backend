@@ -18,6 +18,9 @@ public class RefundProfile : Profile
             .ForMember(dest => dest.CustomerPhone, opt => opt.MapFrom(src => src.Customer.PhoneNumber))
             .ForMember(dest => dest.CustomerEmail, opt => opt.MapFrom(src => src.Customer.Email))
             .ForMember(dest => dest.RequestedByName, opt => opt.MapFrom(src => src.RequestedByNavigation != null ? src.RequestedByNavigation.AccountName : null))
+            .ForMember(dest => dest.RefundStatus, opt => opt.MapFrom(src => src.Status != null ? src.Status.StatusName : null))
+            .ForMember(dest => dest.Details, opt => opt.MapFrom(src => src.RefundDetails))
+            .ForMember(dest => dest.StatusHistory, opt => opt.MapFrom(src => src.RefundStatusHistories))
             .ForMember(dest => dest.Images, opt => opt.MapFrom(src => src.RefundImages.Where(i => !i.IsDeleted).Select(i => i.ImageUrl).ToList()));
 
         CreateMap<OrderRefund, RefundListDto>()
@@ -28,8 +31,16 @@ public class RefundProfile : Profile
             .ForMember(dest => dest.CustomerName, opt => opt.MapFrom(src => src.Customer.AccountName))
             .ForMember(dest => dest.CustomerPhone, opt => opt.MapFrom(src => src.Customer.PhoneNumber))
             .ForMember(dest => dest.CustomerEmail, opt => opt.MapFrom(src => src.Customer.Email))
-            .ForMember(dest => dest.RequestedByName, opt => opt.MapFrom(src => src.RequestedByNavigation != null ? src.RequestedByNavigation.AccountName : null));
+            .ForMember(dest => dest.RequestedByName, opt => opt.MapFrom(src => src.RequestedByNavigation != null ? src.RequestedByNavigation.AccountName : null))
+            .ForMember(dest => dest.RefundStatus, opt => opt.MapFrom(src => src.Status != null ? src.Status.StatusName : null));
 
         CreateMap<OrderRefundReason, RefundReasonDto>();
+
+        CreateMap<RefundDetail, RefundDetailDto>()
+            .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product.ProductName));
+
+        CreateMap<RefundStatusHistory, RefundStatusHistoryDto>()
+            .ForMember(dest => dest.StatusName, opt => opt.MapFrom(src => src.Status.StatusName))
+            .ForMember(dest => dest.ChangedByName, opt => opt.MapFrom(src => src.ChangedByNavigation != null ? src.ChangedByNavigation.AccountName : null));
     }
 }

@@ -81,8 +81,15 @@ public class ShippingWebhookService : IShippingWebhookService
 
             if (tx is null)
             {
+                var refund = await _unitOfWork.Refunds.GetByShippingOrderCodeAsync(providerOrderCode, cancellationToken);
+                if (refund is not null)
+                {
+                    await HandleRefundWebhookAsync(refund, newStatus, rawPayload, cancellationToken);
+                    return;
+                }
+
                 _logger.LogWarning(
-                    "Shipping webhook from {Provider}: ProviderOrderCode '{Code}' not found",
+                    "Shipping webhook from {Provider}: ProviderOrderCode '{Code}' not found in shipping transactions or refund requests",
                     provider, providerOrderCode);
                 return;
             }
@@ -240,4 +247,94 @@ public class ShippingWebhookService : IShippingWebhookService
 
     private static string Truncate(string s, int max = 300)
         => s.Length <= max ? s : s[..max];
+
+    private async Task HandleRefundWebhookAsync(
+        OrderRefund refund,
+        string newStatus,
+        string rawPayload,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            byte? targetRefundStatusId = newStatus switch
+            {
+                ShippingStatuses.ReadyToPick or ShippingStatuses.Storing => (byte)RefundStatusEnum.RefundPickupCreated,
+                
+                ShippingStatuses.Picking or ShippingStatuses.Picked or 
+                ShippingStatuses.Transporting or ShippingStatuses.Sorting or 
+                ShippingStatuses.Delivering or ShippingStatuses.MoneyCollectDelivering or
+                ShippingStatuses.ReturnTransporting or ShippingStatuses.ReturnSorting or 
+                ShippingStatuses.Returning => (byte)RefundStatusEnum.RefundShipping,
+                
+                ShippingStatuses.Delivered or ShippingStatuses.Returned => (byte)RefundStatusEnum.RefundReceived,
+                
+                ShippingStatuses.Cancel or ShippingStatuses.DeliveryFail or 
+                ShippingStatuses.ReturnFail or ShippingStatuses.Lost or 
+                ShippingStatuses.Damage or ShippingStatuses.Exception => (byte)RefundStatusEnum.RefundCancelled,
+                
+                _ => null
+            };
+
+            if (targetRefundStatusId is null)
+            {
+                _logger.LogInformation(
+                    "Refund webhook: No mapping found for GHN status '{Status}' on Refund request ID {RefundId}",
+                    newStatus, refund.RefundId);
+                return;
+            }
+
+            if (refund.StatusId == targetRefundStatusId.Value)
+            {
+                return;
+            }
+
+            if (refund.StatusId == (byte)RefundStatusEnum.RefundCompleted || 
+                refund.StatusId == (byte)RefundStatusEnum.RefundCancelled)
+            {
+                _logger.LogInformation(
+                    "Refund webhook: Skip updating Refund request ID {RefundId} (status is already final: {Status})",
+                    refund.RefundId, refund.StatusId);
+                return;
+            }
+
+            var now = _timeProvider.UtcNow;
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+            try
+            {
+                refund.StatusId = targetRefundStatusId.Value;
+                refund.UpdatedAt = now;
+
+                if (targetRefundStatusId.Value == (byte)RefundStatusEnum.RefundCancelled)
+                {
+                    refund.CancelledAt = now;
+                }
+
+                refund.RefundStatusHistories.Add(new RefundStatusHistory
+                {
+                    StatusId = targetRefundStatusId.Value,
+                    ChangedBy = null,
+                    Note = $"Auto-updated from GHN shipping webhook: {newStatus}",
+                    CreatedAt = now
+                });
+
+                _unitOfWork.Refunds.Update(refund);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+                _logger.LogInformation(
+                    "Refund webhook processed: RefundId={RefundId}, status transitioned to StatusId={StatusId} via provider status={ProviderStatus}",
+                    refund.RefundId, targetRefundStatusId.Value, newStatus);
+            }
+            catch (Exception ex)
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                _logger.LogError(ex, "Transaction failed while updating Refund ID {RefundId} via webhook", refund.RefundId);
+                throw;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing Refund webhook for code {Code}", refund.ShippingOrderCode);
+        }
+    }
 }
