@@ -23,71 +23,6 @@ public class AdminDashboardService : IAdminDashboardService
         _timeProvider = timeProvider;
     }
 
-    public async Task<Result<DashboardRevenueStatisticsDto>> GetRevenueStatisticsAsync(
-        DashboardTimeFilterDto filter,
-        CancellationToken cancellationToken = default)
-    {
-        var resolved = ResolveRangePair(filter);
-        if (resolved.IsFailure)
-        {
-            return ToRangeFailure<DashboardRevenueStatisticsDto>(resolved);
-        }
-
-        var ranges = resolved.Data!;
-
-        var currentOrdersRaw = await BuildRevenueQuery(ranges.Current)
-            .Select(o => new
-            {
-                TotalAmount = o.TotalAmount,
-                EventAtUtc = o.CompletedAt ?? o.DeliveredAt ?? o.PaidAt ?? o.OrderDate,
-                RefundedAmount = o.OrderRefunds
-                    .Where(r => !r.IsDeleted && r.StatusId == 8)
-                    .Sum(r => (decimal?)r.ApprovedAmount)
-            })
-            .ToListAsync(cancellationToken);
-
-        var currentEvents = currentOrdersRaw
-            .Select(o => new DashboardRevenueEventRowDto
-            {
-                Amount = o.TotalAmount - (o.RefundedAmount ?? 0m),
-                EventAtUtc = o.EventAtUtc
-            })
-            .ToList();
-
-        var previousTotalAmount = await BuildRevenueQuery(ranges.Previous)
-            .SumAsync(o => (decimal?)o.TotalAmount, cancellationToken) ?? 0m;
-
-        var previousRefundedAmount = await BuildRevenueQuery(ranges.Previous)
-            .SelectMany(o => o.OrderRefunds)
-            .Where(r => !r.IsDeleted && r.StatusId == 8)
-            .SumAsync(r => (decimal?)r.ApprovedAmount, cancellationToken) ?? 0m;
-
-        var previousRevenue = previousTotalAmount - previousRefundedAmount;
-
-        var buckets = BuildBuckets(ranges.Current);
-        var amountByBucket = SumRevenueByBucket(currentEvents, ranges.Current, buckets);
-
-        var details = buckets
-            .Select(b => new DashboardRevenueChartPointDto
-            {
-                Label = b.Label,
-                Date = b.Start,
-                Value = amountByBucket[b.Index]
-            })
-            .ToList();
-
-        var totalRevenue = currentEvents.Sum(x => x.Amount);
-
-        return Result<DashboardRevenueStatisticsDto>.Success(new DashboardRevenueStatisticsDto
-        {
-            Range = ToRangeDto(ranges.Current),
-            TotalRevenue = totalRevenue,
-            PreviousPeriodRevenue = previousRevenue,
-            GrowthPercentage = CalculateGrowthPercentage(totalRevenue, previousRevenue),
-            Details = details
-        });
-    }
-
     public async Task<Result<DashboardOrderStatusStatisticsDto>> GetOrderStatusStatisticsAsync(
         DashboardTimeFilterDto filter,
         CancellationToken cancellationToken = default)
@@ -380,104 +315,6 @@ public class AdminDashboardService : IAdminDashboardService
         });
     }
 
-    public async Task<Result<DashboardTopSellingProductsDto>> GetTopSellingProductsAsync(
-        int limit,
-        CancellationToken cancellationToken = default)
-    {
-        var resolvedLimit = ResolveTopLimit(limit);
-
-        var sales = await BuildValidSoldOrderDetailsQuery()
-            .GroupBy(od => new
-            {
-                od.ProductId,
-                ProductName = od.Product.ProductName,
-                ImageUrl = od.Product.ProductImage != null
-                    ? od.Product.ProductImage.ImageUrl
-                    : od.ProductImage
-            })
-            .Select(g => new
-            {
-                ProductId = g.Key.ProductId,
-                ProductName = g.Key.ProductName,
-                ImageUrl = g.Key.ImageUrl,
-                TotalSold = g.Sum(x => (int)x.Quantity),
-                Revenue = g.Sum(x => x.LineTotal ?? 0m)
-            })
-            .ToListAsync(cancellationToken);
-
-        var refunds = await _context.RefundDetails
-            .AsNoTracking()
-            .Where(rd => !rd.Refund.IsDeleted && rd.Refund.StatusId == 8)
-            .GroupBy(rd => rd.ProductId)
-            .Select(g => new
-            {
-                ProductId = g.Key,
-                TotalRefundedQty = g.Sum(x => (int)x.Quantity),
-                TotalRefundedAmount = g.Sum(x => x.RefundAmount)
-            })
-            .ToDictionaryAsync(x => x.ProductId, x => x, cancellationToken);
-
-        var products = sales
-            .Select(s =>
-            {
-                refunds.TryGetValue(s.ProductId, out var refInfo);
-                var netSold = s.TotalSold - (refInfo?.TotalRefundedQty ?? 0);
-                var netRevenue = s.Revenue - (refInfo?.TotalRefundedAmount ?? 0m);
-                return new DashboardTopSellingProductItemDto
-                {
-                    ProductId = s.ProductId,
-                    ProductName = s.ProductName,
-                    ImageUrl = s.ImageUrl,
-                    TotalSold = Math.Max(0, netSold),
-                    Revenue = Math.Max(0m, netRevenue)
-                };
-            })
-            .OrderByDescending(x => x.TotalSold)
-            .ThenByDescending(x => x.Revenue)
-            .ThenBy(x => x.ProductName)
-            .Take(resolvedLimit)
-            .ToList();
-
-        return Result<DashboardTopSellingProductsDto>.Success(new DashboardTopSellingProductsDto
-        {
-            Limit = resolvedLimit,
-            TotalItems = products.Count,
-            Products = products
-        });
-    }
-
-    public async Task<Result<DashboardSlowMovingProductsDto>> GetSlowMovingProductsAsync(
-        int limit,
-        CancellationToken cancellationToken = default)
-    {
-        var resolvedLimit = ResolveSlowMovingLimit(limit);
-        var nowUtc = _timeProvider.UtcNow;
-
-        var products = await _context.Products
-            .AsNoTracking()
-            .Where(p => !p.IsDeleted && p.Quantity > 0)
-            .OrderBy(p => p.CreatedAt)
-            .ThenBy(p => p.ProductId)
-            .Select(p => new DashboardSlowMovingProductItemDto
-            {
-                ProductId = p.ProductId,
-                ProductName = p.ProductName,
-                ImageUrl = p.ProductImage != null ? p.ProductImage.ImageUrl : null,
-                QuantityInStock = p.Quantity,
-                StockedAt = p.CreatedAt,
-                DaysInStock = EF.Functions.DateDiffDay(p.CreatedAt, nowUtc)
-            })
-            .Take(resolvedLimit)
-            .ToListAsync(cancellationToken);
-
-        return Result<DashboardSlowMovingProductsDto>.Success(new DashboardSlowMovingProductsDto
-        {
-            Limit = resolvedLimit,
-            TotalItems = products.Count,
-            Products = products
-        });
-    }
-
     public async Task<Result<DashboardTotalProductsDto>> GetTotalProductsAsync(
         CancellationToken cancellationToken = default)
     {
@@ -502,40 +339,6 @@ public class AdminDashboardService : IAdminDashboardService
             .Where(o => validRevenueStatuses.Contains(o.Status.StatusName))
             .Where(o => (o.CompletedAt ?? o.DeliveredAt ?? o.PaidAt ?? o.OrderDate) >= range.StartUtc
                 && (o.CompletedAt ?? o.DeliveredAt ?? o.PaidAt ?? o.OrderDate) < range.EndUtcExclusive);
-    }
-
-    private IQueryable<OrderDetail> BuildValidSoldOrderDetailsQuery()
-    {
-        string[] finalOrderStatuses = [OrderStatuses.Delivered, OrderStatuses.Completed];
-        string[] invalidOrderStatuses = [OrderStatuses.Cancelled, OrderStatuses.Refunded];
-
-        return _context.OrderDetails
-            .AsNoTracking()
-            .Where(od => !od.Order.IsDeleted && !od.Product.IsDeleted)
-            .Where(od =>
-                (od.Order.PaymentStatus == PaymentStatuses.Paid
-                 || finalOrderStatuses.Contains(od.Order.Status.StatusName))
-                && !invalidOrderStatuses.Contains(od.Order.Status.StatusName));
-    }
-
-    private static int ResolveTopLimit(int requestedLimit)
-    {
-        if (requestedLimit <= 0)
-        {
-            return 10;
-        }
-
-        return Math.Min(requestedLimit, 50);
-    }
-
-    private static int ResolveSlowMovingLimit(int requestedLimit)
-    {
-        if (requestedLimit <= 0)
-        {
-            return 5;
-        }
-
-        return Math.Min(requestedLimit, 50);
     }
 
     private Result<DashboardTimeRangePairDto> ResolveRangePair(DashboardTimeFilterDto filter)
@@ -736,24 +539,6 @@ public class AdminDashboardService : IAdminDashboardService
         return Result<T>.Failure(
             resolved.ErrorCode!,
             resolved.ErrorMessage!);
-    }
-
-    private Dictionary<int, decimal> SumRevenueByBucket(
-        IEnumerable<DashboardRevenueEventRowDto> events,
-        DashboardTimeRangeInternalDto range,
-        IReadOnlyCollection<DashboardBucketDto> buckets)
-    {
-        var amountByBucket = buckets.ToDictionary(b => b.Index, _ => 0m);
-        foreach (var row in events)
-        {
-            var bucketIndex = ResolveBucketIndex(_timeProvider.ToVnTime(row.EventAtUtc), range);
-            if (bucketIndex >= 0)
-            {
-                amountByBucket[bucketIndex] += row.Amount;
-            }
-        }
-
-        return amountByBucket;
     }
 
     private Dictionary<int, int> CountByBucket(
