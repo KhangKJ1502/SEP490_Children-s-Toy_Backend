@@ -30,6 +30,7 @@ public class BlogService : IBlogService
     private const string ModerationApproved = "Approved";
     private const string ManualReviewStatus = "ManualReview";
     private const int CommentRateLimitPerMinute = 5;
+    private const byte CommentViolationBanThreshold = 20;
     private const string ApprovePublishNowDecision = "ApprovePublishNow";
     private const string ApproveKeepScheduleDecision = "ApproveKeepSchedule";
 
@@ -805,8 +806,10 @@ public class BlogService : IBlogService
             return Result<BlogReviewDto>.Failure("VALIDATION_ERROR", "Approved review cannot be changed back to ManualReview.");
         }
 
+        var wasRejected = string.Equals(review.ModerationStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase);
+        var now = _timeProvider.UtcNow;
         review.ModerationStatus = nextStatus;
-        review.UpdatedAt = _timeProvider.UtcNow;
+        review.UpdatedAt = now;
         await _unitOfWork.Blogs.UpdateReviewAsync(review, cancellationToken);
 
         await _unitOfWork.Blogs.AddCommentModerationLogAsync(new BlogCommentModerationLog
@@ -818,8 +821,13 @@ public class BlogService : IBlogService
             ModeratedBy = _currentUserService.AccountId > 0 ? _currentUserService.AccountId : null,
             Action = string.Equals(nextStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase) ? "Overridden" : nextStatus,
             BanReasonId = string.Equals(nextStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase) ? dto.BanReasonId : null,
-            CreatedAt = _timeProvider.UtcNow
+            CreatedAt = now
         }, cancellationToken);
+
+        if (!wasRejected && string.Equals(nextStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            await ApplyCommentViolationAsync(review.AccountId, now, cancellationToken);
+        }
 
         await SendReviewStatusNotificationAsync(review, nextStatus, dto.BanReasonId, cancellationToken);
 
@@ -871,8 +879,10 @@ public class BlogService : IBlogService
             return Result<BlogReviewReplyDto>.Failure("VALIDATION_ERROR", "Approved reply cannot be changed back to ManualReview.");
         }
 
+        var wasRejected = string.Equals(reply.ModerationStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase);
+        var now = _timeProvider.UtcNow;
         reply.ModerationStatus = nextStatus;
-        reply.UpdatedAt = _timeProvider.UtcNow;
+        reply.UpdatedAt = now;
         await _unitOfWork.Blogs.UpdateReplyAsync(reply, cancellationToken);
 
         await _unitOfWork.Blogs.AddCommentModerationLogAsync(new BlogCommentModerationLog
@@ -883,8 +893,13 @@ public class BlogService : IBlogService
             ModeratedBy = _currentUserService.AccountId > 0 ? _currentUserService.AccountId : null,
             Action = string.Equals(nextStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase) ? "Overridden" : nextStatus,
             BanReasonId = string.Equals(nextStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase) ? dto.BanReasonId : null,
-            CreatedAt = _timeProvider.UtcNow
+            CreatedAt = now
         }, cancellationToken);
+
+        if (!wasRejected && string.Equals(nextStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            await ApplyCommentViolationAsync(reply.AccountId, now, cancellationToken);
+        }
 
         await SendReplyStatusNotificationAsync(reply, nextStatus, dto.BanReasonId, cancellationToken);
 
@@ -971,6 +986,8 @@ public class BlogService : IBlogService
         var now = _timeProvider.UtcNow;
         state.IsCommentBanned = false;
         state.BanExpiresAt = null;
+        state.ViolationCount = 0;
+        state.LastViolatedAt = null;
         state.UnbannedAt = now;
         state.UnbannedBy = _currentUserService.AccountId > 0 ? _currentUserService.AccountId : null;
         state.UpdatedAt = now;
@@ -1798,9 +1815,47 @@ public class BlogService : IBlogService
             cancellationToken);
         if (isRateLimited)
         {
-            return Result<bool>.BusinessError("Vui lòng chờ trước khi comment tiếp");
+            return Result<bool>.BusinessError("Please wait before posting another comment.");
         }
 
         return Result<bool>.Success(true);
+    }
+
+    private async Task ApplyCommentViolationAsync(int accountId, DateTime now, CancellationToken cancellationToken)
+    {
+        if (accountId <= 0)
+        {
+            return;
+        }
+
+        // Ensure state row exists before updating violation counters.
+        await _unitOfWork.Blogs.CheckAndRefreshCommentLockAsync(accountId, now, cancellationToken);
+        var state = await _unitOfWork.Blogs.GetCommentPermissionStateAsync(accountId, cancellationToken);
+        if (state == null)
+        {
+            return;
+        }
+
+        state.ViolationCount = state.ViolationCount >= byte.MaxValue
+            ? byte.MaxValue
+            : (byte)(state.ViolationCount + 1);
+        state.LastViolatedAt = now;
+        state.UpdatedAt = now;
+
+        if (state.ViolationCount >= CommentViolationBanThreshold)
+        {
+            if (!state.IsCommentBanned)
+            {
+                state.IsCommentBanned = true;
+                state.BannedAt = now;
+            }
+
+            // Auto-ban after reaching threshold is treated as indefinite until manual restore.
+            state.BanExpiresAt = null;
+            state.UnbannedAt = null;
+            state.UnbannedBy = null;
+        }
+
+        await _unitOfWork.Blogs.UpdateCommentPermissionStateAsync(state, cancellationToken);
     }
 }
