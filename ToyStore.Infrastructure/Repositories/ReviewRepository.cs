@@ -41,6 +41,8 @@ public class ReviewRepository : IReviewRepository
             .Include(r => r.ReviewProductImages.Where(i => !i.IsDeleted && i.ModerationStatus == "Approved"))
             .Include(r => r.StaffReviewProductReplies.Where(reply => !reply.IsDeleted))
                 .ThenInclude(reply => reply.Staff)
+            .Include(r => r.ReviewProductReactions.Where(reaction => !reaction.IsDeleted))
+                .ThenInclude(reaction => reaction.ReactionTypeNavigation)
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
@@ -98,6 +100,8 @@ public class ReviewRepository : IReviewRepository
             .Include(r => r.ReviewProductImages.Where(i => !i.IsDeleted && i.ModerationStatus == "Approved"))
             .Include(r => r.StaffReviewProductReplies.Where(reply => !reply.IsDeleted))
                 .ThenInclude(reply => reply.Staff)
+            .Include(r => r.ReviewProductReactions.Where(reaction => !reaction.IsDeleted))
+                .ThenInclude(reaction => reaction.ReactionTypeNavigation)
             .FirstOrDefaultAsync(r => r.ReviewId == reviewId && !r.IsDeleted && r.ModerationStatus == "Approved", cancellationToken);
     }
 
@@ -371,5 +375,30 @@ public class ReviewRepository : IReviewRepository
     public async Task AddReplyAsync(StaffReviewProductReply reply, CancellationToken cancellationToken = default)
     {
         await _context.StaffReviewProductReplies.AddAsync(reply, cancellationToken);
+    }
+
+    public async Task<ReviewProductReaction?> GetReactionAsync(int reviewId, int accountId, CancellationToken cancellationToken = default)
+    {
+        return await _context.ReviewProductReactions
+            .FirstOrDefaultAsync(r => r.ReviewProductId == reviewId && r.AccountId == accountId, cancellationToken);
+    }
+
+    public async Task AddReactionAsync(ReviewProductReaction reaction, CancellationToken cancellationToken = default)
+    {
+        await _context.ReviewProductReactions.AddAsync(reaction, cancellationToken);
+    }
+
+    public async Task<int> GetLikeCountAsync(int reviewId, CancellationToken cancellationToken = default)
+    {
+        return await _context.ReviewProductReactions
+            .CountAsync(r => r.ReviewProductId == reviewId && !r.IsDeleted && r.ReactionTypeNavigation.Code.ToLower() == "like", cancellationToken);
+    }
+
+    public async Task<ReactionType?> GetReactionTypeByCodeAsync(string code, CancellationToken cancellationToken = default)
+    {
+        var normalizedCode = code.Trim().ToLowerInvariant();
+        return await _context.ReactionTypes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Code.ToLower() == normalizedCode, cancellationToken);
     }
 }

@@ -89,4 +89,9 @@ public interface IReviewRepository
 
     Task<StaffReviewProductReply?> GetReplyByIdAsync(int replyId, CancellationToken cancellationToken = default);
     Task AddReplyAsync(StaffReviewProductReply reply, CancellationToken cancellationToken = default);
+    
+    Task<ReviewProductReaction?> GetReactionAsync(int reviewId, int accountId, CancellationToken cancellationToken = default);
+    Task AddReactionAsync(ReviewProductReaction reaction, CancellationToken cancellationToken = default);
+    Task<int> GetLikeCountAsync(int reviewId, CancellationToken cancellationToken = default);
+    Task<ReactionType?> GetReactionTypeByCodeAsync(string code, CancellationToken cancellationToken = default);
 }

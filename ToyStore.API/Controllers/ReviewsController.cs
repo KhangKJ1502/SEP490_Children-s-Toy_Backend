@@ -90,4 +90,17 @@ public class ReviewsController : ControllerBase
         return result.ToActionResult();
     }
 
+    /// <summary>
+    /// Khách hàng Like/Unlike đánh giá của người dùng.
+    /// POST /api/reviews/{id}/like
+    /// </summary>
+    [Authorize(Roles = "Customer")]
+    [HttpPost("{id:int}/like")]
+    public async Task<ActionResult<ReviewLikeResponseDto>> ToggleLike(
+        int id,
+        CancellationToken cancellationToken)
+    {
+        var result = await _reviewService.ToggleLikeAsync(id, cancellationToken);
+        return result.ToActionResult();
+    }
 }
