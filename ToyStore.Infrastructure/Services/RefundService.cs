@@ -45,18 +45,44 @@ public class RefundService : IRefundService
 
     private byte? MapStatusStringToId(string statusStr)
     {
-        return statusStr switch
+        if (string.IsNullOrWhiteSpace(statusStr))
+            return null;
+
+        statusStr = statusStr.Trim();
+        var normalized = statusStr.ToLowerInvariant();
+        return normalized switch
         {
-            RefundStatuses.Requested => (byte)RefundStatusEnum.RefundRequested,
-            RefundStatuses.Approved => (byte)RefundStatusEnum.RefundApproved,
-            RefundStatuses.Rejected => (byte)RefundStatusEnum.RefundRejected,
-            RefundStatuses.PickupCreated => (byte)RefundStatusEnum.RefundPickupCreated,
-            RefundStatuses.Shipping => (byte)RefundStatusEnum.RefundShipping,
-            RefundStatuses.Received => (byte)RefundStatusEnum.RefundReceived,
-            RefundStatuses.InspectionPending => (byte)RefundStatusEnum.RefundInspectionPending,
-            RefundStatuses.Completed => (byte)RefundStatusEnum.RefundCompleted,
-            RefundStatuses.Cancelled => (byte)RefundStatusEnum.RefundCancelled,
+            "refundrequested" or "requested" => (byte)RefundStatusEnum.RefundRequested,
+            "refundapproved" or "approved" => (byte)RefundStatusEnum.RefundApproved,
+            "refundrejected" or "rejected" => (byte)RefundStatusEnum.RefundRejected,
+            "refundpickupcreated" => (byte)RefundStatusEnum.RefundPickupCreated,
+            "refundshipping" => (byte)RefundStatusEnum.RefundShipping,
+            "refundreceived" => (byte)RefundStatusEnum.RefundReceived,
+            "refundinspectionpending" => (byte)RefundStatusEnum.RefundInspectionPending,
+            "refundcompleted" or "completed" => (byte)RefundStatusEnum.RefundCompleted,
+            "refundcancelled" or "cancelled" => (byte)RefundStatusEnum.RefundCancelled,
             _ => null
+        };
+    }
+
+    private string? NormalizeRefundStatusFilter(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+            return status;
+
+        var statusId = MapStatusStringToId(status);
+        return statusId switch
+        {
+            (byte)RefundStatusEnum.RefundRequested => RefundStatuses.Requested,
+            (byte)RefundStatusEnum.RefundApproved => RefundStatuses.Approved,
+            (byte)RefundStatusEnum.RefundRejected => RefundStatuses.Rejected,
+            (byte)RefundStatusEnum.RefundPickupCreated => RefundStatuses.PickupCreated,
+            (byte)RefundStatusEnum.RefundShipping => RefundStatuses.Shipping,
+            (byte)RefundStatusEnum.RefundReceived => RefundStatuses.Received,
+            (byte)RefundStatusEnum.RefundInspectionPending => RefundStatuses.InspectionPending,
+            (byte)RefundStatusEnum.RefundCompleted => RefundStatuses.Completed,
+            (byte)RefundStatusEnum.RefundCancelled => RefundStatuses.Cancelled,
+            _ => status
         };
     }
 
@@ -223,7 +249,7 @@ public class RefundService : IRefundService
             Page = filter.Page,
             PageSize = filter.PageSize,
             CustomerId = customerId,
-            RefundStatus = filter.RefundStatus,
+            RefundStatus = NormalizeRefundStatusFilter(filter.RefundStatus),
             OrderId = filter.OrderId,
             FromDate = filter.FromDate,
             ToDate = filter.ToDate
@@ -279,6 +305,7 @@ public class RefundService : IRefundService
 
     public async Task<PaginatedResponse<RefundListDto>> GetAdminRefundsAsync(AdminRefundFilterDto filter, CancellationToken cancellationToken = default)
     {
+        filter.RefundStatus = NormalizeRefundStatusFilter(filter.RefundStatus);
         return await _unitOfWork.Refunds.GetAdminRefundsAsync(filter, cancellationToken);
     }
 
