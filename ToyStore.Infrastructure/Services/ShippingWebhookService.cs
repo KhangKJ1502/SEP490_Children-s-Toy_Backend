@@ -16,23 +16,16 @@ namespace ToyStore.Infrastructure.Services;
 /// </summary>
 public class ShippingWebhookService : IShippingWebhookService
 {
+    private const string WebhookSource = "GHN_WEBHOOK";
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDomainEventPublisher _eventPublisher;
     private readonly ILogger<ShippingWebhookService> _logger;
     private readonly ITimeProvider _timeProvider;
     private readonly IOrderLifecycleService _orderLifecycle;
+    private readonly IShippingReturnFlowService _returnFlow;
     private readonly IShippingStatusMapper _statusMapper;
-
-    // Map provider status → notification event type
-    private static readonly Dictionary<string, string?> WebhookEventMap = new(StringComparer.OrdinalIgnoreCase)
-    {
-        [ShippingStatuses.Picked]                = NotificationEventTypes.MerchPickedUp,
-        [ShippingStatuses.Delivering]            = NotificationEventTypes.OrderDelivering,
-        [ShippingStatuses.Delivered]             = NotificationEventTypes.OrderDelivered,
-        [ShippingStatuses.DeliveryFail]          = NotificationEventTypes.OrderDeliveryFailed,
-        [ShippingStatuses.Return]                = NotificationEventTypes.OrderReturning,
-        [ShippingStatuses.Returned]              = NotificationEventTypes.MerchReturned,
-    };
+    private readonly IShiftAssignmentService _shiftAssignmentService;
 
     public ShippingWebhookService(
         IUnitOfWork unitOfWork,
@@ -40,14 +33,18 @@ public class ShippingWebhookService : IShippingWebhookService
         ILogger<ShippingWebhookService> logger,
         ITimeProvider timeProvider,
         IOrderLifecycleService orderLifecycle,
-        IShippingStatusMapper statusMapper)
+        IShippingReturnFlowService returnFlow,
+        IShippingStatusMapper statusMapper,
+        IShiftAssignmentService shiftAssignmentService)
     {
-        _unitOfWork     = unitOfWork;
+        _unitOfWork = unitOfWork;
         _eventPublisher = eventPublisher;
-        _logger         = logger;
-        _timeProvider   = timeProvider;
+        _logger = logger;
+        _timeProvider = timeProvider;
         _orderLifecycle = orderLifecycle;
-        _statusMapper   = statusMapper;
+        _returnFlow = returnFlow;
+        _statusMapper = statusMapper;
+        _shiftAssignmentService = shiftAssignmentService;
     }
 
     public async Task HandleAsync(
@@ -57,15 +54,14 @@ public class ShippingWebhookService : IShippingWebhookService
     {
         try
         {
-            // Parse payload lay ProviderOrderCode va NewStatus
             using var doc = JsonDocument.Parse(rawPayload);
             var root = doc.RootElement;
 
             var providerOrderCode = TryGetString(root, "OrderCode")
                 ?? TryGetString(root, "order_code");
 
-            var newStatus = TryGetString(root, "status")
-                ?? TryGetString(root, "Status");
+            var newStatus = TryGetString(root, "Status")
+                ?? TryGetString(root, "status");
 
             if (string.IsNullOrWhiteSpace(providerOrderCode) || string.IsNullOrWhiteSpace(newStatus))
             {
@@ -75,7 +71,6 @@ public class ShippingWebhookService : IShippingWebhookService
                 return;
             }
 
-            // Tim ShippingProviderTransaction
             var tx = await _unitOfWork.Orders.GetShippingTransactionByProviderCodeAsync(
                 providerOrderCode, cancellationToken);
 
@@ -87,36 +82,60 @@ public class ShippingWebhookService : IShippingWebhookService
                 return;
             }
 
+            if (await _unitOfWork.Orders.ExistsShippingStatusHistoryAsync(
+                    tx.ShippingTransactionId, newStatus, rawPayload, cancellationToken))
+            {
+                _logger.LogInformation(
+                    "Shipping webhook duplicate skipped: code={Code}, status={Status}",
+                    providerOrderCode, newStatus);
+                return;
+            }
+
             var previousStatus = tx.Status ?? string.Empty;
             var now = _timeProvider.UtcNow;
+            var pendingNotifications = new List<PendingShippingNotification>();
+            var releaseCapacity = false;
+            var orderIdForCapacity = tx.OrderId;
 
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
             try
             {
-                // INSERT ShippingStatusHistory
                 await _unitOfWork.Orders.AddShippingStatusHistoryAsync(new ShippingStatusHistory
                 {
-                    ShippingTxId   = tx.ShippingTransactionId,
-                    OrderId        = tx.OrderId,
+                    ShippingTxId = tx.ShippingTransactionId,
+                    OrderId = tx.OrderId,
                     PreviousStatus = previousStatus,
-                    NewStatus      = newStatus,
-                    Source         = "webhook",
-                    RawPayload     = rawPayload,
-                    ProcessedAt    = now
+                    NewStatus = newStatus,
+                    Source = WebhookSource,
+                    RawPayload = rawPayload,
+                    ProcessedAt = now
                 }, cancellationToken);
 
-                // UPDATE ShippingProviderTransaction
-                tx.Status    = newStatus;
+                tx.Status = newStatus;
                 tx.UpdatedAt = now;
 
-                // Map sang trang thai don hang
-                var targetStatus = _statusMapper.MapToInternalStatus(newStatus);
-                if (targetStatus.HasValue)
+                var action = _statusMapper.ResolveWebhookAction(newStatus);
+
+                if (action == ShippingWebhookAction.UpdateOrderStatus)
                 {
-                    await UpdateOrderStatusAsync(tx.Order, targetStatus.Value, now, cancellationToken);
+                    var targetStatus = _statusMapper.MapToInternalStatus(newStatus);
+                    if (targetStatus.HasValue)
+                        await UpdateOrderStatusAsync(tx.Order, targetStatus.Value, now, cancellationToken);
+                }
+                else if (action != ShippingWebhookAction.Unknown)
+                {
+                    var flowResult = await _returnFlow.ProcessActionAsync(
+                        action, tx.Order, tx, newStatus, now, cancellationToken);
+                    pendingNotifications.AddRange(flowResult.Notifications);
+                    releaseCapacity = flowResult.ReleaseShiftCapacity;
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "Shipping webhook unknown status '{Status}' for order {OrderId}",
+                        newStatus, tx.OrderId);
                 }
 
-                // Cập nhật trạng thái thanh toán sang PAID nếu là trạng thái đã thu tiền hoặc đã giao
                 if (tx.Order.PaymentMethod == "SHIP_COD" && tx.Order.PaymentStatus != "PAID")
                 {
                     if (newStatus.Equals(ShippingStatuses.MoneyCollectDelivering, StringComparison.OrdinalIgnoreCase) ||
@@ -124,7 +143,9 @@ public class ShippingWebhookService : IShippingWebhookService
                     {
                         tx.Order.PaymentStatus = "PAID";
                         tx.Order.PaidAt = now;
-                        _logger.LogInformation("Order {OrderCode} payment status updated to PAID via webhook status: {Status}", tx.Order.OrderCode, newStatus);
+                        _logger.LogInformation(
+                            "Order {OrderCode} payment status updated to PAID via webhook status: {Status}",
+                            tx.Order.OrderCode, newStatus);
                     }
                 }
 
@@ -132,22 +153,39 @@ public class ShippingWebhookService : IShippingWebhookService
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
                 _logger.LogInformation(
-                    "Shipping webhook processed: provider={Provider}, code={Code}, status={Status}",
-                    provider, providerOrderCode, newStatus);
+                    "Shipping webhook processed: provider={Provider}, code={Code}, status={Status}, action={Action}",
+                    provider, providerOrderCode, newStatus, action);
 
-                // Publish notification event for webhook status (fire-and-forget)
-                // Include orderCode in payload so handlers can display a human-readable order reference
-                if (WebhookEventMap.TryGetValue(newStatus, out var notifEventType) && notifEventType is not null)
+                var notifEvent = _statusMapper.ResolveNotificationEventType(newStatus);
+                if (notifEvent is not null
+                    && pendingNotifications.All(n => n.EventType != notifEvent))
                 {
-                    _ = _eventPublisher.PublishAsync("Order", tx.OrderId.ToString(), notifEventType,
-                        new
-                        {
-                            orderId           = tx.OrderId,
-                            orderCode         = tx.Order?.OrderCode ?? "",
-                            providerStatus    = newStatus,
-                            providerOrderCode
-                        },
-                        CancellationToken.None);
+                    pendingNotifications.Add(new PendingShippingNotification(notifEvent, new
+                    {
+                        orderId = tx.OrderId,
+                        orderCode = tx.Order?.OrderCode ?? "",
+                        providerStatus = newStatus,
+                        providerOrderCode
+                    }));
+                }
+
+                foreach (var pending in pendingNotifications)
+                {
+                    await _eventPublisher.PublishAsync(
+                        "Order", tx.OrderId.ToString(), pending.EventType, pending.Payload,
+                        cancellationToken);
+                }
+
+                if (releaseCapacity)
+                {
+                    try
+                    {
+                        await _shiftAssignmentService.ReleaseCapacityAsync(orderIdForCapacity, cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to release capacity for order {OrderId}", orderIdForCapacity);
+                    }
                 }
             }
             catch
@@ -168,36 +206,21 @@ public class ShippingWebhookService : IShippingWebhookService
         }
     }
 
-    // ── Private helpers ───────────────────────────────────────────────────────
-
     private async Task UpdateOrderStatusAsync(
         Order order,
         OrderStatus targetStatus,
         DateTime now,
         CancellationToken cancellationToken)
     {
-        // LUỒNG B: Sử dụng OrderLifecycleService cho các case đặc biệt
         if (targetStatus == OrderStatus.Delivered)
         {
             var result = await _orderLifecycle.DeliverOrderAsync(order.OrderId, cancellationToken);
             if (!result.IsSuccess)
             {
-                _logger.LogWarning("Failed to mark order {OrderId} as delivered via lifecycle service: {Error}", order.OrderId, result.ErrorMessage);
+                _logger.LogWarning(
+                    "Failed to mark order {OrderId} as delivered via lifecycle service: {Error}",
+                    order.OrderId, result.ErrorMessage);
             }
-            return;
-        }
-
-        if (targetStatus == OrderStatus.Cancelled)
-        {
-            // NOTE: GHN "cancel" means the COURIER cancelled the shipment, NOT the customer.
-            // We should NOT auto-cancel the order (which restores stock) — instead mark it as DeliveryFail
-            // and let staff decide the next action (reshipping or manual cancellation).
-            // Only cancel the order if the webhook explicitly maps to a final "lost" or "damage" scenario.
-            // For now, log a warning and skip auto-cancellation.
-            _logger.LogWarning(
-                "Shipping webhook triggered Cancelled mapping for Order {OrderId} (provider status: {Status}). " +
-                "Auto-cancel skipped — staff should review and take manual action.",
-                order.OrderId, order.Status?.StatusName);
             return;
         }
 
@@ -210,20 +233,18 @@ public class ShippingWebhookService : IShippingWebhookService
             return;
         }
 
-        // Khong ghi de neu don da o trang thai do hoac trang thai sau (simple progressive check)
-        // Note: order.StatusId is byte, targetStatusId is also byte.
         if (order.StatusId >= targetStatusId && order.StatusId != (byte)OrderStatus.Cancelled)
             return;
 
-        order.StatusId  = targetStatusId;
+        order.StatusId = targetStatusId;
         order.UpdatedAt = now;
 
         await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
         {
-            OrderId   = order.OrderId,
-            StatusId  = targetStatusId,
+            OrderId = order.OrderId,
+            StatusId = targetStatusId,
             ChangedBy = null,
-            Note      = $"Auto-updated from shipping webhook: {targetStatusName}",
+            Note = $"Auto-updated from shipping webhook: {targetStatusName}",
             CreatedAt = now
         }, cancellationToken);
     }

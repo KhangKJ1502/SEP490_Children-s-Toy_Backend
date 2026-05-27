@@ -27,10 +27,10 @@ public class AdminOrdersController : ControllerBase
         ICurrentUserService currentUser,
         IOrderAccessService orderAccess)
     {
-        _orderService        = orderService;
+        _orderService = orderService;
         _customerOrderService = customerOrderService;
-        _currentUser         = currentUser;
-        _orderAccess         = orderAccess;
+        _currentUser = currentUser;
+        _orderAccess = orderAccess;
     }
 
     /// <summary>

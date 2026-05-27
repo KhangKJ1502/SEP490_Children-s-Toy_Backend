@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Refunds;
+using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Interfaces.Services;
 
@@ -19,4 +20,10 @@ public interface IRefundService
     Task<PaginatedResponse<RefundListDto>> GetAdminRefundsAsync(AdminRefundFilterDto filter, CancellationToken cancellationToken = default);
     Task<Result<RefundDto>> AdminGetRefundByIdAsync(int refundId, CancellationToken cancellationToken = default);
     Task<Result<RefundDto>> UpdateRefundStatusAsync(int staffId, int refundId, UpdateRefundStatusDto dto, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// System-initiated refund when GHN returns order to warehouse (bypasses customer validations).
+    /// </summary>
+    Task<OrderRefund?> CreateSystemRefundForDeliveryFailAsync(
+        Order order, byte refundReasonId, CancellationToken cancellationToken = default);
 }

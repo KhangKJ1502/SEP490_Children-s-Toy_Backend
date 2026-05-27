@@ -2127,6 +2127,7 @@ CREATE TABLE [dbo].[CustomerChildren] (
     [NickName]  NVARCHAR(50) NULL,
     [DOB]       DATE NOT NULL,
     [BirthdayNotifiedYear] SMALLINT NULL,
+    [EditCount] INT NOT NULL CONSTRAINT [DF_CustomerChildren_EditCount] DEFAULT (0),
     [IsDeleted] BIT NOT NULL DEFAULT 0,
     [CreatedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [UpdatedAt] DATETIME2(0) NULL,

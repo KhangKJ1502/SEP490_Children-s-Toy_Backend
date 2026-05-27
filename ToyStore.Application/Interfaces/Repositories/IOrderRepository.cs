@@ -18,6 +18,7 @@ public interface IOrderRepository
         int pageNumber,
         int pageSize,
         int? statusId,
+        IReadOnlyCollection<int>? statusIds,
         bool restrictToAssignment,
         int currentAccountId,
         byte assignmentRoleId,
@@ -45,6 +46,7 @@ public interface IOrderRepository
     Task<int> CountAdminAsync(
         IReadOnlyCollection<string> allowedStatusNames,
         int? statusId,
+        IReadOnlyCollection<int>? statusIds,
         bool restrictToAssignment,
         int currentAccountId,
         byte assignmentRoleId,
@@ -150,6 +152,13 @@ public interface IOrderRepository
     Task RestoreVoucherAsync(int orderId, CancellationToken cancellationToken = default);
 
     Task AddPaymentHistoryAsync(PaymentHistory history, CancellationToken cancellationToken = default);
+
+    Task<bool> ExistsShippingStatusHistoryAsync(
+        long shippingTxId, string newStatus, string rawPayload, CancellationToken cancellationToken = default);
+
+    Task<int> CountShippingStatusHistoryAsync(
+        long shippingTxId, string newStatus, CancellationToken cancellationToken = default);
+
     Task<Wallet?> GetWalletByAccountIdAsync(int accountId, CancellationToken cancellationToken = default);
     Task AddWalletTransactionAsync(WalletTransaction transaction, CancellationToken cancellationToken = default);
     Task<bool> ExistsWalletTransactionByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken = default);

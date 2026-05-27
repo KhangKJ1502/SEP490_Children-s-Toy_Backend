@@ -8,6 +8,7 @@ using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Orders;
 using ToyStore.Application.Interfaces.Services;
+using ToyStore.Application.Services;
 using ToyStore.Domain.Constants;
 using ToyStore.Domain.Entities;
 using ToyStore.Domain.Enums;
@@ -116,6 +117,8 @@ public class OrderCustomerService : IOrderCustomerService
         }
 
         var dto = _mapper.Map<CustomerOrderDetailDto>(order);
+        dto.StatusHistory = CustomerOrderTimelineFilter.FilterStatusHistory(
+            dto.StatusHistory, order.CancelledAt, order.Status.StatusName);
         return Result<CustomerOrderDetailDto>.Success(dto);
     }
 
@@ -230,6 +233,18 @@ public class OrderCustomerService : IOrderCustomerService
                     Description = _statusMapper.GetStatusDescription(h.NewStatus)
                 }).ToList() ?? []
         };
+
+        if (!isAdmin)
+        {
+            dto.Events = CustomerOrderTimelineFilter.FilterShippingEvents(
+                dto.Events, order.CancelledAt, order.Status.StatusName);
+
+            if (CustomerOrderTimelineFilter.IsCancelledOrder(order.Status.StatusName, order.CancelledAt))
+            {
+                dto.CurrentStatus = OrderStatuses.Cancelled;
+                dto.StatusDescription = CustomerOrderDisplayStatusMapper.CancelledLabel;
+            }
+        }
 
         return Result<OrderTrackingDto>.Success(dto);
     }
@@ -361,9 +376,10 @@ public class OrderCustomerService : IOrderCustomerService
         {
             "pending" => [OrderStatuses.Pending],
             "shipping" => [OrderStatuses.Confirmed, OrderStatuses.Shipped, OrderStatuses.Processing],
-            "delivering" => [OrderStatuses.Delivering],
+            "delivering" => [OrderStatuses.Delivering, OrderStatuses.Returning, OrderStatuses.ReturnCompleted, OrderStatuses.DeliveryFailed, OrderStatuses.WaitingReturn, OrderStatuses.ReturnFailed, OrderStatuses.Lost, OrderStatuses.Damaged],
             "completed" => [OrderStatuses.Completed, OrderStatuses.Delivered],
             "cancelled" => [OrderStatuses.Cancelled],
+            "refunded" => [OrderStatuses.Refunded],
             _ => null
         };
     }

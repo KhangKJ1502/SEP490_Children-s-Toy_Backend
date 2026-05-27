@@ -61,6 +61,10 @@ public static class DependencyInjection
         // Shipping webhook granular handlers
         services.AddScoped<IOutboxEventHandler, OrderDeliveringHandler>();
         services.AddScoped<IOutboxEventHandler, OrderDeliveredHandler>();
+        services.AddScoped<IOutboxEventHandler, OrderDeliveryFailedHandler>();
+        services.AddScoped<IOutboxEventHandler, OrderReturnRefundPendingHandler>();
+        services.AddScoped<IOutboxEventHandler, OrderCancelledDeliveryFailHandler>();
+        services.AddScoped<IOutboxEventHandler, AdminReturnFailHandler>();
         services.AddScoped<IOutboxEventHandler, MerchPickedUpHandler>();
         services.AddScoped<IOutboxEventHandler, MerchReturnedHandler>();
 

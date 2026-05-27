@@ -1,0 +1,310 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using ToyStore.Application.Constants;
+using ToyStore.Application.DTOs.Orders;
+using ToyStore.Application.Interfaces.Notifications;
+using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Application.Interfaces.Services;
+using ToyStore.Domain.Constants;
+using ToyStore.Domain.Entities;
+using ToyStore.Domain.Enums;
+using ToyStore.Infrastructure.Mappers;
+
+namespace ToyStore.Infrastructure.Services;
+
+public class GhnWebhookService : IGhnWebhookService
+{
+    private const string WebhookSource = "GHN_WEBHOOK";
+
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IDomainEventPublisher _eventPublisher;
+    private readonly ILogger<GhnWebhookService> _logger;
+    private readonly ITimeProvider _timeProvider;
+    private readonly IOrderLifecycleService _orderLifecycle;
+    private readonly IShippingReturnFlowService _returnFlow;
+    private readonly IShiftAssignmentService _shiftAssignmentService;
+
+    public GhnWebhookService(
+        IUnitOfWork unitOfWork,
+        IDomainEventPublisher eventPublisher,
+        ILogger<GhnWebhookService> logger,
+        ITimeProvider timeProvider,
+        IOrderLifecycleService orderLifecycle,
+        IShippingReturnFlowService returnFlow,
+        IShiftAssignmentService shiftAssignmentService)
+    {
+        _unitOfWork = unitOfWork;
+        _eventPublisher = eventPublisher;
+        _logger = logger;
+        _timeProvider = timeProvider;
+        _orderLifecycle = orderLifecycle;
+        _returnFlow = returnFlow;
+        _shiftAssignmentService = shiftAssignmentService;
+    }
+
+    public async Task ProcessAsync(GhnWebhookPayload payload, CancellationToken cancellationToken = default)
+    {
+        if (payload == null || string.IsNullOrWhiteSpace(payload.OrderCode))
+        {
+            _logger.LogWarning("GHN Webhook: Invalid payload or empty OrderCode.");
+            return;
+        }
+
+        var status = payload.Status?.Trim();
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            _logger.LogWarning("GHN Webhook: Empty status in payload.");
+            return;
+        }
+
+        // Fetch transaction by provider code (which is OrderCode)
+        var tx = await _unitOfWork.Orders.GetShippingTransactionByProviderCodeAsync(payload.OrderCode, cancellationToken);
+        if (tx == null)
+        {
+            _logger.LogWarning("GHN Webhook: Transaction not found for provider OrderCode '{Code}'", payload.OrderCode);
+            return;
+        }
+
+        var rawPayload = JsonSerializer.Serialize(payload);
+
+        // Idempotency check:
+        if (await _unitOfWork.Orders.ExistsShippingStatusHistoryAsync(tx.ShippingTransactionId, status, rawPayload, cancellationToken))
+        {
+            _logger.LogInformation("GHN Webhook duplicate skipped: code={Code}, status={Status}", payload.OrderCode, status);
+            return;
+        }
+
+        var previousStatus = tx.Status ?? string.Empty;
+        var now = _timeProvider.UtcNow;
+        var pendingNotifications = new List<PendingShippingNotification>();
+        var releaseCapacity = false;
+        var orderIdForCapacity = tx.OrderId;
+
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            // 1. Add shipping status history record
+            await _unitOfWork.Orders.AddShippingStatusHistoryAsync(new ShippingStatusHistory
+            {
+                ShippingTxId = tx.ShippingTransactionId,
+                OrderId = tx.OrderId,
+                PreviousStatus = previousStatus,
+                NewStatus = status,
+                Source = WebhookSource,
+                RawPayload = rawPayload,
+                ProcessedAt = now
+            }, cancellationToken);
+
+            // 2. Update transaction status
+            tx.Status = status;
+            tx.UpdatedAt = now;
+            if (payload.TotalFee > 0)
+            {
+                tx.ShippingFee = payload.TotalFee;
+            }
+            if (payload.CODAmount >= 0)
+            {
+                tx.CodAmount = payload.CODAmount;
+            }
+
+            // 3. Handle Order entity columns & flow based on status
+            var statusLower = status.ToLowerInvariant();
+
+            // A. Update direct tracking columns on the Order
+            if (statusLower == "delivery_fail")
+            {
+                tx.Order.FailedDeliveryAt = now;
+                tx.Order.LastGHNFailCode = payload.ReasonCode;
+                tx.Order.DeliveryFailCount = (byte)(tx.Order.DeliveryFailCount + 1);
+                
+                if (!string.IsNullOrEmpty(payload.Reason))
+                {
+                    tx.Order.CancelReason = payload.Reason;
+                }
+
+                _logger.LogInformation("GHN Webhook delivery fail updated: order={OrderCode}, fail count={Count}, reason={Reason}",
+                    tx.Order.OrderCode, tx.Order.DeliveryFailCount, payload.ReasonCode);
+            }
+            else if (statusLower == "returned")
+            {
+                tx.Order.ReturnedAt = now;
+                _logger.LogInformation("GHN Webhook returned updated: order={OrderCode}", tx.Order.OrderCode);
+            }
+
+            // B. Resolve return flow or normal delivery action
+            var action = ResolveWebhookAction(statusLower);
+
+            if (action == ShippingWebhookAction.UpdateOrderStatus)
+            {
+                var targetStatusId = (byte)GhnStatusMapper.ToInternalStatusId(status);
+                if (targetStatusId > 0)
+                {
+                    if (targetStatusId == (byte)OrderStatus.Delivered)
+                    {
+                        // Use Lifecycle Service for delivery completion (releases shift, processes events)
+                        var result = await _orderLifecycle.DeliverOrderAsync(tx.OrderId, cancellationToken);
+                        if (!result.IsSuccess)
+                        {
+                            _logger.LogWarning("Failed to mark order {OrderId} as delivered via lifecycle: {Error}",
+                                tx.OrderId, result.ErrorMessage);
+                        }
+                    }
+                    else
+                    {
+                        // Normal order status progression with out-of-order check
+                        bool isTerminal = tx.Order.StatusId == (byte)OrderStatus.Cancelled || 
+                                          tx.Order.StatusId == (byte)OrderStatus.Refunded || 
+                                          tx.Order.StatusId == (byte)OrderStatus.ReturnCompleted;
+
+                        if (!isTerminal && targetStatusId > tx.Order.StatusId)
+                        {
+                            tx.Order.StatusId = targetStatusId;
+                            tx.Order.UpdatedAt = now;
+
+                            var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
+                            var targetStatusName = statusMap.FirstOrDefault(x => x.Value == targetStatusId).Key ?? status;
+
+                            await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
+                            {
+                                OrderId = tx.OrderId,
+                                StatusId = targetStatusId,
+                                ChangedBy = null,
+                                Note = $"Auto-updated from GHN webhook: {targetStatusName}",
+                                CreatedAt = now
+                            }, cancellationToken);
+                        }
+                    }
+                }
+            }
+            else if (action != ShippingWebhookAction.Unknown)
+            {
+                // Process return flow using the standard Return Flow service
+                var flowResult = await _returnFlow.ProcessActionAsync(action, tx.Order, tx, status, now, cancellationToken);
+                pendingNotifications.AddRange(flowResult.Notifications);
+                releaseCapacity = flowResult.ReleaseShiftCapacity;
+            }
+            else
+            {
+                _logger.LogWarning("GHN Webhook unknown action for status '{Status}' on order {OrderId}", status, tx.OrderId);
+            }
+
+            // C. Synchronize Payment Status
+            var newPaymentStatus = GhnStatusMapper.ComputePaymentStatus(payload, tx.Order.PaymentMethod, tx.Order.PaymentStatus);
+            if (newPaymentStatus != tx.Order.PaymentStatus)
+            {
+                tx.Order.PaymentStatus = newPaymentStatus;
+                tx.Order.UpdatedAt = now;
+
+                await _unitOfWork.Orders.AddPaymentHistoryAsync(new PaymentHistory
+                {
+                    AccountId = tx.Order.AccountId,
+                    OrderId = tx.OrderId,
+                    PaymentStatus = newPaymentStatus,
+                    PaymentMethod = tx.Order.PaymentMethod,
+                    Amount = tx.Order.TotalAmount,
+                    CreatedAt = now
+                }, cancellationToken);
+
+                _logger.LogInformation("Order {OrderCode} payment status auto-updated to {PaymentStatus} via GHN webhook",
+                    tx.Order.OrderCode, newPaymentStatus);
+            }
+
+
+            // E. Suspect fail code / customer blacklisting triggers
+            if (statusLower == "delivery_fail" && GhnFailCodeMapper.ShouldBlacklist(payload.ReasonCode ?? ""))
+            {
+                // Publish warning event for suspicious delivery failure (staff/admin action requested)
+                pendingNotifications.Add(new PendingShippingNotification(
+                    NotificationEventTypes.SystemShippingWebhookError,
+                    new
+                    {
+                        orderId = tx.OrderId,
+                        orderCode = tx.Order.OrderCode,
+                        providerStatus = status,
+                        reasonCode = payload.ReasonCode,
+                        message = $"Suspicious GHN failure code '{payload.ReasonCode}' detected (potential customer blacklist needed)."
+                    }));
+            }
+
+            // Save and Commit!
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            _logger.LogInformation("GHN Webhook transaction committed successfully for code={Code}, status={Status}",
+                payload.OrderCode, status);
+
+            // 4. Publish Event Notifications (Out of transaction for performance and reliability)
+            var notifEvent = ResolveNotificationEventType(statusLower);
+            if (notifEvent != null && pendingNotifications.All(n => n.EventType != notifEvent))
+            {
+                pendingNotifications.Add(new PendingShippingNotification(notifEvent, new
+                {
+                    orderId = tx.OrderId,
+                    orderCode = tx.Order.OrderCode,
+                    providerStatus = status,
+                    providerOrderCode = payload.OrderCode
+                }));
+            }
+
+            foreach (var pending in pendingNotifications)
+            {
+                await _eventPublisher.PublishAsync(
+                    "Order", tx.OrderId.ToString(), pending.EventType, pending.Payload, cancellationToken);
+            }
+
+            // 5. Release shift assignment capacity if requested
+            if (releaseCapacity)
+            {
+                try
+                {
+                    await _shiftAssignmentService.ReleaseCapacityAsync(orderIdForCapacity, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to release capacity for order {OrderId}", orderIdForCapacity);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Error processing GHN webhook callback for order {Code}", payload.OrderCode);
+            throw;
+        }
+    }
+
+    private static ShippingWebhookAction ResolveWebhookAction(string statusLower)
+    {
+        return statusLower switch
+        {
+            "delivery_fail"         => ShippingWebhookAction.HandleDeliveryFail,
+            "waiting_to_return"     => ShippingWebhookAction.HandleReturnStarted,
+            "return" or "returning" => ShippingWebhookAction.KeepReturning,
+            "returned"              => ShippingWebhookAction.HandleReturnCompleted,
+            "return_fail"           => ShippingWebhookAction.HandleReturnFail,
+            "damage"                => ShippingWebhookAction.HandleDamageLost,
+            "lost"                  => ShippingWebhookAction.HandleDamageLost,
+            "cancel"                => ShippingWebhookAction.HandleGhnCancel,
+            "exception"             => ShippingWebhookAction.HandleException,
+            _                       => ShippingWebhookAction.UpdateOrderStatus
+        };
+    }
+
+    private static string? ResolveNotificationEventType(string statusLower)
+    {
+        return statusLower switch
+        {
+            "delivery_fail"     => NotificationEventTypes.OrderDeliveryFailed,
+            "waiting_to_return" => NotificationEventTypes.OrderReturning,
+            "returned"          => NotificationEventTypes.MerchReturned,
+            "return_fail"       => NotificationEventTypes.OrderReturnFail,
+            "damage" or "lost"  => NotificationEventTypes.SystemShippingDamageLost,
+            _                   => null
+        };
+    }
+}

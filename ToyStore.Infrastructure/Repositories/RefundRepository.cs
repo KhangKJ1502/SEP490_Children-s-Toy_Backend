@@ -32,6 +32,13 @@ public class RefundRepository : IRefundRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<OrderRefundReason?> GetReasonByContentAsync(string content, CancellationToken cancellationToken = default)
+    {
+        return await _context.Set<OrderRefundReason>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => !r.IsDeleted && r.Content == content, cancellationToken);
+    }
+
     public async Task<PaginatedResponse<RefundListDto>> GetRefundsAsync(RefundFilterDto filter, CancellationToken cancellationToken = default)
     {
         var query = _dbSet

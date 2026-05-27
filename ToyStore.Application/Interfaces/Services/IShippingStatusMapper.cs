@@ -15,6 +15,16 @@ public interface IShippingStatusMapper
     OrderStatus? MapToInternalStatus(string? providerStatus);
 
     /// <summary>
+    /// Determines the business action for a GHN/GHTK webhook status.
+    /// </summary>
+    ShippingWebhookAction ResolveWebhookAction(string? providerStatus);
+
+    /// <summary>
+    /// Maps a provider status to an outbox notification event type, if any.
+    /// </summary>
+    string? ResolveNotificationEventType(string? providerStatus);
+
+    /// <summary>
     /// Gets a user-friendly description for a provider status.
     /// </summary>
     string GetStatusDescription(string? providerStatus);

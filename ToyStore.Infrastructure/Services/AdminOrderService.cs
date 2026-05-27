@@ -81,23 +81,29 @@ public class AdminOrderService : IAdminOrderService
         AdminOrderQueryDto query,
         CancellationToken cancellationToken = default)
     {
-        var restrictToAssignment = !_orderAccess.IsPrivileged(_currentUser.RoleId);
+        var isPrivileged = _orderAccess.IsPrivileged(_currentUser.RoleId);
+        var restrictToAssignment = !isPrivileged && query.AssignedToMe;
         var assignmentRoleId = _orderAccess.GetRequiredAssignmentRoleId(_currentUser.RoleId);
 
-        // Staff/Merch: list is scoped by OrderAssignments — do not also hide Processing/Shipped
-        // (CurrentLoad counts assigned orders; status-only filter caused "load=2 but empty list").
-        var allowedStatuses = restrictToAssignment
+        var allowedStatuses = isPrivileged
             ? OrderStatuses.AdminVisibleStatuses
-            : GetAllowedStatusesForRole(_currentUser.RoleName);
+            : query.AssignedToMe
+                ? OrderStatuses.AdminVisibleStatuses
+                : GetAllowedStatusesForRole(_currentUser.RoleName);
 
         var pageSize = Math.Min(query.PageSize, 100);
         var pageNumber = Math.Max(query.PageNumber, 1);
+
+        var statusIds = query.StatusIds is { Count: > 0 }
+            ? (IReadOnlyCollection<int>?)query.StatusIds
+            : null;
 
         var items = await _unitOfWork.Orders.GetAdminPagedAsync(
             allowedStatuses,
             pageNumber,
             pageSize,
             query.StatusId,
+            statusIds,
             restrictToAssignment,
             _currentUser.AccountId,
             assignmentRoleId,
@@ -109,6 +115,7 @@ public class AdminOrderService : IAdminOrderService
         var count = await _unitOfWork.Orders.CountAdminAsync(
             allowedStatuses,
             query.StatusId,
+            statusIds,
             restrictToAssignment,
             _currentUser.AccountId,
             assignmentRoleId,
@@ -875,10 +882,10 @@ public class AdminOrderService : IAdminOrderService
         if (targetAccountRoleId != OrderAccessRoles.Admin)
             return null;
 
-        if (orderStatusName is OrderStatuses.Pending or OrderStatuses.Confirmed)
+        if (orderStatusName is OrderStatuses.Pending or OrderStatuses.Confirmed or OrderStatuses.DeliveryFailed)
             return OrderAccessRoles.AssignmentStaff;
 
-        if (orderStatusName is OrderStatuses.Processing or OrderStatuses.Shipped or OrderStatuses.Delivering)
+        if (orderStatusName is OrderStatuses.Processing or OrderStatuses.Shipped or OrderStatuses.Delivering or OrderStatuses.WaitingReturn or OrderStatuses.ReturnFailed or OrderStatuses.Lost or OrderStatuses.Damaged)
             return OrderAccessRoles.AssignmentMerchandise;
 
         return null;
@@ -886,16 +893,16 @@ public class AdminOrderService : IAdminOrderService
 
     private static string? ValidateAssigneeRoleForOrderStage(string statusName, string assigneeRole)
     {
-        // Pending / Confirmed -> Staff hoac Admin
-        if (statusName is OrderStatuses.Pending or OrderStatuses.Confirmed)
+        // Pending / Confirmed / DeliveryFailed -> Staff hoac Admin hoac Merchandise
+        if (statusName is OrderStatuses.Pending or OrderStatuses.Confirmed or OrderStatuses.DeliveryFailed)
         {
             if (assigneeRole is not (RoleStaff or RoleAdmin or RoleMerchandise))
                 return $"Cannot assign an order in status '{statusName}' to a '{assigneeRole}' account. Expected Staff, Merchandise, or Admin.";
             return null;
         }
 
-        // Processing / Shipped / Delivering -> Merchandise hoac Admin
-        if (statusName is OrderStatuses.Processing or OrderStatuses.Shipped or OrderStatuses.Delivering)
+        // Processing / Shipped / Delivering / WaitingReturn / ReturnFailed / Lost / Damaged -> Merchandise hoac Admin
+        if (statusName is OrderStatuses.Processing or OrderStatuses.Shipped or OrderStatuses.Delivering or OrderStatuses.WaitingReturn or OrderStatuses.ReturnFailed or OrderStatuses.Lost or OrderStatuses.Damaged)
         {
             if (assigneeRole is not (RoleMerchandise or RoleAdmin))
                 return $"Cannot assign an order in status '{statusName}' to a '{assigneeRole}' account. Expected Merchandise or Admin.";

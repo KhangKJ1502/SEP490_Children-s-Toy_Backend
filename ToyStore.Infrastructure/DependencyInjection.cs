@@ -220,6 +220,8 @@ public static class DependencyInjection
         services.AddScoped<IAdminOrderService, AdminOrderService>();
         services.AddScoped<IAdminDashboardService, AdminDashboardService>();
         services.AddScoped<IShippingWebhookService, ShippingWebhookService>();
+        services.AddScoped<IGhnWebhookService, GhnWebhookService>();
+        services.AddScoped<IShippingReturnFlowService, ShippingReturnFlowService>();
 
         services.AddScoped<IPromotionRepository, PromotionRepository>();
         services.AddScoped<IPromotionService, PromotionService>();

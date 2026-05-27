@@ -109,6 +109,35 @@ public class RefundService : IRefundService
         }
     }
 
+    public async Task<OrderRefund?> CreateSystemRefundForDeliveryFailAsync(
+        Order order, byte refundReasonId, CancellationToken cancellationToken = default)
+    {
+        var existing = await _unitOfWork.Refunds.GetAdminRefundsAsync(
+            new AdminRefundFilterDto { OrderId = order.OrderId, PageSize = 10 },
+            cancellationToken);
+
+        if (existing.Items.Any(r =>
+                r.RefundStatus is RefundStatuses.Requested or RefundStatuses.Approved or RefundStatuses.Completed))
+        {
+            return null;
+        }
+
+        var refund = new OrderRefund
+        {
+            OrderId = order.OrderId,
+            RefundReasonId = refundReasonId,
+            ReasonDetails = "Auto-created: GHN delivery failure return",
+            CustomerId = order.AccountId,
+            RequestedBy = null,
+            ApprovedAmount = order.TotalAmount,
+            RefundStatus = RefundStatuses.Requested,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _unitOfWork.Refunds.AddAsync(refund, cancellationToken);
+        return refund;
+    }
+
     public async Task<PaginatedResponse<RefundListDto>> GetRefundsAsync(int customerId, RefundFilterDto filter, CancellationToken cancellationToken = default)
     {
         var adminFilter = new AdminRefundFilterDto
@@ -229,10 +258,10 @@ public class RefundService : IRefundService
             // Notify customer about refund status change
             var eventType = dto.Status switch
             {
-                RefundStatuses.Approved  => NotificationEventTypes.RefundApproved,
-                RefundStatuses.Rejected  => NotificationEventTypes.RefundRejected,
+                RefundStatuses.Approved => NotificationEventTypes.RefundApproved,
+                RefundStatuses.Rejected => NotificationEventTypes.RefundRejected,
                 RefundStatuses.Completed => NotificationEventTypes.RefundCompleted,
-                _                        => null
+                _ => null
             };
 
             if (eventType is not null)
@@ -242,11 +271,11 @@ public class RefundService : IRefundService
                     new
                     {
                         refundId,
-                        orderId      = order.OrderId,
-                        orderCode    = order.OrderCode,
-                        customerId   = refund.CustomerId,
-                        status       = dto.Status,
-                        amount       = refund.ApprovedAmount,
+                        orderId = order.OrderId,
+                        orderCode = order.OrderCode,
+                        customerId = refund.CustomerId,
+                        status = dto.Status,
+                        amount = refund.ApprovedAmount,
                     },
                     CancellationToken.None);
             }
@@ -337,7 +366,7 @@ public class RefundService : IRefundService
         foreach (var item in orderDetails)
         {
             await _unitOfWork.Products.AdjustStockAsync(item.ProductId, item.Quantity, cancellationToken);
-            
+
             if (item.SlotProductId.HasValue)
             {
                 // Refund means order was Paid/Completed, so stock was deducted from SoldQuantity

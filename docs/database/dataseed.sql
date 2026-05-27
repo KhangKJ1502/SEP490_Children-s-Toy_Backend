@@ -200,6 +200,12 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[StatusOrders] WHERE StatusID = 1)
     (7,'Completed',  N'Hoàn thành'),
     (8,'Cancelled',  N'Đã hủy'),
     (9,'Refunded',   N'Đã hoàn tiền');
+
+IF NOT EXISTS (SELECT 1 FROM [dbo].[StatusOrders] WHERE StatusID = 10)
+    INSERT INTO [dbo].[StatusOrders] (StatusID, StatusName, Description) VALUES
+    (10, 'Returning',       N'Hàng đang hoàn về kho'),
+    (11, 'ReturnCompleted', N'Hàng đã về kho, chờ xử lý hoàn tiền');
+
 SET IDENTITY_INSERT [dbo].[StatusOrders] OFF;
 
 SET IDENTITY_INSERT [dbo].[ReactionTypes] ON;
@@ -705,6 +711,13 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[OrderRefundReasons])
     (N'Sản phẩm không đúng mô tả',        N'Hình ảnh/mô tả không khớp sản phẩm thực tế',  '2024-01-05 08:00:00'),
     (N'Hàng bị hư hỏng trong vận chuyển', N'Kiện hàng bị móp méo, vỡ trong quá trình giao','2024-01-05 08:00:00'),
     (N'Thiếu phụ kiện đi kèm',            N'Hộp không có đủ phụ kiện như mô tả',          '2024-01-05 08:00:00');
+
+IF NOT EXISTS (
+    SELECT 1 FROM [dbo].[OrderRefundReasons]
+    WHERE Content = N'Giao hàng thất bại / không giao được' AND IsDeleted = 0
+)
+    INSERT INTO [dbo].[OrderRefundReasons] (Content, Description, CreatedAt) VALUES
+    (N'Giao hàng thất bại / không giao được', N'GHN hoàn hàng về kho do giao không thành công', GETUTCDATE());
 GO
 
 IF NOT EXISTS (SELECT 1 FROM [dbo].[OrderRefunds])
