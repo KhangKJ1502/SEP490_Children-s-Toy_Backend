@@ -35,16 +35,34 @@ public class AdminDashboardService : IAdminDashboardService
 
         var ranges = resolved.Data!;
 
-        var currentEvents = await BuildRevenueQuery(ranges.Current)
-            .Select(o => new DashboardRevenueEventRowDto
+        var currentOrdersRaw = await BuildRevenueQuery(ranges.Current)
+            .Select(o => new
             {
-                Amount = o.TotalAmount,
-                EventAtUtc = o.CompletedAt ?? o.DeliveredAt ?? o.PaidAt ?? o.OrderDate
+                TotalAmount = o.TotalAmount,
+                EventAtUtc = o.CompletedAt ?? o.DeliveredAt ?? o.PaidAt ?? o.OrderDate,
+                RefundedAmount = o.OrderRefunds
+                    .Where(r => !r.IsDeleted && r.StatusId == 8)
+                    .Sum(r => (decimal?)r.ApprovedAmount)
             })
             .ToListAsync(cancellationToken);
 
-        var previousRevenue = await BuildRevenueQuery(ranges.Previous)
+        var currentEvents = currentOrdersRaw
+            .Select(o => new DashboardRevenueEventRowDto
+            {
+                Amount = o.TotalAmount - (o.RefundedAmount ?? 0m),
+                EventAtUtc = o.EventAtUtc
+            })
+            .ToList();
+
+        var previousTotalAmount = await BuildRevenueQuery(ranges.Previous)
             .SumAsync(o => (decimal?)o.TotalAmount, cancellationToken) ?? 0m;
+
+        var previousRefundedAmount = await BuildRevenueQuery(ranges.Previous)
+            .SelectMany(o => o.OrderRefunds)
+            .Where(r => !r.IsDeleted && r.StatusId == 8)
+            .SumAsync(r => (decimal?)r.ApprovedAmount, cancellationToken) ?? 0m;
+
+        var previousRevenue = previousTotalAmount - previousRefundedAmount;
 
         var buckets = BuildBuckets(ranges.Current);
         var amountByBucket = SumRevenueByBucket(currentEvents, ranges.Current, buckets);
@@ -280,11 +298,25 @@ public class AdminDashboardService : IAdminDashboardService
 
         var ranges = resolved.Data!;
 
-        var revenueCurrent = await BuildRevenueQuery(ranges.Current)
+        var revenueCurrentTotal = await BuildRevenueQuery(ranges.Current)
             .SumAsync(o => (decimal?)o.TotalAmount, cancellationToken) ?? 0m;
 
-        var revenuePrevious = await BuildRevenueQuery(ranges.Previous)
+        var revenueCurrentRefunded = await BuildRevenueQuery(ranges.Current)
+            .SelectMany(o => o.OrderRefunds)
+            .Where(r => !r.IsDeleted && r.StatusId == 8)
+            .SumAsync(r => (decimal?)r.ApprovedAmount, cancellationToken) ?? 0m;
+
+        var revenueCurrent = revenueCurrentTotal - revenueCurrentRefunded;
+
+        var revenuePreviousTotal = await BuildRevenueQuery(ranges.Previous)
             .SumAsync(o => (decimal?)o.TotalAmount, cancellationToken) ?? 0m;
+
+        var revenuePreviousRefunded = await BuildRevenueQuery(ranges.Previous)
+            .SelectMany(o => o.OrderRefunds)
+            .Where(r => !r.IsDeleted && r.StatusId == 8)
+            .SumAsync(r => (decimal?)r.ApprovedAmount, cancellationToken) ?? 0m;
+
+        var revenuePrevious = revenuePreviousTotal - revenuePreviousRefunded;
 
         var ordersCurrent = await _context.Orders
             .AsNoTracking()
@@ -330,7 +362,7 @@ public class AdminDashboardService : IAdminDashboardService
         var totalOrders = await periodOrders.CountAsync(cancellationToken);
 
         var refundedOrders = await periodOrders
-            .Where(o => o.Status.StatusName == RefundedStatus)
+            .Where(o => o.Status.StatusName == RefundedStatus || o.PaymentStatus == PaymentStatuses.PartiallyRefunded)
             .CountAsync(cancellationToken);
 
         var cancelledOrders = await periodOrders
@@ -354,7 +386,7 @@ public class AdminDashboardService : IAdminDashboardService
     {
         var resolvedLimit = ResolveTopLimit(limit);
 
-        var products = await BuildValidSoldOrderDetailsQuery()
+        var sales = await BuildValidSoldOrderDetailsQuery()
             .GroupBy(od => new
             {
                 od.ProductId,
@@ -363,7 +395,7 @@ public class AdminDashboardService : IAdminDashboardService
                     ? od.Product.ProductImage.ImageUrl
                     : od.ProductImage
             })
-            .Select(g => new DashboardTopSellingProductItemDto
+            .Select(g => new
             {
                 ProductId = g.Key.ProductId,
                 ProductName = g.Key.ProductName,
@@ -371,11 +403,40 @@ public class AdminDashboardService : IAdminDashboardService
                 TotalSold = g.Sum(x => (int)x.Quantity),
                 Revenue = g.Sum(x => x.LineTotal ?? 0m)
             })
+            .ToListAsync(cancellationToken);
+
+        var refunds = await _context.RefundDetails
+            .AsNoTracking()
+            .Where(rd => !rd.Refund.IsDeleted && rd.Refund.StatusId == 8)
+            .GroupBy(rd => rd.ProductId)
+            .Select(g => new
+            {
+                ProductId = g.Key,
+                TotalRefundedQty = g.Sum(x => (int)x.Quantity),
+                TotalRefundedAmount = g.Sum(x => x.RefundAmount)
+            })
+            .ToDictionaryAsync(x => x.ProductId, x => x, cancellationToken);
+
+        var products = sales
+            .Select(s =>
+            {
+                refunds.TryGetValue(s.ProductId, out var refInfo);
+                var netSold = s.TotalSold - (refInfo?.TotalRefundedQty ?? 0);
+                var netRevenue = s.Revenue - (refInfo?.TotalRefundedAmount ?? 0m);
+                return new DashboardTopSellingProductItemDto
+                {
+                    ProductId = s.ProductId,
+                    ProductName = s.ProductName,
+                    ImageUrl = s.ImageUrl,
+                    TotalSold = Math.Max(0, netSold),
+                    Revenue = Math.Max(0m, netRevenue)
+                };
+            })
             .OrderByDescending(x => x.TotalSold)
             .ThenByDescending(x => x.Revenue)
             .ThenBy(x => x.ProductName)
             .Take(resolvedLimit)
-            .ToListAsync(cancellationToken);
+            .ToList();
 
         return Result<DashboardTopSellingProductsDto>.Success(new DashboardTopSellingProductsDto
         {

@@ -11,7 +11,7 @@ namespace ToyStore.API.Controllers;
 
 [ApiController]
 [Route("api/admin/refunds")]
-[Authorize(Roles = "Admin,Staff")]
+[Authorize(Roles = "Admin,Staff,Merchandise")]
 public class AdminRefundsController : ControllerBase
 {
     private readonly IRefundService _refundService;
@@ -28,6 +28,7 @@ public class AdminRefundsController : ControllerBase
         [FromQuery] AdminRefundFilterDto filter,
         CancellationToken cancellationToken = default)
     {
+        filter.AssignedAccountId = _currentUserService.AccountId;
         var result = await _refundService.GetAdminRefundsAsync(filter, cancellationToken);
         return Ok(ApiResponse<PaginatedResponse<RefundListDto>>.Ok(result));
     }

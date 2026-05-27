@@ -88,21 +88,10 @@ public class RefundService : IRefundService
 
         var existingRefunds = await _unitOfWork.Refunds.GetAdminRefundsAsync(new AdminRefundFilterDto { OrderId = dto.OrderId, PageSize = 100 }, cancellationToken);
 
-        if (existingRefunds.Items.Count >= 2)
-            return Result<RefundDto>.BusinessError("Maximum of 2 refund requests allowed per order.");
-
-        if (existingRefunds.Items.Any(r => r.RefundStatus == RefundStatuses.Requested || 
-                                           r.RefundStatus == RefundStatuses.Approved || 
-                                           r.RefundStatus == RefundStatuses.PickupCreated ||
-                                           r.RefundStatus == RefundStatuses.Shipping ||
-                                           r.RefundStatus == RefundStatuses.Received ||
-                                           r.RefundStatus == RefundStatuses.InspectionPending))
+        if (existingRefunds.Items.Any())
         {
-            return Result<RefundDto>.BusinessError("An active refund request already exists for this order.");
+            return Result<RefundDto>.BusinessError("Only 1 refund request is allowed per order lifecycle.");
         }
-
-        if (existingRefunds.Items.Any(r => r.RefundStatus == RefundStatuses.Rejected))
-            return Result<RefundDto>.BusinessError("Previous refund request was rejected. Cannot create a new one.");
 
         // Process return items (support partial returns)
         var returnItems = new List<CreateRefundItemDto>();
@@ -299,7 +288,22 @@ public class RefundService : IRefundService
         if (refund == null)
             return Result<RefundDto>.NotFound("Refund", refundId);
 
-        return Result<RefundDto>.Success(_mapper.Map<RefundDto>(refund));
+        var dto = _mapper.Map<RefundDto>(refund);
+
+        var assignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(refund.OrderId, cancellationToken);
+        var staffAssig = assignments.FirstOrDefault(a => a.RoleId == 3);
+        var merchAssig = assignments.FirstOrDefault(a => a.RoleId == 4);
+
+        if (staffAssig != null)
+        {
+            dto.AssignedToStaffName = staffAssig.Account?.AccountName;
+        }
+        if (merchAssig != null)
+        {
+            dto.AssignedToMerchName = merchAssig.Account?.AccountName;
+        }
+
+        return Result<RefundDto>.Success(dto);
     }
 
     public async Task<Result<RefundDto>> UpdateRefundStatusAsync(int staffId, int refundId, UpdateRefundStatusDto dto, CancellationToken cancellationToken = default)
@@ -512,27 +516,56 @@ public class RefundService : IRefundService
         refund.WalletTransactionId = txn.WalletTransactionId;
         refund.StatusId = (byte)RefundStatusEnum.RefundCompleted;
 
-        // 3. Orders.PaymentStatus = REFUNDED
-        order.PaymentStatus = "REFUNDED";
-
-        // 4. Orders.StatusID -> status Refunded
-        var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
-        byte refundedStatusId = statusMap.GetValueOrDefault("Refunded", (byte)OrderStatus.Refunded);
-
-        order.StatusId = refundedStatusId;
-        order.UpdatedAt = DateTime.UtcNow;
-
-        var history = new OrderStatusHistory
+        bool isFullRefund = true;
+        foreach (var originalDetail in order.OrderDetails)
         {
-            OrderId = order.OrderId,
-            StatusId = refundedStatusId,
-            ChangedBy = refund.ApprovedBy ?? refund.RequestedBy, // Admin or System
-            Note = "Refund Completed",
-            CreatedAt = DateTime.UtcNow
-        };
-        // Ensure adding history is valid, if there is a repository for it.
-        // For simplicity, we can update Order.OrderStatusHistories
-        order.OrderStatusHistories.Add(history);
+            var refundedItem = refund.RefundDetails.FirstOrDefault(rd => rd.ProductId == originalDetail.ProductId);
+            if (refundedItem == null || refundedItem.Quantity < originalDetail.Quantity)
+            {
+                isFullRefund = false;
+                break;
+            }
+        }
+
+        if (isFullRefund)
+        {
+            // 3. Orders.PaymentStatus = REFUNDED
+            order.PaymentStatus = "REFUNDED";
+
+            // 4. Orders.StatusID -> status Refunded
+            var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
+            byte refundedStatusId = statusMap.GetValueOrDefault("Refunded", (byte)OrderStatus.Refunded);
+
+            order.StatusId = refundedStatusId;
+            order.UpdatedAt = DateTime.UtcNow;
+
+            var history = new OrderStatusHistory
+            {
+                OrderId = order.OrderId,
+                StatusId = refundedStatusId,
+                ChangedBy = refund.ApprovedBy ?? refund.RequestedBy, // Admin or System
+                Note = "Refund Completed",
+                CreatedAt = DateTime.UtcNow
+            };
+            order.OrderStatusHistories.Add(history);
+        }
+        else
+        {
+            // 3. Orders.PaymentStatus = PARTIALLY_REFUNDED
+            order.PaymentStatus = "PARTIALLY_REFUNDED";
+            order.UpdatedAt = DateTime.UtcNow;
+
+            // We do not change order status (remains Completed) but log history entry for partial refund
+            var history = new OrderStatusHistory
+            {
+                OrderId = order.OrderId,
+                StatusId = order.StatusId,
+                ChangedBy = refund.ApprovedBy ?? refund.RequestedBy, // Admin or System
+                Note = "Partial Refund Completed",
+                CreatedAt = DateTime.UtcNow
+            };
+            order.OrderStatusHistories.Add(history);
+        }
         // order is tracked by EF, no need to call Update
 
         // 5. Restore Inventory strictly for the items returned

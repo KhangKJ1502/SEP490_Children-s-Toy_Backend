@@ -15,4 +15,8 @@ public class AdminRefundFilterDto
     public byte? RefundReasonId { get; set; }
     public string? SortBy { get; set; } // "createdAt" or "approvedAmount"
     public string? SortDir { get; set; } // "asc" or "desc"
+    public bool AssignedToMe { get; set; } = false;
+    public int? AssignedAccountId { get; set; }
+    public string? Keyword { get; set; }
 }
+

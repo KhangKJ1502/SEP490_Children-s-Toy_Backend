@@ -111,6 +111,25 @@ public class RefundRepository : IRefundRepository
         if (filter.ToDate.HasValue)
             query = query.Where(r => r.CreatedAt <= filter.ToDate.Value);
 
+        if (filter.AssignedToMe && filter.AssignedAccountId.HasValue)
+        {
+            query = query.Where(r => r.Order.AssignedToStaffId == filter.AssignedAccountId.Value ||
+                _context.Set<OrderAssignment>().Any(a => a.OrderId == r.OrderId && a.AccountId == filter.AssignedAccountId.Value && a.IsActive));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Keyword))
+        {
+            var kw = filter.Keyword.Trim();
+            bool isNumeric = int.TryParse(kw, out int orderIdParsed);
+            query = query.Where(r =>
+                r.RefundCode.Contains(kw) ||
+                r.Order.OrderCode.Contains(kw) ||
+                r.Customer.AccountName.Contains(kw) ||
+                r.Customer.PhoneNumber.Contains(kw) ||
+                r.Customer.Email.Contains(kw) ||
+                (isNumeric && r.OrderId == orderIdParsed));
+        }
+
         var totalItems = await query.CountAsync(cancellationToken);
 
         // Sorting
@@ -142,7 +161,12 @@ public class RefundRepository : IRefundRepository
                 RefundReasonContent = r.RefundReason != null ? r.RefundReason.Content : null,
                 ApprovedAmount = r.ApprovedAmount,
                 RefundStatus = r.Status.StatusName,
-                CreatedAt = r.CreatedAt
+                CreatedAt = r.CreatedAt,
+                AssignedToStaffName = r.Order.AssignedToStaff != null ? r.Order.AssignedToStaff.AccountName : null,
+                AssignedToMerchName = _context.Set<OrderAssignment>()
+                    .Where(a => a.OrderId == r.OrderId && a.RoleId == 4 && a.IsActive) // 4 is Merchandise assignment role in OrderAccessRoles.cs
+                    .Select(a => a.Account.AccountName)
+                    .FirstOrDefault()
             })
             .ToListAsync(cancellationToken);
 
@@ -160,6 +184,7 @@ public class RefundRepository : IRefundRepository
             .Include(r => r.RefundImages.Where(i => !i.IsDeleted))
             .Include(r => r.RefundDetails).ThenInclude(d => d.Product)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.Status)
+            .Include(r => r.RefundStatusHistories).ThenInclude(h => h.ChangedByNavigation)
             .FirstOrDefaultAsync(r => r.RefundId == id && !r.IsDeleted, cancellationToken);
     }
 
@@ -174,6 +199,7 @@ public class RefundRepository : IRefundRepository
             .Include(r => r.RefundImages.Where(i => !i.IsDeleted))
             .Include(r => r.RefundDetails).ThenInclude(d => d.Product)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.Status)
+            .Include(r => r.RefundStatusHistories).ThenInclude(h => h.ChangedByNavigation)
             .FirstOrDefaultAsync(r => r.OrderId == orderId && !r.IsDeleted, cancellationToken);
     }
 
@@ -188,6 +214,7 @@ public class RefundRepository : IRefundRepository
             .Include(r => r.RefundImages.Where(i => !i.IsDeleted))
             .Include(r => r.RefundDetails).ThenInclude(d => d.Product)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.Status)
+            .Include(r => r.RefundStatusHistories).ThenInclude(h => h.ChangedByNavigation)
             .FirstOrDefaultAsync(r => r.ShippingOrderCode == code && !r.IsDeleted, cancellationToken);
     }
 
