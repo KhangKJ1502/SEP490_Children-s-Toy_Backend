@@ -24,7 +24,6 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
         "Manual review was not completed within 24 hours, so the comment was automatically rejected";
     private const string TimeoutBanReasonPrefix = "Manual review was not completed within 24 hours";
     private const int ViolationThreshold = 20;
-    private const int CommentLockDays = 7;
 
     public BlogCommentManualReviewTimeoutJob(
         IServiceProvider services,
@@ -235,9 +234,13 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
             return;
         }
 
-        state.IsCommentBanned = true;
-        state.BannedAt = nowUtc;
-        state.BanExpiresAt = nowUtc.AddDays(CommentLockDays);
+        if (!state.IsCommentBanned)
+        {
+            state.IsCommentBanned = true;
+            state.BannedAt = nowUtc;
+        }
+
+        state.BanExpiresAt = null;
         state.UpdatedAt = nowUtc;
 
         await db.SaveChangesAsync(ct);
@@ -248,7 +251,7 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
             RecipientType = RecipientTypes.Customer,
             NotificationType = NotificationTypes.System,
             Title = "Commenting locked",
-            Message = "Your commenting access has been locked for 7 days due to repeated violations.",
+            Message = "Your commenting access has been locked due to repeated violations.",
             SendBell = true,
             SendEmail = false,
             ActionTarget = "/blog",

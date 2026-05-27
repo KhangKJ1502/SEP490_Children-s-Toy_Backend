@@ -505,6 +505,9 @@ public class BlogRepository : IBlogRepository
         if (state.BanExpiresAt.HasValue && state.BanExpiresAt.Value <= utcNow)
         {
             state.IsCommentBanned = false;
+            state.BanExpiresAt = null;
+            state.ViolationCount = 0;
+            state.LastViolatedAt = null;
             state.UnbannedAt = utcNow;
             state.UpdatedAt = utcNow;
             await _context.SaveChangesAsync(cancellationToken);
