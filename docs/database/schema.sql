@@ -390,17 +390,30 @@ CREATE INDEX [IX_PromotionProductSlots_Product]
 GO
 
 CREATE TABLE [ProductDetails] (
-    [ProductID]   INT      NOT NULL PRIMARY KEY,
+    [ProductID]   INT            NOT NULL PRIMARY KEY,
     [Description] NVARCHAR(1500) NULL,
-    [MaterialID]  SMALLINT NULL,
-    [AgeID]       TINYINT  NULL,
-    [SexID]       TINYINT  NULL,
-    [OriginID]    TINYINT  NULL,
-    CONSTRAINT [FK_ProductDetails_Products]  FOREIGN KEY ([ProductID])  REFERENCES [Products]([ProductID]),
-    CONSTRAINT [FK_ProductDetails_Materials] FOREIGN KEY ([MaterialID]) REFERENCES [Materials]([MaterialID]),
-    CONSTRAINT [FK_ProductDetails_Ages]      FOREIGN KEY ([AgeID])      REFERENCES [Ages]([AgeID]),
-    CONSTRAINT [FK_ProductDetails_Sexes]     FOREIGN KEY ([SexID])      REFERENCES [Sexes]([SexID]),
-    CONSTRAINT [FK_ProductDetails_Origins]   FOREIGN KEY ([OriginID])   REFERENCES [Origins]([OriginID])
+    [MaterialID]  SMALLINT       NULL,
+    [AgeID]       TINYINT        NULL,
+    [SexID]       TINYINT        NULL,
+    [OriginID]    TINYINT        NULL,
+    [WeightGram]  INT            NOT NULL 
+        CONSTRAINT [CK_ProductDetails_WeightGram] CHECK ([WeightGram] > 0),
+    [LengthCm]    INT            NOT NULL 
+        CONSTRAINT [CK_ProductDetails_LengthCm]   CHECK ([LengthCm]   > 0),
+    [WidthCm]     INT            NOT NULL 
+        CONSTRAINT [CK_ProductDetails_WidthCm]    CHECK ([WidthCm]    > 0),
+    [HeightCm]    INT            NOT NULL 
+        CONSTRAINT [CK_ProductDetails_HeightCm]   CHECK ([HeightCm]   > 0),
+    CONSTRAINT [FK_ProductDetails_Products]  
+        FOREIGN KEY ([ProductID])  REFERENCES [Products]([ProductID]),
+    CONSTRAINT [FK_ProductDetails_Materials] 
+        FOREIGN KEY ([MaterialID]) REFERENCES [Materials]([MaterialID]),
+    CONSTRAINT [FK_ProductDetails_Ages]      
+        FOREIGN KEY ([AgeID])      REFERENCES [Ages]([AgeID]),
+    CONSTRAINT [FK_ProductDetails_Sexes]     
+        FOREIGN KEY ([SexID])      REFERENCES [Sexes]([SexID]),
+    CONSTRAINT [FK_ProductDetails_Origins]   
+        FOREIGN KEY ([OriginID])   REFERENCES [Origins]([OriginID])
 );
 GO
 
@@ -459,7 +472,7 @@ CREATE TABLE [Orders] (
     /* ── v3.2: thêm 'COD_PENDING' ── */
     [PaymentStatus]         VARCHAR(20)   NOT NULL DEFAULT 'PENDING'
         CONSTRAINT [CK_Orders_PaymentStatus]
-        CHECK ([PaymentStatus] IN ('PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED', 'COD_PENDING','CANCELLED')),
+        CHECK ([PaymentStatus] IN ('PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED', 'PARTIALLY_REFUNDED', 'COD_PENDING','CANCELLED')),
     [PaymentCode]           VARCHAR(50)   NULL,
     [PaidAt]                DATETIME2(0)  NULL,
     [SubTotal]              DECIMAL(12,0) NOT NULL,
@@ -699,7 +712,6 @@ CREATE TABLE [CartItems] (
     [Quantity]        SMALLINT NOT NULL CHECK ([Quantity] > 0),
     [PriceAtThatTime] DECIMAL(12,0) NOT NULL,
     [CurrentPrice]    DECIMAL(12,0) NOT NULL,
-    [IsSelected]      BIT NOT NULL DEFAULT 1,
     [AddedAt]         DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [RemovedAt]       DATETIME2(0) NULL,
     [UpdatedAt]       DATETIME2(0) NULL,
@@ -765,7 +777,7 @@ CREATE TABLE [OrderVouchers] (
     CONSTRAINT [PK_OrderVouchers]          PRIMARY KEY ([OrderID], [VoucherID]),
     CONSTRAINT [FK_OrderVouchers_Orders]   FOREIGN KEY ([OrderID])   REFERENCES [Orders]([OrderID]),
     CONSTRAINT [FK_OrderVouchers_Vouchers] FOREIGN KEY ([VoucherID]) REFERENCES [Vouchers]([VoucherID]),
-    CONSTRAINT [CK_OrderVouchers_VoucherTarget] CHECK ([VoucherTarget] IN ('ORDER_TOTAL', 'SHIPPING_FEE'))
+    CONSTRAINT [CK_OrderVouchers_VoucherTarget] CHECK ([VoucherTarget] IN ('ORDER_TOTAL', 'SHIPPING_FEE', 'FINAL_PRICE'))
 );
 GO
 
@@ -1094,7 +1106,7 @@ CREATE TABLE [dbo].[ReviewModerationLogs] (
             REFERENCES [dbo].[ReviewProductImages]([ReviewProductImageID]),
     [ModeratorType] VARCHAR(10)   NOT NULL
         CONSTRAINT [CK_ModerationLogs_ModeratorType]
-            CHECK ([ModeratorType] IN ('AI', 'Staff', 'Admin')),
+            CHECK ([ModeratorType] IN ('AI', 'Staff', 'Admin', 'System')),
     [ModeratedBy]  INT            NULL
         CONSTRAINT [FK_ModerationLogs_Accounts]
             REFERENCES [dbo].[Accounts]([AccountID]),
@@ -1295,6 +1307,7 @@ INSERT INTO [dbo].[BlogCommentBanReasons] ([Content]) VALUES
 (N'Sharing private or sensitive personal information'),
 (N'Harassment, bullying, or targeting specific users'),
 (N'Violent content, threats, or incitement'),
+(N'Manual review was not completed within 24 hours, so the comment was automatically rejected'),
 (N'AI moderation is currently unavailable. Your comment will be sent for manual review');
 GO
 
@@ -1311,7 +1324,7 @@ CREATE TABLE [dbo].[BlogCommentModerationLogs] (
     [ReplyID]          INT           NULL,   -- FK → ReviewBlogReplies
     [ModeratorType]    VARCHAR(10)   NOT NULL
         CONSTRAINT [CK_BCML_ModeratorType]
-            CHECK ([ModeratorType] IN ('AI','Admin','Staff')),
+            CHECK ([ModeratorType] IN ('AI','Admin','Staff', 'System' )),
     [ModeratedBy]      INT           NULL,   -- NULL nếu AI
     [Action]           VARCHAR(20)   NOT NULL
         CONSTRAINT [CK_BCML_Action]
@@ -1341,13 +1354,13 @@ CREATE TABLE [dbo].[BlogCommentModerationLogs] (
             ([TargetType]='Comment' AND [CommentID] IS NOT NULL AND [ReplyID] IS NULL)
             OR ([TargetType]='Reply' AND [ReplyID] IS NOT NULL AND [CommentID] IS NULL)
         ),
-    CONSTRAINT [CK_BCML_ModeratorConsistency]
-        CHECK (
-            ([ModeratorType]='AI'    AND [ModeratedBy] IS NULL)
-            OR ([ModeratorType]='Admin' AND [ModeratedBy] IS NOT NULL)
-        ),
-    CONSTRAINT [CK_BCML_RejectedNeedsReason]
-        CHECK ([Action] <> 'Rejected' OR [BanReasonID] IS NOT NULL)
+     CONSTRAINT [CK_BCML_ModeratorConsistency]
+    CHECK (
+          ([ModeratorType] IN ('AI', 'System') AND [ModeratedBy] IS NULL)
+             OR
+          ([ModeratorType] IN ('Admin', 'Staff') AND [ModeratedBy] IS NOT NULL)
+    )
+
 );
 GO
 
@@ -1957,6 +1970,15 @@ CREATE TABLE [OrderRefundReasons] (
 );
 GO
 
+CREATE TABLE [dbo].[StatusRefunds] (
+    [StatusID]    TINYINT IDENTITY(1,1) PRIMARY KEY,
+    [StatusName]  VARCHAR(50) NOT NULL UNIQUE,
+    [Description] NVARCHAR(255) NULL,
+    [CreatedAt]   DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    [UpdatedAt]   DATETIME2(0) NULL
+);
+GO
+
 CREATE TABLE [OrderRefunds] (
     [RefundID]            INT IDENTITY(1,1) PRIMARY KEY,
     [OrderID]             INT NOT NULL,
@@ -1965,11 +1987,20 @@ CREATE TABLE [OrderRefunds] (
     [RequestedBy]         INT NULL,
     [ApprovedBy]          INT NULL,
     [WalletTransactionID] INT NULL,
+    [RefundCode]          VARCHAR(30) NOT NULL UNIQUE,
+    [ShippingOrderCode]   VARCHAR(50) NULL,
     [ReasonDetails]       NVARCHAR(500) NULL,
+    [ShippingFee]         DECIMAL(10,0) NOT NULL DEFAULT 0 CHECK ([ShippingFee] >= 0),
+    [SubTotal]            DECIMAL(12,0) NULL CHECK ([SubTotal] >= 0),
+    [TotalAmount]         DECIMAL(12,0) NULL CHECK ([TotalAmount] >= 0),
     [ApprovedAmount]      DECIMAL(12,0) NOT NULL CHECK ([ApprovedAmount] >= 0),
-    [RefundStatus]        VARCHAR(20) NOT NULL DEFAULT 'Requested'
-        CONSTRAINT [CK_OrderRefunds_RefundStatus]
-            CHECK ([RefundStatus] IN ('Requested', 'Approved', 'Rejected', 'Completed', 'Cancelled')),
+    [StatusID]            TINYINT NOT NULL DEFAULT 1,
+    [AdminNote]           NVARCHAR(1000) NULL,
+    [ApprovedAt]          DATETIME2(0) NULL,
+    [RejectedAt]          DATETIME2(0) NULL,
+    [CompletedAt]         DATETIME2(0) NULL,
+    [CancelledAt]         DATETIME2(0) NULL,
+    [IsDeleted]           BIT NOT NULL DEFAULT 0,
     [CreatedAt]           DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [UpdatedAt]           DATETIME2(0) NULL,
     CONSTRAINT [FK_OrderRefunds_Orders]             FOREIGN KEY ([OrderID])             REFERENCES [Orders]([OrderID]),
@@ -1977,13 +2008,43 @@ CREATE TABLE [OrderRefunds] (
     CONSTRAINT [FK_OrderRefunds_Customer]           FOREIGN KEY ([CustomerID])          REFERENCES [Accounts]([AccountID]),
     CONSTRAINT [FK_OrderRefunds_RequestedBy]        FOREIGN KEY ([RequestedBy])         REFERENCES [Accounts]([AccountID]),
     CONSTRAINT [FK_OrderRefunds_ApprovedBy]         FOREIGN KEY ([ApprovedBy])          REFERENCES [Accounts]([AccountID]),
-    CONSTRAINT [FK_OrderRefunds_RefundReasons]      FOREIGN KEY ([RefundReasonID])      REFERENCES [OrderRefundReasons]([RefundReasonID])
+    CONSTRAINT [FK_OrderRefunds_RefundReasons]      FOREIGN KEY ([RefundReasonID])      REFERENCES [OrderRefundReasons]([RefundReasonID]),
+    CONSTRAINT [FK_OrderRefunds_StatusRefunds]      FOREIGN KEY ([StatusID])            REFERENCES [StatusRefunds]([StatusID])
 );
 GO
 
-CREATE UNIQUE NONCLUSTERED INDEX [UQ_OrderRefunds_OneActivePerOrder]
-ON [OrderRefunds] ([OrderID])
-WHERE [RefundStatus] IN ('Requested', 'Approved');
+CREATE TABLE [dbo].[RefundDetails] (
+    [RefundDetailID]  INT IDENTITY(1,1) PRIMARY KEY,
+    [RefundID]        INT NOT NULL,
+    [ProductID]       INT NOT NULL,
+    [Quantity]        SMALLINT NOT NULL CHECK ([Quantity] > 0),
+    [UnitPrice]       DECIMAL(12,0) NOT NULL CHECK ([UnitPrice] >= 0),
+    [RefundAmount]    DECIMAL(12,0) NOT NULL CHECK ([RefundAmount] >= 0),
+    [CreatedAt]       DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    
+    CONSTRAINT [FK_RefundDetails_OrderRefunds] FOREIGN KEY ([RefundID]) REFERENCES [dbo].[OrderRefunds]([RefundID]),
+    CONSTRAINT [FK_RefundDetails_Products] FOREIGN KEY ([ProductID]) REFERENCES [dbo].[Products]([ProductID]),
+    CONSTRAINT [UQ_RefundDetails_RefundProduct] UNIQUE ([RefundID], [ProductID])
+);
+GO
+
+CREATE TABLE [dbo].[RefundStatusHistory] (
+    [HistoryID] INT IDENTITY(1,1) PRIMARY KEY,
+    [RefundID]  INT NOT NULL,
+    [StatusID]  TINYINT NOT NULL,
+    [ChangedBy] INT NULL,
+    [Note]      NVARCHAR(500) NULL,
+    [CreatedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    
+    CONSTRAINT [FK_RefundStatusHistory_OrderRefunds] FOREIGN KEY ([RefundID]) REFERENCES [dbo].[OrderRefunds]([RefundID]),
+    CONSTRAINT [FK_RefundStatusHistory_StatusRefunds] FOREIGN KEY ([StatusID]) REFERENCES [StatusRefunds]([StatusID]),
+    CONSTRAINT [FK_RefundStatusHistory_ChangedBy] FOREIGN KEY ([ChangedBy]) REFERENCES [dbo].[Accounts]([AccountID])
+);
+GO
+
+CREATE NONCLUSTERED INDEX [IX_OrderRefunds_ShippingOrderCode] 
+ON [OrderRefunds]([ShippingOrderCode]) 
+WHERE [ShippingOrderCode] IS NOT NULL;
 GO
 
 CREATE TRIGGER [TR_OrderRefunds_ValidateAmount]
@@ -2627,29 +2688,6 @@ CREATE INDEX [IX_DeliveryActions_DeliveryID_OccurredAt]
     ON [Notification].[DeliveryActions] ([DeliveryID], [OccurredAt] DESC);
 GO
 
-CREATE TABLE [ChatConversations] (
-    [ConversationID] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    [AccountID]      INT NOT NULL,
-    [SessionID]      VARCHAR(100) NULL,
-    [Status]         VARCHAR(15) NOT NULL DEFAULT 'BotActive',
-    [IsDeleted]      BIT NOT NULL DEFAULT 0,
-    [CreatedAt]      DATETIME2(0) NOT NULL DEFAULT GETDATE(),
-    [UpdatedAt]      DATETIME2(0) NULL,
-    CONSTRAINT [FK_ChatConversations_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [Accounts]([AccountID])
-);
-GO
-
-CREATE TABLE [ChatMessages] (
-    [MessageID]      INT IDENTITY(1,1) PRIMARY KEY,
-    [ConversationID] INT NOT NULL,
-    [SenderType]     VARCHAR(10) NOT NULL,
-    [Content]        NVARCHAR(1000) NOT NULL,
-    [Payload]        NVARCHAR(2000) NULL,
-    [CreatedAt]      DATETIME2(0) NOT NULL DEFAULT GETDATE(),
-    CONSTRAINT [FK_ChatMessages_ChatConversations]
-        FOREIGN KEY ([ConversationID]) REFERENCES [ChatConversations]([ConversationID])
-);
-GO
 
 CREATE TABLE [Interaction].[Events] (
     [EventID]       BIGINT IDENTITY(1,1) PRIMARY KEY,
@@ -2777,7 +2815,6 @@ CREATE NONCLUSTERED INDEX [IX_Orders_UserHistory]        ON [Orders]([AccountID]
 GO
 CREATE NONCLUSTERED INDEX [IX_Wishlists_User]            ON [Wishlists]([AccountID]);
 GO
-CREATE NONCLUSTERED INDEX [IX_ChatMessages_Conversation] ON [ChatMessages]([ConversationID], [CreatedAt] DESC);
 GO
 CREATE NONCLUSTERED INDEX [IX_Products_FilterSort]       ON [Products]([CategoryID], [BrandID], [Price], [IsDeleted]);
 GO
@@ -2843,7 +2880,7 @@ GO
 
 CREATE NONCLUSTERED INDEX [IX_OrderRefunds_Order]
 ON [OrderRefunds]([OrderID])
-INCLUDE ([RefundStatus], [ApprovedAmount]);
+INCLUDE ([StatusID], [ApprovedAmount]);
 GO
 
 CREATE NONCLUSTERED INDEX [IX_ReviewProducts_Product]
@@ -3000,3 +3037,4 @@ GO
 CREATE NONCLUSTERED INDEX [IX_WalletPinAttempts_Wallet]
 ON [WalletPinAttempts]([WalletID], [CreatedAt] DESC);
 GO
+

@@ -17,4 +17,6 @@ public class RefundListDto
     public decimal ApprovedAmount { get; set; }
     public string RefundStatus { get; set; } = null!;
     public DateTime CreatedAt { get; set; }
+    public string? AssignedToStaffName { get; set; }
+    public string? AssignedToMerchName { get; set; }
 }

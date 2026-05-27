@@ -23,7 +23,29 @@ public partial class OrderRefund
 
     public decimal ApprovedAmount { get; set; }
 
-    public string RefundStatus { get; set; } = null!;
+    public string RefundCode { get; set; } = null!;
+
+    public string? ShippingOrderCode { get; set; }
+
+    public decimal ShippingFee { get; set; }
+
+    public decimal? SubTotal { get; set; }
+
+    public decimal? TotalAmount { get; set; }
+
+    public string? AdminNote { get; set; }
+
+    public DateTime? ApprovedAt { get; set; }
+
+    public DateTime? RejectedAt { get; set; }
+
+    public DateTime? CompletedAt { get; set; }
+
+    public DateTime? CancelledAt { get; set; }
+
+    public bool IsDeleted { get; set; }
+
+    public byte StatusId { get; set; }
 
     public DateTime CreatedAt { get; set; }
 
@@ -41,5 +63,11 @@ public partial class OrderRefund
 
     public virtual WalletTransaction? WalletTransaction { get; set; }
 
+    public virtual StatusRefund Status { get; set; } = null!;
+
     public virtual ICollection<RefundImage> RefundImages { get; set; } = new List<RefundImage>();
+
+    public virtual ICollection<RefundDetail> RefundDetails { get; set; } = new List<RefundDetail>();
+
+    public virtual ICollection<RefundStatusHistory> RefundStatusHistories { get; set; } = new List<RefundStatusHistory>();
 }

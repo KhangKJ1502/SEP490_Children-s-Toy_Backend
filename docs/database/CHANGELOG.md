@@ -3,6 +3,27 @@
 > **Quy táº¯c:** Entry má»›i nháº¥t náº±m TRÃŠN CÃ™NG.
 > **Cáº­p nháº­t file nÃ y** má»—i khi thay Ä‘á»•i schema (thÃªm báº£ng, cá»™t, index).
 
+## [2026-05-26] `v3.3 - Add Refund/Return Tables`
+
+### Thay đổi
+
+| Loại | Bảng | Chi tiết |
+|---|---|---|
+| ➕ Thêm bảng | `dbo.StatusRefunds` | Bảng danh mục trạng thái hoàn tiền |
+| ➕ Thêm bảng | `dbo.RefundRequests` | Bảng yêu cầu hoàn tiền/trả hàng |
+| ➕ Thêm bảng | `dbo.RefundDetails` | Chi tiết sản phẩm trả lại (hỗ trợ Partial Refund) |
+| ➕ Thêm bảng | `dbo.RefundStatusHistory` | Lịch sử thay đổi trạng thái hoàn tiền |
+
+### Lý do
+
+> Phân tách hoàn toàn domain mua hàng (Purchase Order) và domain trả hàng (Refund/Return Request), hỗ trợ hoàn hảo cho luồng partial refund và tích hợp với GHN reverse shipment.
+
+### Script
+
+`docs/database/changes/20260526_1510_AddRefundTables.sql`
+
+---
+
 ## [2026-05-19] Shift full alert + scheduling rules
 
 ### Thay doi

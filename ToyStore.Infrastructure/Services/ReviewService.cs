@@ -83,6 +83,15 @@ public class ReviewService : IReviewService
             cancellationToken);
 
         var dtos = _mapper.Map<List<ReviewProductListDto>>(items);
+        
+        var currentUserId = _currentUser.IsAuthenticated ? _currentUser.AccountId : 0;
+        foreach (var dto in dtos)
+        {
+            var reviewEntity = items.First(r => r.ReviewId == dto.ReviewId);
+            dto.LikeCount = reviewEntity.ReviewProductReactions.Count(r => !r.IsDeleted && r.ReactionTypeNavigation.Code.ToLower() == "like");
+            dto.IsLiked = currentUserId > 0 && reviewEntity.ReviewProductReactions.Any(r => !r.IsDeleted && r.AccountId == currentUserId && r.ReactionTypeNavigation.Code.ToLower() == "like");
+        }
+
         return Result<PaginatedResponse<ReviewProductListDto>>.Success(
             new PaginatedResponse<ReviewProductListDto>(dtos, count, pageNumber, pageSize));
     }
@@ -95,6 +104,11 @@ public class ReviewService : IReviewService
             return Result<ReviewProductDto>.NotFound("Review", reviewId);
 
         var dto = _mapper.Map<ReviewProductDto>(review);
+        
+        var currentUserId = _currentUser.IsAuthenticated ? _currentUser.AccountId : 0;
+        dto.LikeCount = review.ReviewProductReactions.Count(r => !r.IsDeleted && r.ReactionTypeNavigation.Code.ToLower() == "like");
+        dto.IsLiked = currentUserId > 0 && review.ReviewProductReactions.Any(r => !r.IsDeleted && r.AccountId == currentUserId && r.ReactionTypeNavigation.Code.ToLower() == "like");
+        
         return Result<ReviewProductDto>.Success(dto);
     }
 
@@ -529,6 +543,27 @@ public class ReviewService : IReviewService
                 }, cancellationToken);
             }
 
+            if (dto.ModerationStatus == "Rejected")
+            {
+                var delivery = new Delivery
+                {
+                    AccountId = review.AccountId,
+                    RecipientType = "CUSTOMER",
+                    Channel = "WEB_BELL",
+                    NotificationType = "SYSTEM",
+                    Title = "Đánh giá của bạn không được duyệt",
+                    Message = string.IsNullOrWhiteSpace(dto.Reason)
+                        ? "Đánh giá sản phẩm của bạn không được duyệt do vi phạm quy chuẩn nội dung."
+                        : $"Đánh giá sản phẩm của bạn không được duyệt do vi phạm quy chuẩn nội dung: {dto.Reason}",
+                    Payload = System.Text.Json.JsonSerializer.Serialize(new { reviewId = review.ReviewId, reason = dto.Reason }),
+                    Status = "Unread",
+                    ActionTarget = "/profile/reviews",
+                    IdempotencyKey = $"moderation:review:{reviewId}:rejected",
+                    CreatedAt = now
+                };
+                _unitOfWork.Deliveries.Add(delivery);
+            }
+
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
@@ -647,7 +682,61 @@ public class ReviewService : IReviewService
         return Result<StaffReplyDto>.Success(_mapper.Map<StaffReplyDto>(reply));
     }
 
+    public async Task<Result<ReviewLikeResponseDto>> ToggleLikeAsync(int reviewId, CancellationToken cancellationToken = default)
+    {
+        var likeType = await _unitOfWork.Reviews.GetReactionTypeByCodeAsync("like", cancellationToken);
+        if (likeType == null)
+        {
+            return Result<ReviewLikeResponseDto>.Failure("REACTION_TYPE_NOT_FOUND", "Reaction type 'like' is not configured.");
+        }
 
+        var review = await _unitOfWork.Reviews.GetByIdPublicAsync(reviewId, cancellationToken);
+        if (review == null)
+        {
+            return Result<ReviewLikeResponseDto>.NotFound("Review", reviewId);
+        }
+
+        var accountId = _currentUser.AccountId;
+        var existing = await _unitOfWork.Reviews.GetReactionAsync(reviewId, accountId, cancellationToken);
+        var now = _timeProvider.UtcNow;
+        bool isLikedNow = false;
+
+        if (existing != null)
+        {
+            // Toggle IsDeleted
+            existing.IsDeleted = !existing.IsDeleted;
+            existing.UpdatedAt = now;
+            existing.ReactionTypeId = likeType.ReactionTypeId;
+            isLikedNow = !existing.IsDeleted;
+        }
+        else
+        {
+            var reaction = new ReviewProductReaction
+            {
+                ReviewProductId = reviewId,
+                AccountId = accountId,
+                ReactionTypeId = likeType.ReactionTypeId,
+                IsDeleted = false,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            await _unitOfWork.Reviews.AddReactionAsync(reaction, cancellationToken);
+            isLikedNow = true;
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        
+        var likeCount = await _unitOfWork.Reviews.GetLikeCountAsync(reviewId, cancellationToken);
+
+        _logger.LogInformation("User {UserId} toggled like on review {ReviewId}. New state: {IsLiked}, New count: {LikeCount}", accountId, reviewId, isLikedNow, likeCount);
+
+        return Result<ReviewLikeResponseDto>.Success(new ReviewLikeResponseDto
+        {
+            ReviewId = reviewId,
+            LikeCount = likeCount,
+            IsLiked = isLikedNow
+        });
+    }
 
     // --- Private Helpers ---
 

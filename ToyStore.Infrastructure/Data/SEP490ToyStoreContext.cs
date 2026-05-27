@@ -84,6 +84,12 @@ public partial class SEP490ToyStoreContext : DbContext
 
     public virtual DbSet<OrderRefundReason> OrderRefundReasons { get; set; }
 
+    public virtual DbSet<StatusRefund> StatusRefunds { get; set; }
+
+    public virtual DbSet<RefundDetail> RefundDetails { get; set; }
+
+    public virtual DbSet<RefundStatusHistory> RefundStatusHistories { get; set; }
+
     public virtual DbSet<OrderStatusHistory> OrderStatusHistories { get; set; }
 
     public virtual DbSet<OrderVoucher> OrderVouchers { get; set; }
@@ -1216,6 +1222,12 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.HasIndex(e => e.OrderId, "IX_OrderRefunds_Order");
 
+            entity.HasIndex(e => e.ShippingOrderCode, "IX_OrderRefunds_ShippingOrderCode")
+                .HasFilter("([ShippingOrderCode] IS NOT NULL)");
+
+            entity.HasIndex(e => e.RefundCode, "UQ_OrderRefunds_RefundCode")
+                .IsUnique();
+
             entity.Property(e => e.RefundId).HasColumnName("RefundID");
             entity.Property(e => e.ApprovedAmount).HasColumnType("decimal(12, 0)");
             entity.Property(e => e.CreatedAt)
@@ -1225,10 +1237,22 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.OrderId).HasColumnName("OrderID");
             entity.Property(e => e.ReasonDetails).HasMaxLength(500);
             entity.Property(e => e.RefundReasonId).HasColumnName("RefundReasonID");
-            entity.Property(e => e.RefundStatus)
-                .HasMaxLength(20)
-                .IsUnicode(false)
-                .HasDefaultValue("Requested");
+            entity.Property(e => e.RefundCode)
+                .HasMaxLength(30)
+                .IsUnicode(false);
+            entity.Property(e => e.ShippingOrderCode)
+                .HasMaxLength(50)
+                .IsUnicode(false);
+            entity.Property(e => e.ShippingFee).HasColumnType("decimal(10, 0)");
+            entity.Property(e => e.SubTotal).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.TotalAmount).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.AdminNote).HasMaxLength(1000);
+            entity.Property(e => e.ApprovedAt).HasPrecision(0);
+            entity.Property(e => e.RejectedAt).HasPrecision(0);
+            entity.Property(e => e.CompletedAt).HasPrecision(0);
+            entity.Property(e => e.CancelledAt).HasPrecision(0);
+            entity.Property(e => e.IsDeleted).HasDefaultValue(false);
+            entity.Property(e => e.StatusId).HasColumnName("StatusID");
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
             entity.Property(e => e.WalletTransactionId).HasColumnName("WalletTransactionID");
 
@@ -1257,6 +1281,11 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.HasOne(d => d.WalletTransaction).WithMany(p => p.OrderRefunds)
                 .HasForeignKey(d => d.WalletTransactionId)
                 .HasConstraintName("FK_OrderRefunds_WalletTransactions");
+
+            entity.HasOne(d => d.Status).WithMany(p => p.OrderRefunds)
+                .HasForeignKey(d => d.StatusId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_OrderRefunds_StatusRefunds");
         });
 
         modelBuilder.Entity<RefundImage>(entity =>
@@ -1281,6 +1310,82 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasForeignKey(d => d.RefundId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_RefundImages_OrderRefunds");
+        });
+
+        modelBuilder.Entity<StatusRefund>(entity =>
+        {
+            entity.ToTable("StatusRefunds");
+
+            entity.HasKey(e => e.StatusId);
+
+            entity.Property(e => e.StatusId)
+                .HasColumnName("StatusID")
+                .ValueGeneratedOnAdd();
+            entity.Property(e => e.StatusName)
+                .HasMaxLength(50)
+                .IsUnicode(false);
+            entity.Property(e => e.Description).HasMaxLength(255);
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.UpdatedAt).HasPrecision(0);
+        });
+
+        modelBuilder.Entity<RefundDetail>(entity =>
+        {
+            entity.ToTable("RefundDetails");
+
+            entity.HasKey(e => e.RefundDetailId);
+
+            entity.Property(e => e.RefundDetailId).HasColumnName("RefundDetailID");
+            entity.Property(e => e.RefundId).HasColumnName("RefundID");
+            entity.Property(e => e.ProductId).HasColumnName("ProductID");
+            entity.Property(e => e.Quantity);
+            entity.Property(e => e.UnitPrice).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.RefundAmount).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
+
+            entity.HasOne(d => d.Refund).WithMany(p => p.RefundDetails)
+                .HasForeignKey(d => d.RefundId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_RefundDetails_OrderRefunds");
+
+            entity.HasOne(d => d.Product).WithMany(p => p.RefundDetails)
+                .HasForeignKey(d => d.ProductId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_RefundDetails_Products");
+        });
+
+        modelBuilder.Entity<RefundStatusHistory>(entity =>
+        {
+            entity.ToTable("RefundStatusHistory");
+
+            entity.HasKey(e => e.HistoryId);
+
+            entity.Property(e => e.HistoryId).HasColumnName("HistoryID");
+            entity.Property(e => e.RefundId).HasColumnName("RefundID");
+            entity.Property(e => e.StatusId).HasColumnName("StatusID");
+            entity.Property(e => e.ChangedBy).HasColumnName("ChangedBy");
+            entity.Property(e => e.Note).HasMaxLength(500);
+            entity.Property(e => e.CreatedAt)
+                .HasPrecision(0)
+                .HasDefaultValueSql("(getdate())");
+
+            entity.HasOne(d => d.Refund).WithMany(p => p.RefundStatusHistories)
+                .HasForeignKey(d => d.RefundId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_RefundStatusHistory_OrderRefunds");
+
+            entity.HasOne(d => d.Status).WithMany(p => p.RefundStatusHistories)
+                .HasForeignKey(d => d.StatusId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_RefundStatusHistory_StatusRefunds");
+
+            entity.HasOne(d => d.ChangedByNavigation).WithMany(p => p.RefundStatusHistories)
+                .HasForeignKey(d => d.ChangedBy)
+                .HasConstraintName("FK_RefundStatusHistory_ChangedBy");
         });
 
         modelBuilder.Entity<OrderRefundReason>(entity =>

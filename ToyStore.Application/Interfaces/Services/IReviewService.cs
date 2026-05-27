@@ -42,5 +42,5 @@ public interface IReviewService
     Task<Result<StaffReplyDto>> UpdateReplyAsync(
         int reviewId, int replyId, UpdateStaffReplyDto dto, CancellationToken cancellationToken = default);
 
-
+    Task<Result<ReviewLikeResponseDto>> ToggleLikeAsync(int reviewId, CancellationToken cancellationToken = default);
 }

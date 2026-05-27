@@ -41,6 +41,11 @@ services:
       - ASPNETCORE_URLS=http://+:8080
       - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=SEP490_ToyStore;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True;
       - Redis__ConnectionString=redis:6379
+      - MongoDb__ConnectionString=${MONGODB_CONNECTION_STRING}
+      - MongoDb__DatabaseName=toystore_recommendation
+      - MongoDb__SessionEventsCollection=session_events
+      - MongoDb__UserProfilesCollection=user_profiles
+      - MongoDb__RecommendationCacheCollection=recommendation_cache
     ports:
       - "5216:8080"
     depends_on:
@@ -61,6 +66,11 @@ services:
       - DOTNET_ENVIRONMENT=Production
       - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=SEP490_ToyStore;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True;
       - Redis__ConnectionString=redis:6379
+      - MongoDb__ConnectionString=${MONGODB_CONNECTION_STRING}
+      - MongoDb__DatabaseName=toystore_recommendation
+      - MongoDb__SessionEventsCollection=session_events
+      - MongoDb__UserProfilesCollection=user_profiles
+      - MongoDb__RecommendationCacheCollection=recommendation_cache
     depends_on:
       sqlserver:
         condition: service_healthy

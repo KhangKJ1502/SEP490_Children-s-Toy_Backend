@@ -20,6 +20,10 @@ public class ReviewProductListDto
     
     public DateTime? UpdatedAt { get; set; }
     
+    public int LikeCount { get; set; }
+    
+    public bool IsLiked { get; set; }
+    
     public List<ReviewImageDto> Images { get; set; } = new();
     
     public List<StaffReplyDto> Replies { get; set; } = new();
