@@ -251,7 +251,7 @@ public class AuthService : IAuthService
 
         if (account == null || account.IsDeleted)
         {
-            return Result.Success();
+            return Result.Failure("ACCOUNT_NOT_FOUND", "No account was found with this email address.");
         }
 
         if (!account.IsActive)
