@@ -7,6 +7,9 @@ namespace ToyStore.Infrastructure.Repositories;
 
 public class AccountRepository : IAccountRepository
 {
+    private const byte StaffRoleId = 3;
+    private const byte MerchandiseRoleId = 4;
+
     private readonly SEP490ToyStoreContext _context;
 
     public AccountRepository(SEP490ToyStoreContext context)
@@ -26,7 +29,7 @@ public class AccountRepository : IAccountRepository
         IQueryable<Account> query = _context.Accounts
             .AsNoTracking()
             .Include(x => x.Role)
-            .Where(x => !x.IsDeleted && x.Role.RoleName != "Admin");
+            .Where(x => !x.IsDeleted && (x.RoleId == StaffRoleId || x.RoleId == MerchandiseRoleId));
 
         if (roleId.HasValue)
         {
@@ -73,7 +76,7 @@ public class AccountRepository : IAccountRepository
     {
         IQueryable<Account> query = _context.Accounts
             .AsNoTracking()
-            .Where(x => !x.IsDeleted && x.Role.RoleName != "Admin");
+            .Where(x => !x.IsDeleted && (x.RoleId == StaffRoleId || x.RoleId == MerchandiseRoleId));
 
         if (roleId.HasValue)
         {

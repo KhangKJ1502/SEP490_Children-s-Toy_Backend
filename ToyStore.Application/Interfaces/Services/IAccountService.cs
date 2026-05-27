@@ -42,4 +42,12 @@ public interface IAccountService
         int accountId,
         UpdateAccountStatusDto dto,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Admin cập nhật mật khẩu cho tài khoản Staff/Merchandise mà không cần mật khẩu cũ.
+    /// </summary>
+    Task<Result> UpdateAccountPasswordAsync(
+        int accountId,
+        UpdateAccountPasswordDto dto,
+        CancellationToken cancellationToken = default);
 }
