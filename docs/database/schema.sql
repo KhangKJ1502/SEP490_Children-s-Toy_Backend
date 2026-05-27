@@ -1990,7 +1990,6 @@ CREATE TABLE [OrderRefunds] (
     [RefundCode]          VARCHAR(30) NOT NULL UNIQUE,
     [ShippingOrderCode]   VARCHAR(50) NULL,
     [ReasonDetails]       NVARCHAR(500) NULL,
-    
     [ShippingFee]         DECIMAL(10,0) NOT NULL DEFAULT 0 CHECK ([ShippingFee] >= 0),
     [SubTotal]            DECIMAL(12,0) NULL CHECK ([SubTotal] >= 0),
     [TotalAmount]         DECIMAL(12,0) NULL CHECK ([TotalAmount] >= 0),
@@ -3037,4 +3036,4 @@ GO
 CREATE NONCLUSTERED INDEX [IX_WalletPinAttempts_Wallet]
 ON [WalletPinAttempts]([WalletID], [CreatedAt] DESC);
 GO
-
+
