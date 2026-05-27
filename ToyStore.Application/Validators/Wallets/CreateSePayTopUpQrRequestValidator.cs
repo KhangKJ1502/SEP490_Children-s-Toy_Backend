@@ -7,7 +7,7 @@ public class CreateSePayTopUpQrRequestValidator : AbstractValidator<CreateSePayT
 {
     private static readonly decimal[] AllowedAmounts =
     [
-        2000m,
+        10000m,
         20000m,
         50000m,
         100000m,
