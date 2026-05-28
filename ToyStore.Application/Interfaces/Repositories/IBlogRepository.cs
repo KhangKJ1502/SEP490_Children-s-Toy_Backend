@@ -20,6 +20,7 @@ public interface IBlogRepository
         bool featuredOnly = false,
         int? createdByAccountId = null,
         bool onlyPublished = false,
+        int? adminSelfVisibleAccountId = null,
         IReadOnlyCollection<string>? allowedStatuses = null,
         CancellationToken cancellationToken = default);
 
@@ -32,6 +33,7 @@ public interface IBlogRepository
         bool featuredOnly = false,
         int? createdByAccountId = null,
         bool onlyPublished = false,
+        int? adminSelfVisibleAccountId = null,
         IReadOnlyCollection<string>? allowedStatuses = null,
         CancellationToken cancellationToken = default);
 

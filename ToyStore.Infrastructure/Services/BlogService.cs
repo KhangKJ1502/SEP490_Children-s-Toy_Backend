@@ -38,13 +38,6 @@ public class BlogService : IBlogService
     {
         PendingStatus
     };
-    private static readonly HashSet<string> AdminVisibleStatuses = new(StringComparer.OrdinalIgnoreCase)
-    {
-        PendingStatus,
-        PublishedStatus,
-        ScheduledStatus
-    };
-
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUserService _currentUserService;
     private readonly IDomainEventPublisher _eventPublisher;
@@ -87,12 +80,9 @@ public class BlogService : IBlogService
         bool featuredOnly = false,
         CancellationToken cancellationToken = default)
     {
-        var normalizedStatus = status?.Trim();
-        if (!string.IsNullOrWhiteSpace(normalizedStatus)
-            && !AdminVisibleStatuses.Contains(normalizedStatus))
+        if (_currentUserService.AccountId <= 0)
         {
-            return Result<PaginatedResponse<BlogListDto>>.Success(
-                new PaginatedResponse<BlogListDto>(new List<BlogListDto>(), 0, pageNumber, pageSize));
+            return Result<PaginatedResponse<BlogListDto>>.Unauthorized();
         }
 
         return await GetPagedBlogsAsync(
@@ -105,8 +95,9 @@ public class BlogService : IBlogService
             featuredOnly,
             null,
             false,
+            _currentUserService.AccountId,
             cancellationToken,
-            AdminVisibleStatuses);
+            null);
     }
 
     public async Task<Result<PaginatedResponse<BlogListDto>>> GetBlogsForStaffAsync(
@@ -124,7 +115,7 @@ public class BlogService : IBlogService
             return Result<PaginatedResponse<BlogListDto>>.Unauthorized();
         }
 
-        return await GetPagedBlogsAsync(pageNumber, pageSize, sortBy, sortDesc, searchTerm, status, featuredOnly, _currentUserService.AccountId, false, cancellationToken);
+        return await GetPagedBlogsAsync(pageNumber, pageSize, sortBy, sortDesc, searchTerm, status, featuredOnly, _currentUserService.AccountId, false, null, cancellationToken);
     }
 
     public async Task<Result<PaginatedResponse<BlogListDto>>> SearchPublishedBlogsAsync(
@@ -135,7 +126,7 @@ public class BlogService : IBlogService
         string? searchTerm = null,
         CancellationToken cancellationToken = default)
     {
-        return await GetPagedBlogsAsync(pageNumber, pageSize, sortBy, sortDesc, searchTerm, "Published", false, null, true, cancellationToken);
+        return await GetPagedBlogsAsync(pageNumber, pageSize, sortBy, sortDesc, searchTerm, "Published", false, null, true, null, cancellationToken);
     }
 
     public async Task<Result<List<BlogCategoryDto>>> GetBlogCategoriesAsync(CancellationToken cancellationToken = default)
@@ -1262,6 +1253,7 @@ public class BlogService : IBlogService
         bool featuredOnly,
         int? createdByAccountId,
         bool onlyPublished,
+        int? adminSelfVisibleAccountId,
         CancellationToken cancellationToken,
         IReadOnlyCollection<string>? allowedStatuses = null)
     {
@@ -1285,10 +1277,11 @@ public class BlogService : IBlogService
             featuredOnly,
             createdByAccountId,
             onlyPublished,
+            adminSelfVisibleAccountId,
             allowedStatuses,
             cancellationToken);
 
-        var totalCount = await _unitOfWork.Blogs.CountAsync(searchTerm, status, featuredOnly, createdByAccountId, onlyPublished, allowedStatuses, cancellationToken);
+        var totalCount = await _unitOfWork.Blogs.CountAsync(searchTerm, status, featuredOnly, createdByAccountId, onlyPublished, adminSelfVisibleAccountId, allowedStatuses, cancellationToken);
         var mapped = _mapper.Map<List<BlogListDto>>(items);
         return Result<PaginatedResponse<BlogListDto>>.Success(new PaginatedResponse<BlogListDto>(mapped, totalCount, pageNumber, pageSize));
     }
@@ -1325,6 +1318,13 @@ public class BlogService : IBlogService
 
     private bool CanViewBlog(BlogPost blog)
     {
+        if (string.Equals(blog.Status, DraftStatus, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(blog.Status, RejectedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return _currentUserService.AccountId > 0
+                && blog.AccountId == _currentUserService.AccountId;
+        }
+
         if (string.Equals(blog.Status, HiddenStatus, StringComparison.OrdinalIgnoreCase))
         {
             if (_currentUserService.AccountId <= 0)
