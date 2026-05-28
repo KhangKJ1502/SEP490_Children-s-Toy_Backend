@@ -4,10 +4,10 @@ namespace ToyStore.Application.Common.Helpers;
 
 public static class PriceHelper
 {
-    public static decimal ResolveCurrentPrice(Product product, DateTime now)
+    public static decimal ResolveCurrentPrice(Product product, DateTime now, int requestedQuantity = 1)
     {
         // 1. Flash Sale
-        var activeFlashSale = GetActiveFlashSaleSlot(product, now);
+        var activeFlashSale = GetActiveFlashSaleSlot(product, now, requestedQuantity);
         if (activeFlashSale != null)
         {
             return activeFlashSale.SalePrice;
@@ -39,7 +39,7 @@ public static class PriceHelper
     }
 
 
-    public static PromotionProductSlot? GetActiveFlashSaleSlot(Product product, DateTime now)
+    public static PromotionProductSlot? GetActiveFlashSaleSlot(Product product, DateTime now, int requestedQuantity = 1)
     {
         if (product.PromotionProductSlots == null) return null;
 
@@ -52,7 +52,7 @@ public static class PriceHelper
                          && !pps.TimeSlot.Promotion.IsDeleted
                          && (string.Equals(pps.TimeSlot.Promotion.Status, "Active", StringComparison.OrdinalIgnoreCase)
                              || string.Equals(pps.TimeSlot.Promotion.Status, "Scheduled", StringComparison.OrdinalIgnoreCase))
-                         && (pps.SoldQuantity + pps.ReservedQuantity < pps.SaleQuantity))
+                         && (pps.SoldQuantity + pps.ReservedQuantity + requestedQuantity <= pps.SaleQuantity))
             .OrderByDescending(pps => pps.TimeSlot.Promotion.Priority)
             .ThenBy(pps => pps.SalePrice)
             .FirstOrDefault();

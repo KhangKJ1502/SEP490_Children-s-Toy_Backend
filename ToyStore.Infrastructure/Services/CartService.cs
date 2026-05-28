@@ -78,7 +78,10 @@ public class CartService : ICartService
         var existingItem = await _unitOfWork.Carts.GetItemByProductAsync(cart.CartId, dto.ProductId, cancellationToken);
         var cartWithItems = await _unitOfWork.Carts.GetByAccountIdWithItemsAsync(accountId, cancellationToken);
         var now = _timeProvider.UtcNow;
-        var currentPrice = PriceHelper.ResolveCurrentPrice(product, now);
+        int checkQty = existingItem != null && existingItem.RemovedAt == null 
+            ? (int)(existingItem.Quantity + dto.Quantity) 
+            : (int)dto.Quantity;
+        var currentPrice = PriceHelper.ResolveCurrentPrice(product, now, checkQty);
         var currentSubTotal = CalculateCartSubTotal(cartWithItems);
 
         if (existingItem != null)
@@ -197,7 +200,7 @@ public class CartService : ICartService
 
         var cartWithItems = await _unitOfWork.Carts.GetByAccountIdWithItemsAsync(accountId, cancellationToken);
         var now = _timeProvider.UtcNow;
-        var nextUnitPrice = PriceHelper.ResolveCurrentPrice(item.Product, now);
+        var nextUnitPrice = PriceHelper.ResolveCurrentPrice(item.Product, now, (int)dto.Quantity);
         var currentSubTotal = CalculateCartSubTotal(cartWithItems);
         var previousLineTotal = item.CurrentPrice * item.Quantity;
         var projectedSubTotal = currentSubTotal - previousLineTotal + (nextUnitPrice * dto.Quantity);
@@ -420,7 +423,7 @@ public class CartService : ICartService
 
             var latestPrice = isReadOnlyStatus
                 ? product.Price
-                : PriceHelper.ResolveCurrentPrice(product, now);
+                : PriceHelper.ResolveCurrentPrice(product, now, (int)item.Quantity);
             if (item.CurrentPrice != latestPrice)
             {
                 item.CurrentPrice = latestPrice;
@@ -443,6 +446,21 @@ public class CartService : ICartService
             .OrderByDescending(x => x.AddedAt)
             .ThenByDescending(x => x.CartItemId)
             .ToList();
+
+        foreach (var itemDto in dto.Items)
+        {
+            var cartItem = cart.CartItems.First(ci => ci.CartItemId == itemDto.CartItemId);
+            var product = cartItem.Product;
+            var activeFlashSale = PriceHelper.GetActiveFlashSaleSlot(product, now, 1);
+            if (activeFlashSale != null)
+            {
+                int remaining = activeFlashSale.SaleQuantity - (activeFlashSale.SoldQuantity + activeFlashSale.ReservedQuantity);
+                if (itemDto.Quantity > remaining)
+                {
+                    itemDto.WarningMessage = $"The requested quantity ({itemDto.Quantity}) exceeds the remaining Flash Sale limit of {remaining} items. Standard pricing has been applied to all items.";
+                }
+            }
+        }
         dto.TotalItem = dto.Items.Count;
         dto.TotalQuantity = dto.Items.Sum(x => x.Quantity);
         dto.SubTotal = dto.Items.Sum(x => x.LineTotal);
