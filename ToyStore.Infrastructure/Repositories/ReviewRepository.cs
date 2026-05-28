@@ -108,6 +108,8 @@ public class ReviewRepository : IReviewRepository
     public async Task<ReviewProduct?> GetByIdForUpdateAsync(int reviewId, CancellationToken cancellationToken = default)
     {
         return await _context.ReviewProducts
+            .Include(r => r.Product)
+            .Include(r => r.Order)
             .Include(r => r.ReviewProductImages.Where(i => !i.IsDeleted))
             .FirstOrDefaultAsync(r => r.ReviewId == reviewId && !r.IsDeleted, cancellationToken);
     }

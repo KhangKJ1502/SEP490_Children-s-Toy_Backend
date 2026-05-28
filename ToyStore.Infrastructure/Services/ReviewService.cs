@@ -241,17 +241,20 @@ public class ReviewService : IReviewService
         if (review.IsEdited)
             return Result<ReviewProductDto>.BusinessError("You have already edited this review once.");
 
-        // Kiểm tra thời hạn 3 ngày từ lúc Approved
-        var approvedLog = review.ReviewModerationLogs
-            .Where(l => l.Action == "Approved" && l.ImageId == null)
+        // Kiểm tra thời hạn 3 ngày từ lúc Approved hoặc Rejected
+        var decisionLog = review.ReviewModerationLogs
+            .Where(l => l.ImageId == null && 
+                       (l.Action == "Approved" || 
+                        l.Action == "Rejected" || 
+                        (l.Action == "Overridden" && (l.ModerationResult == "Approved" || l.ModerationResult == "Rejected"))))
             .OrderByDescending(l => l.CreatedAt)
             .FirstOrDefault();
 
-        if (approvedLog == null)
-            return Result<ReviewProductDto>.BusinessError("Review is not in an approved state to edit.");
+        if (decisionLog == null)
+            return Result<ReviewProductDto>.BusinessError("Review is not in a moderated (approved or rejected) state to edit.");
 
-        if ((_timeProvider.UtcNow - approvedLog.CreatedAt).TotalDays > 3)
-            return Result<ReviewProductDto>.BusinessError("You can only edit the review within 3 days after it is approved.");
+        if ((_timeProvider.UtcNow - decisionLog.CreatedAt).TotalDays > 3)
+            return Result<ReviewProductDto>.BusinessError("You can only edit the review within 3 days after it is approved or rejected.");
 
         // Lấy entity track để update
         var trackReview = await _unitOfWork.Reviews.GetByIdForUpdateAsync(reviewId, cancellationToken);
@@ -409,7 +412,7 @@ public class ReviewService : IReviewService
             CreatedAt = r.CreatedAt,
             // Calculate ModeratedAt from logs if needed, or we just map it from something.
             // For now, if it's approved, we can assume it was moderated recently, but let's just use UpdatedAt if it's not Pending
-            ModeratedAt = r.ModerationStatus != "Pending" ? (r.UpdatedAt ?? r.CreatedAt) : null,
+            ModeratedAt = (r.ModerationStatus == "Approved" || r.ModerationStatus == "Rejected") ? (r.UpdatedAt ?? r.CreatedAt) : null,
             Images = r.ReviewProductImages.Select(img => new ReviewImageDto
             {
                 ReviewProductImageId = img.ReviewProductImageId,
@@ -545,16 +548,19 @@ public class ReviewService : IReviewService
 
             if (dto.ModerationStatus == "Rejected")
             {
+                var productName = review.Product?.ProductName ?? "product";
+                var orderSuffix = review.Order != null ? $" from order #{review.Order.OrderCode}" : "";
+
                 var delivery = new Delivery
                 {
                     AccountId = review.AccountId,
                     RecipientType = "CUSTOMER",
                     Channel = "WEB_BELL",
                     NotificationType = "SYSTEM",
-                    Title = "Đánh giá của bạn không được duyệt",
+                    Title = "Your review was not approved",
                     Message = string.IsNullOrWhiteSpace(dto.Reason)
-                        ? "Đánh giá sản phẩm của bạn không được duyệt do vi phạm quy chuẩn nội dung."
-                        : $"Đánh giá sản phẩm của bạn không được duyệt do vi phạm quy chuẩn nội dung: {dto.Reason}",
+                        ? $"Your review for product '{productName}'{orderSuffix} has not been approved due to content guidelines violation."
+                        : $"Your review for product '{productName}'{orderSuffix} has not been approved due to content guidelines violation: {dto.Reason}",
                     Payload = System.Text.Json.JsonSerializer.Serialize(new { reviewId = review.ReviewId, reason = dto.Reason }),
                     Status = "Unread",
                     ActionTarget = "/profile/reviews",
