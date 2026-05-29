@@ -546,13 +546,29 @@ public class AdminOrderService : IAdminOrderService
         if (order is null)
             return Result<CancelOrderResponseDto>.NotFound("Order", orderId);
 
-        if (!OrderStatuses.CancellableStatuses.Contains(order.Status.StatusName))
+        bool isTerminal = order.Status.StatusName is OrderStatuses.Cancelled or OrderStatuses.Refunded or OrderStatuses.Completed;
+        if (isTerminal)
+            return Result<CancelOrderResponseDto>.UnprocessableEntity(
+                $"Order is in terminal status '{order.Status.StatusName}'; cancellation is not allowed.");
+
+        if (!IsAdmin() && !OrderStatuses.CancellableStatuses.Contains(order.Status.StatusName))
             return Result<CancelOrderResponseDto>.UnprocessableEntity(
                 $"Order is in status '{order.Status.StatusName}'; cancellation is only allowed for Pending or Confirmed orders.");
 
         if (!statusMap.TryGetValue(OrderStatuses.Cancelled, out var cancelledId))
             return Result<CancelOrderResponseDto>.Failure("CONFIGURATION_ERROR",
                 "Status 'Cancelled' not found in database.");
+
+        if (!string.IsNullOrEmpty(order.ShippingOrderCode))
+        {
+            var ghnCancel = await _ghnClient.CancelOrderAsync(order.ShippingOrderCode, cancellationToken);
+            if (!ghnCancel.IsSuccess)
+            {
+                _logger.LogWarning(
+                    "GHN cancel failed for {GhnCode} (order {OrderId}): {Error}",
+                    order.ShippingOrderCode, orderId, ghnCancel.ErrorMessage);
+            }
+        }
 
         var result = await _orderLifecycle.CancelOrderInternalAsync(
             order,

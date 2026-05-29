@@ -5,6 +5,7 @@ using ToyStore.Application.Constants;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
+using ToyStore.Domain.Enums;
 using ToyStore.Domain.Entities;
 
 namespace ToyStore.Infrastructure.Services;
@@ -15,17 +16,23 @@ public class OrderLifecycleService : IOrderLifecycleService
     private readonly ILogger<OrderLifecycleService> _logger;
     private readonly ITimeProvider _timeProvider;
     private readonly IShiftAssignmentService _shiftAssignmentService;
+    private readonly IWalletRefundCreditor _walletRefundCreditor;
+
+    private static readonly HashSet<string> PrepaidPaymentMethods =
+        new(StringComparer.OrdinalIgnoreCase) { "SE_PAY", "WALLET", "BANK_TRANSFER" };
 
     public OrderLifecycleService(
         IUnitOfWork unitOfWork,
         ILogger<OrderLifecycleService> logger,
         ITimeProvider timeProvider,
-        IShiftAssignmentService shiftAssignmentService)
+        IShiftAssignmentService shiftAssignmentService,
+        IWalletRefundCreditor walletRefundCreditor)
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
         _timeProvider = timeProvider;
         _shiftAssignmentService = shiftAssignmentService;
+        _walletRefundCreditor = walletRefundCreditor;
     }
 
     public async Task<Result> CancelOrderInternalAsync(Order order, string reason, int cancelledByAccountId, bool restoreCart = false, bool restoreVoucher = true, CancellationToken cancellationToken = default)
@@ -85,16 +92,36 @@ public class OrderLifecycleService : IOrderLifecycleService
                 await _unitOfWork.Orders.RestoreVoucherAsync(order.OrderId, cancellationToken);
             }
 
-            // 3. Wallet refund / SE_PAY payment status sync
-            if (order.PaymentMethod == "WALLET" && order.PaymentStatus == "PAID")
+            // 3. Prepaid PAID: auto wallet only before Shipped; one credit per order lifetime.
+            if (string.Equals(order.PaymentStatus, PaymentStatuses.Paid, StringComparison.OrdinalIgnoreCase)
+                && PrepaidPaymentMethods.Contains(order.PaymentMethod))
             {
-                await _unitOfWork.Orders.RefundWalletAsync(order.AccountId, order.TotalAmount, order.OrderCode, cancellationToken);
-                order.PaymentStatus = "REFUNDED";
+                if (OrderStatuses.PrepaidCancelRequiresManualRefund(order.StatusId))
+                {
+                    _logger.LogInformation(
+                        "Cancel {OrderCode}: prepaid PAID at status {StatusId} — no auto wallet; use refund management.",
+                        order.OrderCode, order.StatusId);
+                }
+                else if (await _unitOfWork.Orders.HasCompletedRefundWalletCreditForOrderAsync(order.OrderId, cancellationToken)
+                         || await _unitOfWork.Orders.ExistsWalletTransactionByIdempotencyKeyAsync(
+                             WalletRefundKeys.ForOrder(order.OrderCode), cancellationToken))
+                {
+                    _logger.LogInformation(
+                        "Cancel {OrderCode}: refund wallet credit already exists — skipping duplicate.",
+                        order.OrderCode);
+                    order.PaymentStatus = PaymentStatuses.Refunded;
+                }
+                else
+                {
+                    await _walletRefundCreditor.CreditRefundAsync(
+                        order.AccountId, order.TotalAmount, order.OrderCode, order.OrderId, cancellationToken);
+                    order.PaymentStatus = PaymentStatuses.Refunded;
+                }
             }
             else if (order.PaymentMethod == "SE_PAY" && order.PaymentStatus == "PENDING")
             {
                 // System auto-cancel (timeout job) → EXPIRED; user/admin cancel → CANCELLED
-                order.PaymentStatus = cancelledByAccountId == 0 ? "EXPIRED" : "CANCELLED";
+                order.PaymentStatus = cancelledByAccountId == 0 ? PaymentStatuses.Expired : PaymentStatuses.Cancelled;
             }
 
             // 4. Restore cart items only when explicitly requested (QR payment cancel flow).

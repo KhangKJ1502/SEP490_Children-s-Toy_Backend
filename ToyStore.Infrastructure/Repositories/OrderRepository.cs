@@ -5,6 +5,7 @@ using ToyStore.Application.Services;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
 using ToyStore.Domain.Entities;
+using ToyStore.Domain.Enums;
 using ToyStore.Infrastructure.Data;
 
 namespace ToyStore.Infrastructure.Repositories;
@@ -367,6 +368,24 @@ public class OrderRepository : IOrderRepository
         return await _context.WalletTransactions.AnyAsync(wt => wt.IdempotencyKey == idempotencyKey, cancellationToken);
     }
 
+    public async Task<long?> GetWalletTransactionIdByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken = default)
+    {
+        return await _context.WalletTransactions
+            .Where(wt => wt.IdempotencyKey == idempotencyKey)
+            .Select(wt => (long?)wt.WalletTransactionId)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<bool> HasCompletedRefundWalletCreditForOrderAsync(int orderId, CancellationToken cancellationToken = default)
+    {
+        return await _context.WalletTransactions.AnyAsync(
+            wt => wt.RelatedOrderId == orderId
+                  && wt.TxnType == WalletTxnTypes.Refund
+                  && wt.Direction == WalletTxnDirections.Credit
+                  && wt.Status == "Completed",
+            cancellationToken);
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private static readonly string[] AdminGhnReturnStatuses =
@@ -460,9 +479,13 @@ public class OrderRepository : IOrderRepository
         if (includesDeliveringGroup)
         {
             return query.Where(o =>
-                expandedIds.Contains(o.StatusId)
+                (expandedIds.Contains(o.StatusId)
                 || o.ShippingProviderTransactions.Any(t =>
-                    t.Status != null && AdminGhnReturnStatuses.Contains(t.Status)));
+                    t.Status != null && AdminGhnReturnStatuses.Contains(t.Status)))
+                && o.Status.StatusName != OrderStatuses.Cancelled
+                && o.Status.StatusName != OrderStatuses.Refunded
+                && o.Status.StatusName != OrderStatuses.Completed
+                && o.Status.StatusName != OrderStatuses.Delivered);
         }
 
         return query.Where(o => ids.Contains(o.StatusId));
@@ -516,27 +539,36 @@ public class OrderRepository : IOrderRepository
                 };
 
                 query = query.Where(o =>
-                    statusNames.Contains(o.Status.StatusName)
+                    (statusNames.Contains(o.Status.StatusName)
                     || o.ShippingProviderTransactions.Any(t =>
-                        t.Status != null && ghnReturnStatuses.Contains(t.Status.ToLower())));
+                        t.Status != null && ghnReturnStatuses.Contains(t.Status.ToLower())))
+                    && o.Status.StatusName != OrderStatuses.Cancelled
+                    && o.Status.StatusName != OrderStatuses.Refunded
+                    && o.Status.StatusName != OrderStatuses.Completed
+                    && o.Status.StatusName != OrderStatuses.Delivered);
             }
             else
             {
                 query = query.Where(o => statusNames.Contains(o.Status.StatusName));
             }
 
-            // Nếu đang xem tab Bị hủy, chỉ hiện SHIP_COD (ẩn rác SE_PAY)
+            // Nếu đang xem tab Bị hủy, chỉ hiện các đơn thực sự (COD, WALLET, paid/refunded SE_PAY) và ẩn rác SE_PAY chưa thanh toán
             if (statusNames.Contains(OrderStatuses.Cancelled))
             {
                 query = query.Where(o => o.Status.StatusName != OrderStatuses.Cancelled
-                                      || o.PaymentMethod == "SHIP_COD");
+                                      || o.PaymentMethod == "SHIP_COD"
+                                      || o.PaymentMethod == "WALLET"
+                                      || (o.PaymentMethod == "SE_PAY" && (o.PaymentStatus == "PAID" || o.PaymentStatus == "REFUNDED")));
             }
         }
         else
         {
-            // Mặc định ẩn các đơn SE_PAY bị hủy hoặc chưa thanh toán (rác). Chỉ hiện COD bị hủy.
-            query = query.Where(o => !(o.Status.StatusName == OrderStatuses.Cancelled && o.PaymentMethod != "SHIP_COD")
-                                  && (o.PaymentMethod != "SE_PAY" || o.PaymentStatus == "PAID"));
+            // Mặc định ẩn các đơn SE_PAY chưa thanh toán bị hủy (rác). Hiện các đơn thực sự (COD, WALLET, paid/refunded SE_PAY)
+            query = query.Where(o => !(o.Status.StatusName == OrderStatuses.Cancelled 
+                                      && o.PaymentMethod == "SE_PAY" 
+                                      && o.PaymentStatus != "PAID" 
+                                      && o.PaymentStatus != "REFUNDED")
+                                  && (o.PaymentMethod != "SE_PAY" || o.PaymentStatus == "PAID" || o.PaymentStatus == "REFUNDED"));
         }
 
         if (!string.IsNullOrWhiteSpace(keyword))

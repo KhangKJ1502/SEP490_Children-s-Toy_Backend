@@ -13,6 +13,7 @@ using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
 using ToyStore.Domain.Entities;
 using ToyStore.Domain.Enums;
+using ToyStore.Application.Services;
 using ToyStore.Infrastructure.Mappers;
 
 namespace ToyStore.Infrastructure.Services;
@@ -28,6 +29,7 @@ public class GhnWebhookService : IGhnWebhookService
     private readonly IOrderLifecycleService _orderLifecycle;
     private readonly IShippingReturnFlowService _returnFlow;
     private readonly IShiftAssignmentService _shiftAssignmentService;
+    private readonly IShippingStatusMapper _statusMapper;
 
     public GhnWebhookService(
         IUnitOfWork unitOfWork,
@@ -36,7 +38,8 @@ public class GhnWebhookService : IGhnWebhookService
         ITimeProvider timeProvider,
         IOrderLifecycleService orderLifecycle,
         IShippingReturnFlowService returnFlow,
-        IShiftAssignmentService shiftAssignmentService)
+        IShiftAssignmentService shiftAssignmentService,
+        IShippingStatusMapper statusMapper)
     {
         _unitOfWork = unitOfWork;
         _eventPublisher = eventPublisher;
@@ -45,6 +48,7 @@ public class GhnWebhookService : IGhnWebhookService
         _orderLifecycle = orderLifecycle;
         _returnFlow = returnFlow;
         _shiftAssignmentService = shiftAssignmentService;
+        _statusMapper = statusMapper;
     }
 
     public async Task ProcessAsync(GhnWebhookPayload payload, CancellationToken cancellationToken = default)
@@ -137,7 +141,7 @@ public class GhnWebhookService : IGhnWebhookService
             }
 
             // B. Resolve return flow or normal delivery action
-            var action = ResolveWebhookAction(statusLower);
+            var action = _statusMapper.ResolveWebhookAction(status);
 
             if (action == ShippingWebhookAction.UpdateOrderStatus)
             {
@@ -161,7 +165,7 @@ public class GhnWebhookService : IGhnWebhookService
                                           tx.Order.StatusId == (byte)OrderStatus.Refunded || 
                                           tx.Order.StatusId == (byte)OrderStatus.ReturnCompleted;
 
-                        if (!isTerminal && targetStatusId > tx.Order.StatusId)
+                        if (!isTerminal && OrderWebhookTransitionValidator.CanApplyWebhookStatus(tx.Order.StatusId, targetStatusId))
                         {
                             tx.Order.StatusId = targetStatusId;
                             tx.Order.UpdatedAt = now;
@@ -276,23 +280,6 @@ public class GhnWebhookService : IGhnWebhookService
             _logger.LogError(ex, "Error processing GHN webhook callback for order {Code}", payload.OrderCode);
             throw;
         }
-    }
-
-    private static ShippingWebhookAction ResolveWebhookAction(string statusLower)
-    {
-        return statusLower switch
-        {
-            "delivery_fail"         => ShippingWebhookAction.HandleDeliveryFail,
-            "waiting_to_return"     => ShippingWebhookAction.HandleReturnStarted,
-            "return" or "returning" => ShippingWebhookAction.KeepReturning,
-            "returned"              => ShippingWebhookAction.HandleReturnCompleted,
-            "return_fail"           => ShippingWebhookAction.HandleReturnFail,
-            "damage"                => ShippingWebhookAction.HandleDamageLost,
-            "lost"                  => ShippingWebhookAction.HandleDamageLost,
-            "cancel"                => ShippingWebhookAction.HandleGhnCancel,
-            "exception"             => ShippingWebhookAction.HandleException,
-            _                       => ShippingWebhookAction.UpdateOrderStatus
-        };
     }
 
     private static string? ResolveNotificationEventType(string statusLower)

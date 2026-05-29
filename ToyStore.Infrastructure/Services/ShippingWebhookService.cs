@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.Constants;
+using ToyStore.Application.Services;
 using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
@@ -240,7 +241,7 @@ public class ShippingWebhookService : IShippingWebhookService
             return;
         }
 
-        if (order.StatusId >= targetStatusId && order.StatusId != (byte)OrderStatus.Cancelled)
+        if (!OrderWebhookTransitionValidator.CanApplyWebhookStatus(order.StatusId, targetStatusId))
             return;
 
         order.StatusId = targetStatusId;

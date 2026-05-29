@@ -108,6 +108,14 @@ public static class AdminOrderFulfillmentMapper
 
     public static bool MatchesDeliveringGroupFilter(Order order)
     {
+        if (order.StatusId == (byte)OrderStatus.Cancelled
+            || order.StatusId == (byte)OrderStatus.Refunded
+            || order.StatusId == (byte)OrderStatus.Completed
+            || order.StatusId == (byte)OrderStatus.Delivered)
+        {
+            return false;
+        }
+
         if (DeliveringGroupStatusIds.Contains(order.StatusId))
             return true;
 

@@ -47,4 +47,9 @@ public static class OrderStatuses
     public static readonly IReadOnlyCollection<string> CancellableStatuses =
         [Pending, Confirmed];
 
+    /// <summary>
+    /// From Shipped onward, prepaid refunds must use refund management (no auto wallet on cancel).
+    /// </summary>
+    public static bool PrepaidCancelRequiresManualRefund(byte statusId)
+        => statusId >= 4;
 }

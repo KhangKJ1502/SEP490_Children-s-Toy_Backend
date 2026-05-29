@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.Constants;
+using ToyStore.Application.DTOs.Refunds;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
@@ -35,7 +36,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         DateTime now,
         CancellationToken cancellationToken = default)
     {
-        if (await IsTerminalOrderAsync(order, cancellationToken))
+        if (await IsTerminalOrderAsync(order, action, cancellationToken))
         {
             _logger.LogInformation(
                 "Order {OrderId} is terminal (Cancelled/Refunded); skipping return-flow action {Action}",
@@ -72,12 +73,13 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
     {
         var notifications = new List<PendingShippingNotification>();
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(ct);
-        var deliveringId = statusMap.GetValueOrDefault(OrderStatuses.Delivering, (byte)OrderStatus.Delivering);
+        var deliveryFailedId = ResolveStatusId(statusMap, OrderStatuses.DeliveryFailed, OrderStatus.DeliveryFailed);
 
         if (string.IsNullOrEmpty(order.CancelReason) || order.CancelReason == OrderCancelReasons.DeliveryFailedGhn)
         {
             order.CancelReason = OrderCancelReasons.DeliveryFailedGhn;
         }
+        order.StatusId = deliveryFailedId;
         order.UpdatedAt = now;
 
         var detailedReason = string.IsNullOrEmpty(order.CancelReason) || order.CancelReason == OrderCancelReasons.DeliveryFailedGhn
@@ -92,9 +94,9 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
         {
             OrderId = order.OrderId,
-            StatusId = deliveringId,
+            StatusId = deliveryFailedId,
             ChangedBy = null,
-            Note = $"GHN delivery_fail attempt {attempt + 1}.\n Reason: {detailedReason}",
+            Note = $"GHN delivery fail attempt {attempt + 1}.\n Reason: {detailedReason}",
             CreatedAt = now
         }, ct);
 
@@ -130,20 +132,20 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         Order order, string ghnStatus, DateTime now, CancellationToken ct)
     {
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(ct);
-        var returningId = ResolveStatusId(statusMap, OrderStatuses.Returning, OrderStatus.Returning);
+        var waitingReturnId = ResolveStatusId(statusMap, OrderStatuses.WaitingReturn, OrderStatus.WaitingReturn);
 
-        if (order.StatusId == returningId)
+        if (order.StatusId == waitingReturnId)
             return new ShippingReturnFlowResult();
 
-        order.StatusId = returningId;
+        order.StatusId = waitingReturnId;
         order.UpdatedAt = now;
 
         await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
         {
             OrderId = order.OrderId,
-            StatusId = returningId,
+            StatusId = waitingReturnId,
             ChangedBy = null,
-            Note = $"GHN {ghnStatus}: return to warehouse started",
+            Note = $"GHN {ghnStatus}: waiting for courier to pick up return package",
             CreatedAt = now
         }, ct);
 
@@ -197,9 +199,27 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         var returnCompletedId = ResolveStatusId(statusMap, OrderStatuses.ReturnCompleted, OrderStatus.ReturnCompleted);
         var cancelledId = ResolveStatusId(statusMap, OrderStatuses.Cancelled, OrderStatus.Cancelled);
 
-        if (order.StatusId == returnCompletedId || order.StatusId == cancelledId)
+        if (order.StatusId == returnCompletedId)
         {
+            if (PrepaidMethods.Contains(order.PaymentMethod))
+            {
+                return await ApplyReturnPaymentBranchAsync(order, cancelReason, now, ct, skipReturnCompletedStep: true);
+            }
+
             return new ShippingReturnFlowResult();
+        }
+
+        if (order.StatusId == cancelledId)
+        {
+            var existingRefunds = await _unitOfWork.Refunds.GetAdminRefundsAsync(
+                new AdminRefundFilterDto { OrderId = order.OrderId, PageSize = 1 },
+                ct);
+
+            if (existingRefunds.Items.Any() || !(string.Equals(order.CancelReason, OrderCancelReasons.DeliveryFailedGhn, StringComparison.OrdinalIgnoreCase)
+                 && PrepaidMethods.Contains(order.PaymentMethod)))
+            {
+                return new ShippingReturnFlowResult();
+            }
         }
 
         if (string.Equals(order.PaymentMethod, "SHIP_COD", StringComparison.OrdinalIgnoreCase))
@@ -207,19 +227,37 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
             return await ApplyReturnPaymentBranchAsync(order, cancelReason, now, ct);
         }
 
-        order.StatusId = cancelledId;
-        order.CancelReason = cancelReason;
-        order.CancelledAt = now;
-        order.UpdatedAt = now;
-
-        await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
+        // For Prepaid orders: set order status to Cancelled immediately upon warehouse receipt
+        if (PrepaidMethods.Contains(order.PaymentMethod))
         {
-            OrderId = order.OrderId,
-            StatusId = cancelledId,
-            ChangedBy = null,
-            Note = "GHN returned: goods received at warehouse. Order cancelled, refund pending.",
-            CreatedAt = now
-        }, ct);
+            order.StatusId = cancelledId;
+            order.CancelledAt = now;
+            order.CancelReason = cancelReason;
+            order.UpdatedAt = now;
+
+            await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
+            {
+                OrderId = order.OrderId,
+                StatusId = cancelledId,
+                ChangedBy = null,
+                Note = "GHN returned: goods received at warehouse. Cancelled & Refund pending.",
+                CreatedAt = now
+            }, ct);
+        }
+        else
+        {
+            order.StatusId = returnCompletedId;
+            order.UpdatedAt = now;
+
+            await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
+            {
+                OrderId = order.OrderId,
+                StatusId = returnCompletedId,
+                ChangedBy = null,
+                Note = "GHN returned: goods received at warehouse.",
+                CreatedAt = now
+            }, ct);
+        }
 
         return await ApplyReturnPaymentBranchAsync(order, cancelReason, now, ct);
     }
@@ -229,14 +267,17 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
     {
         tx.LastErrorMessage = "GHN return_fail";
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(ct);
-        var returningId = statusMap.GetValueOrDefault(OrderStatuses.Returning, order.StatusId);
+        var returnFailedId = ResolveStatusId(statusMap, OrderStatuses.ReturnFailed, OrderStatus.ReturnFailed);
+
+        order.StatusId = returnFailedId;
+        order.UpdatedAt = now;
 
         await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
         {
             OrderId = order.OrderId,
-            StatusId = returningId,
+            StatusId = returnFailedId,
             ChangedBy = null,
-            Note = "GHN return_fail: requires manual admin action",
+            Note = "GHN return_fail: courier failed to return items. Requires manual admin action.",
             CreatedAt = now
         }, ct);
 
@@ -294,9 +335,22 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         }
 
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(ct);
-        var cancelledId = ResolveStatusId(statusMap, OrderStatuses.Cancelled, OrderStatus.Cancelled);
+        
+        byte targetStatusId;
+        if (ghnStatus.Equals(ShippingStatuses.Lost, StringComparison.OrdinalIgnoreCase))
+        {
+            targetStatusId = ResolveStatusId(statusMap, OrderStatuses.Lost, OrderStatus.Lost);
+        }
+        else if (ghnStatus.Equals(ShippingStatuses.Damage, StringComparison.OrdinalIgnoreCase))
+        {
+            targetStatusId = ResolveStatusId(statusMap, OrderStatuses.Damaged, OrderStatus.Damaged);
+        }
+        else
+        {
+            targetStatusId = ResolveStatusId(statusMap, OrderStatuses.Cancelled, OrderStatus.Cancelled);
+        }
 
-        order.StatusId = cancelledId;
+        order.StatusId = targetStatusId;
         order.CancelReason = cancelReason;
         order.CancelledAt = now;
         order.UpdatedAt = now;
@@ -304,7 +358,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
         {
             OrderId = order.OrderId,
-            StatusId = cancelledId,
+            StatusId = targetStatusId,
             ChangedBy = null,
             Note = $"GHN {ghnStatus}: {cancelReason}",
             CreatedAt = now
@@ -482,12 +536,35 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
             providerOrderCode = providerOrderCode ?? ""
         });
 
-    private async Task<bool> IsTerminalOrderAsync(Order order, CancellationToken ct)
+    private async Task<bool> IsTerminalOrderAsync(Order order, ShippingWebhookAction action, CancellationToken ct)
     {
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(ct);
         var cancelled = ResolveStatusId(statusMap, OrderStatuses.Cancelled, OrderStatus.Cancelled);
         var refunded = ResolveStatusId(statusMap, OrderStatuses.Refunded, OrderStatus.Refunded);
-        return order.StatusId == cancelled || order.StatusId == refunded;
+        var returnCompleted = ResolveStatusId(statusMap, OrderStatuses.ReturnCompleted, OrderStatus.ReturnCompleted);
+        var returnFailed = ResolveStatusId(statusMap, OrderStatuses.ReturnFailed, OrderStatus.ReturnFailed);
+        var lost = ResolveStatusId(statusMap, OrderStatuses.Lost, OrderStatus.Lost);
+        var damaged = ResolveStatusId(statusMap, OrderStatuses.Damaged, OrderStatus.Damaged);
+
+        if (order.StatusId == refunded || 
+            order.StatusId == returnCompleted || 
+            order.StatusId == returnFailed || 
+            order.StatusId == lost || 
+            order.StatusId == damaged)
+        {
+            return true;
+        }
+
+        if (order.StatusId == cancelled)
+        {
+            var canRecoverFromCancel = action == ShippingWebhookAction.HandleReturnCompleted
+                && string.Equals(order.CancelReason, OrderCancelReasons.DeliveryFailedGhn, StringComparison.OrdinalIgnoreCase)
+                && PrepaidMethods.Contains(order.PaymentMethod);
+
+            return !canRecoverFromCancel;
+        }
+
+        return false;
     }
 
     private byte ResolveStatusId(

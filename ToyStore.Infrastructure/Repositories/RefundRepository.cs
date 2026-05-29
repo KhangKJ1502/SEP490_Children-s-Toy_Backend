@@ -26,7 +26,7 @@ public class RefundRepository : IRefundRepository
     public async Task<List<OrderRefundReason>> GetActiveReasonsAsync(CancellationToken cancellationToken = default)
     {
         return await _context.Set<OrderRefundReason>()
-            .Where(r => !r.IsDeleted)
+            .Where(r => !r.IsDeleted && !r.IsSystem) // Chỉ lấy các lý do hoạt động và ẩn lý do Hệ thống (System-only)
             .OrderBy(r => r.RefundReasonId)
             .AsNoTracking()
             .ToListAsync(cancellationToken);
@@ -34,9 +34,27 @@ public class RefundRepository : IRefundRepository
 
     public async Task<OrderRefundReason?> GetReasonByContentAsync(string content, CancellationToken cancellationToken = default)
     {
-        return await _context.Set<OrderRefundReason>()
+        var reason = await _context.Set<OrderRefundReason>()
             .AsNoTracking()
-            .FirstOrDefaultAsync(r => !r.IsDeleted && r.Content == content, cancellationToken);
+            .FirstOrDefaultAsync(r => r.Content == content, cancellationToken);
+
+        if (reason is null && content == "Giao hàng thất bại / không giao được")
+        {
+            var newReason = new OrderRefundReason
+            {
+                Content = content,
+                Description = "Refund tự động khi GHN trả hàng về kho do giao thất bại (System-only)",
+                IsDeleted = false,
+                IsSystem = true,
+                CreatedAt = System.DateTime.Now
+            };
+
+            await _context.Set<OrderRefundReason>().AddAsync(newReason, cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
+            return newReason;
+        }
+
+        return reason;
     }
 
     public async Task<PaginatedResponse<RefundListDto>> GetRefundsAsync(RefundFilterDto filter, CancellationToken cancellationToken = default)

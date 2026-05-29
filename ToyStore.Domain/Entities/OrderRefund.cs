@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using ToyStore.Domain.Constants;
 
 namespace ToyStore.Domain.Entities;
 
@@ -20,6 +21,12 @@ public partial class OrderRefund
     public int? WalletTransactionId { get; set; }
 
     public string? ReasonDetails { get; set; }
+
+    /// <summary>
+    /// Nguồn tạo refund: "Customer" (khách tự tạo) hoặc "System" (hệ thống tạo khi GHN returned).
+    /// System refund không sử dụng GHN pickup — chỉ Approve → Complete → hoàn ví.
+    /// </summary>
+    public string RefundSource { get; set; } = RefundSources.Customer;
 
     public decimal ApprovedAmount { get; set; }
 

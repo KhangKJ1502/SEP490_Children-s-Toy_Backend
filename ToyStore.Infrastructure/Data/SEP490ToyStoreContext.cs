@@ -1396,6 +1396,9 @@ public partial class SEP490ToyStoreContext : DbContext
                 .ValueGeneratedOnAdd()
                 .HasColumnName("RefundReasonID");
             entity.Property(e => e.Content).HasMaxLength(150);
+            entity.Property(e => e.IsSystem)
+                .HasDefaultValue(false)
+                .HasColumnName("IsSystem");
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");

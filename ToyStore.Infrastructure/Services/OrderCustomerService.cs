@@ -170,7 +170,13 @@ public class OrderCustomerService : IOrderCustomerService
         {
             _logger.LogInformation("Cancelling GHN order {GhnCode} for Order {OrderCode}",
                 order.ShippingOrderCode, order.OrderCode);
-            // TODO: Call GHN cancel API if available in IGhnClient
+            var ghnCancel = await _ghnClient.CancelOrderAsync(order.ShippingOrderCode, cancellationToken);
+            if (!ghnCancel.IsSuccess)
+            {
+                _logger.LogWarning(
+                    "GHN cancel failed for {GhnCode} (order {OrderCode}): {Error}",
+                    order.ShippingOrderCode, order.OrderCode, ghnCancel.ErrorMessage);
+            }
         }
 
         int cancelledByAccountId = actorAccountId ?? (isAdmin ? 0 : order.AccountId);

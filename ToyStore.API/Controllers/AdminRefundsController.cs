@@ -48,7 +48,18 @@ public class AdminRefundsController : ControllerBase
         [FromBody] UpdateRefundStatusDto dto,
         CancellationToken cancellationToken = default)
     {
-        var result = await _refundService.UpdateRefundStatusAsync(_currentUserService.AccountId, refundId, dto, cancellationToken);
+        var isAdmin = User.IsInRole("Admin");
+        var result = await _refundService.UpdateRefundStatusAsync(
+            _currentUserService.AccountId, refundId, dto, isAdmin, cancellationToken);
         return result.ToActionResult();
+    }
+
+    [HttpPost]
+    public async Task<ActionResult<RefundDto>> CreateAdminRefund(
+        [FromBody] CreateAdminRefundDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _refundService.CreateAdminRefundAsync(_currentUserService.AccountId, dto, cancellationToken);
+        return result.ToCreatedResult($"api/admin/refunds/{result.Data?.RefundId}");
     }
 }

@@ -19,4 +19,10 @@ public class RefundListDto
     public DateTime CreatedAt { get; set; }
     public string? AssignedToStaffName { get; set; }
     public string? AssignedToMerchName { get; set; }
+
+    /// <summary>"Customer" hoặc "System" — phân biệt nguồn tạo refund.</summary>
+    public string RefundSource { get; set; } = "Customer";
+
+    /// <summary>True nếu refund do hệ thống tự tạo (GHN returned). UI dùng để ẩn nút pickup và hiển thị label "System return".</summary>
+    public bool IsSystemReturn => string.Equals(RefundSource, "System", StringComparison.OrdinalIgnoreCase);
 }

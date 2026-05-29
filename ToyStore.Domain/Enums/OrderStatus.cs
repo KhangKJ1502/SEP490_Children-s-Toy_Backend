@@ -36,5 +36,20 @@ public enum OrderStatus
     Returning = 10,
 
     /// <summary>Returned to warehouse, awaiting refund processing</summary>
-    ReturnCompleted = 11
+    ReturnCompleted = 11,
+
+    /// <summary>GHN could not deliver — first delivery failure event</summary>
+    DeliveryFailed = 12,
+
+    /// <summary>GHN confirmed return; package waiting to be picked up by courier</summary>
+    WaitingReturn = 13,
+
+    /// <summary>GHN return attempt failed — package could not be returned to warehouse</summary>
+    ReturnFailed = 14,
+
+    /// <summary>Package declared lost by shipping provider</summary>
+    Lost = 15,
+
+    /// <summary>Package declared damaged by shipping provider</summary>
+    Damaged = 16
 }

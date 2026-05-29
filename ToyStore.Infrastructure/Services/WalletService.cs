@@ -163,20 +163,7 @@ public class WalletService : IWalletService
         }
 
         var existingWallet = await _unitOfWork.Wallets.GetByAccountIdAsync(accountId, cancellationToken);
-        if (existingWallet != null)
-        {
-            return Result<WalletDto>.Conflict("Wallet already exists for this account.");
-        }
-
         var now = DateTime.UtcNow;
-        var wallet = new Wallet
-        {
-            AccountId = accountId,
-            Currency = "VND",
-            Balance = 0,
-            Status = WalletStatusActive,
-            CreatedAt = now
-        };
 
         var walletPin = new WalletPin
         {
@@ -191,15 +178,46 @@ public class WalletService : IWalletService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            await _unitOfWork.Wallets.CreateAsync(wallet, cancellationToken);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            Wallet wallet;
+            if (existingWallet != null)
+            {
+                var existingPin = await _unitOfWork.Wallets.GetActivePinByWalletIdAsync(
+                    existingWallet.WalletId, cancellationToken);
+                if (existingPin != null)
+                {
+                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                    return Result<WalletDto>.Conflict("Wallet already exists for this account.");
+                }
 
-            walletPin.WalletId = wallet.WalletId;
-            await _unitOfWork.Wallets.AddPinAsync(walletPin, cancellationToken);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+                wallet = existingWallet;
+                walletPin.WalletId = wallet.WalletId;
+                await _unitOfWork.Wallets.AddPinAsync(walletPin, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation(
+                    "PIN attached to existing wallet {WalletId} for account {AccountId}.",
+                    wallet.WalletId, accountId);
+            }
+            else
+            {
+                wallet = new Wallet
+                {
+                    AccountId = accountId,
+                    Currency = "VND",
+                    Balance = 0,
+                    Status = WalletStatusActive,
+                    CreatedAt = now
+                };
+
+                await _unitOfWork.Wallets.CreateAsync(wallet, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                walletPin.WalletId = wallet.WalletId;
+                await _unitOfWork.Wallets.AddPinAsync(walletPin, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation("Wallet {WalletId} created for account {AccountId}.", wallet.WalletId, accountId);
+            }
 
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
-            _logger.LogInformation("Wallet {WalletId} created for account {AccountId}.", wallet.WalletId, accountId);
 
             return Result<WalletDto>.Success(_mapper.Map<WalletDto>(wallet));
         }

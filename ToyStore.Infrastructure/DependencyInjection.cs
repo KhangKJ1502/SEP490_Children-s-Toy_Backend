@@ -276,6 +276,7 @@ public static class DependencyInjection
         services.AddScoped<ISePayWebhookService, SePayWebhookService>();
         services.AddScoped<ICheckoutService, CheckoutService>();
         services.AddScoped<IOrderLifecycleService, OrderLifecycleService>();
+        services.AddScoped<IWalletRefundCreditor, WalletRefundCreditorService>();
         services.AddScoped<IOrderCustomerService, OrderCustomerService>();
 
         // Cau hinh webhook tokens

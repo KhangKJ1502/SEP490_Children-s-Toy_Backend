@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ToyStore.Domain.Entities;
@@ -12,6 +12,8 @@ public partial class OrderRefundReason
     public string? Description { get; set; }
 
     public bool IsDeleted { get; set; }
+
+    public bool IsSystem { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

@@ -146,6 +146,7 @@ public class BirthdayNotificationJob : BackgroundService
             // Only send when BirthdayNotifiedYear IS NULL OR BirthdayNotifiedYear < current year
             var childBirthdays = await db.CustomerChildren
                 .Include(c => c.Account)
+                .Include(c => c.Sex)
                 .Where(c => !c.IsDeleted
                          && ((c.Dob.Day == today.Day
                               && c.Dob.Month == today.Month)
@@ -162,6 +163,7 @@ public class BirthdayNotificationJob : BackgroundService
 
             var childPreBirthdays = await db.CustomerChildren
                 .Include(c => c.Account)
+                .Include(c => c.Sex)
                 .Where(c => !c.IsDeleted
                          && ((c.Dob.Day == preBirthdayDate.Day
                               && c.Dob.Month == preBirthdayDate.Month)
@@ -181,6 +183,10 @@ public class BirthdayNotificationJob : BackgroundService
                     continue;
 
                 var childName = string.IsNullOrWhiteSpace(child.NickName) ? child.FullName : child.NickName;
+                var childNickname = string.IsNullOrWhiteSpace(child.NickName) ? string.Empty : child.NickName;
+                var childGender = child.Sex?.SexName
+                    ?? (child.SexId == 1 ? "Boy" : child.SexId == 2 ? "Girl" : string.Empty);
+                var childBirthDate = child.Dob.ToString("dd/MM/yyyy");
 
                 await dispatcher.DispatchAsync(new NotificationContext
                 {
@@ -199,6 +205,9 @@ public class BirthdayNotificationJob : BackgroundService
                     {
                         ["childId"] = child.ChildId,
                         ["childName"] = childName,
+                        ["childNickname"] = childNickname,
+                        ["childGender"] = childGender,
+                        ["childBirthDate"] = childBirthDate,
                     },
                 }, ct);
 
@@ -213,6 +222,10 @@ public class BirthdayNotificationJob : BackgroundService
                     continue;
 
                 var childName = string.IsNullOrWhiteSpace(child.NickName) ? child.FullName : child.NickName;
+                var childNickname = string.IsNullOrWhiteSpace(child.NickName) ? string.Empty : child.NickName;
+                var childGender = child.Sex?.SexName
+                    ?? (child.SexId == 1 ? "Boy" : child.SexId == 2 ? "Girl" : string.Empty);
+                var childBirthDate = child.Dob.ToString("dd/MM/yyyy");
 
                 await dispatcher.DispatchAsync(new NotificationContext
                 {
@@ -231,6 +244,9 @@ public class BirthdayNotificationJob : BackgroundService
                     {
                         ["childId"] = child.ChildId,
                         ["childName"] = childName,
+                        ["childNickname"] = childNickname,
+                        ["childGender"] = childGender,
+                        ["childBirthDate"] = childBirthDate,
                     },
                 }, ct);
             }

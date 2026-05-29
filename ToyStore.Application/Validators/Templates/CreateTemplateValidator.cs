@@ -21,6 +21,6 @@ public class CreateTemplateValidator : AbstractValidator<CreateTemplateDto>
         RuleFor(x => x.MessageTemplate)
             .NotEmpty().WithMessage("Template message is required.")
             .MinimumLength(5).WithMessage("Template message must be at least 5 characters.")
-            .MaximumLength(500).WithMessage("Template message must not exceed 500 characters.");
+            .MaximumLength(4000).WithMessage("Template message must not exceed 4000 characters.");
     }
 }
