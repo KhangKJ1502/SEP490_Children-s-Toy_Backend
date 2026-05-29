@@ -207,7 +207,7 @@ public class RefundRepository : IRefundRepository
             .Include(r => r.Customer)
             .Include(r => r.RequestedByNavigation)
             .Include(r => r.RefundImages.Where(i => !i.IsDeleted))
-            .Include(r => r.RefundDetails).ThenInclude(d => d.Product)
+            .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.ProductImage)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.Status)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.ChangedByNavigation)
             .FirstOrDefaultAsync(r => r.RefundId == id && !r.IsDeleted, cancellationToken);
@@ -222,7 +222,7 @@ public class RefundRepository : IRefundRepository
             .Include(r => r.Customer)
             .Include(r => r.RequestedByNavigation)
             .Include(r => r.RefundImages.Where(i => !i.IsDeleted))
-            .Include(r => r.RefundDetails).ThenInclude(d => d.Product)
+            .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.ProductImage)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.Status)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.ChangedByNavigation)
             .FirstOrDefaultAsync(r => r.OrderId == orderId && !r.IsDeleted, cancellationToken);
@@ -237,7 +237,7 @@ public class RefundRepository : IRefundRepository
             .Include(r => r.Customer)
             .Include(r => r.RequestedByNavigation)
             .Include(r => r.RefundImages.Where(i => !i.IsDeleted))
-            .Include(r => r.RefundDetails).ThenInclude(d => d.Product)
+            .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.ProductImage)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.Status)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.ChangedByNavigation)
             .FirstOrDefaultAsync(r => r.ShippingOrderCode == code && !r.IsDeleted, cancellationToken);

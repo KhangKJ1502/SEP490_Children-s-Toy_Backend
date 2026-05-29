@@ -27,4 +27,6 @@ public class CartItemDto
     public DateTime AddedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }
+
+    public string? WarningMessage { get; set; }
 }

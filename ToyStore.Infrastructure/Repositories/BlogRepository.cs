@@ -24,10 +24,11 @@ public class BlogRepository : IBlogRepository
         bool featuredOnly = false,
         int? createdByAccountId = null,
         bool onlyPublished = false,
+        int? adminSelfVisibleAccountId = null,
         IReadOnlyCollection<string>? allowedStatuses = null,
         CancellationToken cancellationToken = default)
     {
-        var query = BuildQuery(searchTerm, status, featuredOnly, createdByAccountId, onlyPublished, allowedStatuses);
+        var query = BuildQuery(searchTerm, status, featuredOnly, createdByAccountId, onlyPublished, adminSelfVisibleAccountId, allowedStatuses);
         query = ApplySorting(query, sortBy, sortDesc);
 
         return await query
@@ -42,10 +43,11 @@ public class BlogRepository : IBlogRepository
         bool featuredOnly = false,
         int? createdByAccountId = null,
         bool onlyPublished = false,
+        int? adminSelfVisibleAccountId = null,
         IReadOnlyCollection<string>? allowedStatuses = null,
         CancellationToken cancellationToken = default)
     {
-        return BuildQuery(searchTerm, status, featuredOnly, createdByAccountId, onlyPublished, allowedStatuses).CountAsync(cancellationToken);
+        return BuildQuery(searchTerm, status, featuredOnly, createdByAccountId, onlyPublished, adminSelfVisibleAccountId, allowedStatuses).CountAsync(cancellationToken);
     }
 
     public Task<BlogPost?> GetByIdAsync(int blogPostId, CancellationToken cancellationToken = default)
@@ -505,6 +507,9 @@ public class BlogRepository : IBlogRepository
         if (state.BanExpiresAt.HasValue && state.BanExpiresAt.Value <= utcNow)
         {
             state.IsCommentBanned = false;
+            state.BanExpiresAt = null;
+            state.ViolationCount = 0;
+            state.LastViolatedAt = null;
             state.UnbannedAt = utcNow;
             state.UpdatedAt = utcNow;
             await _context.SaveChangesAsync(cancellationToken);
@@ -637,6 +642,7 @@ public class BlogRepository : IBlogRepository
         bool featuredOnly,
         int? createdByAccountId,
         bool onlyPublished,
+        int? adminSelfVisibleAccountId,
         IReadOnlyCollection<string>? allowedStatuses)
     {
         IQueryable<BlogPost> query = _context.BlogPosts
@@ -655,6 +661,14 @@ public class BlogRepository : IBlogRepository
         if (onlyPublished)
         {
             query = query.Where(x => x.Status == "Published");
+        }
+
+        if (adminSelfVisibleAccountId.HasValue)
+        {
+            var ownAccountId = adminSelfVisibleAccountId.Value;
+            query = query.Where(x =>
+                x.AccountId == ownAccountId
+                || (x.Status != "Draft" && x.Status != "Rejected"));
         }
 
         if (!string.IsNullOrWhiteSpace(status))

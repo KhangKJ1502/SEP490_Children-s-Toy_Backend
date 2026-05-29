@@ -18,22 +18,28 @@ public class AccountService : IAccountService
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
+    private readonly ICurrentUserService _currentUserService;
     private readonly ILogger<AccountService> _logger;
     private readonly IValidator<CreateAccountDto> _createAccountValidator;
     private readonly IValidator<UpdateAccountStatusDto> _updateAccountStatusValidator;
+    private readonly IValidator<UpdateAccountPasswordDto> _updateAccountPasswordValidator;
 
     public AccountService(
         IUnitOfWork unitOfWork,
         IMapper mapper,
+        ICurrentUserService currentUserService,
         ILogger<AccountService> logger,
         IValidator<CreateAccountDto> createAccountValidator,
-        IValidator<UpdateAccountStatusDto> updateAccountStatusValidator)
+        IValidator<UpdateAccountStatusDto> updateAccountStatusValidator,
+        IValidator<UpdateAccountPasswordDto> updateAccountPasswordValidator)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
+        _currentUserService = currentUserService;
         _logger = logger;
         _createAccountValidator = createAccountValidator;
         _updateAccountStatusValidator = updateAccountStatusValidator;
+        _updateAccountPasswordValidator = updateAccountPasswordValidator;
     }
 
     public async Task<Result<PaginatedResponse<AccountListDto>>> GetAccountsAsync(
@@ -223,6 +229,70 @@ public class AccountService : IAccountService
         }
     }
 
+    public async Task<Result> UpdateAccountPasswordAsync(
+        int accountId,
+        UpdateAccountPasswordDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        if (!string.Equals(_currentUserService.RoleName, "Admin", StringComparison.OrdinalIgnoreCase))
+        {
+            return Result.Failure("FORBIDDEN", "Only admin can update account password.");
+        }
+
+        if (accountId <= 0)
+        {
+            return Result.Failure("VALIDATION_ERROR", "Account ID must be greater than 0.");
+        }
+
+        var validationResult = await _updateAccountPasswordValidator.ValidateAsync(dto, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            var errors = validationResult.Errors
+                .GroupBy(x => x.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ErrorMessage).ToArray());
+
+            return Result.ValidationFailure(errors);
+        }
+
+        var existing = await _unitOfWork.Accounts.GetByIdAsync(accountId, cancellationToken);
+        if (existing == null)
+        {
+            return Result.NotFound("Account", accountId);
+        }
+
+        if (!IsAllowedCreateRole(existing.RoleId))
+        {
+            return Result.Failure("VALIDATION_ERROR", "Admin can only update password for Staff or Merchandise accounts.");
+        }
+
+        if (VerifyPassword(dto.NewPassword, existing.PasswordHash))
+        {
+            return Result.ValidationFailure(new Dictionary<string, string[]>
+            {
+                [nameof(UpdateAccountPasswordDto.NewPassword)] = ["New password must be different from current password."]
+            });
+        }
+
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await _unitOfWork.Accounts.UpdatePasswordHashAsync(
+                accountId,
+                HashPassword(dto.NewPassword),
+                cancellationToken);
+
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+            _logger.LogInformation("Admin {AdminId} updated password for account {AccountId}.", _currentUserService.AccountId, accountId);
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Failed to update password for account {AccountId}.", accountId);
+            throw;
+        }
+    }
+
     private static string? NormalizeNullable(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -267,6 +337,12 @@ public class AccountService : IAccountService
     {
         var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(password));
         return Convert.ToHexString(hashBytes);
+    }
+
+    private static bool VerifyPassword(string password, string storedHash)
+    {
+        var hash = HashPassword(password);
+        return string.Equals(hash, storedHash, StringComparison.OrdinalIgnoreCase);
     }
 
 }

@@ -39,7 +39,8 @@ public class RefundProfile : Profile
         CreateMap<OrderRefundReason, RefundReasonDto>();
 
         CreateMap<RefundDetail, RefundDetailDto>()
-            .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product.ProductName));
+            .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product.ProductName))
+            .ForMember(dest => dest.ProductImage, opt => opt.MapFrom(src => src.Product.ProductImage != null ? src.Product.ProductImage.ImageUrl : null));
 
         CreateMap<RefundStatusHistory, RefundStatusHistoryDto>()
             .ForMember(dest => dest.StatusName, opt => opt.MapFrom(src => src.Status.StatusName))

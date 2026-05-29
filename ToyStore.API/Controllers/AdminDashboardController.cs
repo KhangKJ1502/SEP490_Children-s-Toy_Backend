@@ -18,15 +18,6 @@ public class AdminDashboardController : ControllerBase
         _dashboardService = dashboardService;
     }
 
-    [HttpGet("revenue")]
-    public async Task<ActionResult<DashboardRevenueStatisticsDto>> GetRevenueStatistics(
-        [FromQuery] DashboardTimeFilterDto filter,
-        CancellationToken cancellationToken)
-    {
-        var result = await _dashboardService.GetRevenueStatisticsAsync(filter, cancellationToken);
-        return result.ToActionResult();
-    }
-
     [HttpGet("orders-by-status")]
     public async Task<ActionResult<DashboardOrderStatusStatisticsDto>> GetOrderStatusStatistics(
         [FromQuery] DashboardTimeFilterDto filter,
@@ -69,23 +60,6 @@ public class AdminDashboardController : ControllerBase
         CancellationToken cancellationToken)
     {
         var result = await _dashboardService.GetOrderRateStatisticsAsync(filter, cancellationToken);
-        return result.ToActionResult();
-    }
-
-    [HttpGet("products/top-5-best-sellers")]
-    public async Task<ActionResult<DashboardTopSellingProductsDto>> GetTop5BestSellingProducts(
-        CancellationToken cancellationToken)
-    {
-        var result = await _dashboardService.GetTopSellingProductsAsync(5, cancellationToken);
-        return result.ToActionResult();
-    }
-
-    [HttpGet("products/slow-moving")]
-    public async Task<ActionResult<DashboardSlowMovingProductsDto>> GetSlowMovingProducts(
-        [FromQuery] int limit = 5,
-        CancellationToken cancellationToken = default)
-    {
-        var result = await _dashboardService.GetSlowMovingProductsAsync(limit, cancellationToken);
         return result.ToActionResult();
     }
 

@@ -109,7 +109,7 @@ public class CheckoutService : ICheckoutService
                 itemErrors.Add(new() { ProductId = p.ProductId, ProductName = p.ProductName, Error = $"Only {p.Quantity} items left." });
             else
             {
-                var currentPrice = PriceHelper.ResolveCurrentPrice(p, _timeProvider.UtcNow);
+                var currentPrice = PriceHelper.ResolveCurrentPrice(p, _timeProvider.UtcNow, (int)ci.Quantity);
                 subTotal += currentPrice * ci.Quantity;
             }
         }
@@ -154,7 +154,7 @@ public class CheckoutService : ICheckoutService
         {
             if (detailsMap.TryGetValue(ci.ProductId, out var details))
             {
-                var currentPrice = PriceHelper.ResolveCurrentPrice(ci.Product, _timeProvider.UtcNow);
+                var currentPrice = PriceHelper.ResolveCurrentPrice(ci.Product, _timeProvider.UtcNow, (int)ci.Quantity);
                 shippingItems.Add(new ShippingItem(
                     ci.ProductId,
                     ci.Product.ProductName,
@@ -382,7 +382,7 @@ public class CheckoutService : ICheckoutService
             return Result<CheckoutConfirmResponseDto>.BusinessError(string.Join("; ", softErrors));
 
         // Tính SubTotal từ Products.Price tại thời điểm checkout (có tính Flash Sale/Promotion)
-        decimal subTotal = request.Items.Sum(i => PriceHelper.ResolveCurrentPrice(productMap[i.ProductId], _timeProvider.UtcNow) * (int)i.Quantity);
+        decimal subTotal = request.Items.Sum(i => PriceHelper.ResolveCurrentPrice(productMap[i.ProductId], _timeProvider.UtcNow, (int)i.Quantity) * (int)i.Quantity);
 
         if (subTotal >= MaxCheckoutSubTotal)
         {
@@ -445,7 +445,7 @@ public class CheckoutService : ICheckoutService
             if (detailsMap.TryGetValue(item.ProductId, out var details))
             {
                 var p = productMap[item.ProductId];
-                var currentPrice = PriceHelper.ResolveCurrentPrice(p, _timeProvider.UtcNow);
+                var currentPrice = PriceHelper.ResolveCurrentPrice(p, _timeProvider.UtcNow, (int)item.Quantity);
                 shippingItems.Add(new ShippingItem(
                     item.ProductId,
                     p.ProductName,
@@ -624,7 +624,7 @@ public class CheckoutService : ICheckoutService
             foreach (var item in request.Items)
             {
                 var p = productMap[item.ProductId];
-                var flashSaleSlot = PriceHelper.GetActiveFlashSaleSlot(p, now);
+                var flashSaleSlot = PriceHelper.GetActiveFlashSaleSlot(p, now, (int)item.Quantity);
 
                 await _db.OrderDetails.AddAsync(new OrderDetail
                 {
@@ -633,7 +633,7 @@ public class CheckoutService : ICheckoutService
                     ProductName = p.ProductName,
                     ProductImage = p.ProductImage?.ImageUrl,
                     Quantity = item.Quantity,
-                    UnitPrice = PriceHelper.ResolveCurrentPrice(p, now),
+                    UnitPrice = PriceHelper.ResolveCurrentPrice(p, now, (int)item.Quantity),
                     DiscountAmount = 0,
                     SlotProductId = flashSaleSlot?.SlotProductId,
                     CreatedAt = now
