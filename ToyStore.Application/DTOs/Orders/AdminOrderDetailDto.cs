@@ -8,7 +8,10 @@ public class AdminOrderDetailDto
     // Thong tin don
     public int OrderId { get; set; }
     public string OrderCode { get; set; } = string.Empty;
+    public byte StatusId { get; set; }
     public string StatusName { get; set; } = string.Empty;
+    public string FulfillmentLabel { get; set; } = string.Empty;
+    public string? GhnShippingStatus { get; set; }
     public DateTime OrderDate { get; set; }
     public DateTime? ConfirmedAt { get; set; }
     public DateTime? ShippedAt { get; set; }
@@ -51,6 +54,17 @@ public class AdminOrderDetailDto
 
     // Thong tin van chuyen (neu co)
     public ShippingTransactionDto? Shipping { get; set; }
+
+    /// <summary>GHN / carrier webhook history (newest first).</summary>
+    public List<AdminShippingStatusHistoryDto> ShippingHistory { get; set; } = [];
+}
+
+public class AdminShippingStatusHistoryDto
+{
+    public string PreviousStatus { get; set; } = string.Empty;
+    public string NewStatus { get; set; } = string.Empty;
+    public string Source { get; set; } = string.Empty;
+    public DateTime ProcessedAt { get; set; }
 }
 
 public class AdminOrderDetailItemDto

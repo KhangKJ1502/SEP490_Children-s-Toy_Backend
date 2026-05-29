@@ -14,6 +14,14 @@ public class CustomerOrderListItemDto
     public string PaymentStatus { get; set; } = string.Empty;
     public int TotalItems { get; set; }
     public bool HasActiveRefund { get; set; }
+    public string StatusCode { get; set; } = string.Empty;
+    public string StatusBucket { get; set; } = string.Empty;
+    public string DisplayLabel { get; set; } = string.Empty;
+    public string PaymentDisplay { get; set; } = string.Empty;
+    public string RefundDestination { get; set; } = "wallet";
+    public bool CanCancel { get; set; }
+    public bool CanComplete { get; set; }
+    public bool IsAwaitingRefund { get; set; }
     public List<CustomerOrderListItemProductDto> Items { get; set; } = new();
 }
 

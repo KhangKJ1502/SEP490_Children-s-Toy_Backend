@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using ToyStore.Application.Constants;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
 using ToyStore.Domain.Enums;
@@ -22,7 +23,6 @@ public class ShippingStatusMapper : IShippingStatusMapper
 
         switch (status)
         {
-            // Shipped
             case ShippingStatuses.ReadyToPick:
             case ShippingStatuses.Picking:
             case ShippingStatuses.Picked:
@@ -31,28 +31,63 @@ public class ShippingStatusMapper : IShippingStatusMapper
             case ShippingStatuses.Transporting:
                 return OrderStatus.Shipped;
 
-            // Delivering
             case ShippingStatuses.Delivering:
             case ShippingStatuses.MoneyCollectDelivering:
                 return OrderStatus.Delivering;
 
-            // Delivered
             case ShippingStatuses.Delivered:
                 return OrderStatus.Delivered;
 
-            // Cancelled
-            case ShippingStatuses.Cancel:
-            case ShippingStatuses.DeliveryFail:
-            case ShippingStatuses.Lost:
-            case ShippingStatuses.Damage:
-            case ShippingStatuses.Exception:
-            case string s when s.StartsWith("return"):
-                return OrderStatus.Cancelled;
-
             default:
-                _logger.LogWarning("Unknown shipping provider status encountered: {Status}", providerStatus);
                 return null;
         }
+    }
+
+    public ShippingWebhookAction ResolveWebhookAction(string? providerStatus)
+    {
+        if (string.IsNullOrWhiteSpace(providerStatus))
+            return ShippingWebhookAction.Unknown;
+
+        var status = providerStatus.ToLowerInvariant();
+
+        return status switch
+        {
+            ShippingStatuses.DeliveryFail => ShippingWebhookAction.HandleDeliveryFail,
+            ShippingStatuses.WaitingToReturn => ShippingWebhookAction.SetReturning,
+            ShippingStatuses.Return => ShippingWebhookAction.HandleReturnStarted,
+            ShippingStatuses.ReturnTransporting or ShippingStatuses.ReturnSorting
+                or ShippingStatuses.Returning => ShippingWebhookAction.KeepReturning,
+            ShippingStatuses.Returned => ShippingWebhookAction.HandleReturnCompleted,
+            ShippingStatuses.ReturnFail => ShippingWebhookAction.HandleReturnFail,
+            ShippingStatuses.Damage or ShippingStatuses.Lost => ShippingWebhookAction.HandleDamageLost,
+            ShippingStatuses.Cancel => ShippingWebhookAction.HandleGhnCancel,
+            ShippingStatuses.Exception => ShippingWebhookAction.HandleException,
+            _ when MapToInternalStatus(status).HasValue => ShippingWebhookAction.UpdateOrderStatus,
+            _ => ShippingWebhookAction.Unknown
+        };
+    }
+
+    public string? ResolveNotificationEventType(string? providerStatus)
+    {
+        if (string.IsNullOrWhiteSpace(providerStatus)) return null;
+
+        return providerStatus.ToLowerInvariant() switch
+        {
+            ShippingStatuses.Picked => NotificationEventTypes.MerchPickedUp,
+            ShippingStatuses.Delivering or ShippingStatuses.MoneyCollectDelivering
+                => NotificationEventTypes.OrderDelivering,
+            ShippingStatuses.Delivered => NotificationEventTypes.OrderDelivered,
+            ShippingStatuses.DeliveryFail => NotificationEventTypes.OrderDeliveryFailed,
+            ShippingStatuses.Return or ShippingStatuses.WaitingToReturn
+                or ShippingStatuses.ReturnTransporting or ShippingStatuses.ReturnSorting
+                or ShippingStatuses.Returning => NotificationEventTypes.OrderReturning,
+            ShippingStatuses.Returned => NotificationEventTypes.MerchReturned,
+            ShippingStatuses.ReturnFail => NotificationEventTypes.OrderReturnFail,
+            ShippingStatuses.Damage or ShippingStatuses.Lost
+                => NotificationEventTypes.SystemShippingDamageLost,
+            ShippingStatuses.Exception => NotificationEventTypes.SystemShippingWebhookError,
+            _ => null
+        };
     }
 
     public string GetStatusDescription(string? providerStatus)
@@ -88,14 +123,13 @@ public class ShippingStatusMapper : IShippingStatusMapper
 
     public string NormalizeStatus(string? providerStatus, OrderStatus currentInternalStatus)
     {
-        // If we have a provider status, try to map it to a normalized business status
         var mapped = MapToInternalStatus(providerStatus);
         if (mapped.HasValue)
-        {
             return mapped.Value.ToString();
-        }
 
-        // Fallback to current internal status if provider status is unknown or missing
+        if (currentInternalStatus is OrderStatus.Returning or OrderStatus.ReturnCompleted)
+            return OrderStatuses.Delivering;
+
         return currentInternalStatus.ToString();
     }
 }

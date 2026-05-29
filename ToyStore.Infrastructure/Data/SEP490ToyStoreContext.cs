@@ -1141,6 +1141,12 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.TotalAmount).HasColumnType("decimal(12, 0)");
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
             entity.Property(e => e.VoucherDiscountAmount).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.FailedDeliveryAt).HasPrecision(0);
+            entity.Property(e => e.ReturnedAt).HasPrecision(0);
+            entity.Property(e => e.LastGHNFailCode)
+                .HasMaxLength(20)
+                .IsUnicode(false);
+            entity.Property(e => e.DeliveryFailCount).HasDefaultValue((byte)0);
 
             entity.HasOne(d => d.Account).WithMany(p => p.OrderAccounts)
                 .HasForeignKey(d => d.AccountId)
@@ -1390,6 +1396,9 @@ public partial class SEP490ToyStoreContext : DbContext
                 .ValueGeneratedOnAdd()
                 .HasColumnName("RefundReasonID");
             entity.Property(e => e.Content).HasMaxLength(150);
+            entity.Property(e => e.IsSystem)
+                .HasDefaultValue(false)
+                .HasColumnName("IsSystem");
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");

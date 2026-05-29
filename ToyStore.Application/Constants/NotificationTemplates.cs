@@ -14,6 +14,8 @@ public static class NotificationTemplates
     public const string OrderDelivered       = "ORDER_DELIVERED";
     public const string OrderCancelled       = "ORDER_CANCELLED";
     public const string OrderDeliveryFailed  = "ORDER_DELIVERY_FAILED";
+    public const string OrderReturnRefundPending = "ORDER_RETURN_REFUND_PENDING";
+    public const string OrderCancelledDeliveryFail = "ORDER_CANCELLED_DELIVERY_FAIL";
     public const string OrderAssigned        = "ORDER_ASSIGNED";
 
     // Thanh toán & Ví
@@ -62,6 +64,7 @@ public static class NotificationTemplates
     public const string AdminOutboxStuck     = "ADMIN_OUTBOX_STUCK";
     public const string AdminShippingError   = "ADMIN_SHIPPING_ERROR";
     public const string AdminDamageLost      = "ADMIN_DAMAGE_LOST";
+    public const string AdminReturnFail      = "ADMIN_RETURN_FAIL";
     public const string AdminBlogPending     = "ADMIN_BLOG_PENDING";
     public const string AdminOrderQueued     = "ADMIN_ORDER_QUEUED";
     public const string AdminShiftEndedPending = "ADMIN_SHIFT_ENDED_PENDING";

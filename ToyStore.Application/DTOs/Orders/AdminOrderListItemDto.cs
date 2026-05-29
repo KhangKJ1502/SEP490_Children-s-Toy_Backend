@@ -7,7 +7,10 @@ public class AdminOrderListItemDto
 {
     public int OrderId { get; set; }
     public string OrderCode { get; set; } = string.Empty;
+    public byte StatusId { get; set; }
     public string StatusName { get; set; } = string.Empty;
+    public string FulfillmentLabel { get; set; } = string.Empty;
+    public string? GhnShippingStatus { get; set; }
 
     // Thong tin nguoi nhan
     public string CustomerName { get; set; } = string.Empty;

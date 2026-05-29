@@ -58,9 +58,11 @@ public class OrderStatusWorker : BackgroundService
         // Huỷ đơn PENDING chưa thanh toán sau 24h
         var cutoff = _timeProvider.UtcNow.AddHours(-24);
 
+        // SE_PAY unpaid orders are handled by SePayExpiryJob (~30 min). This worker covers COD/other PENDING > 24h.
         var staleOrders = await context.Orders
             .Include(o => o.OrderDetails)
             .Where(o => o.PaymentStatus == "PENDING"
+                     && o.PaymentMethod != "SE_PAY"
                      && !o.IsDeleted
                      && o.CreatedAt < cutoff)
             .ToListAsync(cancellationToken);
@@ -74,7 +76,7 @@ public class OrderStatusWorker : BackgroundService
         foreach (var order in staleOrders)
         {
 
-            order.PaymentStatus = "FAILED";
+            order.PaymentStatus = "EXPIRED";
 
             var result = await lifecycleService.CancelOrderInternalAsync(
                 order,

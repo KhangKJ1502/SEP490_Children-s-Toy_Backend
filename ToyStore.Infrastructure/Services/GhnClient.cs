@@ -274,7 +274,16 @@ public sealed class GhnClient : IGhnClient
         });
     }
 
+    public async Task<Result> CancelOrderAsync(
+        string providerOrderCode,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(providerOrderCode))
+            return Result.BusinessError("GHN order code is required.");
 
+        var payload = new { order_codes = new[] { providerOrderCode } };
+        return await PostCommandAsync("v2/switch-status/cancel", payload, "cancel_order", cancellationToken);
+    }
 
     private async Task<Result<TData>> GetAsync<TData>(
         string path,
@@ -402,6 +411,76 @@ public sealed class GhnClient : IGhnClient
         }
 
         return Result<TData>.Failure("GHN_ERROR", $"GHN {operation} failed after {retryCount} retries.");
+    }
+
+    private async Task<Result> PostCommandAsync(
+        string path,
+        object payload,
+        string operation,
+        CancellationToken cancellationToken)
+    {
+        var retryCount = Math.Max(1, _ghnOptions.RetryCount);
+        var timeoutSeconds = Math.Max(5, _ghnOptions.TimeoutSeconds);
+
+        for (var attempt = 1; attempt <= retryCount; attempt++)
+        {
+            try
+            {
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+                using var client = _httpClientFactory.CreateClient(HttpClientName);
+                using var response = await client.PostAsJsonAsync(path, payload, JsonOptions, timeoutCts.Token);
+                var responseText = await response.Content.ReadAsStringAsync(timeoutCts.Token);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    if (IsTransient(response.StatusCode) && attempt < retryCount)
+                    {
+                        await BackoffAsync(attempt, timeoutCts.Token);
+                        continue;
+                    }
+                    return Result.BusinessError(
+                        $"GHN {operation} failed – HTTP {(int)response.StatusCode}: {Truncate(responseText)}");
+                }
+
+                var body = JsonSerializer.Deserialize<GhnApiResponse<JsonElement>>(responseText, JsonOptions);
+                if (body is null)
+                {
+                    if (attempt < retryCount) { await BackoffAsync(attempt, timeoutCts.Token); continue; }
+                    return Result.Failure("GHN_EMPTY_RESPONSE", $"GHN {operation} returned empty body.");
+                }
+
+                if (body.Code != 200)
+                {
+                    return Result.BusinessError(
+                        $"GHN {operation} business error (code={body.Code}): {body.Message}");
+                }
+
+                return Result.Success();
+            }
+            catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex, "GHN {Operation} timeout – attempt {Attempt}/{RetryCount}",
+                    operation, attempt, retryCount);
+                if (attempt < retryCount) { await BackoffAsync(attempt, cancellationToken); continue; }
+                return Result.Failure("GHN_TIMEOUT", $"GHN {operation} timed out after {retryCount} attempt(s).");
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(ex, "GHN {Operation} HTTP error – attempt {Attempt}/{RetryCount}",
+                    operation, attempt, retryCount);
+                if (attempt < retryCount) { await BackoffAsync(attempt, cancellationToken); continue; }
+                return Result.Failure("GHN_HTTP_ERROR", $"GHN {operation} network error: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "GHN {Operation} unexpected error", operation);
+                return Result.Failure("GHN_ERROR", $"Unexpected GHN {operation} error: {ex.Message}");
+            }
+        }
+
+        return Result.Failure("GHN_ERROR", $"GHN {operation} failed after {retryCount} retries.");
     }
 
     private static bool IsTransient(HttpStatusCode code)

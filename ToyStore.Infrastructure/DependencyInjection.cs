@@ -221,6 +221,8 @@ public static class DependencyInjection
         services.AddScoped<IAdminOrderService, AdminOrderService>();
         services.AddScoped<IAdminDashboardService, AdminDashboardService>();
         services.AddScoped<IShippingWebhookService, ShippingWebhookService>();
+        services.AddScoped<IGhnWebhookService, GhnWebhookService>();
+        services.AddScoped<IShippingReturnFlowService, ShippingReturnFlowService>();
 
         services.AddScoped<IPromotionRepository, PromotionRepository>();
         services.AddScoped<IPromotionService, PromotionService>();
@@ -275,6 +277,7 @@ public static class DependencyInjection
         services.AddScoped<ISePayWebhookService, SePayWebhookService>();
         services.AddScoped<ICheckoutService, CheckoutService>();
         services.AddScoped<IOrderLifecycleService, OrderLifecycleService>();
+        services.AddScoped<IWalletRefundCreditor, WalletRefundCreditorService>();
         services.AddScoped<IOrderCustomerService, OrderCustomerService>();
 
         // Cau hinh webhook tokens

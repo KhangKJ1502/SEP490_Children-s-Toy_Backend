@@ -78,6 +78,10 @@ public class TemplateService : ITemplateService
 
         var totalCount = await _unitOfWork.Templates.CountAsync(searchTerm, isActive, usageScope, startDate, endDate, cancellationToken);
         var mappedItems = _mapper.Map<List<TemplateListDto>>(items);
+        foreach (var item in mappedItems)
+        {
+            item.IsUsed = await _unitOfWork.Templates.IsUsedAsync(item.TemplateCode, cancellationToken);
+        }
 
         var response = new PaginatedResponse<TemplateListDto>(mappedItems, totalCount, pageNumber, pageSize);
         return Result<PaginatedResponse<TemplateListDto>>.Success(response);
@@ -120,7 +124,9 @@ public class TemplateService : ITemplateService
 
             _logger.LogInformation("Template {TemplateId} created successfully.", created.TemplateId);
 
-            return Result<TemplateListDto>.Success(_mapper.Map<TemplateListDto>(created));
+            var dtoResult = _mapper.Map<TemplateListDto>(created);
+            dtoResult.IsUsed = false;
+            return Result<TemplateListDto>.Success(dtoResult);
         }
         catch (Exception ex)
         {
@@ -160,14 +166,6 @@ public class TemplateService : ITemplateService
             return Result<TemplateListDto>.NotFound("Template", templateId);
         }
 
-        // SYSTEM templates are read-only — cannot be modified by admin
-        if (existing.UsageScope == "SYSTEM")
-        {
-            return Result<TemplateListDto>.Failure(
-                "BUSINESS_RULE_VIOLATION",
-                "System templates are read-only and cannot be modified.");
-        }
-
         var isUsed = await _unitOfWork.Templates.IsUsedAsync(existing.TemplateCode, cancellationToken);
         if (isUsed)
         {
@@ -199,7 +197,9 @@ public class TemplateService : ITemplateService
 
             _logger.LogInformation("Template {TemplateId} updated successfully.", updated.TemplateId);
 
-            return Result<TemplateListDto>.Success(_mapper.Map<TemplateListDto>(updated));
+            var dtoResult = _mapper.Map<TemplateListDto>(updated);
+            dtoResult.IsUsed = await _unitOfWork.Templates.IsUsedAsync(updated.TemplateCode, cancellationToken);
+            return Result<TemplateListDto>.Success(dtoResult);
         }
         catch (Exception ex)
         {

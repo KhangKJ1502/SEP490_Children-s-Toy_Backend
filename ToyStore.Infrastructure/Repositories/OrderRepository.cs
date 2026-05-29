@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Common.Helpers;
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Application.Services;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
 using ToyStore.Domain.Entities;
+using ToyStore.Domain.Enums;
 using ToyStore.Infrastructure.Data;
 
 namespace ToyStore.Infrastructure.Repositories;
@@ -29,6 +31,7 @@ public class OrderRepository : IOrderRepository
         int pageNumber,
         int pageSize,
         int? statusId,
+        IReadOnlyCollection<int>? statusIds,
         bool restrictToAssignment,
         int currentAccountId,
         byte assignmentRoleId,
@@ -38,7 +41,7 @@ public class OrderRepository : IOrderRepository
         CancellationToken cancellationToken = default)
     {
         var query = BuildAdminQuery(
-            allowedStatusNames, statusId, restrictToAssignment,
+            allowedStatusNames, statusId, statusIds, restrictToAssignment,
             currentAccountId, assignmentRoleId, keyword, fromDate, toDate);
 
         return await query
@@ -70,6 +73,7 @@ public class OrderRepository : IOrderRepository
     public async Task<int> CountAdminAsync(
         IReadOnlyCollection<string> allowedStatusNames,
         int? statusId,
+        IReadOnlyCollection<int>? statusIds,
         bool restrictToAssignment,
         int currentAccountId,
         byte assignmentRoleId,
@@ -79,7 +83,7 @@ public class OrderRepository : IOrderRepository
         CancellationToken cancellationToken = default)
     {
         var query = BuildAdminQuery(
-            allowedStatusNames, statusId, restrictToAssignment,
+            allowedStatusNames, statusId, statusIds, restrictToAssignment,
             currentAccountId, assignmentRoleId, keyword, fromDate, toDate);
 
         return await query.CountAsync(cancellationToken);
@@ -136,11 +140,12 @@ public class OrderRepository : IOrderRepository
             .Include(o => o.Account)
             .Include(o => o.AssignedToStaff)
             .Include(o => o.OrderDetails)
-            .Include(o => o.OrderStatusHistories.OrderBy(h => h.CreatedAt))
+            .Include(o => o.OrderStatusHistories.OrderBy(h => h.HistoryId))
                 .ThenInclude(h => h.ChangedByNavigation)
             .Include(o => o.OrderStatusHistories)
                 .ThenInclude(h => h.Status)
-            .Include(o => o.ShippingProviderTransactions.OrderByDescending(t => t.CreatedAt));
+            .Include(o => o.ShippingProviderTransactions.OrderByDescending(t => t.CreatedAt))
+                .ThenInclude(t => t.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt));
     }
 
     public async Task<Order?> GetByIdForCustomerAsync(
@@ -154,7 +159,7 @@ public class OrderRepository : IOrderRepository
             .Include(o => o.OrderDetails)
                 .ThenInclude(d => d.Product)
                     .ThenInclude(p => p.Category)
-            .Include(o => o.OrderStatusHistories.OrderBy(h => h.CreatedAt))
+            .Include(o => o.OrderStatusHistories.OrderBy(h => h.HistoryId))
                 .ThenInclude(h => h.Status)
             .Include(o => o.OrderStatusHistories)
                 .ThenInclude(h => h.ChangedByNavigation)
@@ -179,6 +184,7 @@ public class OrderRepository : IOrderRepository
     {
         return await _context.Orders
             .AsNoTracking()
+            .Include(o => o.Status)
             .Include(o => o.ShippingProviderTransactions.OrderByDescending(t => t.CreatedAt))
                 .ThenInclude(t => t.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt))
             .FirstOrDefaultAsync(o => o.OrderId == orderId && !o.IsDeleted, cancellationToken);
@@ -239,13 +245,36 @@ public class OrderRepository : IOrderRepository
         await _context.ShippingStatusHistories.AddAsync(history, cancellationToken);
     }
 
+    public async Task<bool> ExistsShippingStatusHistoryAsync(
+        long shippingTxId, string newStatus, string rawPayload, CancellationToken cancellationToken = default)
+    {
+        return await _context.ShippingStatusHistories.AnyAsync(
+            h => h.ShippingTxId == shippingTxId
+                 && h.NewStatus == newStatus
+                 && h.RawPayload == rawPayload,
+            cancellationToken);
+    }
+
+    public async Task<int> CountShippingStatusHistoryAsync(
+        long shippingTxId, string newStatus, CancellationToken cancellationToken = default)
+    {
+        return await _context.ShippingStatusHistories.CountAsync(
+            h => h.ShippingTxId == shippingTxId && h.NewStatus == newStatus,
+            cancellationToken);
+    }
+
     public async Task<ShippingProviderTransaction?> GetShippingTransactionByProviderCodeAsync(
         string providerOrderCode,
         CancellationToken cancellationToken = default)
     {
+        var code = providerOrderCode.Trim();
         return await _context.ShippingProviderTransactions
             .Include(t => t.Order)
-            .FirstOrDefaultAsync(t => t.ProviderOrderCode == providerOrderCode, cancellationToken);
+            .FirstOrDefaultAsync(t =>
+                t.ProviderOrderCode == code
+                || t.TrackingNumber == code
+                || (t.Order != null && t.Order.ShippingOrderCode == code),
+                cancellationToken);
     }
 
     public async Task<PaymentGatewayTransaction?> GetPaymentTransactionByRequestIdAsync(
@@ -339,11 +368,41 @@ public class OrderRepository : IOrderRepository
         return await _context.WalletTransactions.AnyAsync(wt => wt.IdempotencyKey == idempotencyKey, cancellationToken);
     }
 
+    public async Task<long?> GetWalletTransactionIdByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken = default)
+    {
+        return await _context.WalletTransactions
+            .Where(wt => wt.IdempotencyKey == idempotencyKey)
+            .Select(wt => (long?)wt.WalletTransactionId)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<bool> HasCompletedRefundWalletCreditForOrderAsync(int orderId, CancellationToken cancellationToken = default)
+    {
+        return await _context.WalletTransactions.AnyAsync(
+            wt => wt.RelatedOrderId == orderId
+                  && wt.TxnType == WalletTxnTypes.Refund
+                  && wt.Direction == WalletTxnDirections.Credit
+                  && wt.Status == "Completed",
+            cancellationToken);
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    private static readonly string[] AdminGhnReturnStatuses =
+    [
+        ShippingStatuses.WaitingToReturn,
+        ShippingStatuses.Return,
+        ShippingStatuses.ReturnTransporting,
+        ShippingStatuses.ReturnSorting,
+        ShippingStatuses.Returning,
+        ShippingStatuses.ReturnFail,
+        ShippingStatuses.Returned,
+    ];
 
     private IQueryable<Order> BuildAdminQuery(
         IReadOnlyCollection<string> allowedStatusNames,
         int? statusId,
+        IReadOnlyCollection<int>? statusIds,
         bool restrictToAssignment,
         int currentAccountId,
         byte assignmentRoleId,
@@ -355,6 +414,7 @@ public class OrderRepository : IOrderRepository
             .AsNoTracking()
             .Include(o => o.Status)
             .Include(o => o.AssignedToStaff)
+            .Include(o => o.ShippingProviderTransactions)
             .Where(o => !o.IsDeleted);
 
         if (allowedStatusNames.Count > 0)
@@ -362,9 +422,13 @@ public class OrderRepository : IOrderRepository
             query = query.Where(o => allowedStatusNames.Contains(o.Status.StatusName));
         }
 
-        if (statusId.HasValue)
+        if (statusIds is { Count: > 0 })
         {
-            query = query.Where(o => o.StatusId == (byte)statusId.Value);
+            query = ApplyAdminStatusFilter(query, statusIds);
+        }
+        else if (statusId.HasValue)
+        {
+            query = ApplyAdminStatusFilter(query, [statusId.Value]);
         }
 
         if (restrictToAssignment)
@@ -396,13 +460,46 @@ public class OrderRepository : IOrderRepository
             query = query.Where(o => o.OrderDate <= endOfDay);
         }
 
-        if (!statusId.HasValue && string.IsNullOrWhiteSpace(keyword))
+        var hasExplicitStatusFilter = statusId.HasValue || statusIds is { Count: > 0 };
+        if (!hasExplicitStatusFilter && string.IsNullOrWhiteSpace(keyword))
         {
             // Chỉ ẩn các đơn SE_PAY chưa thanh toán (rác). Các đơn COD/Wallet dù bị Hủy vẫn hiện để theo dõi.
             query = query.Where(o => !(o.PaymentMethod == "SE_PAY" && o.PaymentStatus != "PAID"));
         }
 
         return query;
+    }
+
+    private IQueryable<Order> ApplyAdminStatusFilter(IQueryable<Order> query, IReadOnlyCollection<int> filterStatusIds)
+    {
+        var ids = filterStatusIds.Select(i => (byte)i).Distinct().ToList();
+        var expandedIds = ExpandAdminDeliveringGroup(ids);
+        var includesDeliveringGroup = ids.Contains(AdminOrderFulfillmentMapper.DeliveringStatusId);
+
+        if (includesDeliveringGroup)
+        {
+            return query.Where(o =>
+                (expandedIds.Contains(o.StatusId)
+                || o.ShippingProviderTransactions.Any(t =>
+                    t.Status != null && AdminGhnReturnStatuses.Contains(t.Status)))
+                && o.Status.StatusName != OrderStatuses.Cancelled
+                && o.Status.StatusName != OrderStatuses.Refunded
+                && o.Status.StatusName != OrderStatuses.Completed
+                && o.Status.StatusName != OrderStatuses.Delivered);
+        }
+
+        return query.Where(o => ids.Contains(o.StatusId));
+    }
+
+    private static List<byte> ExpandAdminDeliveringGroup(List<byte> ids)
+    {
+        if (!ids.Contains(AdminOrderFulfillmentMapper.DeliveringStatusId))
+            return ids;
+
+        var expanded = new HashSet<byte>(ids);
+        foreach (var id in AdminOrderFulfillmentMapper.DeliveringGroupStatusIds)
+            expanded.Add(id);
+        return expanded.ToList();
     }
 
     private IQueryable<Order> BuildCustomerQuery(
@@ -415,6 +512,7 @@ public class OrderRepository : IOrderRepository
         IQueryable<Order> query = _context.Orders
             .AsNoTracking()
             .Include(o => o.Status)
+            .Include(o => o.ShippingProviderTransactions)
             .Include(o => o.OrderDetails)
                 .ThenInclude(d => d.Product)
                     .ThenInclude(p => p.Category)
@@ -423,20 +521,54 @@ public class OrderRepository : IOrderRepository
 
         if (statusNames is { Count: > 0 })
         {
-            query = query.Where(o => statusNames.Contains(o.Status.StatusName));
+            var isDeliveringTab = statusNames.Contains(OrderStatuses.Delivering)
+                || statusNames.Contains(OrderStatuses.Returning)
+                || statusNames.Contains(OrderStatuses.ReturnCompleted);
 
-            // Nếu đang xem tab Bị hủy, chỉ hiện SHIP_COD (ẩn rác SE_PAY)
+            if (isDeliveringTab)
+            {
+                var ghnReturnStatuses = new[]
+                {
+                    ShippingStatuses.WaitingToReturn,
+                    ShippingStatuses.Return,
+                    ShippingStatuses.ReturnTransporting,
+                    ShippingStatuses.ReturnSorting,
+                    ShippingStatuses.Returning,
+                    ShippingStatuses.ReturnFail,
+                    ShippingStatuses.Returned,
+                };
+
+                query = query.Where(o =>
+                    (statusNames.Contains(o.Status.StatusName)
+                    || o.ShippingProviderTransactions.Any(t =>
+                        t.Status != null && ghnReturnStatuses.Contains(t.Status.ToLower())))
+                    && o.Status.StatusName != OrderStatuses.Cancelled
+                    && o.Status.StatusName != OrderStatuses.Refunded
+                    && o.Status.StatusName != OrderStatuses.Completed
+                    && o.Status.StatusName != OrderStatuses.Delivered);
+            }
+            else
+            {
+                query = query.Where(o => statusNames.Contains(o.Status.StatusName));
+            }
+
+            // Nếu đang xem tab Bị hủy, chỉ hiện các đơn thực sự (COD, WALLET, paid/refunded SE_PAY) và ẩn rác SE_PAY chưa thanh toán
             if (statusNames.Contains(OrderStatuses.Cancelled))
             {
                 query = query.Where(o => o.Status.StatusName != OrderStatuses.Cancelled
-                                      || o.PaymentMethod == "SHIP_COD");
+                                      || o.PaymentMethod == "SHIP_COD"
+                                      || o.PaymentMethod == "WALLET"
+                                      || (o.PaymentMethod == "SE_PAY" && (o.PaymentStatus == "PAID" || o.PaymentStatus == "REFUNDED")));
             }
         }
         else
         {
-            // Mặc định ẩn các đơn SE_PAY bị hủy hoặc chưa thanh toán (rác). Chỉ hiện COD bị hủy.
-            query = query.Where(o => !(o.Status.StatusName == OrderStatuses.Cancelled && o.PaymentMethod != "SHIP_COD")
-                                  && (o.PaymentMethod != "SE_PAY" || o.PaymentStatus == "PAID"));
+            // Mặc định ẩn các đơn SE_PAY chưa thanh toán bị hủy (rác). Hiện các đơn thực sự (COD, WALLET, paid/refunded SE_PAY)
+            query = query.Where(o => !(o.Status.StatusName == OrderStatuses.Cancelled 
+                                      && o.PaymentMethod == "SE_PAY" 
+                                      && o.PaymentStatus != "PAID" 
+                                      && o.PaymentStatus != "REFUNDED")
+                                  && (o.PaymentMethod != "SE_PAY" || o.PaymentStatus == "PAID" || o.PaymentStatus == "REFUNDED"));
         }
 
         if (!string.IsNullOrWhiteSpace(keyword))

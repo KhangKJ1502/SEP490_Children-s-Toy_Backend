@@ -183,3 +183,165 @@ public class MerchReturnedHandler : IOutboxEventHandler
         }
     }
 }
+
+public class OrderDeliveryFailedHandler : IOutboxEventHandler
+{
+    public string EventType => NotificationEventTypes.OrderDeliveryFailed;
+
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly INotificationDispatcher _dispatcher;
+
+    public OrderDeliveryFailedHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
+    {
+        _unitOfWork = unitOfWork;
+        _dispatcher = dispatcher;
+    }
+
+    public async Task HandleAsync(OutboxEventData ev, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(ev.Payload);
+        var root = doc.RootElement;
+
+        var orderId   = root.GetProperty("orderId").GetInt32();
+        var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
+
+        var order = await _unitOfWork.Orders.GetByIdAsync(orderId, ct);
+        if (order is null) return;
+
+        await _dispatcher.DispatchAsync(new NotificationContext
+        {
+            RecipientAccountId = order.AccountId,
+            RecipientType      = RecipientTypes.Customer,
+            NotificationType   = NotificationTypes.Order,
+            TemplateCode       = NotificationTemplates.OrderDeliveryFailed,
+            Placeholders       = new Dictionary<string, string> { ["OrderCode"] = orderCode },
+            ReferenceId        = $"{orderId}",
+            SendBell           = true,
+            SendEmail          = false,
+            ActionTarget       = $"/profile/orders/{orderId}",
+        }, ct);
+    }
+}
+
+public class OrderReturnRefundPendingHandler : IOutboxEventHandler
+{
+    public string EventType => NotificationEventTypes.OrderReturnRefundPending;
+
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly INotificationDispatcher _dispatcher;
+
+    public OrderReturnRefundPendingHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
+    {
+        _unitOfWork = unitOfWork;
+        _dispatcher = dispatcher;
+    }
+
+    public async Task HandleAsync(OutboxEventData ev, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(ev.Payload);
+        var root = doc.RootElement;
+
+        var orderId   = root.GetProperty("orderId").GetInt32();
+        var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
+
+        var order = await _unitOfWork.Orders.GetByIdAsync(orderId, ct);
+        if (order is null) return;
+
+        await _dispatcher.DispatchAsync(new NotificationContext
+        {
+            RecipientAccountId = order.AccountId,
+            RecipientType      = RecipientTypes.Customer,
+            NotificationType   = NotificationTypes.Order,
+            TemplateCode       = NotificationTemplates.OrderReturnRefundPending,
+            Placeholders       = new Dictionary<string, string> { ["OrderCode"] = orderCode },
+            ReferenceId        = $"{orderId}",
+            SendBell           = true,
+            SendEmail          = true,
+            ActionTarget       = $"/profile/orders/{orderId}",
+        }, ct);
+    }
+}
+
+public class OrderCancelledDeliveryFailHandler : IOutboxEventHandler
+{
+    public string EventType => NotificationEventTypes.OrderCancelledDeliveryFail;
+
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly INotificationDispatcher _dispatcher;
+
+    public OrderCancelledDeliveryFailHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
+    {
+        _unitOfWork = unitOfWork;
+        _dispatcher = dispatcher;
+    }
+
+    public async Task HandleAsync(OutboxEventData ev, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(ev.Payload);
+        var root = doc.RootElement;
+
+        var orderId   = root.GetProperty("orderId").GetInt32();
+        var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
+
+        var order = await _unitOfWork.Orders.GetByIdAsync(orderId, ct);
+        if (order is null) return;
+
+        await _dispatcher.DispatchAsync(new NotificationContext
+        {
+            RecipientAccountId = order.AccountId,
+            RecipientType      = RecipientTypes.Customer,
+            NotificationType   = NotificationTypes.Order,
+            TemplateCode       = NotificationTemplates.OrderCancelledDeliveryFail,
+            Placeholders       = new Dictionary<string, string> { ["OrderCode"] = orderCode },
+            ReferenceId        = $"{orderId}",
+            SendBell           = true,
+            SendEmail          = true,
+            ActionTarget       = $"/profile/orders/{orderId}",
+        }, ct);
+    }
+}
+
+public class AdminReturnFailHandler : IOutboxEventHandler
+{
+    public string EventType => NotificationEventTypes.OrderReturnFail;
+
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly INotificationDispatcher _dispatcher;
+
+    public AdminReturnFailHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
+    {
+        _unitOfWork = unitOfWork;
+        _dispatcher = dispatcher;
+    }
+
+    public async Task HandleAsync(OutboxEventData ev, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(ev.Payload);
+        var root = doc.RootElement;
+
+        var orderId           = root.GetProperty("orderId").GetInt32();
+        var orderCode         = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
+        var providerOrderCode = root.TryGetProperty("providerOrderCode", out var pc) ? pc.GetString() ?? "" : "";
+
+        var admins = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 3 }, ct);
+        foreach (var admin in admins)
+        {
+            await _dispatcher.DispatchAsync(new NotificationContext
+            {
+                RecipientAccountId = admin.AccountId,
+                RecipientType      = RecipientTypes.Admin,
+                NotificationType   = NotificationTypes.System,
+                TemplateCode       = NotificationTemplates.AdminReturnFail,
+                Placeholders       = new Dictionary<string, string>
+                {
+                    ["OrderCode"]         = orderCode,
+                    ["ProviderOrderCode"] = providerOrderCode,
+                },
+                ReferenceId  = $"{orderId}:{admin.AccountId}",
+                SendBell     = true,
+                SendEmail    = true,
+                ActionTarget = $"/admin/orders/{orderId}",
+            }, ct);
+        }
+    }
+}

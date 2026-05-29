@@ -17,4 +17,6 @@ public class TemplateListDto
     public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }
+
+    public bool IsUsed { get; set; }
 }

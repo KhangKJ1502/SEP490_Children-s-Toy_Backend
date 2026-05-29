@@ -89,6 +89,11 @@ public class WorkScheduleService : IWorkScheduleService
             return Result<WorkScheduleDto>.Failure("BUSINESS_RULE_VIOLATION", "Shift template is inactive.");
         }
 
+        if (dto.WorkDate.Date < _timeProvider.TodayVn.Date)
+        {
+            return Result<WorkScheduleDto>.Failure("BUSINESS_RULE_VIOLATION", "Cannot schedule shifts in the past.");
+        }
+
         var exists = await _unitOfWork.WorkSchedules.ExistsAsync(dto.AccountId, dto.WorkDate, dto.ShiftTemplateId, cancellationToken);
         if (exists)
         {
@@ -278,6 +283,13 @@ public class WorkScheduleService : IWorkScheduleService
                     "BUSINESS_RULE_VIOLATION",
                     "Shift template is inactive.");
             }
+        }
+
+        if (dto.WorkDate.Date < _timeProvider.TodayVn.Date)
+        {
+            return Result<UpdateWorkScheduleResultDto>.Failure(
+                "BUSINESS_RULE_VIOLATION",
+                "Cannot schedule shifts in the past.");
         }
 
         if (schedule.AccountId != dto.AccountId

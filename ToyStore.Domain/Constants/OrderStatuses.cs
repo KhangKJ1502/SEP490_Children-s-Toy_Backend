@@ -7,15 +7,22 @@ namespace ToyStore.Domain.Constants;
 /// </summary>
 public static class OrderStatuses
 {
-    public const string Pending    = "Pending";
-    public const string Confirmed  = "Confirmed";
+    public const string Pending = "Pending";
+    public const string Confirmed = "Confirmed";
     public const string Processing = "Processing";
-    public const string Shipped    = "Shipped";
+    public const string Shipped = "Shipped";
     public const string Delivering = "Delivering";
-    public const string Delivered  = "Delivered";
-    public const string Completed  = "Completed";
-    public const string Cancelled  = "Cancelled";
-    public const string Refunded   = "Refunded";
+    public const string Delivered = "Delivered";
+    public const string Completed = "Completed";
+    public const string Cancelled = "Cancelled";
+    public const string Refunded = "Refunded";
+    public const string Returning = "Returning";
+    public const string ReturnCompleted = "ReturnCompleted";
+    public const string DeliveryFailed = "DeliveryFailed";
+    public const string WaitingReturn = "WaitingReturn";
+    public const string ReturnFailed = "ReturnFailed";
+    public const string Lost = "Lost";
+    public const string Damaged = "Damaged";
 
     /// <summary>
     /// Cac trang thai Staff co the thay duoc theo mac dinh (chua loc bo sung).
@@ -40,4 +47,9 @@ public static class OrderStatuses
     public static readonly IReadOnlyCollection<string> CancellableStatuses =
         [Pending, Confirmed];
 
+    /// <summary>
+    /// From Shipped onward, prepaid refunds must use refund management (no auto wallet on cancel).
+    /// </summary>
+    public static bool PrepaidCancelRequiresManualRefund(byte statusId)
+        => statusId >= 4;
 }

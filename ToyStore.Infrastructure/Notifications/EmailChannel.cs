@@ -104,7 +104,9 @@ public class EmailChannel : INotificationChannel
 
             var htmlBody = (request.TemplateCode == NotificationTemplates.OrderShipping || request.TemplateCode == NotificationTemplates.OrderPlaced)
                 ? await BuildRichOrderShippingEmailAsync(request, absoluteActionTarget, ct)
-                : BuildHtmlBody(request.Title, request.Message, absoluteActionTarget);
+                : (request.TemplateCode == NotificationTemplates.BirthdayChild)
+                    ? BuildBirthdayChildEmail(request, absoluteActionTarget)
+                    : BuildHtmlBody(request.Title, request.Message, absoluteActionTarget);
 
             var emailMsg = new EmailMessage(
                 ToEmail:  account.Email,
@@ -132,6 +134,151 @@ public class EmailChannel : INotificationChannel
         }
 
         await _unitOfWork.SaveChangesAsync(ct);
+    }
+
+    private string BuildBirthdayChildEmail(NotificationDeliveryRequest request, string? actionTarget)
+    {
+        var childName = "";
+        var childNickname = "";
+        var childGender = "";
+        var childBirthDate = "";
+
+        if (!string.IsNullOrEmpty(request.PayloadJson))
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(request.PayloadJson);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("childName", out var propName)) childName = propName.GetString() ?? "";
+                if (root.TryGetProperty("childNickname", out var propNick)) childNickname = propNick.GetString() ?? "";
+                if (root.TryGetProperty("childGender", out var propGender)) childGender = propGender.GetString() ?? "";
+                if (root.TryGetProperty("childBirthDate", out var propDob)) childBirthDate = propDob.GetString() ?? "";
+            }
+            catch {}
+        }
+
+        // Fallbacks
+        if (string.IsNullOrEmpty(childName)) childName = "your little one";
+        if (string.IsNullOrEmpty(childNickname)) childNickname = "N/A";
+        if (string.IsNullOrEmpty(childGender)) childGender = "N/A";
+        if (string.IsNullOrEmpty(childBirthDate)) childBirthDate = "N/A";
+
+        var url = actionTarget ?? _configuration["FrontendUrls:Customer"] ?? "http://localhost:3000";
+
+        return $@"<!DOCTYPE html>
+<html lang=""en"">
+<head>
+    <meta charset=""utf-8""/>
+    <meta content=""width=device-width, initial-scale=1.0"" name=""viewport""/>
+    <title>Happy Birthday Email</title>
+    <script src=""https://cdn.tailwindcss.com?plugins=forms,container-queries""></script>
+    <link href=""https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"" rel=""stylesheet""/>
+    <link href=""https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Plus+Jakarta+Sans:wght@500;700&display=swap"" rel=""stylesheet""/>
+    
+    <script id=""tailwind-config"">
+        tailwind.config = {{
+            darkMode: ""class"",
+            theme: {{
+                extend: {{
+                    colors: {{
+                        ""primary"": ""#a93100"",
+                        ""primary-container"": ""#d34000"",
+                        ""primary-fixed"": ""#ffdbd0"",
+                        ""on-primary"": ""#ffffff"",
+                        ""on-primary-fixed-variant"": ""#842500"",
+                        ""canvas"": ""#fafafa"",
+                        ""canvas-soft"": ""#ffffff"",
+                        ""ink-soft"": ""#1e293b"",
+                        ""ink-mid"": ""#334155"",
+                        ""body-mid"": ""#64748b"",
+                        ""surface-container"": ""#ffe9e3"",
+                        ""surface-container-low"": ""#fff1ed"",
+                        ""mute"": ""#cbd5e1"",
+                    }},
+                    fontFamily: {{
+                        ""button"": [""Inter"", ""sans-serif""],
+                        ""body-lg"": [""Inter"", ""sans-serif""],
+                        ""body-md"": [""Inter"", ""sans-serif""],
+                        ""headline-md"": [""Inter"", ""sans-serif""],
+                        ""display-hero"": [""Plus Jakarta Sans"", ""sans-serif""],
+                        ""display-hero-mobile"": [""Plus Jakarta Sans"", ""sans-serif""],
+                        ""label-sm"": [""Inter"", ""sans-serif""]
+                    }}
+                }}
+            }}
+        }}
+    </script>
+    <style>
+        .material-symbols-outlined {{
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }}
+    </style>
+</head>
+<body class=""bg-gradient-to-b from-surface-container-low to-canvas text-ink-soft font-body-md antialiased min-h-screen flex flex-col items-center justify-center"">
+    
+    <!-- Main Content Canvas -->
+    <main class=""w-full max-w-[1200px] mx-auto px-4 md:px-12 py-12 flex flex-col items-center"">
+        
+        <!-- Email Container Card -->
+        <div class=""w-full max-w-2xl bg-canvas-soft rounded-3xl border border-mute/50 shadow-xl shadow-primary/5 overflow-hidden"">
+            
+            <!-- Hero Image Section -->
+            <div class=""w-full h-64 sm:h-80 bg-surface-container relative flex items-center justify-center border-b border-mute/30"">
+                <img alt=""Happy Birthday Graphic"" class=""max-h-full w-auto object-contain p-8 drop-shadow-md hover:scale-105 transition-transform duration-500"" src=""https://lh3.googleusercontent.com/aida-public/AB6AXuC-gSAhclG4f1-gtfSw1vynh3SOC1JpFS8mHQ_QT7FSMT1dppYUdINh9hPWsw7AYtB89Q_TnvQWCvdEaNwZlJISfm-ZE9xTdMRbpqbwkPNzijMKqgrBqoRQIa5XdT8t8lQF4ZqbL72y7Nvp8tOl8b8qi4JeAeSsjqAbhiFfHK3zpi7jlq3Jy_JwNLoNuqXbJedecvg8qtpxXOaa15MBdHeY5Edc4R8OjAf_UPgrMfVsa-JCpogu66xnWRF4R_BLsDGAtYJtAOoyMXO5""/>
+            </div>
+            
+            <!-- Content Padding -->
+            <div class=""p-8 md:p-12 flex flex-col items-center text-center"">
+                
+                <!-- Greeting -->
+                <h1 class=""font-display-hero-mobile md:font-display-hero text-4xl md:text-5xl text-ink-soft mb-6 font-bold leading-tight"">
+                    Happy Birthday to your little one! 🎂
+                </h1>
+                <p class=""font-body-lg text-lg text-body-mid max-w-lg mb-10 leading-relaxed"">
+                    Each passing year is a wonderful journey of love and growth. As your little angel welcomes a new age, we send the warmest wishes to both parents and your child. May this special day be filled with joy, laughter, and unforgettable memories!
+                </p>
+                
+                <!-- User Info Card (Nested) -->
+                <div class=""w-full max-w-md bg-canvas rounded-2xl border border-mute/40 p-6 mb-10 text-center shadow-sm"">
+                    <h2 class=""font-headline-md text-2xl text-ink-soft mb-6 flex items-center justify-center gap-2 font-semibold"">
+                        <span class=""material-symbols-outlined text-primary text-[28px]"">celebration</span>
+                        Birthday Profile
+                    </h2>
+                    <div class=""grid grid-cols-2 gap-4"">
+                        <div class=""bg-surface-container-low p-4 rounded-2xl flex flex-col items-center text-center border border-primary-fixed"">
+                            <span class=""material-symbols-outlined text-primary mb-2"">face</span>
+                            <span class=""font-label-sm text-body-mid uppercase tracking-widest text-[10px] mb-1"">NAME</span>
+                            <span class=""font-body-md text-ink-soft font-bold text-lg"">{System.Net.WebUtility.HtmlEncode(childName)}</span>
+                        </div>
+                        <div class=""bg-surface-container-low p-4 rounded-2xl flex flex-col items-center text-center border border-primary-fixed"">
+                            <span class=""material-symbols-outlined text-primary mb-2"">child_care</span>
+                            <span class=""font-label-sm text-body-mid uppercase tracking-widest text-[10px] mb-1"">NICKNAME</span>
+                            <span class=""font-body-md text-ink-soft font-bold text-lg"">{System.Net.WebUtility.HtmlEncode(childNickname)}</span>
+                        </div>
+                        <div class=""bg-surface-container-low p-4 rounded-2xl flex flex-col items-center text-center border border-primary-fixed"">
+                            <span class=""material-symbols-outlined text-primary mb-2"">wc</span>
+                            <span class=""font-label-sm text-body-mid uppercase tracking-widest text-[10px] mb-1"">GENDER</span>
+                            <span class=""font-body-md text-ink-soft font-bold text-lg"">{System.Net.WebUtility.HtmlEncode(childGender)}</span>
+                        </div>
+                        <div class=""bg-surface-container-low p-4 rounded-2xl flex flex-col items-center text-center border border-primary-fixed"">
+                            <span class=""material-symbols-outlined text-primary mb-2"">cake</span>
+                            <span class=""font-label-sm text-body-mid uppercase tracking-widest text-[10px] mb-1"">BIRTH DATE</span>
+                            <span class=""font-body-md text-ink-soft font-bold text-lg"">{System.Net.WebUtility.HtmlEncode(childBirthDate)}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- CTA Button -->
+                <a href=""{url}"" style=""text-decoration:none;"" class=""bg-primary text-on-primary font-button text-lg py-4 px-10 rounded-full hover:bg-primary-container transition-all duration-300 shadow-lg hover:shadow-primary/40 active:scale-95 flex items-center gap-2 group"">
+                    Visit our website
+                    <span class=""material-symbols-outlined text-[24px] group-hover:translate-x-2 transition-transform"">arrow_forward</span>
+                </a>
+            </div>
+        </div>
+    </main>
+
+</body>
+</html>";
     }
 
     private static string BuildHtmlBody(string title, string message, string? actionTarget)

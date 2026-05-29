@@ -6,6 +6,7 @@ namespace ToyStore.Application.DTOs.Orders;
 public class AdminOrderQueryDto
 {
     public int? StatusId { get; set; }
+    public List<int>? StatusIds { get; set; }
     public bool AssignedToMe { get; set; } = false;
     public string? Keyword { get; set; }
     public DateTime? FromDate { get; set; }

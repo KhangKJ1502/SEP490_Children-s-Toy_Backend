@@ -14,6 +14,9 @@ public static class NotificationEventTypes
     public const string OrderDeliveryFailed = "order.delivery_failed";
     public const string OrderReturning      = "order.returning";
     public const string OrderReturnCompleted = "order.return_completed";
+    public const string OrderReturnRefundPending = "order.return_refund_pending";
+    public const string OrderCancelledDeliveryFail = "order.cancelled_delivery_fail";
+    public const string OrderReturnFail = "order.return_fail";
 
     // Customer — payment & wallet
     public const string PaymentSuccess = "payment.success";

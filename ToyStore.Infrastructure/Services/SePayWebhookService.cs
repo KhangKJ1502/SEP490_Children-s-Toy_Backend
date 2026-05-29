@@ -41,15 +41,15 @@ public class SePayWebhookService : ISePayWebhookService
         ILogger<SePayWebhookService> logger,
         ITimeProvider timeProvider)
     {
-        _uow            = uow;
-        _db             = db;
-        _ghnClient      = ghnClient;
-        _redisService   = redisService;
-        _sePayOpts      = sePayOpts.Value;
-        _shopAddr       = shopAddr.Value;
+        _uow = uow;
+        _db = db;
+        _ghnClient = ghnClient;
+        _redisService = redisService;
+        _sePayOpts = sePayOpts.Value;
+        _shopAddr = shopAddr.Value;
         _eventPublisher = eventPublisher;
-        _logger         = logger;
-        _timeProvider   = timeProvider;
+        _logger = logger;
+        _timeProvider = timeProvider;
     }
 
     public async Task HandleAsync(SePayWebhookPayload payload, CancellationToken cancellationToken = default)
@@ -114,7 +114,7 @@ public class SePayWebhookService : ISePayWebhookService
         // 3. Đơn đã cancel
         if (order.CancelledAt.HasValue)
         {
-            _logger.LogWarning("SPX webhook: Order {Code} is cancelled — cannot pay, manual refund needed", order.OrderCode);
+            _logger.LogWarning("SPX webhook: Order {Code} is cancelled:cannot pay, manual refund needed", order.OrderCode);
             return;
         }
 

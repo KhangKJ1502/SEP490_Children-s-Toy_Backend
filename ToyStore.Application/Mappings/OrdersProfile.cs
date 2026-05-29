@@ -1,5 +1,6 @@
 using AutoMapper;
 using ToyStore.Application.DTOs.Orders;
+using ToyStore.Application.Services;
 using ToyStore.Domain.Entities;
 using ToyStore.Domain.Enums;
 
@@ -11,7 +12,10 @@ public class OrdersProfile : Profile
     {
         // Danh sach don hang (admin)
         CreateMap<Order, AdminOrderListItemDto>()
+            .ForMember(d => d.StatusId, opt => opt.MapFrom(s => s.StatusId))
             .ForMember(d => d.StatusName, opt => opt.MapFrom(s => s.Status.StatusName))
+            .ForMember(d => d.FulfillmentLabel, opt => opt.MapFrom(s => AdminOrderFulfillmentMapper.GetFulfillmentLabel(s)))
+            .ForMember(d => d.GhnShippingStatus, opt => opt.MapFrom(s => AdminOrderFulfillmentMapper.GetLatestGhnStatus(s)))
             .ForMember(d => d.CustomerName, opt => opt.MapFrom(s => s.ShippingName))
             .ForMember(d => d.CustomerPhone, opt => opt.MapFrom(s => s.ShippingPhone))
             .ForMember(d => d.AssignedToStaffName, opt => opt.MapFrom(s =>
@@ -19,29 +23,37 @@ public class OrdersProfile : Profile
 
         // Chi tiet don hang (admin)
         CreateMap<Order, AdminOrderDetailDto>()
+            .ForMember(d => d.StatusId, opt => opt.MapFrom(s => s.StatusId))
             .ForMember(d => d.StatusName, opt => opt.MapFrom(s => s.Status.StatusName))
+            .ForMember(d => d.FulfillmentLabel, opt => opt.MapFrom(s => AdminOrderFulfillmentMapper.GetFulfillmentLabel(s)))
+            .ForMember(d => d.GhnShippingStatus, opt => opt.MapFrom(s => AdminOrderFulfillmentMapper.GetLatestGhnStatus(s)))
             .ForMember(d => d.AssignedToStaffName, opt => opt.MapFrom(s =>
                 s.AssignedToStaff != null ? s.AssignedToStaff.AccountName : null))
             .ForMember(d => d.Items, opt => opt.MapFrom(s => s.OrderDetails))
             .ForMember(d => d.StatusHistory, opt => opt.MapFrom(s => s.OrderStatusHistories))
             .ForMember(d => d.Shipping, opt => opt.MapFrom(s =>
-                s.ShippingProviderTransactions.FirstOrDefault()));
+                s.ShippingProviderTransactions.OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt).FirstOrDefault()))
+            .ForMember(d => d.ShippingHistory, opt => opt.MapFrom(s => MapAdminShippingHistory(s)));
+
+        CreateMap<ShippingStatusHistory, AdminShippingStatusHistoryDto>();
 
         // Danh sach don hang (customer)
         CreateMap<Order, CustomerOrderListItemDto>()
-            .ForMember(d => d.StatusName, opt => opt.MapFrom(s => s.Status.StatusName))
+            .ForMember(d => d.StatusName, opt => opt.MapFrom(s => CustomerOrderDisplayStatusMapper.MapOrderListStatus(s)))
             .ForMember(d => d.Items, opt => opt.MapFrom(s => s.OrderDetails))
             .ForMember(d => d.TotalItems, opt => opt.MapFrom(s => s.OrderDetails.Count))
-            .ForMember(d => d.HasActiveRefund, opt => opt.MapFrom(s => s.OrderRefunds.Any()));
+            .ForMember(d => d.HasActiveRefund, opt => opt.MapFrom(s => CustomerOrderDisplayStatusMapper.HasActiveRefund(s)))
+            .AfterMap((s, d) => CustomerOrderDisplayStatusMapper.ApplyCustomerOrderContract(s, d));
 
         // Chi tiet don hang (customer)
         CreateMap<Order, CustomerOrderDetailDto>()
-            .ForMember(d => d.StatusName, opt => opt.MapFrom(s => s.Status.StatusName))
+            .ForMember(d => d.StatusName, opt => opt.MapFrom(s => CustomerOrderDisplayStatusMapper.MapOrderListStatus(s)))
             .ForMember(d => d.Items, opt => opt.MapFrom(s => s.OrderDetails))
             .ForMember(d => d.StatusHistory, opt => opt.MapFrom(s => s.OrderStatusHistories))
             .ForMember(d => d.Shipping, opt => opt.MapFrom(s =>
                 s.ShippingProviderTransactions.FirstOrDefault()))
-            .ForMember(d => d.HasActiveRefund, opt => opt.MapFrom(s => s.OrderRefunds.Any()));
+            .ForMember(d => d.HasActiveRefund, opt => opt.MapFrom(s => CustomerOrderDisplayStatusMapper.HasActiveRefund(s)))
+            .AfterMap((s, d) => CustomerOrderDisplayStatusMapper.ApplyCustomerOrderContract(s, d));
 
         // Chi tiet san pham trong don
         CreateMap<OrderDetail, AdminOrderDetailItemDto>();
@@ -67,7 +79,8 @@ public class OrdersProfile : Profile
                 s.ChangedByNavigation != null ? s.ChangedByNavigation.AccountName : null));
 
         CreateMap<OrderStatusHistory, CustomerOrderStatusHistoryDto>()
-            .ForMember(d => d.StatusName, opt => opt.MapFrom(s => s.Status.StatusName))
+            .ForMember(d => d.StatusName, opt => opt.MapFrom(s =>
+                CustomerOrderDisplayStatusMapper.ToCustomerHistoryDisplayStatus(s.Status.StatusName, null)))
             .ForMember(d => d.ChangedByName, opt => opt.MapFrom(s =>
                 s.ChangedByNavigation != null ? s.ChangedByNavigation.AccountName : null));
 
@@ -75,5 +88,13 @@ public class OrdersProfile : Profile
         CreateMap<ShippingProviderTransaction, ShippingTransactionDto>();
 
         CreateMap<ShippingProviderTransaction, CustomerShippingTransactionDto>();
+    }
+
+    private static List<ShippingStatusHistory> MapAdminShippingHistory(Order order)
+    {
+        var tx = order.ShippingProviderTransactions
+            .OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt)
+            .FirstOrDefault();
+        return tx?.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt).ToList() ?? [];
     }
 }
