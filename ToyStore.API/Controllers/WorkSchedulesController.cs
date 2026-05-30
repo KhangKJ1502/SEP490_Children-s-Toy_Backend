@@ -28,7 +28,7 @@ public class WorkSchedulesController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Staff,Merchandise")]
     public async Task<ActionResult<List<WorkScheduleListDto>>> GetList(
         [FromQuery] DateTime? workDate,
         [FromQuery] string? status,
@@ -53,6 +53,17 @@ public class WorkSchedulesController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var result = await _workScheduleService.MarkAbsentAsync(scheduleId, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpPost("{scheduleId:int}/transfer-load")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<TransferLoadResultDto>> TransferLoad(
+        [FromRoute] int scheduleId,
+        [FromBody] TransferLoadRequestDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _workScheduleService.TransferLoadAsync(scheduleId, dto, cancellationToken);
         return result.ToActionResult();
     }
 

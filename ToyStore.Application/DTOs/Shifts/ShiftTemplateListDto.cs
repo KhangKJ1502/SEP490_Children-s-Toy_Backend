@@ -13,4 +13,7 @@ public class ShiftTemplateListDto
     public short MaxOrdersPerShift { get; set; }
 
     public bool IsActive { get; set; }
+
+    /// <summary>Work schedules in Scheduled or OnDuty using this template.</summary>
+    public int ActiveScheduleCount { get; set; }
 }

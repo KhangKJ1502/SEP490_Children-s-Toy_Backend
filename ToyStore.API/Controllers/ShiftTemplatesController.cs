@@ -18,10 +18,12 @@ public class ShiftTemplatesController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = "Admin")]
-    public async Task<ActionResult<List<ShiftTemplateListDto>>> GetActive(CancellationToken cancellationToken = default)
+    [Authorize(Roles = "Admin,Staff,Merchandise")]
+    public async Task<ActionResult<List<ShiftTemplateListDto>>> GetList(
+        [FromQuery] bool includeInactive = false,
+        CancellationToken cancellationToken = default)
     {
-        var result = await _shiftTemplateService.GetActiveAsync(cancellationToken);
+        var result = await _shiftTemplateService.GetListAsync(includeInactive, cancellationToken);
         return result.ToActionResult();
     }
 

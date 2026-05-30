@@ -102,13 +102,15 @@ public class CampaignRepository : ICampaignRepository
         return n > 0;
     }
 
-    public Task<int> RecoverStaleDispatchLocksAsync(
+    public async Task<int> RecoverStaleDispatchLocksAsync(
         TimeSpan lockOlderThan,
         DateTime utcNow,
         CancellationToken cancellationToken = default)
     {
         var cutoff = utcNow - lockOlderThan;
-        return _context.CampaignSchedules
+
+        // Step 1: reset stale schedule locks back to Waiting
+        var recovered = await _context.CampaignSchedules
             .Where(s => s.ExecutionStatus == "Dispatched"
                      && s.LockedAt != null
                      && s.LockedAt <= cutoff)
@@ -119,6 +121,28 @@ public class CampaignRepository : ICampaignRepository
                     .SetProperty(x => x.LockedAt, (DateTime?)null)
                     .SetProperty(x => x.UpdatedAt, utcNow),
                 cancellationToken);
+
+        // Step 2: campaigns stuck in "Sending" whose schedule is now Waiting can be retried
+        if (recovered > 0)
+        {
+            var stuckCampaignIds = await _context.CampaignSchedules
+                .Where(s => s.ExecutionStatus == "Waiting")
+                .Select(s => s.CampaignId)
+                .ToListAsync(cancellationToken);
+
+            if (stuckCampaignIds.Count > 0)
+            {
+                await _context.Campaigns
+                    .Where(c => stuckCampaignIds.Contains(c.CampaignId) && c.Status == "Sending")
+                    .ExecuteUpdateAsync(
+                        s => s
+                            .SetProperty(x => x.Status, "Scheduled")
+                            .SetProperty(x => x.UpdatedAt, utcNow),
+                        cancellationToken);
+            }
+        }
+
+        return recovered;
     }
 
     public Task MarkLiveReferenceSnapshotsStaleAsync(
@@ -159,6 +183,7 @@ public class CampaignRepository : ICampaignRepository
                 cancellationToken);
 
         await MarkSentAsync(campaignId, totalSent, cancellationToken);
+        await RecomputeCampaignStatsAsync(campaignId, cancellationToken);
     }
 
     public async Task HandleDispatchFailureAsync(
@@ -419,7 +444,7 @@ public class CampaignRepository : ICampaignRepository
         if (campaign is null) return;
 
         campaign.Status = "Sent";
-        campaign.UpdatedAt = DateTime.Now;
+        campaign.UpdatedAt = DateTime.UtcNow;
 
         // Upsert CampaignStat
         var stat = await _context.CampaignStats
@@ -434,14 +459,14 @@ public class CampaignRepository : ICampaignRepository
                 TotalSent = totalSent,
                 TotalRead = 0,
                 TotalClicked = 0,
-                ComputedAt = DateTime.Now
+                ComputedAt = DateTime.UtcNow
             };
             await _context.CampaignStats.AddAsync(stat, cancellationToken);
         }
         else
         {
             stat.TotalSent += totalSent;
-            stat.ComputedAt = DateTime.Now;
+            stat.ComputedAt = DateTime.UtcNow;
         }
 
         try
@@ -464,10 +489,65 @@ public class CampaignRepository : ICampaignRepository
             if (existingStat != null)
             {
                 existingStat.TotalSent += totalSent;
-                existingStat.ComputedAt = DateTime.Now;
+                existingStat.ComputedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync(cancellationToken);
             }
         }
+    }
+
+    public async Task RecomputeCampaignStatsAsync(int campaignId, CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+
+        var totalSent = await _context.Deliveries
+            .Where(d => d.CampaignId == campaignId
+                     && d.Channel == "WEB_BELL"
+                     && !d.IsDeleted)
+            .Select(d => d.AccountId)
+            .Distinct()
+            .CountAsync(cancellationToken);
+
+        var totalRead = await _context.Deliveries
+            .Where(d => d.CampaignId == campaignId
+                     && d.Channel == "WEB_BELL"
+                     && !d.IsDeleted
+                     && (d.Status == "Read" || d.Status == "Archived"))
+            .Select(d => d.AccountId)
+            .Distinct()
+            .CountAsync(cancellationToken);
+
+        var totalClicked = await _context.DeliveryActions
+            .Where(da => da.ActionType == "Click"
+                      && da.Delivery.CampaignId == campaignId
+                      && da.Delivery.Channel == "WEB_BELL"
+                      && !da.Delivery.IsDeleted)
+            .Select(da => da.AccountId)
+            .Distinct()
+            .CountAsync(cancellationToken);
+
+        var stat = await _context.CampaignStats
+            .FirstOrDefaultAsync(s => s.CampaignId == campaignId, cancellationToken);
+
+        if (stat is null)
+        {
+            await _context.CampaignStats.AddAsync(new CampaignStat
+            {
+                CampaignId   = campaignId,
+                TotalSent    = totalSent,
+                TotalRead    = totalRead,
+                TotalClicked = totalClicked,
+                ComputedAt   = now
+            }, cancellationToken);
+        }
+        else
+        {
+            stat.TotalSent    = totalSent;
+            stat.TotalRead    = totalRead;
+            stat.TotalClicked = totalClicked;
+            stat.ComputedAt   = now;
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
     }
 
     public async Task CreateDeliveriesAsync(List<Delivery> deliveries, CancellationToken cancellationToken = default)

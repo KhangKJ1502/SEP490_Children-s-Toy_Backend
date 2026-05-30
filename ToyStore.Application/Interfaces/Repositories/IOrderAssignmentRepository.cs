@@ -37,6 +37,14 @@ public interface IOrderAssignmentRepository
 
     Task DeactivateByScheduleAsync(int scheduleId, CancellationToken cancellationToken = default);
 
+    Task<List<OrderAssignmentWithStatus>> GetActiveByScheduleWithStatusAsync(
+        int scheduleId,
+        CancellationToken cancellationToken = default);
+
+    Task DeactivateAssignmentAsync(OrderAssignment assignment, CancellationToken cancellationToken = default);
+
+    Task<List<int>> GetOrdersMissingFullAssignmentAsync(CancellationToken cancellationToken = default);
+
     Task<List<OrderAssignment>> GetActiveByScheduleAndRoleForStatusesAsync(
         int scheduleId,
         byte roleId,

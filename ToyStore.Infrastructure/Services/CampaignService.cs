@@ -162,6 +162,11 @@ public class CampaignService : ICampaignService
         if (ShouldHideDraftCampaignFromCurrentAdminViewer(campaign))
             return Result<CampaignScheduleBoundsDto>.NotFound("Campaign", campaignId);
 
+        if (campaign.Status is not ("Approved" or "Scheduled"))
+            return Result<CampaignScheduleBoundsDto>.Failure(
+                ToyStore.Application.Campaigns.CampaignErrorCodes.InvalidStatusTransition,
+                "Schedule bounds are only available for Approved or Scheduled campaigns.");
+
         return await _rules.GetScheduleSendWindowBoundsAsync(campaign, cancellationToken);
     }
 
@@ -235,6 +240,11 @@ public class CampaignService : ICampaignService
         try
         {
             var created = await _unitOfWork.Campaigns.CreateAsync(dto, cancellationToken);
+
+            await ApplyActionTargetFromResolverAsync(created, cancellationToken);
+            _unitOfWork.Campaigns.Update(created);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             _logger.LogInformation(
@@ -281,6 +291,13 @@ public class CampaignService : ICampaignService
                 ToyStore.Application.Campaigns.CampaignErrorCodes.InvalidStatusTransition,
                 $"Campaign cannot be edited in status '{existing.Status}'. Only Draft and Rejected campaigns can be modified.");
 
+        var ownershipCheck = _rules.ValidateActorCanModifyCampaign(
+            existing,
+            _currentUser.AccountId,
+            _currentUser.RoleName == "Admin");
+        if (ownershipCheck.IsFailure)
+            return Result<CampaignDto>.Failure(ownershipCheck.ErrorCode!, ownershipCheck.ErrorMessage!);
+
         var isDuplicate = await _unitOfWork.Campaigns.ExistsByNameAsync(
             dto.CampaignName.Trim(), dto.CampaignId, cancellationToken);
         if (isDuplicate)
@@ -304,6 +321,9 @@ public class CampaignService : ICampaignService
         existing.ImageUrl = string.IsNullOrWhiteSpace(dto.ImageUrl) ? null : dto.ImageUrl.Trim();
         existing.ActionType = string.IsNullOrWhiteSpace(dto.ActionType) ? null : dto.ActionType.Trim();
         existing.ActionTarget = string.IsNullOrWhiteSpace(dto.ActionTarget) ? null : dto.ActionTarget.Trim();
+
+        // Always derive ActionType/ActionTarget from resolver — don't trust dto values.
+        await ApplyActionTargetFromResolverAsync(existing, cancellationToken);
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
@@ -619,6 +639,13 @@ public class CampaignService : ICampaignService
             return Result<ScheduleCampaignResultDto>.Conflict(
                 "Campaign already has a schedule. Use reschedule to change the send time.");
 
+        var scheduleOwnershipCheck = _rules.ValidateActorCanModifyCampaign(
+            campaign,
+            accountId,
+            _currentUser.RoleName == "Admin");
+        if (scheduleOwnershipCheck.IsFailure)
+            return Result<ScheduleCampaignResultDto>.Failure(scheduleOwnershipCheck.ErrorCode!, scheduleOwnershipCheck.ErrorMessage!);
+
         var sv = await _rules.ValidateScheduleAsync(
             campaign, scheduledAt, dto.ValidFrom, dto.ValidTo, warnings, cancellationToken);
         if (sv.IsFailure)
@@ -629,6 +656,16 @@ public class CampaignService : ICampaignService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
+            // Build snapshot before setting Scheduled — fail fast if reference is missing/unresolvable
+            var snap = await _rules.BuildLiveReferenceSnapshotAsync(campaign, cancellationToken);
+            if (snap is null && !string.IsNullOrWhiteSpace(campaign.ReferenceType))
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                return Result<ScheduleCampaignResultDto>.Failure(
+                    ToyStore.Application.Campaigns.CampaignErrorCodes.ReferenceNotFound,
+                    "Cannot build reference snapshot — the linked reference may be deleted or inactive.");
+            }
+
             campaign.Status = "Scheduled";
             campaign.ScheduledAt = scheduledAt;
             campaign.ValidFrom = dto.ValidFrom;
@@ -650,7 +687,6 @@ public class CampaignService : ICampaignService
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            var snap = await _rules.BuildLiveReferenceSnapshotAsync(campaign, cancellationToken);
             if (snap is not null)
             {
                 _unitOfWork.Campaigns.AddReferenceSnapshot(snap);
@@ -716,6 +752,13 @@ public class CampaignService : ICampaignService
         if (campaign is null)
             return Result<ScheduleCampaignResultDto>.NotFound("Campaign", campaignId);
 
+        var rescheduleOwnershipCheck = _rules.ValidateActorCanModifyCampaign(
+            campaign,
+            accountId,
+            _currentUser.RoleName == "Admin");
+        if (rescheduleOwnershipCheck.IsFailure)
+            return Result<ScheduleCampaignResultDto>.Failure(rescheduleOwnershipCheck.ErrorCode!, rescheduleOwnershipCheck.ErrorMessage!);
+
         var oldAt = campaign.CampaignSchedule?.ScheduledAt;
         var rv = await _rules.ValidateRescheduleAsync(campaign, dto.NewScheduledAt, dto.Reason, warnings, cancellationToken);
         if (rv.IsFailure)
@@ -726,6 +769,16 @@ public class CampaignService : ICampaignService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
+            // Build new snapshot before marking old one stale — fail if reference missing
+            var snap = await _rules.BuildLiveReferenceSnapshotAsync(campaign, cancellationToken);
+            if (snap is null && !string.IsNullOrWhiteSpace(campaign.ReferenceType))
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                return Result<ScheduleCampaignResultDto>.Failure(
+                    ToyStore.Application.Campaigns.CampaignErrorCodes.ReferenceNotFound,
+                    "Cannot build reference snapshot for reschedule — the linked reference may be deleted or inactive.");
+            }
+
             await _unitOfWork.Campaigns.MarkLiveReferenceSnapshotsStaleAsync(
                 campaignId, "Rescheduled", now, cancellationToken);
 
@@ -744,7 +797,6 @@ public class CampaignService : ICampaignService
             campaign.CampaignSchedule.LockedAt = null;
             campaign.CampaignSchedule.UpdatedAt = now;
 
-            var snap = await _rules.BuildLiveReferenceSnapshotAsync(campaign, cancellationToken);
             if (snap is not null)
             {
                 _unitOfWork.Campaigns.AddReferenceSnapshot(snap);
@@ -829,5 +881,29 @@ public class CampaignService : ICampaignService
         }
 
         return Task.FromResult(Result<List<ReferenceTypeDto>>.Success(list));
+    }
+
+    /// <summary>
+    /// Sets ActionType="ROUTE" and ActionTarget from the resolver's DefaultActionTarget.
+    /// Call after the campaign entity has reference fields populated.
+    /// Ignores dto.ActionType/ActionTarget — the resolver is the single source of truth.
+    /// </summary>
+    private async Task ApplyActionTargetFromResolverAsync(Campaign campaign, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(campaign.ReferenceType) || !campaign.ReferenceId.HasValue)
+        {
+            campaign.ActionType = null;
+            campaign.ActionTarget = null;
+            return;
+        }
+
+        var resolver = _resolverFactory.GetResolver(campaign.ReferenceType.Trim().ToUpperInvariant());
+        if (resolver is null) return;
+
+        var resolved = await resolver.ResolveAsync(campaign.ReferenceId.Value, ct);
+        if (resolved?.DefaultActionTarget is null) return;
+
+        campaign.ActionType = "ROUTE";
+        campaign.ActionTarget = resolved.DefaultActionTarget;
     }
 }

@@ -45,6 +45,7 @@ builder.Services.AddHostedService<CampaignReferenceRevalidationJob>();
 builder.Services.AddHostedService<CampaignStaleLockRecoveryJob>();
 builder.Services.AddHostedService<ShiftLifecycleJob>();
 builder.Services.AddHostedService<OrderQueueRetryJob>();
+builder.Services.AddHostedService<OrderAssignmentReconciliationJob>();
 
 // Checkout flow workers
 builder.Services.AddHostedService<SePayExpiryJob>();

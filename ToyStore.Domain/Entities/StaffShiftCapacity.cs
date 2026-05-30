@@ -21,6 +21,8 @@ public partial class StaffShiftCapacity
 
     public DateTime? UpdatedAt { get; set; }
 
+    public byte[] RowVersion { get; set; } = null!;
+
     public virtual WorkSchedule WorkSchedule { get; set; } = null!;
 
     public virtual Account Account { get; set; } = null!;

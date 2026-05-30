@@ -61,13 +61,15 @@ public class ShiftAssignmentService : IShiftAssignmentService
         }
 
         var activeAssignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(orderId, cancellationToken);
-        if (activeAssignments.Count > 0)
+        var hasStaff = activeAssignments.Any(x => x.RoleId == StaffRoleId);
+        var hasMerch = activeAssignments.Any(x => x.RoleId == MerchRoleId);
+        if (hasStaff && hasMerch)
         {
             var result = new AssignmentResultDto
             {
                 Result = "ASSIGNED",
-                StaffAccountId = activeAssignments.FirstOrDefault(x => x.RoleId == StaffRoleId)?.AccountId,
-                MerchAccountId = activeAssignments.FirstOrDefault(x => x.RoleId == MerchRoleId)?.AccountId
+                StaffAccountId = activeAssignments.First(x => x.RoleId == StaffRoleId).AccountId,
+                MerchAccountId = activeAssignments.First(x => x.RoleId == MerchRoleId).AccountId
             };
             return Result<AssignmentResultDto>.Success(result);
         }
@@ -131,16 +133,23 @@ public class ShiftAssignmentService : IShiftAssignmentService
             return Result.Failure("VALIDATION_ERROR", "Order ID must be greater than 0.");
         }
 
-        await _unitOfWork.OrderAssignments.ReleaseCapacityAsync(orderId, cancellationToken);
+        var affected = await _unitOfWork.OrderAssignments.ReleaseCapacityAsync(orderId, cancellationToken);
+        if (affected > 0)
+        {
+            await PublishCapacityFreedAsync(orderId, cancellationToken);
+        }
 
-        await _eventPublisher.PublishAsync(
+        return Result.Success();
+    }
+
+    public Task PublishCapacityFreedAsync(int orderId, CancellationToken cancellationToken = default)
+    {
+        return _eventPublisher.PublishAsync(
             "Order",
             orderId.ToString(),
             ShiftEventTypes.CapacityFreed,
             new { orderId },
             CancellationToken.None);
-
-        return Result.Success();
     }
 
     public async Task<Result<List<OrderQueueItemDto>>> GetQueueAsync(CancellationToken cancellationToken = default)
@@ -417,7 +426,7 @@ public class ShiftAssignmentService : IShiftAssignmentService
         return Result.Success();
     }
 
-    private static bool IsScheduleAvailable(WorkSchedule schedule, byte roleId, DateTime now, TimeSpan nowTime)
+    private bool IsScheduleAvailable(WorkSchedule schedule, byte roleId, DateTime now, TimeSpan nowTime)
     {
         if (schedule.Account.RoleId != roleId)
         {
@@ -429,14 +438,15 @@ public class ShiftAssignmentService : IShiftAssignmentService
             return false;
         }
 
-        if (schedule.WorkDate != now.Date)
+        if (schedule.WorkDate != _timeProvider.TodayVn)
         {
             return false;
         }
 
         var start = schedule.ShiftTemplate.StartTime;
         var end = schedule.ShiftTemplate.EndTime;
+        var timeVn = _timeProvider.VnNow.TimeOfDay;
 
-        return start <= nowTime && end >= nowTime;
+        return start <= timeVn && end >= timeVn;
     }
 }

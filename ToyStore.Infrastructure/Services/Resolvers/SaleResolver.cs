@@ -70,11 +70,18 @@ public class SaleResolver : IBusinessObjectResolver
             })
             .ToList();
 
+        var firstProductImg = timeSlotRows
+            .SelectMany(ts => ts.PromotionProductSlots)
+            .Where(pps => !pps.IsDeleted && pps.Product?.ProductImage != null)
+            .Select(pps => pps.Product!.ProductImage!.ImageUrl)
+            .FirstOrDefault();
+
         return new ResolvedReferenceDto
         {
             DisplayName = promotion.PromotionName,
             PromotionType = promotion.PromotionType,
-            DefaultActionTarget = $"/sale/{promotion.PromotionId}",
+            ImageUrl = firstProductImg,
+            DefaultActionTarget = $"/?flashSale={promotion.PromotionId}",
             Placeholders = new Dictionary<string, string>
             {
                 ["{{PromotionName}}"] = promotion.PromotionName,

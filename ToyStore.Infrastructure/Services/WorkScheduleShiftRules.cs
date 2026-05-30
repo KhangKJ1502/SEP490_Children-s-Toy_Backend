@@ -37,7 +37,9 @@ public class WorkScheduleShiftRules : IWorkScheduleShiftRules
         var schedulesYesterday = await _unitOfWork.WorkSchedules.GetByAccountAndDateAsync(accountId, yesterday, cancellationToken);
 
         var hasEveningYesterday = schedulesYesterday.Any(ws =>
-            ws.ShiftTemplateId == ShiftTemplateIds.Evening && ws.Status != "Cancelled");
+            ws.ShiftTemplateId == ShiftTemplateIds.Evening
+            && ws.Status != "Cancelled"
+            && ws.Status != "Absent");
 
         if (!hasEveningYesterday)
         {
@@ -106,12 +108,14 @@ public class WorkScheduleShiftRules : IWorkScheduleShiftRules
         }
 
         // Admin UI creates Staff + Merch in two POSTs; first row may be the only role on the shift so far.
-        if (forCreate && staffCount + merchCount == 1)
+        if (forCreate && staffCount + merchCount >= 1)
         {
             return true;
         }
 
-        if (forDelete && staffCount + merchCount >= 1)
+        // When deleting, allow the shift to become fully empty (0 staff on shift).
+        // This unblocks removing the last assignee so the shift can be re-staffed later.
+        if (forDelete)
         {
             return true;
         }

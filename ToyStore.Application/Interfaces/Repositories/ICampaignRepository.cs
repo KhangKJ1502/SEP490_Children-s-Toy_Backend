@@ -142,6 +142,12 @@ public interface ICampaignRepository
     Task MarkSentAsync(int campaignId, int totalSent, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Recomputes CampaignStats from the Deliveries table (DISTINCT AccountId, WEB_BELL).
+    /// Replaces incremental sent++ approach to avoid double-counting.
+    /// </summary>
+    Task RecomputeCampaignStatsAsync(int campaignId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Bulk insert cac ban ghi Delivery.
     /// </summary>
     Task CreateDeliveriesAsync(List<Delivery> deliveries, CancellationToken cancellationToken = default);

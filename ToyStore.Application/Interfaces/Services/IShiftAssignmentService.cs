@@ -9,6 +9,8 @@ public interface IShiftAssignmentService
 
     Task<Result> ReleaseCapacityAsync(int orderId, CancellationToken cancellationToken = default);
 
+    Task PublishCapacityFreedAsync(int orderId, CancellationToken cancellationToken = default);
+
     Task<Result<List<OrderQueueItemDto>>> GetQueueAsync(CancellationToken cancellationToken = default);
 
     Task<Result> TryAssignOldestQueueAsync(CancellationToken cancellationToken = default);
