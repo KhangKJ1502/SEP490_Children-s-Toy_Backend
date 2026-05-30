@@ -7,6 +7,7 @@ using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
 using ToyStore.Domain.Enums;
 using ToyStore.Domain.Entities;
+using ToyStore.Application.DTOs.Refunds;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -101,6 +102,7 @@ public class OrderLifecycleService : IOrderLifecycleService
                     _logger.LogInformation(
                         "Cancel {OrderCode}: prepaid PAID at status {StatusId} — no auto wallet; use refund management.",
                         order.OrderCode, order.StatusId);
+                    await CreateCancelledOrderSystemRefundAsync(order, cancelledByAccountId, reason, cancellationToken);
                 }
                 else if (await _unitOfWork.Orders.HasCompletedRefundWalletCreditForOrderAsync(order.OrderId, cancellationToken)
                          || await _unitOfWork.Orders.ExistsWalletTransactionByIdempotencyKeyAsync(
@@ -163,20 +165,15 @@ public class OrderLifecycleService : IOrderLifecycleService
                 CreatedAt = now
             }, cancellationToken);
 
+            await _unitOfWork.OrderAssignments.ReleaseCapacityAsync(order.OrderId, cancellationToken);
+
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             _logger.LogInformation("Order {OrderId} cancelled by {AccountId}. Reason: {Reason}",
                 order.OrderId, cancelledByAccountId, reason);
 
-            try
-            {
-                await _shiftAssignmentService.ReleaseCapacityAsync(order.OrderId, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to release capacity for cancelled order {OrderId}", order.OrderId);
-            }
+            await TryReleaseCapacityAsync(order.OrderId, cancellationToken);
 
             return Result.Success();
         }
@@ -223,10 +220,11 @@ public class OrderLifecycleService : IOrderLifecycleService
                 CreatedAt = now
             }, cancellationToken);
 
+            await _unitOfWork.OrderAssignments.ReleaseCapacityAsync(orderId, cancellationToken);
+
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-            // LUỒNG B: Release capacity
             await TryReleaseCapacityAsync(orderId, cancellationToken);
 
             return Result.Success();
@@ -277,9 +275,6 @@ public class OrderLifecycleService : IOrderLifecycleService
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-            // LUỒNG B: Release capacity
-            await TryReleaseCapacityAsync(orderId, cancellationToken);
-
             return Result.Success();
         }
         catch (Exception ex)
@@ -294,11 +289,98 @@ public class OrderLifecycleService : IOrderLifecycleService
     {
         try
         {
-            await _shiftAssignmentService.ReleaseCapacityAsync(orderId, cancellationToken);
+            await _shiftAssignmentService.PublishCapacityFreedAsync(orderId, cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to release capacity for order {OrderId}", orderId);
+            _logger.LogError(ex, "Failed to publish capacity freed for order {OrderId}", orderId);
         }
+    }
+
+    private async Task CreateCancelledOrderSystemRefundAsync(
+        Order order, int cancelledByAccountId, string cancelReason, CancellationToken cancellationToken)
+    {
+        // 1. Check if an active refund already exists to avoid duplicates
+        var existing = await _unitOfWork.Refunds.GetAdminRefundsAsync(
+            new AdminRefundFilterDto { OrderId = order.OrderId, PageSize = 10 },
+            cancellationToken);
+
+        if (existing.Items.Any(r =>
+                r.RefundStatus is RefundStatuses.Requested or RefundStatuses.Approved or RefundStatuses.Completed))
+        {
+            _logger.LogInformation("Cancel {OrderCode}: an active refund request already exists. Skipping auto system refund.", order.OrderCode);
+            return;
+        }
+
+        // 2. Resolve refund reason ID
+        var reasonEntity = await _unitOfWork.Refunds.GetReasonByContentAsync(RefundReasons.DeliveryFailedGhn, cancellationToken);
+        byte reasonId = reasonEntity?.RefundReasonId ?? 1;
+
+        // Reload details if empty to calculate exact refund amounts
+        var refundOrder = order;
+        if (refundOrder.OrderDetails.Count == 0)
+        {
+            var reloadedOrder = await _unitOfWork.Orders.GetByIdForUpdateAsync(order.OrderId, cancellationToken);
+            if (reloadedOrder != null)
+            {
+                refundOrder = reloadedOrder;
+            }
+        }
+
+        // 3. Map refund details
+        var discountRatio = refundOrder.SubTotal > 0
+            ? (refundOrder.VoucherDiscountAmount / refundOrder.SubTotal)
+            : 0m;
+
+        var refundDetails = refundOrder.OrderDetails.Select(od => new RefundDetail
+        {
+            ProductId = od.ProductId,
+            Quantity = od.Quantity,
+            UnitPrice = od.UnitPrice,
+            RefundAmount = Math.Round(od.Quantity * od.UnitPrice * (1 - discountRatio), 0),
+            CreatedAt = _timeProvider.UtcNow
+        }).ToList();
+
+        var subTotal = refundDetails.Sum(d => d.RefundAmount);
+        var shippingFee = refundOrder.ActualShippingFee ?? refundOrder.EstimatedShippingFee;
+        var totalAmount = subTotal + shippingFee;
+        var now = _timeProvider.UtcNow;
+
+        // 4. Construct OrderRefund entity
+        var refund = new OrderRefund
+        {
+            OrderId = refundOrder.OrderId,
+            RefundReasonId = reasonId,
+            ReasonDetails = $"Auto-created: Order cancelled by {(cancelledByAccountId == 0 ? "System" : "Admin")} (Reason: {cancelReason})",
+            RefundSource = RefundSources.System, // Bypasses customer return windows
+            CustomerId = refundOrder.AccountId,
+            RequestedBy = cancelledByAccountId == 0 ? null : cancelledByAccountId,
+            ApprovedAmount = totalAmount,
+            RefundCode = "REF-" + now.ToString("yyyyMMdd") + "-" + Guid.NewGuid().ToString().Substring(0, 8).ToUpper(),
+            SubTotal = subTotal,
+            ShippingFee = shippingFee,
+            TotalAmount = totalAmount,
+            StatusId = (byte)RefundStatusEnum.RefundRequested,
+            IsDeleted = false,
+            CreatedAt = now
+        };
+
+        refund.RefundStatusHistories.Add(new RefundStatusHistory
+        {
+            StatusId = (byte)RefundStatusEnum.RefundRequested,
+            ChangedBy = cancelledByAccountId == 0 ? null : cancelledByAccountId,
+            Note = $"Auto-created upon order cancellation: {cancelReason}",
+            CreatedAt = now
+        });
+
+        foreach (var detail in refundDetails)
+        {
+            refund.RefundDetails.Add(detail);
+        }
+
+        // 5. Save to database
+        await _unitOfWork.Refunds.AddAsync(refund, cancellationToken);
+        _logger.LogInformation("Cancel {OrderCode}: successfully created auto system refund request {RefundCode} for {TotalAmount} VND.", 
+            order.OrderCode, refund.RefundCode, totalAmount);
     }
 }

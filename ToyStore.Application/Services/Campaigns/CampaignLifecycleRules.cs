@@ -164,6 +164,18 @@ public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
                 return Result.Failure(CampaignErrorCodes.TargetAccountInvalid, "One or more account targets are invalid.");
         }
 
+        if (campaign.TargetType == "ROLE")
+        {
+            var roleTarget = campaign.CampaignTargets?
+                .FirstOrDefault(t => t.TargetType == "ROLE_ID");
+            if (roleTarget is null || !byte.TryParse(roleTarget.TargetValue, out var roleId))
+                return Result.Failure(CampaignErrorCodes.TargetRequired, "A valid ROLE_ID target is required for ROLE campaigns.");
+
+            var role = await _uow.Accounts.GetRoleByIdAsync(roleId, ct);
+            if (role is null)
+                return Result.Failure(CampaignErrorCodes.TargetAccountInvalid, $"Role with ID {roleId} does not exist.");
+        }
+
         var refCheck = await ValidateReferenceForSubmitAsync(campaign.ReferenceType, campaign.ReferenceId, ct);
         if (refCheck is not null) return refCheck;
 
@@ -286,11 +298,20 @@ public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
         if (newScheduledAtUtc < now.AddMinutes(_settings.MinLeadMinutes))
             return Result.Failure(CampaignErrorCodes.ScheduledAtTooSoon, $"New schedule must be at least {_settings.MinLeadMinutes} minutes from now.");
 
+        if (newScheduledAtUtc > now.AddDays(_settings.MaxFutureDays))
+            return Result.Failure(CampaignErrorCodes.ScheduledAtTooFar, $"New schedule must be within {_settings.MaxFutureDays} days.");
+
         if (sched.ScheduledAt == newScheduledAtUtc)
             return Result.Failure(CampaignErrorCodes.SameScheduledAt, "New schedule must differ from the current schedule.");
 
         if (!string.IsNullOrEmpty(reason) && reason.Length > 200)
             return Result.Failure(CampaignErrorCodes.ReasonTooLong, "Reason must not exceed 200 characters.");
+
+        // If ValidFrom/ValidTo were set during the original schedule, the new time must still fall within them
+        if (campaign.ValidFrom.HasValue && campaign.ValidTo.HasValue
+            && (newScheduledAtUtc < campaign.ValidFrom.Value || newScheduledAtUtc > campaign.ValidTo.Value))
+            return Result.Failure(CampaignErrorCodes.ScheduledAtOutOfRange,
+                "New schedule must fall within the originally chosen Valid from/to window.");
 
         return await ValidateReferenceScheduleRulesAsync(campaign, newScheduledAtUtc, warningCodes, ct);
     }
@@ -307,6 +328,13 @@ public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
             return Task.FromResult(Result.Failure(CampaignErrorCodes.Forbidden, "You can only cancel your own campaigns."));
 
         return Task.FromResult(Result.Success());
+    }
+
+    public Result ValidateActorCanModifyCampaign(Campaign campaign, int actorAccountId, bool actorIsAdmin)
+    {
+        if (actorIsAdmin) return Result.Success();
+        if (campaign.CreatedByAccountId == actorAccountId) return Result.Success();
+        return Result.Failure(CampaignErrorCodes.Forbidden, "You do not have permission to modify this campaign.");
     }
 
     public bool ShouldSkipDispatch(Campaign campaign, DateTime nowUtc, out string? logReason)

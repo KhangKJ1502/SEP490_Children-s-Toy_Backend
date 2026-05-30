@@ -23,11 +23,46 @@ public class ShiftTemplateRepository : IShiftTemplateRepository
             .ToListAsync(cancellationToken);
     }
 
+    public Task<List<ShiftTemplate>> GetAllOrderedAsync(CancellationToken cancellationToken = default)
+    {
+        return _context.ShiftTemplates
+            .AsNoTracking()
+            .OrderBy(x => x.StartTime)
+            .ThenBy(x => x.ShiftTemplateId)
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<ShiftTemplate?> GetByIdAsync(byte shiftTemplateId, CancellationToken cancellationToken = default)
     {
         return _context.ShiftTemplates
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.ShiftTemplateId == shiftTemplateId, cancellationToken);
+    }
+
+    public Task<ShiftTemplate?> GetByIdForUpdateAsync(byte shiftTemplateId, CancellationToken cancellationToken = default)
+    {
+        return _context.ShiftTemplates
+            .FirstOrDefaultAsync(x => x.ShiftTemplateId == shiftTemplateId, cancellationToken);
+    }
+
+    public Task<bool> HasOverlappingActiveTemplateAsync(
+        TimeSpan startTime,
+        TimeSpan endTime,
+        byte? excludeShiftTemplateId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _context.ShiftTemplates
+            .AsNoTracking()
+            .Where(x => x.IsActive);
+
+        if (excludeShiftTemplateId.HasValue)
+        {
+            query = query.Where(x => x.ShiftTemplateId != excludeShiftTemplateId.Value);
+        }
+
+        return query.AnyAsync(
+            x => x.StartTime < endTime && startTime < x.EndTime,
+            cancellationToken);
     }
 
     public Task<bool> ExistsByNameAsync(string shiftName, CancellationToken cancellationToken = default)

@@ -7,4 +7,6 @@ public sealed class MarkAbsentResultDto
     public int QueuedCount { get; set; }
 
     public List<int> AffectedPendingOrderIds { get; set; } = new();
+
+    public List<int> KeptOrderIds { get; set; } = new();
 }

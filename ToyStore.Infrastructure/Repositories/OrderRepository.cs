@@ -433,6 +433,7 @@ public class OrderRepository : IOrderRepository
 
         if (restrictToAssignment)
         {
+            query = query.Where(o => o.Status.StatusName != OrderStatuses.Completed);
             query = query.Where(o => _context.OrderAssignments
                 .Any(oa => oa.OrderId == o.OrderId
                          && oa.AccountId == currentAccountId

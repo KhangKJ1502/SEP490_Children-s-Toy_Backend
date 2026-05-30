@@ -76,8 +76,8 @@ public class WorkScheduleRepository : IWorkScheduleRepository
             .AnyAsync(x => x.AccountId == accountId
                 && x.WorkDate == date
                 && x.ShiftTemplateId == shiftTemplateId
-                && x.Status != "Absent"
-                && x.Status != "Cancelled", cancellationToken);
+                && x.Status != "Cancelled",
+                cancellationToken);
     }
 
     public Task<List<WorkSchedule>> GetByDateRangeAsync(
@@ -111,6 +111,23 @@ public class WorkScheduleRepository : IWorkScheduleRepository
             .Where(x => x.AccountId == accountId && x.WorkDate == date)
             .ToListAsync(cancellationToken);
     }
+    
+    public Task<WorkSchedule?> GetByUniqueKeyForUpdateAsync(
+        int accountId,
+        DateTime workDate,
+        byte shiftTemplateId,
+        CancellationToken cancellationToken = default)
+    {
+        var date = workDate.Date;
+        return _context.WorkSchedules
+            .Include(x => x.Account)
+            .Include(x => x.ShiftTemplate)
+            .Include(x => x.StaffShiftCapacity)
+            .FirstOrDefaultAsync(x => x.AccountId == accountId
+                && x.WorkDate == date
+                && x.ShiftTemplateId == shiftTemplateId,
+                cancellationToken);
+    }
 
     public Task<int> CountActiveRoleOnShiftAsync(
         DateTime workDate,
@@ -125,7 +142,8 @@ public class WorkScheduleRepository : IWorkScheduleRepository
             .Where(ws =>
                 ws.WorkDate == date
                 && ws.ShiftTemplateId == shiftTemplateId
-                && ws.Status != "Absent");
+                && ws.Status != "Absent"
+                && ws.Status != "Cancelled");
 
         if (excludeScheduleId.HasValue)
             q = q.Where(ws => ws.ScheduleId != excludeScheduleId.Value);
@@ -133,6 +151,36 @@ public class WorkScheduleRepository : IWorkScheduleRepository
         return q
             .Join(_context.Accounts.AsNoTracking(), ws => ws.AccountId, a => a.AccountId, (_, a) => a.RoleId)
             .CountAsync(r => r == roleId, cancellationToken);
+    }
+
+    public Task<int> CountActiveByShiftTemplateAsync(byte shiftTemplateId, CancellationToken cancellationToken = default)
+    {
+        return _context.WorkSchedules
+            .AsNoTracking()
+            .CountAsync(
+                ws => ws.ShiftTemplateId == shiftTemplateId
+                      && (ws.Status == "Scheduled" || ws.Status == "OnDuty"),
+                cancellationToken);
+    }
+
+    public async Task<Dictionary<byte, int>> CountActiveByShiftTemplateIdsAsync(
+        IReadOnlyCollection<byte> shiftTemplateIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (shiftTemplateIds.Count == 0)
+        {
+            return new Dictionary<byte, int>();
+        }
+
+        var counts = await _context.WorkSchedules
+            .AsNoTracking()
+            .Where(ws => shiftTemplateIds.Contains(ws.ShiftTemplateId)
+                         && (ws.Status == "Scheduled" || ws.Status == "OnDuty"))
+            .GroupBy(ws => ws.ShiftTemplateId)
+            .Select(g => new { ShiftTemplateId = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+
+        return counts.ToDictionary(x => x.ShiftTemplateId, x => x.Count);
     }
 
     public async Task<WorkSchedule> CreateAsync(WorkSchedule schedule, CancellationToken cancellationToken = default)

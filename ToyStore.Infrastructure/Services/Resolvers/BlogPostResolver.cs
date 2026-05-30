@@ -30,7 +30,8 @@ public class BlogPostResolver : IBusinessObjectResolver
             .Select(b => new
             {
                 b.BlogPostId,
-                b.BlogTitle
+                b.BlogTitle,
+                b.BlogThumbnail
             })
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -39,6 +40,7 @@ public class BlogPostResolver : IBusinessObjectResolver
         return new ResolvedReferenceDto
         {
             DisplayName = post.BlogTitle,
+            ImageUrl = post.BlogThumbnail,
             DefaultActionTarget = $"/blog/{post.BlogPostId}",
             Placeholders = new Dictionary<string, string>
             {

@@ -25,8 +25,16 @@ public class UpdateShiftTemplateValidator : AbstractValidator<UpdateShiftTemplat
         When(x => x.StartTime.HasValue || x.EndTime.HasValue, () =>
         {
             RuleFor(x => x)
-                .Must(x => x.StartTime.HasValue && x.EndTime.HasValue && x.EndTime > x.StartTime)
-                .WithMessage("Start time and end time are required, and end time must be later than start time.");
+                .Must(x =>
+                {
+                    if (!x.StartTime.HasValue || !x.EndTime.HasValue)
+                    {
+                        return true;
+                    }
+
+                    return x.EndTime > x.StartTime;
+                })
+                .WithMessage("End time must be later than start time.");
         });
     }
 }

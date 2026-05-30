@@ -29,6 +29,7 @@ public class SePayWebhookService : ISePayWebhookService
     private readonly IDomainEventPublisher _eventPublisher;
     private readonly ILogger<SePayWebhookService> _logger;
     private readonly ITimeProvider _timeProvider;
+    private readonly IWalletRefundCreditor _walletRefundCreditor;
 
     public SePayWebhookService(
         IUnitOfWork uow,
@@ -39,7 +40,8 @@ public class SePayWebhookService : ISePayWebhookService
         IOptions<ShopAddressOptions> shopAddr,
         IDomainEventPublisher eventPublisher,
         ILogger<SePayWebhookService> logger,
-        ITimeProvider timeProvider)
+        ITimeProvider timeProvider,
+        IWalletRefundCreditor walletRefundCreditor)
     {
         _uow = uow;
         _db = db;
@@ -50,6 +52,7 @@ public class SePayWebhookService : ISePayWebhookService
         _eventPublisher = eventPublisher;
         _logger = logger;
         _timeProvider = timeProvider;
+        _walletRefundCreditor = walletRefundCreditor;
     }
 
     public async Task HandleAsync(SePayWebhookPayload payload, CancellationToken cancellationToken = default)
@@ -111,10 +114,14 @@ public class SePayWebhookService : ISePayWebhookService
 
         var order = txn.Order;
 
-        // 3. Đơn đã cancel
+        // 3. Đơn đã cancel — late payment: auto wallet refund + alert CS
         if (order.CancelledAt.HasValue)
         {
-            _logger.LogWarning("SPX webhook: Order {Code} is cancelled:cannot pay, manual refund needed", order.OrderCode);
+            _logger.LogWarning(
+                "SPX webhook: Order {Code} is cancelled — late payment received, initiating auto refund",
+                order.OrderCode);
+
+            await HandleLatePaymentAfterCancelAsync(order, attemptCode, amount, payload, ct);
             return;
         }
 
@@ -735,6 +742,38 @@ public class SePayWebhookService : ISePayWebhookService
 
     private static string BuildTopUpAttemptKey(string attemptCode)
         => $"{TopUpAttemptPrefix}{attemptCode.ToUpperInvariant()}";
+
+    private async Task HandleLatePaymentAfterCancelAsync(
+        Order order,
+        string attemptCode,
+        decimal amount,
+        SePayWebhookPayload payload,
+        CancellationToken ct)
+    {
+        var idempotencyKey = $"LATE_SEPAY_{attemptCode}";
+        var credited = await _walletRefundCreditor.CreditRefundAsync(
+            order.AccountId,
+            amount,
+            order.OrderCode,
+            order.OrderId,
+            ct,
+            idempotencyKey);
+
+        await _eventPublisher.PublishAsync(
+            "Payment",
+            order.OrderId.ToString(),
+            NotificationEventTypes.SystemPaymentGatewayError,
+            new
+            {
+                orderId = order.OrderId,
+                orderCode = order.OrderCode,
+                attemptCode,
+                amount,
+                credited,
+                note = "Late SE_PAY after order cancelled — auto wallet refund attempted"
+            },
+            CancellationToken.None);
+    }
 
     private static void ApplyPaidOrderItemsToCart(
         Cart cart,

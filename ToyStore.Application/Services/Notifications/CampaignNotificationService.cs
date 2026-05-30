@@ -110,8 +110,16 @@ public class CampaignNotificationService : ICampaignNotificationService
         {
             var vars = await ResolveCampaignVariablesAsync(campaign, ct);
             var sent = await DispatchFanOutAsync(campaign, vars, ct);
-            await _unitOfWork.Campaigns.CompleteDispatchAsync(campaignId, sent, now, ct);
-            _logger.LogInformation("Campaign {Id} dispatched. Sent={Sent}", campaignId, sent);
+            if (sent == 0)
+            {
+                _logger.LogWarning("Campaign {Id} dispatched with 0 bell recipients — marking Failed", campaignId);
+                await _unitOfWork.Campaigns.HandleDispatchFailureAsync(campaignId, "No bell recipients received the notification.", now, ct);
+            }
+            else
+            {
+                await _unitOfWork.Campaigns.CompleteDispatchAsync(campaignId, sent, now, ct);
+                _logger.LogInformation("Campaign {Id} dispatched. BellRecipients={Sent}", campaignId, sent);
+            }
         }
         catch (Exception ex)
         {
@@ -139,6 +147,10 @@ public class CampaignNotificationService : ICampaignNotificationService
                 && await _prefChecker.CanReceiveEmailAsync(accountId, ct);
 
             var idempotencyBase = $"campaign:{campaign.CampaignId}:{accountId}";
+            var bellKey = $"{idempotencyBase}:{NotificationChannels.WebBell}";
+
+            // Check before dispatch so we can detect new bell deliveries
+            var bellExistedBefore = await _unitOfWork.Deliveries.ExistsByIdempotencyKeyAsync(bellKey, ct);
 
             await _dispatcher.DispatchAsync(new NotificationContext
             {
@@ -157,7 +169,9 @@ public class CampaignNotificationService : ICampaignNotificationService
                 IdempotencyKey     = idempotencyBase,
             }, ct);
 
-            sent++;
+            // Count only new WEB_BELL deliveries (dedupe per recipient)
+            if (!bellExistedBefore && await _unitOfWork.Deliveries.ExistsByIdempotencyKeyAsync(bellKey, ct))
+                sent++;
         }
 
         return sent;

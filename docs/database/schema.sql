@@ -275,8 +275,8 @@ GO
 CREATE TABLE [Products] (
     [ProductID]                   INT           IDENTITY(1,1) PRIMARY KEY,
     [CategoryID]                  SMALLINT      NOT NULL,
-    [BrandID]                     SMALLINT      NULL,
-    [PriceRangeID]                TINYINT       NULL,
+    [BrandID]                     SMALLINT      NOT NULL,
+    [PriceRangeID]                TINYINT       NOT NULL,
     [ProductName]                 NVARCHAR(255) NOT NULL,
     [Price]                       DECIMAL(12,0) NOT NULL CHECK ([Price] >= 0),
     [Quantity]                    INT           NOT NULL CHECK ([Quantity] >= 0),
@@ -392,10 +392,10 @@ GO
 CREATE TABLE [ProductDetails] (
     [ProductID]   INT            NOT NULL PRIMARY KEY,
     [Description] NVARCHAR(1500) NULL,
-    [MaterialID]  SMALLINT       NULL,
-    [AgeID]       TINYINT        NULL,
-    [SexID]       TINYINT        NULL,
-    [OriginID]    TINYINT        NULL,
+    [MaterialID]  SMALLINT       NOT NULL,
+    [AgeID]       TINYINT        NOT NULL,
+    [SexID]       TINYINT        NOT NULL,
+    [OriginID]    TINYINT        NOT NULL,
     [WeightGram]  INT            NOT NULL 
         CONSTRAINT [CK_ProductDetails_WeightGram] CHECK ([WeightGram] > 0),
     [LengthCm]    INT            NOT NULL 
@@ -466,13 +466,16 @@ CREATE TABLE [Orders] (
     [ShippedAt]             DATETIME2(0)  NULL,
     [DeliveredAt]           DATETIME2(0)  NULL,
     [CompletedAt]           DATETIME2(0)  NULL,
+    [FailedDeliveryAt]   DATETIME2(0) NULL,
+    [ReturnedAt]         DATETIME2(0) NULL,
+    [LastGHNFailCode]    VARCHAR(20)  NULL,
+    [DeliveryFailCount]  TINYINT      NOT NULL DEFAULT 0,
     [CancelledAt]           DATETIME2(0)  NULL,
     [PaymentMethod] VARCHAR(20) NOT NULL DEFAULT 'SHIP_COD'
-             CHECK ([PaymentMethod] IN ('BANK_TRANSFER', 'SHIP_COD', 'SE_PAY', 'WALLET')),
-    /* ── v3.2: thêm 'COD_PENDING' ── */
+             CHECK ([PaymentMethod] IN ('SHIP_COD', 'SE_PAY', 'WALLET')),
     [PaymentStatus]         VARCHAR(20)   NOT NULL DEFAULT 'PENDING'
         CONSTRAINT [CK_Orders_PaymentStatus]
-        CHECK ([PaymentStatus] IN ('PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED', 'PARTIALLY_REFUNDED', 'COD_PENDING','CANCELLED')),
+        CHECK ([PaymentStatus] IN ('PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED', 'COD_PENDING','CANCELLED')),
     [PaymentCode]           VARCHAR(50)   NULL,
     [PaidAt]                DATETIME2(0)  NULL,
     [SubTotal]              DECIMAL(12,0) NOT NULL,
@@ -618,6 +621,7 @@ CREATE TABLE [StaffShiftCapacity] (
         CONSTRAINT [CK_SSC_CurrentLoad_Min] CHECK ([CurrentLoad] >= 0),
     [ShiftFullNotifiedAt]      DATETIME2(3) NULL,
     [MaxLoad]     SMALLINT     NOT NULL DEFAULT 20,
+    [RowVersion]  ROWVERSION   NOT NULL,
     [UpdatedAt]   DATETIME2(0) NULL,
     CONSTRAINT [FK_SSC_Schedules] FOREIGN KEY ([ScheduleID]) REFERENCES [WorkSchedules]([ScheduleID]),
     CONSTRAINT [FK_SSC_Accounts]  FOREIGN KEY ([AccountID])  REFERENCES [Accounts]([AccountID]),
@@ -676,7 +680,7 @@ GO
 
 CREATE TABLE [OrderQueue] (
     [QueueID]      INT          IDENTITY(1,1) PRIMARY KEY,
-    [OrderID]      INT          NOT NULL UNIQUE,
+    [OrderID]      INT          NOT NULL,
     [QueuedAt]     DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [Reason]       VARCHAR(50)  NOT NULL
         CONSTRAINT [CK_OQ_Reason] CHECK ([Reason] IN (
@@ -687,6 +691,10 @@ CREATE TABLE [OrderQueue] (
     CONSTRAINT [FK_OQ_Orders]     FOREIGN KEY ([OrderID])    REFERENCES [Orders]([OrderID]),
     CONSTRAINT [FK_OQ_AssignedBy] FOREIGN KEY ([AssignedBy]) REFERENCES [Accounts]([AccountID])
 );
+GO
+
+CREATE UNIQUE INDEX [UQ_OQ_OrderID_Unresolved] ON [OrderQueue] ([OrderID])
+    WHERE [IsResolved] = 0;
 GO
 
 CREATE INDEX [IX_OQ_Unresolved] ON [OrderQueue] ([IsResolved], [QueuedAt] ASC)
@@ -1960,15 +1968,16 @@ GO
 CREATE INDEX [IX_PayGwTxn_OrderID]         ON [dbo].[PaymentGatewayTransactions] ([OrderID]);
 CREATE INDEX [IX_PayGwTxn_Provider_Status] ON [dbo].[PaymentGatewayTransactions] ([Provider], [Status]);
 GO
-
 CREATE TABLE [OrderRefundReasons] (
     [RefundReasonID] TINYINT IDENTITY(1,1) PRIMARY KEY,
     [Content]        NVARCHAR(150) NOT NULL,
     [Description]    NVARCHAR(255) NULL,
     [IsDeleted]      BIT NOT NULL DEFAULT 0,
+    [IsSystem]       BIT NOT NULL DEFAULT 0, -- Cột phân loại lý do Hệ thống (System-only)
     [CreatedAt]      DATETIME2(0) NOT NULL DEFAULT GETDATE()
 );
 GO
+
 
 CREATE TABLE [dbo].[StatusRefunds] (
     [StatusID]    TINYINT IDENTITY(1,1) PRIMARY KEY,
@@ -1995,6 +2004,7 @@ CREATE TABLE [OrderRefunds] (
     [TotalAmount]         DECIMAL(12,0) NULL CHECK ([TotalAmount] >= 0),
     [ApprovedAmount]      DECIMAL(12,0) NOT NULL CHECK ([ApprovedAmount] >= 0),
     [StatusID]            TINYINT NOT NULL DEFAULT 1,
+    [RefundSource]        NVARCHAR(20) NOT NULL DEFAULT 'Customer',
     [AdminNote]           NVARCHAR(1000) NULL,
     [ApprovedAt]          DATETIME2(0) NULL,
     [RejectedAt]          DATETIME2(0) NULL,
@@ -2012,6 +2022,12 @@ CREATE TABLE [OrderRefunds] (
     CONSTRAINT [FK_OrderRefunds_StatusRefunds]      FOREIGN KEY ([StatusID])            REFERENCES [StatusRefunds]([StatusID])
 );
 GO
+
+CREATE NONCLUSTERED INDEX IX_OrderRefunds_RefundSource
+    ON OrderRefunds (RefundSource)
+    INCLUDE (OrderId, StatusId, CreatedAt);
+GO
+
 
 CREATE TABLE [dbo].[RefundDetails] (
     [RefundDetailID]  INT IDENTITY(1,1) PRIMARY KEY,
@@ -3037,4 +3053,3 @@ GO
 CREATE NONCLUSTERED INDEX [IX_WalletPinAttempts_Wallet]
 ON [WalletPinAttempts]([WalletID], [CreatedAt] DESC);
 GO
-

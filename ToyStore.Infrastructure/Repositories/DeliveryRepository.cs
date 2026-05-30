@@ -65,7 +65,7 @@ public class DeliveryRepository : IDeliveryRepository
         var delivery = await _db.Deliveries.AsNoTracking().FirstOrDefaultAsync(d => d.DeliveryId == deliveryId && d.AccountId == accountId, ct);
         if (delivery == null || delivery.Status != NotificationStatuses.Unread) return;
 
-        var now = DateTime.Now;
+        var now = DateTime.UtcNow;
 
         await _db.Deliveries
             .Where(d => d.DeliveryId == deliveryId)
@@ -95,7 +95,7 @@ public class DeliveryRepository : IDeliveryRepository
 
     public async Task MarkAllReadAsync(int accountId, CancellationToken ct = default)
     {
-        var now = DateTime.Now;
+        var now = DateTime.UtcNow;
 
         var unreadCampaignDeliveries = await _db.Deliveries
             .AsNoTracking()
@@ -150,7 +150,7 @@ public class DeliveryRepository : IDeliveryRepository
             .Where(s => s.CampaignId == campaignId)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(x => x.TotalClicked, x => x.TotalClicked + 1)
-                .SetProperty(x => x.ComputedAt, DateTime.Now), ct);
+                .SetProperty(x => x.ComputedAt, DateTime.UtcNow), ct);
     }
 
     public async Task<bool> HasUserClickedAsync(long deliveryId, int accountId, CancellationToken ct = default)

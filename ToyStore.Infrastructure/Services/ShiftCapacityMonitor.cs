@@ -33,6 +33,8 @@ public class ShiftCapacityMonitor : IShiftCapacityMonitor
         capacity.ShiftFullNotifiedAt = utcNow;
         capacity.UpdatedAt = utcNow;
 
+        await _context.SaveChangesAsync(cancellationToken);
+
         var ws = capacity.WorkSchedule;
 
         await _eventPublisher.PublishAsync(

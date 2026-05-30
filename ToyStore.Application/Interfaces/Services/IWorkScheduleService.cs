@@ -16,4 +16,9 @@ public interface IWorkScheduleService
     Task<Result<MarkAbsentResultDto>> MarkAbsentAsync(int scheduleId, CancellationToken cancellationToken = default);
 
     Task<Result<CloneWeekResultDto>> CloneWeekAsync(DateTime sourceMonday, DateTime targetMonday, CancellationToken cancellationToken = default);
+
+    Task<Result<TransferLoadResultDto>> TransferLoadAsync(
+        int sourceScheduleId,
+        TransferLoadRequestDto dto,
+        CancellationToken cancellationToken = default);
 }
