@@ -20,8 +20,8 @@ public class CreateProductValidator : AbstractValidator<CreateProductDto>
             .GreaterThan((short)0).WithMessage("Category ID must be greater than 0.");
 
         RuleFor(x => x.BrandId)
-            .GreaterThan((short)0).WithMessage("Brand ID must be greater than 0.")
-            .When(x => x.BrandId.HasValue);
+            .NotNull().WithMessage("Brand is required.")
+            .GreaterThan((short)0).WithMessage("Please select a valid brand.");
 
         RuleFor(x => x.PriceRangeId)
             .GreaterThan((byte)0).WithMessage("Price range ID must be greater than 0.")
@@ -37,7 +37,7 @@ public class CreateProductValidator : AbstractValidator<CreateProductDto>
             .LessThanOrEqualTo(100_000_000).WithMessage("Price must not exceed 100,000,000 VND.");
 
         RuleFor(x => x.Quantity)
-            .GreaterThanOrEqualTo(0).WithMessage("Quantity must not be negative.")
+            .GreaterThan(0).WithMessage("Quantity is required and must be greater than 0.")
             .LessThanOrEqualTo(1_000_000).WithMessage("Quantity must not exceed 1,000,000.");
 
         RuleFor(x => x.ProductStatus)
@@ -46,8 +46,7 @@ public class CreateProductValidator : AbstractValidator<CreateProductDto>
             .WithMessage("Product status is invalid.");
 
         RuleFor(x => x.LaunchDate)
-            .NotNull().WithMessage("Launch date is required for coming soon products.")
-            .When(x => x.ProductStatus == "ComingSoon");
+            .NotNull().WithMessage("Launch date is required.");
 
         RuleFor(x => x.LaunchDate)
             .Must(date => date.HasValue && date.Value.Date >= DateTime.UtcNow.Date)
@@ -66,20 +65,20 @@ public class CreateProductValidator : AbstractValidator<CreateProductDto>
             .When(x => !string.IsNullOrWhiteSpace(x.Description));
 
         RuleFor(x => x.MaterialId)
-            .GreaterThan((short)0).WithMessage("Material ID must be greater than 0.")
-            .When(x => x.MaterialId.HasValue);
+            .NotNull().WithMessage("Material is required.")
+            .GreaterThan((short)0).WithMessage("Please select a valid material.");
 
         RuleFor(x => x.AgeId)
-            .GreaterThan((byte)0).WithMessage("Age ID must be greater than 0.")
-            .When(x => x.AgeId.HasValue);
+            .NotNull().WithMessage("Age range is required.")
+            .GreaterThan((byte)0).WithMessage("Please select a valid age range.");
 
         RuleFor(x => x.SexId)
-            .GreaterThan((byte)0).WithMessage("Sex ID must be greater than 0.")
-            .When(x => x.SexId.HasValue);
+            .NotNull().WithMessage("Sex is required.")
+            .GreaterThan((byte)0).WithMessage("Please select a valid sex.");
 
         RuleFor(x => x.OriginId)
-            .GreaterThan((byte)0).WithMessage("Origin ID must be greater than 0.")
-            .When(x => x.OriginId.HasValue);
+            .NotNull().WithMessage("Origin is required.")
+            .GreaterThan((byte)0).WithMessage("Please select a valid origin.");
 
         RuleFor(x => x.WeightGram)
             .GreaterThan(0).WithMessage("Weight (gram) must be greater than 0.");

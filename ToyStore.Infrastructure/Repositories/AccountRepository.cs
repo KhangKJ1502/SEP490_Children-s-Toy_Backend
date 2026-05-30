@@ -29,11 +29,15 @@ public class AccountRepository : IAccountRepository
         IQueryable<Account> query = _context.Accounts
             .AsNoTracking()
             .Include(x => x.Role)
-            .Where(x => !x.IsDeleted && (x.RoleId == StaffRoleId || x.RoleId == MerchandiseRoleId));
+            .Where(x => !x.IsDeleted);
 
         if (roleId.HasValue)
         {
             query = query.Where(x => x.RoleId == roleId.Value);
+        }
+        else
+        {
+            query = query.Where(x => x.RoleId == StaffRoleId || x.RoleId == MerchandiseRoleId);
         }
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
@@ -76,11 +80,15 @@ public class AccountRepository : IAccountRepository
     {
         IQueryable<Account> query = _context.Accounts
             .AsNoTracking()
-            .Where(x => !x.IsDeleted && (x.RoleId == StaffRoleId || x.RoleId == MerchandiseRoleId));
+            .Where(x => !x.IsDeleted);
 
         if (roleId.HasValue)
         {
             query = query.Where(x => x.RoleId == roleId.Value);
+        }
+        else
+        {
+            query = query.Where(x => x.RoleId == StaffRoleId || x.RoleId == MerchandiseRoleId);
         }
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
