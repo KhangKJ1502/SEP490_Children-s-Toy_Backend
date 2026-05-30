@@ -11,7 +11,13 @@ using ToyStore.Chatbot;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(opts =>
+    {
+        // Accept "HH:mm" and "HH:mm:ss" for TimeSpan fields (e.g. ShiftTemplate start/end times)
+        opts.JsonSerializerOptions.Converters.Add(new ToyStore.API.Extensions.FlexibleTimeSpanConverter());
+        opts.JsonSerializerOptions.Converters.Add(new ToyStore.API.Extensions.FlexibleNullableTimeSpanConverter());
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {

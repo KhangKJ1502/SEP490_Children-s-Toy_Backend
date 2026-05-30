@@ -3069,6 +3069,9 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.MaxLoad).HasDefaultValue((short)20);
             entity.Property(e => e.ShiftFullNotifiedAt).HasPrecision(3);
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
+            entity.Property(e => e.RowVersion)
+                .IsRowVersion()
+                .IsConcurrencyToken();
 
             entity.HasOne(d => d.WorkSchedule)
                 .WithOne(p => p.StaffShiftCapacity)
@@ -3145,7 +3148,9 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.ToTable("OrderQueue");
 
-            entity.HasIndex(e => e.OrderId, "UQ_OQ_OrderID").IsUnique();
+            entity.HasIndex(e => e.OrderId, "UQ_OQ_OrderID_Unresolved")
+                .IsUnique()
+                .HasFilter("([IsResolved]=(0))");
 
             entity.HasIndex(
                 e => new { e.IsResolved, e.QueuedAt },

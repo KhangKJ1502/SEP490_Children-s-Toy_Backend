@@ -864,6 +864,19 @@ public class CheckoutService : ICheckoutService
                     CancellationToken.None);
             }
 
+            if (payMethod == PayMethodWallet)
+            {
+                var orderPayload = new { orderId = order.OrderId, orderCode };
+                await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(),
+                    NotificationEventTypes.OrderConfirmed,
+                    orderPayload,
+                    CancellationToken.None);
+                await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(),
+                    NotificationEventTypes.MerchReadyToPack,
+                    orderPayload,
+                    CancellationToken.None);
+            }
+
             return Result<CheckoutConfirmResponseDto>.Success(new CheckoutConfirmResponseDto
             {
                 OrderId = order.OrderId,

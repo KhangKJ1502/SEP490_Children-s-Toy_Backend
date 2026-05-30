@@ -2,7 +2,7 @@
 
 Tài liệu này cung cấp sơ đồ trạng thái, mã lỗi GHN, **thứ tự test theo vòng đời đơn thật** (từ checkout → GHN → hoàn tiền ví), và các lệnh **cURL** giả lập webhook.
 
-**Mã vận đơn mẫu trong doc:** `LXDQRT` (thay bằng `ShippingOrderCode` / `ProviderOrderCode` của đơn bạn đang test).
+**Mã vận đơn mẫu trong doc:** `LXDLBQ` (thay bằng `ShippingOrderCode` / `ProviderOrderCode` của đơn bạn đang test).
 
 **Tài liệu liên quan:**
 
@@ -15,7 +15,7 @@ Tài liệu này cung cấp sơ đồ trạng thái, mã lỗi GHN, **thứ tự
 **Biến PowerShell (dùng cho mọi cURL bên dưới):**
 
 ```powershell
-$GhnCode = "LXDQRT"   # ProviderOrderCode trên ShippingProviderTransactions
+$GhnCode = "LXDLBQ"   # ProviderOrderCode trên ShippingProviderTransactions
 $BaseUrl = "https://localhost:7083/api/webhooks/ghn"   # hoặc http://localhost:5216/...
 $Token   = "fDoaiBJjrN3jc2Re4SIUZgZdNz5HzsPup6BRutbmXlh"   # appsettings Webhooks
 ```
@@ -37,7 +37,7 @@ Test **một đơn end-to-end** trước; sau đó mới tách nhánh B/C/D/E/F 
 | 2b  | Khách       | **WALLET:** thanh toán ví              | `PAID`                                                                                            |
 | 2c  | Khách       | **SHIP_COD:** đặt đơn                  | `PaymentStatus=COD_PENDING` hoặc `PENDING`                                                        |
 | 3   | Staff/Merch | Confirm → Processing (nếu chưa auto)   | `Confirmed` → `Processing`                                                                        |
-| 4   | Merch/Admin | **Ship** (tạo đơn GHN)                 | `Shipped`, `Orders.ShippingOrderCode` = mã GHN (vd. `LXDQRT`), row `ShippingProviderTransactions` |
+| 4   | Merch/Admin | **Ship** (tạo đơn GHN)                 | `Shipped`, `Orders.ShippingOrderCode` = mã GHN (vd. `LXDLBQ`), row `ShippingProviderTransactions` |
 
 **SQL — lấy đơn sẵn sàng bắt webhook:**
 
@@ -47,7 +47,7 @@ SELECT o.OrderID, o.OrderCode, o.StatusID, so.StatusName, o.PaymentMethod, o.Pay
 FROM Orders o
 JOIN StatusOrders so ON so.StatusID = o.StatusID
 LEFT JOIN ShippingProviderTransactions t ON t.OrderID = o.OrderID AND t.Provider = 'GHN'
-WHERE t.ProviderOrderCode = 'LXDQRT';   -- hoặc o.ShippingOrderCode = 'LXDQRT'
+WHERE t.ProviderOrderCode = 'LXDLBQ';   -- hoặc o.ShippingOrderCode = 'LXDLBQ'
 ```
 
 ### Giai đoạn 2 — Webhook GHN: nhánh A (giao thành công)
@@ -69,7 +69,7 @@ Gọi **đúng thứ tự thời gian** (mục 4 — Kịch bản A: A1 → A6).
 
 ### Giai đoạn 2 — Webhook GHN: nhánh B (giao fail → hoàn về kho → hoàn tiền prepaid)
 
-**Chuẩn bị:** đơn prepaid `PAID`, đang `Delivering` (5), `ProviderOrderCode=LXDQRT`.
+**Chuẩn bị:** đơn prepaid `PAID`, đang `Delivering` (5), `ProviderOrderCode=LXDLBQ`.
 
 | Bước  | Webhook                              | Trạng thái đơn                                             | Ghi chú                                                                |
 | ----- | ------------------------------------ | ---------------------------------------------------------- | ---------------------------------------------------------------------- |
@@ -203,9 +203,9 @@ Khi trạng thái là `delivery_fail`, `storing` lỗi hay `return_fail`, hệ t
 
 ---
 
-## 4. KỊCH BẢN GIẢ LẬP WEBHOOK GHN CHI TIẾT (`OrderCode` = `LXDQRT`)
+## 4. KỊCH BẢN GIẢ LẬP WEBHOOK GHN CHI TIẾT (`OrderCode` = `LXDLBQ`)
 
-Chuẩn bị đơn thật đã **Ship** (có `ProviderOrderCode`) **hoặc** chạy SQL mục 5 — thay `"LXDQRT"` trong JSON bằng `$GhnCode`.
+Chuẩn bị đơn thật đã **Ship** (có `ProviderOrderCode`) **hoặc** chạy SQL mục 5 — thay `"LXDLBQ"` trong JSON bằng `$GhnCode`.
 
 ---
 
@@ -220,7 +220,7 @@ curl -X POST "https://localhost:7083/api/webhooks/ghn" `
 -H "X-Webhook-Token: fDoaiBJjrN3jc2Re4SIUZgZdNz5HzsPup6BRutbmXlh" `
 -H "Content-Type: application/json" `
 -d '{
-    "OrderCode": "LXDQRT", "Status": "ready_to_pick", "Type": "create", "Time": "2026-05-28T10:00:00.000Z",
+    "OrderCode": "LXDLBQ", "Status": "ready_to_pick", "Type": "create", "Time": "2026-05-28T10:00:00.000Z",
     "CODAmount": 3000000, "PaymentType": 1, "TotalFee": 71400, "Weight": 200, "Length": 10, "Width": 10, "Height": 10, "ReasonCode": "", "Reason": ""
 }'
 ```
@@ -234,7 +234,7 @@ curl -X POST "https://localhost:7083/api/webhooks/ghn" `
 -H "X-Webhook-Token: fDoaiBJjrN3jc2Re4SIUZgZdNz5HzsPup6BRutbmXlh" `
 -H "Content-Type: application/json" `
 -d '{
-    "OrderCode": "LXDQRT", "Status": "picking", "Type": "switch_status", "Time": "2026-05-28T10:30:00.000Z",
+    "OrderCode": "LXDLBQ", "Status": "picking", "Type": "switch_status", "Time": "2026-05-28T10:30:00.000Z",
     "CODAmount": 3000000, "PaymentType": 1, "TotalFee": 71400, "Weight": 200, "Length": 10, "Width": 10, "Height": 10, "ReasonCode": "", "Reason": ""
 }'
 ```
@@ -248,7 +248,7 @@ curl -X POST "https://localhost:7083/api/webhooks/ghn" `
 -H "X-Webhook-Token: fDoaiBJjrN3jc2Re4SIUZgZdNz5HzsPup6BRutbmXlh" `
 -H "Content-Type: application/json" `
 -d '{
-    "OrderCode": "LXDQRT", "Status": "picked", "Type": "switch_status", "Time": "2026-05-28T11:00:00.000Z",
+    "OrderCode": "LXDLBQ", "Status": "picked", "Type": "switch_status", "Time": "2026-05-28T11:00:00.000Z",
     "CODAmount": 3000000, "PaymentType": 1, "TotalFee": 71400, "Weight": 200, "Length": 10, "Width": 10, "Height": 10, "ReasonCode": "", "Reason": ""
 }'
 ```
@@ -262,7 +262,7 @@ curl -X POST "https://localhost:7083/api/webhooks/ghn" `
 -H "X-Webhook-Token: fDoaiBJjrN3jc2Re4SIUZgZdNz5HzsPup6BRutbmXlh" `
 -H "Content-Type: application/json" `
 -d '{
-    "OrderCode": "LXDQRT", "Status": "delivering", "Type": "switch_status", "Time": "2026-05-28T12:00:00.000Z",
+    "OrderCode": "LXDLBQ", "Status": "delivering", "Type": "switch_status", "Time": "2026-05-28T12:00:00.000Z",
     "CODAmount": 3000000, "PaymentType": 1, "TotalFee": 71400, "Weight": 200, "Length": 10, "Width": 10, "Height": 10, "ReasonCode": "", "Reason": ""
 }'
 ```
@@ -276,7 +276,7 @@ curl -X POST "https://localhost:7083/api/webhooks/ghn" `
 -H "X-Webhook-Token: fDoaiBJjrN3jc2Re4SIUZgZdNz5HzsPup6BRutbmXlh" `
 -H "Content-Type: application/json" `
 -d '{
-    "OrderCode": "LXDQRT", "Status": "money_collect_delivering", "Type": "switch_status", "Time": "2026-05-28T14:00:00.000Z",
+    "OrderCode": "LXDLBQ", "Status": "money_collect_delivering", "Type": "switch_status", "Time": "2026-05-28T14:00:00.000Z",
     "CODAmount": 3000000, "PaymentType": 1, "TotalFee": 71400, "Weight": 200, "Length": 10, "Width": 10, "Height": 10, "ReasonCode": "", "Reason": ""
 }'
 ```
@@ -290,7 +290,7 @@ curl -X POST "https://localhost:7083/api/webhooks/ghn" `
 -H "X-Webhook-Token: fDoaiBJjrN3jc2Re4SIUZgZdNz5HzsPup6BRutbmXlh" `
 -H "Content-Type: application/json" `
 -d '{
-    "OrderCode": "LXDQRT", "Status": "delivered", "Type": "switch_status", "Time": "2026-05-28T14:30:00.000Z",
+    "OrderCode": "LXDLBQ", "Status": "delivered", "Type": "switch_status", "Time": "2026-05-28T14:30:00.000Z",
     "CODAmount": 3000000, "PaymentType": 1, "TotalFee": 71400, "Weight": 200, "Length": 10, "Width": 10, "Height": 10, "ReasonCode": "", "Reason": ""
 }'
 ```
@@ -299,7 +299,7 @@ curl -X POST "https://localhost:7083/api/webhooks/ghn" `
 
 ### KỊCH BẢN B: BOM HÀNG - GIAO THẤT BẠI 3 LẦN & CHUYỂN HOÀN THÀNH CÔNG
 
-_Lưu ý: Dùng đơn prepaid **PAID**, `Delivering` (5), `ProviderOrderCode=LXDQRT`. Reset bằng SQL mục 5 nếu cần._
+_Lưu ý: Dùng đơn prepaid **PAID**, `Delivering` (5), `ProviderOrderCode=LXDLBQ`. Reset bằng SQL mục 5 nếu cần._
 
 #### Bước B1: Giao thất bại lần 1 - Khách không nghe máy (`delivery_fail`)
 
@@ -310,7 +310,7 @@ curl -X POST "https://localhost:7083/api/webhooks/ghn" `
 -H "X-Webhook-Token: fDoaiBJjrN3jc2Re4SIUZgZdNz5HzsPup6BRutbmXlh" `
 -H "Content-Type: application/json" `
 -d '{
-    "OrderCode": "LXDQRT", "Status": "delivery_fail", "Type": "update", "Time": "2026-05-28T15:00:00.000Z",
+    "OrderCode": "LXDLBQ", "Status": "delivery_fail", "Type": "update", "Time": "2026-05-28T15:00:00.000Z",
     "CODAmount": 3000000, "PaymentType": 1, "TotalFee": 71400, "Weight": 200, "Length": 10, "Width": 10, "Height": 10,
     "ReasonCode": "GHN-DFC1A4", "Reason": "Người nhận không nghe máy"
 }'
@@ -325,7 +325,7 @@ curl -X POST "https://localhost:7083/api/webhooks/ghn" `
 -H "X-Webhook-Token: fDoaiBJjrN3jc2Re4SIUZgZdNz5HzsPup6BRutbmXlh" `
 -H "Content-Type: application/json" `
 -d '{
-    "OrderCode": "LXDQRT", "Status": "delivery_fail", "Type": "update", "Time": "2026-05-28T16:00:00.000Z",
+    "OrderCode": "LXDLBQ", "Status": "delivery_fail", "Type": "update", "Time": "2026-05-28T16:00:00.000Z",
     "CODAmount": 3000000, "PaymentType": 1, "TotalFee": 71400, "Weight": 200, "Length": 10, "Width": 10, "Height": 10,
     "ReasonCode": "GHN-DFC1A2", "Reason": "Không liên lạc được người nhận / Chặn số"
 }'
@@ -345,7 +345,7 @@ curl -X POST "https://localhost:7083/api/webhooks/ghn" `
 -H "X-Webhook-Token: fDoaiBJjrN3jc2Re4SIUZgZdNz5HzsPup6BRutbmXlh" `
 -H "Content-Type: application/json" `
 -d '{
-    "OrderCode": "LXDQRT", "Status": "waiting_to_return", "Type": "switch_status", "Time": "2026-05-28T17:15:00.000Z",
+    "OrderCode": "LXDLBQ", "Status": "waiting_to_return", "Type": "switch_status", "Time": "2026-05-28T17:15:00.000Z",
     "CODAmount": 3000000, "PaymentType": 1, "TotalFee": 71400, "Weight": 200, "Length": 10, "Width": 10, "Height": 10, "ReasonCode": "", "Reason": ""
 }'
 ```
@@ -355,7 +355,7 @@ curl -X POST "https://localhost:7083/api/webhooks/ghn" `
 -H "X-Webhook-Token: fDoaiBJjrN3jc2Re4SIUZgZdNz5HzsPup6BRutbmXlh" `
 -H "Content-Type: application/json" `
 -d '{
-    "OrderCode": "LXDQRT", "Status": "delivery_fail", "Type": "update", "Time": "2026-05-28T17:00:00.000Z",
+    "OrderCode": "LXDLBQ", "Status": "delivery_fail", "Type": "update", "Time": "2026-05-28T17:00:00.000Z",
     "CODAmount": 3000000, "PaymentType": 1, "TotalFee": 71400, "Weight": 200, "Length": 10, "Width": 10, "Height": 10,
     "ReasonCode": "GHN-DCD1A1", "Reason": "Người nhận báo không đặt hàng"
 }'
@@ -370,7 +370,7 @@ curl -X POST "https://localhost:7083/api/webhooks/ghn" `
 -H "X-Webhook-Token: fDoaiBJjrN3jc2Re4SIUZgZdNz5HzsPup6BRutbmXlh" `
 -H "Content-Type: application/json" `
 -d '{
-    "OrderCode": "LXDQRT", "Status": "return", "Type": "switch_status", "Time": "2026-05-28T17:30:00.000Z",
+    "OrderCode": "LXDLBQ", "Status": "return", "Type": "switch_status", "Time": "2026-05-28T17:30:00.000Z",
     "CODAmount": 3000000, "PaymentType": 1, "TotalFee": 71400, "Weight": 200, "Length": 10, "Width": 10, "Height": 10, "ReasonCode": "", "Reason": ""
 }'
 ```
@@ -384,7 +384,7 @@ curl -X POST "https://localhost:7083/api/webhooks/ghn" `
 -H "X-Webhook-Token: fDoaiBJjrN3jc2Re4SIUZgZdNz5HzsPup6BRutbmXlh" `
 -H "Content-Type: application/json" `
 -d '{
-    "OrderCode": "LXDQRT", "Status": "returning", "Type": "switch_status", "Time": "2026-05-28T18:00:00.000Z",
+    "OrderCode": "LXDLBQ", "Status": "returning", "Type": "switch_status", "Time": "2026-05-28T18:00:00.000Z",
     "CODAmount": 3000000, "PaymentType": 1, "TotalFee": 71400, "Weight": 200, "Length": 10, "Width": 10, "Height": 10, "ReasonCode": "", "Reason": ""
 }'
 ```
@@ -399,7 +399,7 @@ curl -X POST "https://localhost:7083/api/webhooks/ghn" `
 -H "X-Webhook-Token: fDoaiBJjrN3jc2Re4SIUZgZdNz5HzsPup6BRutbmXlh" `
 -H "Content-Type: application/json" `
 -d '{
-    "OrderCode": "LXDQRT", "Status": "returned", "Type": "switch_status", "Time": "2026-05-28T19:00:00.000Z",
+    "OrderCode": "LXDLBQ", "Status": "returned", "Type": "switch_status", "Time": "2026-05-28T19:00:00.000Z",
     "CODAmount": 3000000, "PaymentType": 1, "TotalFee": 71400, "Weight": 200, "Length": 10, "Width": 10, "Height": 10, "ReasonCode": "", "Reason": ""
 }'
 ```
@@ -418,7 +418,7 @@ curl -X POST "https://localhost:7083/api/webhooks/ghn" `
 -H "X-Webhook-Token: fDoaiBJjrN3jc2Re4SIUZgZdNz5HzsPup6BRutbmXlh" `
 -H "Content-Type: application/json" `
 -d '{
-    "OrderCode": "LXDQRT", "Status": "return_fail", "Type": "update", "Time": "2026-05-28T20:00:00.000Z",
+    "OrderCode": "LXDLBQ", "Status": "return_fail", "Type": "update", "Time": "2026-05-28T20:00:00.000Z",
     "CODAmount": 3000000, "PaymentType": 1, "TotalFee": 71400, "Weight": 200, "Length": 10, "Width": 10, "Height": 10,
     "ReasonCode": "GHN-RFE0A4", "Reason": "Người gửi từ chối nhận lại do hàng hư hỏng nặng"
 }'
@@ -436,7 +436,7 @@ curl -X POST "https://localhost:7083/api/webhooks/ghn" `
 -H "X-Webhook-Token: fDoaiBJjrN3jc2Re4SIUZgZdNz5HzsPup6BRutbmXlh" `
 -H "Content-Type: application/json" `
 -d '{
-    "OrderCode": "LXDQRT", "Status": "lost", "Type": "switch_status", "Time": "2026-05-28T20:30:00.000Z",
+    "OrderCode": "LXDLBQ", "Status": "lost", "Type": "switch_status", "Time": "2026-05-28T20:30:00.000Z",
     "CODAmount": 3000000, "PaymentType": 1, "TotalFee": 71400, "Weight": 200, "Length": 10, "Width": 10, "Height": 10, "ReasonCode": "", "Reason": ""
 }'
 ```
@@ -453,7 +453,7 @@ curl -X POST "https://localhost:7083/api/webhooks/ghn" `
 -H "X-Webhook-Token: fDoaiBJjrN3jc2Re4SIUZgZdNz5HzsPup6BRutbmXlh" `
 -H "Content-Type: application/json" `
 -d '{
-    "OrderCode": "LXDQRT", "Status": "damage", "Type": "switch_status", "Time": "2026-05-28T21:00:00.000Z",
+    "OrderCode": "LXDLBQ", "Status": "damage", "Type": "switch_status", "Time": "2026-05-28T21:00:00.000Z",
     "CODAmount": 3000000, "PaymentType": 1, "TotalFee": 71400, "Weight": 200, "Length": 10, "Width": 10, "Height": 10, "ReasonCode": "", "Reason": ""
 }'
 ```
@@ -470,7 +470,7 @@ curl -X POST "https://localhost:7083/api/webhooks/ghn" `
 -H "X-Webhook-Token: fDoaiBJjrN3jc2Re4SIUZgZdNz5HzsPup6BRutbmXlh" `
 -H "Content-Type: application/json" `
 -d '{
-    "OrderCode": "LXDQRT", "Status": "cancel", "Type": "switch_status", "Time": "2026-05-28T21:30:00.000Z",
+    "OrderCode": "LXDLBQ", "Status": "cancel", "Type": "switch_status", "Time": "2026-05-28T21:30:00.000Z",
     "CODAmount": 3000000, "PaymentType": 1, "TotalFee": 71400, "Weight": 200, "Length": 10, "Width": 10, "Height": 10, "ReasonCode": "", "Reason": ""
 }'
 ```
@@ -479,7 +479,7 @@ curl -X POST "https://localhost:7083/api/webhooks/ghn" `
 
 ## 5. CÂU LỆNH SQL HỖ TRỢ KIỂM THỬ TRÊN CƠ SỞ DỮ LIỆU
 
-### A. Khởi tạo dữ liệu sạch với mã vận đơn `LXDQRT` (hoặc gắn đơn ship thật):
+### A. Khởi tạo dữ liệu sạch với mã vận đơn `LXDLBQ` (hoặc gắn đơn ship thật):
 
 ```sql
 -- 1. Tạo đơn hàng đồ chơi thử nghiệm
@@ -492,11 +492,11 @@ DECLARE @OrderID INT = SCOPE_IDENTITY();
 INSERT INTO OrderDetails (OrderID, ProductID, ProductName, Quantity, UnitPrice)
 VALUES (@OrderID, 1, N'Robot LEGO Chiến Binh Cao Cấp', 1, 3000000);
 
--- 3. Tạo mã giao vận liên kết với GHN ( LXDQRT )
+-- 3. Tạo mã giao vận liên kết với GHN ( LXDLBQ )
 INSERT INTO ShippingProviderTransactions (OrderID, Provider, ProviderOrderCode, Status, CreatedAt, UpdatedAt)
-VALUES (@OrderID, 'GHN', 'LXDQRT', 'ready_to_pick', GETDATE(), GETDATE());
+VALUES (@OrderID, 'GHN', 'LXDLBQ', 'ready_to_pick', GETDATE(), GETDATE());
 
-UPDATE Orders SET ShippingOrderCode = 'LXDQRT', StatusID = 5, PaymentMethod = 'SE_PAY', PaymentStatus = 'PAID'
+UPDATE Orders SET ShippingOrderCode = 'LXDLBQ', StatusID = 5, PaymentMethod = 'SE_PAY', PaymentStatus = 'PAID'
 WHERE OrderID = @OrderID;
 ```
 
@@ -519,14 +519,14 @@ SELECT
 FROM Orders o
 INNER JOIN StatusOrders so ON o.StatusID = so.StatusID
 INNER JOIN ShippingProviderTransactions tx ON o.OrderID = tx.OrderID
-WHERE tx.ProviderOrderCode = 'LXDQRT';
+WHERE tx.ProviderOrderCode = 'LXDLBQ';
 
 -- System refund sau returned (prepaid)
 SELECT r.RefundID, r.RefundCode, rs.StatusName, r.ApprovedAmount, o.PaymentStatus
 FROM OrderRefunds r
 JOIN RefundStatuses rs ON rs.StatusID = r.StatusID
 JOIN Orders o ON o.OrderID = r.OrderID
-WHERE o.OrderID = (SELECT OrderID FROM ShippingProviderTransactions WHERE ProviderOrderCode = 'LXDQRT');
+WHERE o.OrderID = (SELECT OrderID FROM ShippingProviderTransactions WHERE ProviderOrderCode = 'LXDLBQ');
 
 -- Truy vấn xem nhật ký lịch sử cuộc gọi webhook GHN (Tránh trùng lặp Idempotency)
 SELECT * FROM ShippingStatusHistories

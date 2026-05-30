@@ -47,6 +47,12 @@ public interface ICampaignLifecycleRules
 
     Task<Result> ValidateCancelAsync(Campaign campaign, int actorAccountId, bool actorIsAdmin, CancellationToken ct = default);
 
+    /// <summary>
+    /// Ensures the actor is the creator of the campaign or an admin.
+    /// Used by Update, Schedule, and Reschedule to guard against unauthorized modifications.
+    /// </summary>
+    Result ValidateActorCanModifyCampaign(Campaign campaign, int actorAccountId, bool actorIsAdmin);
+
     bool ShouldSkipDispatch(Campaign campaign, DateTime nowUtc, out string? logReason);
 
     Task<Result> ValidateDispatchAsync(Campaign campaign, CancellationToken ct = default);

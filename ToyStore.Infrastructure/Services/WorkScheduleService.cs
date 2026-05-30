@@ -6,6 +6,7 @@ using ToyStore.Application.DTOs.Shifts;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
+using ToyStore.Domain.OrderFulfillment;
 using ToyStore.Domain.Entities;
 
 namespace ToyStore.Infrastructure.Services;
@@ -26,10 +27,15 @@ public class WorkScheduleService : IWorkScheduleService
     private static readonly byte MerchRoleId = 4;
 
     private static readonly IReadOnlyCollection<string> StaffTransferStatuses =
-        [OrderStatuses.Pending];
+        [OrderStatuses.Pending, OrderStatuses.DeliveryFailed];
 
     private static readonly IReadOnlyCollection<string> MerchTransferStatuses =
         [OrderStatuses.Confirmed, OrderStatuses.Processing];
+
+    private static bool RoleNeedsHandoff(byte roleId, string statusName)
+        => roleId == StaffRoleId
+            ? !OrderStatusTransitionValidator.StaffRoleWorkComplete(statusName)
+            : roleId == MerchRoleId && !OrderStatusTransitionValidator.MerchRoleWorkComplete(statusName);
 
     private const string MinimumCoverageError =
         "Each shift must have at least 1 sales staff and 1 warehouse staff";
@@ -94,10 +100,42 @@ public class WorkScheduleService : IWorkScheduleService
             return Result<WorkScheduleDto>.Failure("BUSINESS_RULE_VIOLATION", "Cannot schedule shifts in the past.");
         }
 
-        var exists = await _unitOfWork.WorkSchedules.ExistsAsync(dto.AccountId, dto.WorkDate, dto.ShiftTemplateId, cancellationToken);
-        if (exists)
+        var existing = await _unitOfWork.WorkSchedules.GetByUniqueKeyForUpdateAsync(dto.AccountId, dto.WorkDate, dto.ShiftTemplateId, cancellationToken);
+        if (existing is not null)
         {
-            return Result<WorkScheduleDto>.Conflict("Schedule already exists for this account, date, and shift.");
+            if (existing.Status != "Cancelled")
+            {
+                return Result<WorkScheduleDto>.Conflict("Schedule already exists for this account, date, and shift.");
+            }
+
+            // Reactivate the existing Cancelled schedule to avoid unique constraint violation UQ_WorkSchedules_StaffShiftDay
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+            try
+            {
+                existing.Status = "Scheduled";
+                existing.CreatedBy = _currentUser.AccountId;
+                existing.UpdatedAt = _timeProvider.UtcNow;
+
+                if (dto.MaxLoadOverride.HasValue)
+                {
+                    if (existing.StaffShiftCapacity is not null)
+                    {
+                        existing.StaffShiftCapacity.MaxLoad = dto.MaxLoadOverride.Value;
+                        existing.StaffShiftCapacity.UpdatedAt = _timeProvider.UtcNow;
+                    }
+                }
+
+                await _unitOfWork.WorkSchedules.UpdateAsync(existing, cancellationToken);
+                await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+                var fullSchedule = await _unitOfWork.WorkSchedules.GetByIdAsync(existing.ScheduleId, cancellationToken);
+                return Result<WorkScheduleDto>.Success(_mapper.Map<WorkScheduleDto>(fullSchedule));
+            }
+            catch
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                throw;
+            }
         }
 
         var schedule = new WorkSchedule
@@ -163,21 +201,39 @@ public class WorkScheduleService : IWorkScheduleService
             return Result<MarkAbsentResultDto>.Failure("BUSINESS_RULE_VIOLATION", "Cannot mark a completed or cancelled shift as absent.");
         }
 
-        var pendingOrderIds = await _unitOfWork.OrderAssignments.GetPendingOrderIdsByScheduleAsync(scheduleId, cancellationToken);
+        var assignmentRows = await _unitOfWork.OrderAssignments
+            .GetActiveByScheduleWithStatusAsync(scheduleId, cancellationToken);
 
         schedule.Status = "Absent";
         schedule.UpdatedAt = _timeProvider.UtcNow;
 
-        await _unitOfWork.OrderAssignments.DeactivateByScheduleAsync(scheduleId, cancellationToken);
+        var toReassignOrderIds = new HashSet<int>();
+        var keptOrderIds = new List<int>();
+
+        foreach (var row in assignmentRows)
+        {
+            var needsHandoff = RoleNeedsHandoff(row.Assignment.RoleId, row.StatusName);
+
+            if (needsHandoff)
+            {
+                await _unitOfWork.OrderAssignments.DeactivateAssignmentAsync(row.Assignment, cancellationToken);
+                toReassignOrderIds.Add(row.Assignment.OrderId);
+            }
+            else
+            {
+                keptOrderIds.Add(row.Assignment.OrderId);
+            }
+        }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         var summary = new MarkAbsentResultDto
         {
-            AffectedPendingOrderIds = pendingOrderIds
+            AffectedPendingOrderIds = toReassignOrderIds.ToList(),
+            KeptOrderIds = keptOrderIds.Distinct().ToList()
         };
 
-        foreach (var orderId in pendingOrderIds)
+        foreach (var orderId in toReassignOrderIds)
         {
             var assignResult = await _shiftAssignmentService.AutoAssignOrderAsync(orderId, cancellationToken);
             if (!assignResult.IsSuccess || assignResult.Data is null)
@@ -226,8 +282,6 @@ public class WorkScheduleService : IWorkScheduleService
         var oldAccountId = schedule.AccountId;
         var transferredAt = _timeProvider.UtcNow;
         var transferredOrders = new List<TransferredOrderItemDto>();
-        var autoReassigned = 0;
-        var autoQueued = 0;
 
         if (accountChanging)
         {
@@ -304,7 +358,7 @@ public class WorkScheduleService : IWorkScheduleService
             if (exists)
             {
                 return Result<UpdateWorkScheduleResultDto>.Conflict(
-                    "Schedule already exists for this account, date, and shift.");
+                    "Schedule already exists for this account, date, and shift (including absent or cancelled rows).");
             }
         }
 
@@ -415,42 +469,6 @@ public class WorkScheduleService : IWorkScheduleService
             throw;
         }
 
-        if (accountChanging && dto.RunAutoAssignFallback)
-        {
-            var oldAccount = await _unitOfWork.Accounts.GetByIdAsync(oldAccountId, cancellationToken);
-            if (oldAccount is not null)
-            {
-                var fallbackOrderIds = await _unitOfWork.OrderAssignments.DeactivateByScheduleRoleAndAccountAsync(
-                    scheduleId,
-                    oldAccount.RoleId,
-                    oldAccountId,
-                    cancellationToken);
-
-                if (fallbackOrderIds.Count > 0)
-                {
-                    await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-                    foreach (var orderId in fallbackOrderIds)
-                    {
-                        var assignResult = await _shiftAssignmentService.AutoAssignOrderAsync(orderId, cancellationToken);
-                        if (!assignResult.IsSuccess || assignResult.Data is null)
-                        {
-                            continue;
-                        }
-
-                        if (string.Equals(assignResult.Data.Result, "ASSIGNED", StringComparison.OrdinalIgnoreCase))
-                        {
-                            autoReassigned++;
-                        }
-                        else if (string.Equals(assignResult.Data.Result, "QUEUED", StringComparison.OrdinalIgnoreCase))
-                        {
-                            autoQueued++;
-                        }
-                    }
-                }
-            }
-        }
-
         var updated = await _unitOfWork.WorkSchedules.GetByIdAsync(scheduleId, cancellationToken);
         var result = new UpdateWorkScheduleResultDto
         {
@@ -458,8 +476,8 @@ public class WorkScheduleService : IWorkScheduleService
             TransferredCount = transferredOrders.Count,
             TransferredAt = transferredAt,
             TransferredOrders = transferredOrders,
-            AutoAssignReassignedCount = autoReassigned,
-            AutoAssignQueuedCount = autoQueued
+            AutoAssignReassignedCount = 0,
+            AutoAssignQueuedCount = 0
         };
 
         return Result<UpdateWorkScheduleResultDto>.Success(result);
@@ -473,9 +491,29 @@ public class WorkScheduleService : IWorkScheduleService
             return Result.NotFound("WorkSchedule", scheduleId);
         }
 
-        if (schedule.Status is "Completed")
+        if (schedule.Status is not "Scheduled")
         {
-            return Result.Failure("BUSINESS_RULE_VIOLATION", "Cannot delete a completed shift.");
+            return Result.Failure(
+                "BUSINESS_RULE_VIOLATION",
+                "Only scheduled shifts with no assignments can be cancelled.");
+        }
+
+        var activeAssignments = await _unitOfWork.OrderAssignments
+            .GetActiveByScheduleWithStatusAsync(scheduleId, cancellationToken);
+
+        if (activeAssignments.Count > 0)
+        {
+            return Result.Failure(
+                "BUSINESS_RULE_VIOLATION",
+                "Cannot cancel a shift that has active order assignments.");
+        }
+
+        var currentLoad = schedule.StaffShiftCapacity?.CurrentLoad ?? 0;
+        if (currentLoad > 0)
+        {
+            return Result.Failure(
+                "BUSINESS_RULE_VIOLATION",
+                "Cannot cancel a shift while capacity load is greater than zero.");
         }
 
         var coverageOk = await _workScheduleShiftRules.ValidateMinimumCoverageAsync(
@@ -491,21 +529,10 @@ public class WorkScheduleService : IWorkScheduleService
             return Result.Failure("BUSINESS_RULE_VIOLATION", MinimumCoverageError);
         }
 
-        var pendingOrderIds = await _unitOfWork.OrderAssignments
-            .GetPendingOrderIdsByScheduleAsync(scheduleId, cancellationToken);
+        schedule.Status = "Cancelled";
+        schedule.UpdatedAt = _timeProvider.UtcNow;
+        await _unitOfWork.WorkSchedules.UpdateAsync(schedule, cancellationToken);
 
-        if (pendingOrderIds.Count > 0)
-        {
-            await _unitOfWork.OrderAssignments.DeactivateByScheduleAsync(scheduleId, cancellationToken);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-            foreach (var orderId in pendingOrderIds)
-            {
-                await _shiftAssignmentService.AutoAssignOrderAsync(orderId, cancellationToken);
-            }
-        }
-
-        await _unitOfWork.WorkSchedules.DeleteAsync(schedule, cancellationToken);
         return Result.Success();
     }
 
@@ -544,13 +571,24 @@ public class WorkScheduleService : IWorkScheduleService
                     continue;
                 }
 
-                var duplicate = await _unitOfWork.WorkSchedules.ExistsAsync(
+                var existing = await _unitOfWork.WorkSchedules.GetByUniqueKeyForUpdateAsync(
                     row.AccountId, targetDate, row.ShiftTemplateId, cancellationToken);
 
-                if (duplicate)
+                if (existing is not null)
                 {
-                    summary.Skipped++;
-                    summary.Reasons.Add($"Duplicate: Account {row.AccountId}, {targetDate:d}, shift {row.ShiftTemplateId}.");
+                    if (existing.Status != "Cancelled")
+                    {
+                        summary.Skipped++;
+                        summary.Reasons.Add($"Duplicate: Account {row.AccountId}, {targetDate:d}, shift {row.ShiftTemplateId}.");
+                        continue;
+                    }
+
+                    // Reactivate instead of inserting duplicate to avoid unique constraint UQ_WorkSchedules_StaffShiftDay
+                    existing.Status = "Scheduled";
+                    existing.CreatedBy = _currentUser.AccountId;
+                    existing.UpdatedAt = _timeProvider.UtcNow;
+                    await _unitOfWork.WorkSchedules.UpdateAsync(existing, cancellationToken);
+                    summary.Cloned++;
                     continue;
                 }
 
@@ -575,5 +613,71 @@ public class WorkScheduleService : IWorkScheduleService
             await _unitOfWork.RollbackTransactionAsync(cancellationToken);
             throw;
         }
+    }
+
+    public async Task<Result<TransferLoadResultDto>> TransferLoadAsync(
+        int sourceScheduleId,
+        TransferLoadRequestDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        if (sourceScheduleId <= 0 || dto.TargetScheduleId <= 0)
+        {
+            return Result<TransferLoadResultDto>.Failure("VALIDATION_ERROR", "Schedule IDs must be greater than 0.");
+        }
+
+        if (sourceScheduleId == dto.TargetScheduleId)
+        {
+            return Result<TransferLoadResultDto>.Failure("VALIDATION_ERROR", "Source and target schedules must differ.");
+        }
+
+        var source = await _unitOfWork.WorkSchedules.GetByIdForUpdateAsync(sourceScheduleId, cancellationToken);
+        var target = await _unitOfWork.WorkSchedules.GetByIdForUpdateAsync(dto.TargetScheduleId, cancellationToken);
+
+        if (source is null)
+        {
+            return Result<TransferLoadResultDto>.NotFound("WorkSchedule", sourceScheduleId);
+        }
+
+        if (target is null)
+        {
+            return Result<TransferLoadResultDto>.NotFound("WorkSchedule", dto.TargetScheduleId);
+        }
+
+        var sourceAccount = await _unitOfWork.Accounts.GetByIdAsync(source.AccountId, cancellationToken);
+        var targetAccount = await _unitOfWork.Accounts.GetByIdAsync(target.AccountId, cancellationToken);
+
+        if (sourceAccount is null || targetAccount is null || sourceAccount.RoleId != targetAccount.RoleId)
+        {
+            return Result<TransferLoadResultDto>.Failure(
+                "BUSINESS_RULE_VIOLATION",
+                "Source and target schedules must belong to accounts with the same role.");
+        }
+
+        var rows = await _unitOfWork.OrderAssignments.GetActiveByScheduleWithStatusAsync(sourceScheduleId, cancellationToken);
+        var result = new TransferLoadResultDto();
+        var assignedBy = _currentUser.AccountId;
+        var note = dto.Note ?? $"Bulk transfer load to schedule {dto.TargetScheduleId}";
+
+        foreach (var row in rows)
+        {
+            if (!RoleNeedsHandoff(row.Assignment.RoleId, row.StatusName))
+            {
+                result.KeptCount++;
+                continue;
+            }
+
+            await _unitOfWork.OrderAssignments.ReassignAsync(
+                row.Assignment.OrderId,
+                row.Assignment.RoleId,
+                dto.TargetScheduleId,
+                assignedBy,
+                note,
+                cancellationToken);
+
+            result.TransferredCount++;
+            result.TransferredOrderIds.Add(row.Assignment.OrderId);
+        }
+
+        return Result<TransferLoadResultDto>.Success(result);
     }
 }

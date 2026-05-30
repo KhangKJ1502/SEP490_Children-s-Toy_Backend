@@ -45,7 +45,7 @@ public class VoucherResolver : IBusinessObjectResolver
         return new ResolvedReferenceDto
         {
             DisplayName = voucher.VoucherName,
-            DefaultActionTarget = $"/vouchers/{voucher.VoucherCode}",
+            DefaultActionTarget = $"/profile/vouchers?code={voucher.VoucherCode}",
             Placeholders = new Dictionary<string, string>
             {
                 ["{{VoucherCode}}"] = voucher.VoucherCode,

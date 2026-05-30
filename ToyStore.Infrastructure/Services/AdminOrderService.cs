@@ -82,14 +82,12 @@ public class AdminOrderService : IAdminOrderService
         CancellationToken cancellationToken = default)
     {
         var isPrivileged = _orderAccess.IsPrivileged(_currentUser.RoleId);
-        var restrictToAssignment = !isPrivileged && query.AssignedToMe;
+        var restrictToAssignment = !isPrivileged || query.AssignedToMe;
         var assignmentRoleId = _orderAccess.GetRequiredAssignmentRoleId(_currentUser.RoleId);
 
-        var allowedStatuses = isPrivileged
+        var allowedStatuses = isPrivileged && !query.AssignedToMe
             ? OrderStatuses.AdminVisibleStatuses
-            : query.AssignedToMe
-                ? OrderStatuses.AdminVisibleStatuses
-                : GetAllowedStatusesForRole(_currentUser.RoleName);
+            : OrderStatuses.AdminVisibleStatuses;
 
         var pageSize = Math.Min(query.PageSize, 100);
         var pageNumber = Math.Max(query.PageNumber, 1);
@@ -172,6 +170,17 @@ public class AdminOrderService : IAdminOrderService
 
         var activeAssignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(orderId, cancellationToken);
         ApplyAssignmentNamesToDto(dto, activeAssignments);
+
+        if (!_orderAccess.IsPrivileged(_currentUser.RoleId))
+        {
+            dto.IsAssignedToCurrentUser = activeAssignments.Any(a =>
+                a.AccountId == _currentUser.AccountId
+                && a.RoleId == _orderAccess.GetRequiredAssignmentRoleId(_currentUser.RoleId));
+        }
+        else
+        {
+            dto.IsAssignedToCurrentUser = true;
+        }
 
         return Result<AdminOrderDetailDto>.Success(dto);
     }

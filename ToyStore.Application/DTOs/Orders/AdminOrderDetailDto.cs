@@ -49,6 +49,9 @@ public class AdminOrderDetailDto
     public int? AssignedToMerchId { get; set; }
     public string? AssignedToMerchName { get; set; }
 
+    /// <summary>True when the current user has an active OA on this order (Staff/Merch).</summary>
+    public bool IsAssignedToCurrentUser { get; set; }
+
     // Lich su trang thai
     public List<OrderStatusHistoryDto> StatusHistory { get; set; } = [];
 

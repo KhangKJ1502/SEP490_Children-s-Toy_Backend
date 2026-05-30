@@ -20,13 +20,8 @@ public class RefundDto
     public int? RequestedBy { get; set; }
     public int? ApprovedBy { get; set; }
     public string? ReasonDetails { get; set; }
-
-    /// <summary>"Customer" hoặc "System" — phân biệt nguồn tạo refund.</summary>
     public string RefundSource { get; set; } = "Customer";
-
-    /// <summary>True nếu refund do hệ thống tự tạo (GHN returned). UI dùng để ẩn nút GHN pickup.</summary>
     public bool IsSystemReturn => string.Equals(RefundSource, "System", StringComparison.OrdinalIgnoreCase);
-
     public decimal ApprovedAmount { get; set; }
     public string RefundStatus { get; set; } = null!;
     public DateTime CreatedAt { get; set; }
