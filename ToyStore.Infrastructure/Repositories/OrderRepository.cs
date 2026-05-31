@@ -564,12 +564,16 @@ public class OrderRepository : IOrderRepository
         }
         else
         {
-            // Mặc định ẩn các đơn SE_PAY chưa thanh toán bị hủy (rác). Hiện các đơn thực sự (COD, WALLET, paid/refunded SE_PAY)
-            query = query.Where(o => !(o.Status.StatusName == OrderStatuses.Cancelled 
-                                      && o.PaymentMethod == "SE_PAY" 
-                                      && o.PaymentStatus != "PAID" 
+            // Tab "All": ẩn rác (SE_PAY đã cancel chưa thanh toán) nhưng vẫn hiện SE_PAY PENDING
+            // để user thấy đơn đang chờ thanh toán và có thể continue hoặc cancel.
+            query = query.Where(o => !(o.Status.StatusName == OrderStatuses.Cancelled
+                                      && o.PaymentMethod == "SE_PAY"
+                                      && o.PaymentStatus != "PAID"
                                       && o.PaymentStatus != "REFUNDED")
-                                  && (o.PaymentMethod != "SE_PAY" || o.PaymentStatus == "PAID" || o.PaymentStatus == "REFUNDED"));
+                                  && (o.PaymentMethod != "SE_PAY"
+                                      || o.PaymentStatus == "PAID"
+                                      || o.PaymentStatus == "REFUNDED"
+                                      || o.PaymentStatus == "PENDING"));
         }
 
         if (!string.IsNullOrWhiteSpace(keyword))

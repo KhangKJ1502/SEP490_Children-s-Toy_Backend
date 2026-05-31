@@ -334,6 +334,26 @@ public class OrderCustomerService : IOrderCustomerService
         if (order.PaymentMethod != "SE_PAY")
             return Result<OrderPaymentInfoDto>.BusinessError("This order does not use QR payment.");
 
+        // Effective payment status — guard cancelled/expired/paid so FE can redirect correctly
+        var effectiveStatus = order.PaymentStatus;
+        if (order.CancelledAt.HasValue && order.PaymentStatus == "PENDING")
+            effectiveStatus = "CANCELLED";
+
+        // For non-pending orders return minimal info so FE can redirect (success/cart)
+        // without exposing QR/attempt details unnecessarily
+        if (effectiveStatus is "PAID" or "EXPIRED" or "CANCELLED" or "FAILED")
+        {
+            return Result<OrderPaymentInfoDto>.Success(new OrderPaymentInfoDto
+            {
+                OrderId = order.OrderId,
+                OrderCode = order.OrderCode,
+                Amount = order.TotalAmount,
+                PaymentStatus = effectiveStatus,
+                ExpiresAt = DateTime.SpecifyKind(order.CreatedAt, DateTimeKind.Utc)
+                    .AddMinutes(_sePayOptions.PaymentTtlMinutes),
+            });
+        }
+
         // Lấy attempt đang Pending (hoặc attempt mới nhất nếu không có Pending)
         var latestAttempt = await _db.PaymentGatewayTransactions
             .Where(t => t.OrderId == orderId)
@@ -354,7 +374,8 @@ public class OrderCustomerService : IOrderCustomerService
             Amount = order.TotalAmount,
             PaymentAttemptCode = latestAttempt.RequestId,
             QrImageUrl = qrUrl,
-            ExpiresAt = expiresAt
+            ExpiresAt = expiresAt,
+            PaymentStatus = effectiveStatus,
         });
     }
 
