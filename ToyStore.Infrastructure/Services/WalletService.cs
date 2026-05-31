@@ -88,13 +88,13 @@ public class WalletService : IWalletService
             return Result<WalletDto>.Unauthorized("User is not authenticated.");
         }
 
-        var wallet = await _unitOfWork.Wallets.GetByAccountIdAsync(accountId, cancellationToken);
+        var wallet = await _unitOfWork.Wallets.GetByAccountIdWithActivePinAsync(accountId, cancellationToken);
         if (wallet == null)
         {
             return Result<WalletDto>.NotFound("Wallet");
         }
 
-        return Result<WalletDto>.Success(_mapper.Map<WalletDto>(wallet));
+        return Result<WalletDto>.Success(MapToWalletDto(wallet));
     }
 
     public async Task<Result<PaginatedResponse<WalletTransactionDto>>> GetWalletTransactionsAsync(
@@ -219,7 +219,7 @@ public class WalletService : IWalletService
 
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-            return Result<WalletDto>.Success(_mapper.Map<WalletDto>(wallet));
+            return Result<WalletDto>.Success(MapToWalletDto(wallet, hasPin: true));
         }
         catch (DbUpdateException ex)
         {
@@ -766,6 +766,16 @@ public class WalletService : IWalletService
 
         return Result.Success();
     }
+
+    private static WalletDto MapToWalletDto(Wallet wallet, bool? hasPin = null) =>
+        new()
+        {
+            WalletId = wallet.WalletId,
+            Currency = wallet.Currency,
+            Balance = wallet.Balance,
+            Status = wallet.Status,
+            HasPin = hasPin ?? wallet.WalletPins.Any(p => p.IsActive),
+        };
 
     private static bool IsWalletActive(string status) =>
         string.Equals(status, WalletStatusActive, StringComparison.OrdinalIgnoreCase);

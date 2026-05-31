@@ -105,4 +105,8 @@ public class OrderPaymentInfoDto
     public string PaymentAttemptCode { get; set; } = string.Empty;
     public string? QrImageUrl { get; set; }
     public DateTime? ExpiresAt { get; set; }
+    /// <summary>
+    /// Effective payment status — cho phép FE redirect đúng trang (PAID → success, EXPIRED/CANCELLED → cart).
+    /// </summary>
+    public string PaymentStatus { get; set; } = string.Empty;
 }
