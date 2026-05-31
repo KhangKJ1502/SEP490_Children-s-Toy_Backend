@@ -26,6 +26,11 @@ public class CheckoutConfirmResponseDto
 
     /// <summary>SE_PAY: URL QR image từ SePay.</summary>
     public string? QrImageUrl { get; set; }
+
+    /// <summary>
+    /// True khi user đã có đơn SE_PAY PENDING — không tạo đơn mới, redirect về QR hiện tại.
+    /// </summary>
+    public bool HasExistingPendingOrder { get; set; }
 }
 
 /// <summary>

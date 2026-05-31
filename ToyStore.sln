@@ -11,8 +11,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ToyStore.Infrastructure", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ToyStore.Recommendation", "ToyStore.Recommendation\ToyStore.Recommendation.csproj", "{FE618CEC-4DCD-4EEE-B331-21A57A35DE87}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ToyStore.Chatbot", "ToyStore.Chatbot\ToyStore.Chatbot.csproj", "{81F6CD93-29D0-40B9-87EE-ED05EA81625E}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ToyStore.API", "ToyStore.API\ToyStore.API.csproj", "{85B21CDC-E21B-4DD7-B61E-E70D3D06E527}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ToyStore.Worker", "ToyStore.Worker\ToyStore.Worker.csproj", "{8B62413F-E093-4697-9B5A-3C19D1F26B25}"
@@ -75,18 +73,6 @@ Global
 		{FE618CEC-4DCD-4EEE-B331-21A57A35DE87}.Release|x64.Build.0 = Release|Any CPU
 		{FE618CEC-4DCD-4EEE-B331-21A57A35DE87}.Release|x86.ActiveCfg = Release|Any CPU
 		{FE618CEC-4DCD-4EEE-B331-21A57A35DE87}.Release|x86.Build.0 = Release|Any CPU
-		{81F6CD93-29D0-40B9-87EE-ED05EA81625E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{81F6CD93-29D0-40B9-87EE-ED05EA81625E}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{81F6CD93-29D0-40B9-87EE-ED05EA81625E}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{81F6CD93-29D0-40B9-87EE-ED05EA81625E}.Debug|x64.Build.0 = Debug|Any CPU
-		{81F6CD93-29D0-40B9-87EE-ED05EA81625E}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{81F6CD93-29D0-40B9-87EE-ED05EA81625E}.Debug|x86.Build.0 = Debug|Any CPU
-		{81F6CD93-29D0-40B9-87EE-ED05EA81625E}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{81F6CD93-29D0-40B9-87EE-ED05EA81625E}.Release|Any CPU.Build.0 = Release|Any CPU
-		{81F6CD93-29D0-40B9-87EE-ED05EA81625E}.Release|x64.ActiveCfg = Release|Any CPU
-		{81F6CD93-29D0-40B9-87EE-ED05EA81625E}.Release|x64.Build.0 = Release|Any CPU
-		{81F6CD93-29D0-40B9-87EE-ED05EA81625E}.Release|x86.ActiveCfg = Release|Any CPU
-		{81F6CD93-29D0-40B9-87EE-ED05EA81625E}.Release|x86.Build.0 = Release|Any CPU
 		{85B21CDC-E21B-4DD7-B61E-E70D3D06E527}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{85B21CDC-E21B-4DD7-B61E-E70D3D06E527}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{85B21CDC-E21B-4DD7-B61E-E70D3D06E527}.Debug|x64.ActiveCfg = Debug|Any CPU

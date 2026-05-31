@@ -109,11 +109,16 @@ public class VoucherRepository : IVoucherRepository
 
     public Task<int> CountUsageByAccountAsync(int voucherId, int accountId, CancellationToken cancellationToken = default)
     {
+        // Exclude active SE_PAY PENDING orders — voucher is not truly consumed until payment is confirmed.
+        // With the max-1-pending guard in CheckoutService, this cannot be abused to stack voucher discounts.
         return _context.VoucherUsageLogs
             .AsNoTracking()
-            .CountAsync(
-                x => x.VoucherId == voucherId && x.AccountId == accountId,
-                cancellationToken);
+            .Where(x => x.VoucherId == voucherId
+                     && x.AccountId == accountId
+                     && !(x.Order.PaymentMethod == "SE_PAY"
+                          && x.Order.PaymentStatus == "PENDING"
+                          && x.Order.CancelledAt == null))
+            .CountAsync(cancellationToken);
     }
 
     private static IQueryable<Voucher> ApplySorting(IOrderedQueryable<Voucher> query, string? sortBy, bool sortDesc)
