@@ -286,9 +286,8 @@ public class ShippingWebhookService : IShippingWebhookService
                 ShippingStatuses.Transporting or ShippingStatuses.Sorting or 
                 ShippingStatuses.Delivering or ShippingStatuses.MoneyCollectDelivering or
                 ShippingStatuses.ReturnTransporting or ShippingStatuses.ReturnSorting or 
-                ShippingStatuses.Returning => (byte)RefundStatusEnum.RefundShipping,
-                
-                ShippingStatuses.Delivered or ShippingStatuses.Returned => (byte)RefundStatusEnum.RefundReceived,
+                ShippingStatuses.Returning or
+                ShippingStatuses.Delivered or ShippingStatuses.Returned => (byte)RefundStatusEnum.RefundShipping,
                 
                 ShippingStatuses.Cancel or ShippingStatuses.DeliveryFail or 
                 ShippingStatuses.ReturnFail or ShippingStatuses.Lost or 
