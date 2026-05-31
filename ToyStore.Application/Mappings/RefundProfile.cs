@@ -22,7 +22,8 @@ public class RefundProfile : Profile
             .ForMember(dest => dest.RefundSource, opt => opt.MapFrom(src => src.RefundSource ?? "Customer"))
             .ForMember(dest => dest.Details, opt => opt.MapFrom(src => src.RefundDetails))
             .ForMember(dest => dest.StatusHistory, opt => opt.MapFrom(src => src.RefundStatusHistories))
-            .ForMember(dest => dest.Images, opt => opt.MapFrom(src => src.RefundImages.Where(i => !i.IsDeleted).Select(i => i.ImageUrl).ToList()));
+            .ForMember(dest => dest.Images, opt => opt.MapFrom(src => src.RefundImages.Where(i => !i.IsDeleted).Select(i => i.ImageUrl).ToList()))
+            .ForMember(dest => dest.ShippingHistory, opt => opt.MapFrom(src => MapOrderShippingHistory(src.Order)));
 
         CreateMap<OrderRefund, RefundListDto>()
             .ForMember(dest => dest.OrderCode, opt => opt.MapFrom(src => src.Order.OrderCode))
@@ -45,5 +46,14 @@ public class RefundProfile : Profile
         CreateMap<RefundStatusHistory, RefundStatusHistoryDto>()
             .ForMember(dest => dest.StatusName, opt => opt.MapFrom(src => src.Status.StatusName))
             .ForMember(dest => dest.ChangedByName, opt => opt.MapFrom(src => src.ChangedByNavigation != null ? src.ChangedByNavigation.AccountName : null));
+    }
+
+    private static System.Collections.Generic.List<ShippingStatusHistory> MapOrderShippingHistory(Order order)
+    {
+        if (order == null) return new System.Collections.Generic.List<ShippingStatusHistory>();
+        var tx = order.ShippingProviderTransactions
+            .OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt)
+            .FirstOrDefault();
+        return tx?.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt).ToList() ?? new System.Collections.Generic.List<ShippingStatusHistory>();
     }
 }
