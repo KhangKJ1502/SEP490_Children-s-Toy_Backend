@@ -7,7 +7,6 @@ using ToyStore.API.Middleware;
 using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Infrastructure;
 using ToyStore.Recommendation;
-using ToyStore.Chatbot;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -54,7 +53,6 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddRecommendation(builder.Configuration);
-builder.Services.AddChatbot();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<Microsoft.AspNetCore.SignalR.IUserIdProvider, AccountIdProvider>();
 

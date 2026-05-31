@@ -195,7 +195,7 @@ public class CheckoutService : ICheckoutService
 
         // For COD orders pass subTotal so GHN applies the discounted COD shipping rate
         feeReq.CodValue = normalizedPaymentMethod == PayMethodCod ? subTotal : 0m;
-        
+
         var feeResult = await _ghnClient.GetFeeAsync(feeReq, cancellationToken);
         if (feeResult.IsSuccess)
         {
@@ -338,6 +338,33 @@ public class CheckoutService : ICheckoutService
         // Validate cơ bản
         if (request.Items.Count == 0)
             return Result<CheckoutConfirmResponseDto>.BusinessError("Cart is empty.");
+
+        // Guard: mỗi user chỉ được có 1 đơn SE_PAY PENDING tại một thời điểm.
+        // Nếu đã có đơn pending → trả orderId hiện tại để FE redirect về QR thay vì tạo đơn mới.
+        var payMethodNorm = (request.PaymentMethod ?? "").Trim().ToUpperInvariant();
+        if (payMethodNorm == PayMethodSepay)
+        {
+            var existingPending = await _db.Orders
+                .Where(o => o.AccountId == accountId
+                         && o.PaymentMethod == "SE_PAY"
+                         && o.PaymentStatus == "PENDING"
+                         && o.CancelledAt == null
+                         && !o.IsDeleted)
+                .Select(o => new { o.OrderId, o.OrderCode })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (existingPending is not null)
+            {
+                return Result<CheckoutConfirmResponseDto>.Success(new CheckoutConfirmResponseDto
+                {
+                    OrderId = existingPending.OrderId,
+                    OrderCode = existingPending.OrderCode,
+                    PaymentMethod = "SE_PAY",
+                    PaymentStatus = "PENDING",
+                    HasExistingPendingOrder = true,
+                });
+            }
+        }
 
         var address = await _uow.Addresses.GetActiveByIdAsync(request.AddressId, cancellationToken);
         if (address is null)
@@ -738,6 +765,15 @@ public class CheckoutService : ICheckoutService
                 {
                     await _uow.RollbackTransactionAsync(cancellationToken);
                     return Result<CheckoutConfirmResponseDto>.BusinessError("Wallet is not available.");
+                }
+
+                var hasActivePin = await _db.WalletPins
+                    .AnyAsync(p => p.WalletId == wallet.WalletId && p.IsActive, cancellationToken);
+                if (!hasActivePin)
+                {
+                    await _uow.RollbackTransactionAsync(cancellationToken);
+                    return Result<CheckoutConfirmResponseDto>.BusinessError(
+                        "Wallet is not activated. Please set up your PIN on the Wallet page.");
                 }
 
                 var walletAffected = await _db.Database.ExecuteSqlRawAsync(
