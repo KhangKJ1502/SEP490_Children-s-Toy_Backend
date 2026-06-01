@@ -1,4 +1,5 @@
 using FluentValidation;
+using ToyStore.Application.Common.Helpers;
 using ToyStore.Application.DTOs.Checkouts;
 
 namespace ToyStore.Application.Validators.Checkouts;
@@ -7,7 +8,6 @@ public class ShippingOrderCreateRequestValidator : AbstractValidator<ShippingOrd
 {
     private const decimal MaxMoney = 1_000_000_000m;
     private const int MaxWeight = 50_000;
-    private const int MaxDimension = 200;
 
     public ShippingOrderCreateRequestValidator()
     {
@@ -53,15 +53,21 @@ public class ShippingOrderCreateRequestValidator : AbstractValidator<ShippingOrd
 
         RuleFor(x => x.Length)
             .GreaterThan(0).WithMessage("Length must be greater than 0.")
-            .LessThanOrEqualTo(MaxDimension).WithMessage("Length must not exceed 200.");
+            .Must((request, length) => length <= GhnShippingLimits.MaxDimensionCm(request.ServiceTypeId))
+            .WithMessage(request =>
+                $"Length must not exceed {GhnShippingLimits.MaxDimensionCm(request.ServiceTypeId)} cm for GHN service type {request.ServiceTypeId}.");
 
         RuleFor(x => x.Width)
             .GreaterThan(0).WithMessage("Width must be greater than 0.")
-            .LessThanOrEqualTo(MaxDimension).WithMessage("Width must not exceed 200.");
+            .Must((request, width) => width <= GhnShippingLimits.MaxDimensionCm(request.ServiceTypeId))
+            .WithMessage(request =>
+                $"Width must not exceed {GhnShippingLimits.MaxDimensionCm(request.ServiceTypeId)} cm for GHN service type {request.ServiceTypeId}.");
 
         RuleFor(x => x.Height)
             .GreaterThan(0).WithMessage("Height must be greater than 0.")
-            .LessThanOrEqualTo(MaxDimension).WithMessage("Height must not exceed 200.");
+            .Must((request, height) => height <= GhnShippingLimits.MaxDimensionCm(request.ServiceTypeId))
+            .WithMessage(request =>
+                $"Height must not exceed {GhnShippingLimits.MaxDimensionCm(request.ServiceTypeId)} cm for GHN service type {request.ServiceTypeId}.");
 
         RuleFor(x => x.Note)
             .MaximumLength(300).WithMessage("Note must not exceed 300 characters.")

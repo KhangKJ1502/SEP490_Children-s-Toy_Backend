@@ -183,10 +183,8 @@ ToyStore.API/
 ├── Controllers/
 │   ├── ProductsController.cs      # GET/POST/PUT/DELETE products
 │   ├── OrdersController.cs        # GET/POST orders
-│   ├── WebhooksController.cs      # Payment callbacks
 │   ├── RecommendationsController.cs # AI suggestions
-│   ├── ChatbotController.cs       # Chatbot API
-│   └── HealthController.cs        # Health check for Docker
+│   └── ChatbotController.cs       # Chatbot API
 │
 ├── Extensions/
 │   └── ResultToActionResultExtensions.cs # Convert Result to ActionResult
@@ -202,8 +200,6 @@ ToyStore.API/
 |------|-----------|
 | `ProductsController.cs` | API endpoints: `/api/products` |
 | `OrdersController.cs` | API endpoints: `/api/orders` |
-| `WebhooksController.cs` | Nhận callback từ VNPay, Momo |
-| `HealthController.cs` | `/health`, `/ready` cho Docker |
 | `Program.cs` | Cấu hình DI, middleware, Swagger |
 
 ---
