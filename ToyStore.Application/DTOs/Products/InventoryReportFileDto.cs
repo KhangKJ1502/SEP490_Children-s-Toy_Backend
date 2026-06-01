@@ -6,5 +6,5 @@ public class InventoryReportFileDto
 
     public string ContentType { get; set; } = "application/octet-stream";
 
-    public string FileName { get; set; } = "inventory-report";
+    public string FileName { get; set; } = "product-quantity-report";
 }
