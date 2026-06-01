@@ -62,4 +62,15 @@ public class AdminRefundsController : ControllerBase
         var result = await _refundService.CreateAdminRefundAsync(_currentUserService.AccountId, dto, cancellationToken);
         return result.ToCreatedResult($"api/admin/refunds/{result.Data?.RefundId}");
     }
+
+    [HttpPost("{refundId:int}/reassign")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> ReassignRefund(
+        [FromRoute] int refundId,
+        [FromBody] ToyStore.Application.DTOs.Assignments.ReassignOrderRequestDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _refundService.ReassignRefundAsync(refundId, dto, cancellationToken);
+        return result.ToActionResult();
+    }
 }

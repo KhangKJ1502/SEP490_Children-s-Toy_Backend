@@ -38,6 +38,7 @@ public class RefundDto
     public List<string> Images { get; set; } = new List<string>();
     public List<RefundDetailDto> Details { get; set; } = new List<RefundDetailDto>();
     public List<RefundStatusHistoryDto> StatusHistory { get; set; } = new List<RefundStatusHistoryDto>();
+    public List<ToyStore.Application.DTOs.Orders.AdminShippingStatusHistoryDto> ShippingHistory { get; set; } = new List<ToyStore.Application.DTOs.Orders.AdminShippingStatusHistoryDto>();
 }
 
 public class RefundDetailDto

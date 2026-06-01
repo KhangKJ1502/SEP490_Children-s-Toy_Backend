@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Net.Http.Json;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using ToyStore.API.Extensions;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Blogs;
@@ -27,6 +26,7 @@ public class AiBlogGenerateRequest
     public string? DefaultTone { get; set; }
     public int DefaultCategoryId { get; set; }
     public bool? IsActive { get; set; }
+    public string? SourceContent { get; set; }
 }
 
 public class AiBlogGenerateResult
@@ -233,15 +233,18 @@ public class AdminBlogsController : ControllerBase
         var action = string.IsNullOrWhiteSpace(request.Action) ? "Generate" : request.Action.Trim();
         var tone = string.IsNullOrWhiteSpace(request.DefaultTone) ? "Friendly" : request.DefaultTone.Trim();
 
-        string? sourceContent = null;
+        string? sourceContent = string.IsNullOrWhiteSpace(request.SourceContent) ? null : request.SourceContent.Trim();
         if (request.BlogPostId.HasValue && request.BlogPostId.Value > 0)
         {
-            var existingResult = await _blogService.GetBlogDetailsAsync(request.BlogPostId.Value, cancellationToken);
-            if (!existingResult.IsSuccess || existingResult.Data == null)
+            if (string.IsNullOrWhiteSpace(sourceContent))
             {
-                return ToAiErrorResult(existingResult.ErrorCode ?? "BLOG_NOT_FOUND", existingResult.ErrorMessage ?? "Blog not found.", 404);
+                var existingResult = await _blogService.GetBlogDetailsAsync(request.BlogPostId.Value, cancellationToken);
+                if (!existingResult.IsSuccess || existingResult.Data == null)
+                {
+                    return ToAiErrorResult(existingResult.ErrorCode ?? "BLOG_NOT_FOUND", existingResult.ErrorMessage ?? "Blog not found.", 404);
+                }
+                sourceContent = existingResult.Data.BlogContent;
             }
-            sourceContent = existingResult.Data.BlogContent;
         }
 
         PythonBlogGenerateResponse? aiGenerated;
@@ -271,20 +274,22 @@ public class AdminBlogsController : ControllerBase
                 return StatusCode((int)aiResponse.StatusCode, new { code = "AI_GENERATE_ERROR", message = "AI generation failed.", detail = aiErrorBody });
             }
 
-            var aiRawJson = await aiResponse.Content.ReadAsStringAsync(cancellationToken);
-            var rawNode = JsonNode.Parse(aiRawJson);
-            if (rawNode is JsonObject blockedObj
-                && string.Equals(blockedObj["status"]?.GetValue<string>(), "blocked", StringComparison.OrdinalIgnoreCase))
+            await using var aiStream = await aiResponse.Content.ReadAsStreamAsync(cancellationToken);
+            using var aiJsonDoc = await JsonDocument.ParseAsync(aiStream, cancellationToken: cancellationToken);
+            var root = aiJsonDoc.RootElement;
+            if (root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("status", out var statusNode)
+                && string.Equals(statusNode.GetString(), "blocked", StringComparison.OrdinalIgnoreCase))
             {
-                return Ok(blockedObj);
+                return Ok(root.Clone());
             }
-
-            aiGenerated = JsonSerializer.Deserialize<PythonBlogGenerateResponse>(
-                aiRawJson,
-                new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
+            var content = root.TryGetProperty("content", out var contentNode) ? contentNode.GetString() : null;
+            var titleFromAi = root.TryGetProperty("title", out var titleNode) ? titleNode.GetString() : null;
+            aiGenerated = new PythonBlogGenerateResponse
+            {
+                Title = titleFromAi ?? string.Empty,
+                Content = content ?? string.Empty,
+            };
             if (aiGenerated == null || string.IsNullOrWhiteSpace(aiGenerated.Content))
             {
                 return StatusCode(502, new { code = "AI_GENERATE_EMPTY", message = "AI returned empty content." });

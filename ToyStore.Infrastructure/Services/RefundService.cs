@@ -29,6 +29,7 @@ public class RefundService : IRefundService
     private readonly GhnOptions _ghnOptions;
     private readonly ShopAddressOptions _shopAddress;
     private readonly IWalletRefundCreditor _walletRefundCreditor;
+    private readonly IShiftAssignmentService _shiftAssignmentService;
 
     public RefundService(
         IUnitOfWork unitOfWork,
@@ -37,7 +38,8 @@ public class RefundService : IRefundService
         IGhnClient ghnClient,
         IOptions<GhnOptions> ghnOptions,
         IOptions<ShopAddressOptions> shopAddress,
-        IWalletRefundCreditor walletRefundCreditor)
+        IWalletRefundCreditor walletRefundCreditor,
+        IShiftAssignmentService shiftAssignmentService)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
@@ -46,6 +48,7 @@ public class RefundService : IRefundService
         _ghnOptions = ghnOptions.Value;
         _shopAddress = shopAddress.Value;
         _walletRefundCreditor = walletRefundCreditor;
+        _shiftAssignmentService = shiftAssignmentService;
     }
 
     private byte? MapStatusStringToId(string statusStr)
@@ -393,17 +396,20 @@ public class RefundService : IRefundService
 
         var dto = _mapper.Map<RefundDto>(refund);
 
-        var assignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(refund.OrderId, cancellationToken);
-        var staffAssig = assignments.FirstOrDefault(a => a.RoleId == 3);
-        var merchAssig = assignments.FirstOrDefault(a => a.RoleId == 4);
+        if (refund.StatusId != (byte)RefundStatusEnum.RefundRequested)
+        {
+            var assignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(refund.OrderId, cancellationToken);
+            var staffAssig = assignments.FirstOrDefault(a => a.RoleId == 3);
+            var merchAssig = assignments.FirstOrDefault(a => a.RoleId == 4);
 
-        if (staffAssig != null)
-        {
-            dto.AssignedToStaffName = staffAssig.Account?.AccountName;
-        }
-        if (merchAssig != null)
-        {
-            dto.AssignedToMerchName = merchAssig.Account?.AccountName;
+            if (staffAssig != null)
+            {
+                dto.AssignedToStaffName = staffAssig.Account?.AccountName;
+            }
+            if (merchAssig != null)
+            {
+                dto.AssignedToMerchName = merchAssig.Account?.AccountName;
+            }
         }
 
         return Result<RefundDto>.Success(dto);
@@ -834,6 +840,15 @@ public class RefundService : IRefundService
     /// True nếu refund do hệ thống tạo (Luồng B: GHN returned).
     /// Dùng <see cref="OrderRefund.RefundSource"/> thay vì string compare trên ReasonDetails.
     /// </summary>
+    public async Task<Result> ReassignRefundAsync(int refundId, ToyStore.Application.DTOs.Assignments.ReassignOrderRequestDto dto, CancellationToken cancellationToken = default)
+    {
+        var refund = await _unitOfWork.Refunds.GetByIdAsync(refundId, cancellationToken);
+        if (refund == null)
+            return Result.NotFound("Refund", refundId);
+
+        return await _shiftAssignmentService.ReassignOrderAsync(refund.OrderId, dto, cancellationToken);
+    }
+
     private static bool IsSystemReturnRefund(OrderRefund refund)
         => string.Equals(refund.RefundSource, RefundSources.System, StringComparison.OrdinalIgnoreCase);
 }
