@@ -78,7 +78,13 @@ public class GhnShippingRetryJob : BackgroundService
                 }
 
                 var shippingItems = await orderRepo.GetShippingItemsForOrderAsync(order.OrderId, ct);
-                var package = GhnPackageCalculator.Calculate(shippingItems);
+                var package = GhnPackageCalculator.CalculateForServiceType(
+                    shippingItems,
+                    GhnShippingLimits.Type2ServiceId,
+                    ghnOpts.DefaultItemWeight,
+                    ghnOpts.DefaultLength,
+                    ghnOpts.DefaultWidth,
+                    ghnOpts.DefaultHeight);
 
                 var codAmount = order.PaymentMethod == "SHIP_COD" ? order.TotalAmount : 0m;
                 var ghnRequest = new ShippingOrderCreateRequestDto

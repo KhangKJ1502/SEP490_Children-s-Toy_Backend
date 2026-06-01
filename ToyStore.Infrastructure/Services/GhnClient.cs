@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using ToyStore.Application.Common.Helpers;
 using ToyStore.Application.DTOs.Checkouts;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
@@ -208,6 +209,11 @@ public sealed class GhnClient : IGhnClient
                 "ShopAddress configuration is incomplete. Check appsettings 'ShopAddress' section.");
         }
 
+        if (!GhnShippingLimits.TryNormalizeCreateOrderRequest(request, out var normalizeError))
+        {
+            return Result<ShippingOrderCreateResponseDto>.Failure("GHN_DIMENSION_ERROR", normalizeError!);
+        }
+
         var payload = new Dictionary<string, object>
         {
             ["payment_type_id"] = 2,
@@ -251,6 +257,13 @@ public sealed class GhnClient : IGhnClient
             request.ToDistrictId, request.ToWardCode,
             request.Weight, request.Length, request.Width, request.Height,
             payload["service_type_id"], RoundToInt(request.InsuranceValue), RoundToInt(request.CodAmount));
+
+        foreach (var item in request.Items)
+        {
+            _logger.LogInformation(
+                "[GHN-CREATE-ITEM] name={Name} qty={Qty} weight={Weight}g length={Length} width={Width} height={Height}",
+                item.Name, item.Quantity, item.Weight, item.Length, item.Width, item.Height);
+        }
 
         var createResult = await PostAsync<GhnCreateOrderData>(
             "v2/shipping-order/create", payload, "create_order", cancellationToken);

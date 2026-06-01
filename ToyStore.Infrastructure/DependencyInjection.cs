@@ -216,7 +216,6 @@ public static class DependencyInjection
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IProfileService, ProfileService>();
         services.AddScoped<ICustomerNotificationPreferencesService, CustomerNotificationPreferencesService>();
-        services.AddScoped<IHealthService, HealthService>();
         services.AddScoped<IOrderAccessService, OrderAccessService>();
         services.AddScoped<IAdminOrderService, AdminOrderService>();
         services.AddScoped<IAdminDashboardService, AdminDashboardService>();

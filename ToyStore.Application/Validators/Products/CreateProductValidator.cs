@@ -1,4 +1,5 @@
 using FluentValidation;
+using ToyStore.Application.Common.Helpers;
 using ToyStore.Application.DTOs.Products;
 
 namespace ToyStore.Application.Validators.Products;
@@ -84,13 +85,19 @@ public class CreateProductValidator : AbstractValidator<CreateProductDto>
             .GreaterThan(0).WithMessage("Weight (gram) must be greater than 0.");
 
         RuleFor(x => x.LengthCm)
-            .GreaterThan(0).WithMessage("Length (cm) must be greater than 0.");
+            .GreaterThan(0).WithMessage("Length (cm) must be greater than 0.")
+            .LessThanOrEqualTo(GhnShippingLimits.Type5MaxCm)
+            .WithMessage($"Length (cm) must not exceed {GhnShippingLimits.Type5MaxCm} cm (GHN shipping limit).");
 
         RuleFor(x => x.WidthCm)
-            .GreaterThan(0).WithMessage("Width (cm) must be greater than 0.");
+            .GreaterThan(0).WithMessage("Width (cm) must be greater than 0.")
+            .LessThanOrEqualTo(GhnShippingLimits.Type5MaxCm)
+            .WithMessage($"Width (cm) must not exceed {GhnShippingLimits.Type5MaxCm} cm (GHN shipping limit).");
 
         RuleFor(x => x.HeightCm)
-            .GreaterThan(0).WithMessage("Height (cm) must be greater than 0.");
+            .GreaterThan(0).WithMessage("Height (cm) must be greater than 0.")
+            .LessThanOrEqualTo(GhnShippingLimits.Type5MaxCm)
+            .WithMessage($"Height (cm) must not exceed {GhnShippingLimits.Type5MaxCm} cm (GHN shipping limit).");
 
         RuleFor(x => x.MainImageUrl)
             .NotEmpty().WithMessage("Main image is required.")
