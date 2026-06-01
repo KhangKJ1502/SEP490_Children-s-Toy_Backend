@@ -734,7 +734,7 @@ public class ProductService : IProductService
             "Quantity",
             "StockThreshold",
             "LowStock",
-            "InventoryValue",
+            "ProductValue",
             "SoldQuantity",
             "ReviewCount",
             "AverageRating",
@@ -776,7 +776,7 @@ public class ProductService : IProductService
         {
             Content = Encoding.UTF8.GetBytes(builder.ToString()),
             ContentType = "text/csv",
-            FileName = "inventory-report.csv"
+            FileName = "product-quantity-report.csv"
         };
     }
 
@@ -788,7 +788,7 @@ public class ProductService : IProductService
     {
         using var workbook = new XLWorkbook();
         var summarySheet = workbook.AddWorksheet("Summary");
-        summarySheet.Cell("A1").Value = "Inventory Report";
+        summarySheet.Cell("A1").Value = "Product Quantity Report";
         summarySheet.Cell("A1").Style.Font.Bold = true;
         summarySheet.Cell("A2").Value = "Generated at";
         summarySheet.Cell("B2").Value = generatedAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
@@ -797,7 +797,7 @@ public class ProductService : IProductService
         summarySheet.Cell("B4").Value = summary.TotalProducts;
         summarySheet.Cell("A5").Value = "Total quantity";
         summarySheet.Cell("B5").Value = summary.TotalQuantity;
-        summarySheet.Cell("A6").Value = "Total inventory value";
+        summarySheet.Cell("A6").Value = "Total product value";
         summarySheet.Cell("B6").Value = summary.TotalInventoryValue;
         summarySheet.Cell("A7").Value = "Low stock count";
         summarySheet.Cell("B7").Value = summary.LowStockCount;
@@ -834,7 +834,7 @@ public class ProductService : IProductService
             "Quantity",
             "StockThreshold",
             "LowStock",
-            "InventoryValue",
+            "ProductValue",
             "SoldQuantity",
             "ReviewCount",
             "AverageRating",
@@ -883,7 +883,7 @@ public class ProductService : IProductService
         {
             Content = stream.ToArray(),
             ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            FileName = "inventory-report.xlsx"
+            FileName = "product-quantity-report.xlsx"
         };
     }
 
@@ -920,7 +920,7 @@ public class ProductService : IProductService
         {
             Content = document.GeneratePdf(),
             ContentType = "application/pdf",
-            FileName = "inventory-report.pdf"
+            FileName = "product-quantity-report.pdf"
         };
     }
 
@@ -931,7 +931,7 @@ public class ProductService : IProductService
             row.RelativeItem().Column(column =>
             {
                 column.Item().Text("ToyStore").FontSize(18).SemiBold().FontColor("#0F172A");
-                column.Item().Text("Inventory Report").FontSize(12).FontColor("#475569");
+                column.Item().Text("Product Quantity Report").FontSize(12).FontColor("#475569");
             });
 
             row.ConstantItem(220).Column(column =>
@@ -972,7 +972,7 @@ public class ProductService : IProductService
             row.Spacing(10);
             BuildPdfSummaryCard(row.RelativeItem(), "Total products", summary.TotalProducts.ToString(CultureInfo.InvariantCulture));
             BuildPdfSummaryCard(row.RelativeItem(), "Total quantity", summary.TotalQuantity.ToString(CultureInfo.InvariantCulture));
-            BuildPdfSummaryCard(row.RelativeItem(), "Inventory value", MoneyHelper.FormatVND(summary.TotalInventoryValue));
+            BuildPdfSummaryCard(row.RelativeItem(), "Product value", MoneyHelper.FormatVND(summary.TotalInventoryValue));
             BuildPdfSummaryCard(row.RelativeItem(), "Low stock", summary.LowStockCount.ToString(CultureInfo.InvariantCulture));
             BuildPdfSummaryCard(row.RelativeItem(), "Out of stock", summary.OutOfStockCount.ToString(CultureInfo.InvariantCulture));
         });
