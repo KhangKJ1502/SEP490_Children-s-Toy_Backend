@@ -150,7 +150,7 @@ public class ProductsController : ControllerBase
         return result.ToActionResult();
     }
 
-    [HttpPost("inventory-report")]
+    [HttpPost("product-quantity-report")]
     public async Task<ActionResult<InventoryReportFileDto>> ExportInventoryReport(
         [FromBody] InventoryReportRequestDto request,
         CancellationToken cancellationToken = default)
