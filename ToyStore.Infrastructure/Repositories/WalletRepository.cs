@@ -42,7 +42,8 @@ public class WalletRepository : IWalletRepository
         CancellationToken cancellationToken = default)
     {
         return BuildAdminQuery(accountSearchTerm, status)
-            .OrderByDescending(x => x.CreatedAt)
+            .OrderBy(x => x.Status == "Frozen" ? 0 : 1)
+            .ThenByDescending(x => x.CreatedAt)
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
@@ -60,7 +61,6 @@ public class WalletRepository : IWalletRepository
     {
         return _context.Wallets
             .Include(x => x.Account)
-            .Include(x => x.UnbannedByNavigation)
             .FirstOrDefaultAsync(x => x.WalletId == walletId, cancellationToken);
     }
 
@@ -142,7 +142,6 @@ public class WalletRepository : IWalletRepository
     {
         var query = _context.Wallets
             .Include(x => x.Account)
-            .Include(x => x.UnbannedByNavigation)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(accountSearchTerm))

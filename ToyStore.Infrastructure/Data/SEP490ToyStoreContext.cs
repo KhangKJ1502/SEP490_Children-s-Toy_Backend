@@ -195,6 +195,8 @@ public partial class SEP490ToyStoreContext : DbContext
         {
             entity.ToTable("Accounts", tb => tb.HasTrigger("TR_Accounts_InitPreferences"));
 
+            entity.Ignore(e => e.WalletUnbannedByNavigations);
+
             entity.HasKey(e => e.AccountId).HasName("PK__Accounts__349DA58684B564C1");
 
             entity.HasIndex(e => e.EmployeeCode, "IX_Accounts_EmployeeCode")
@@ -2662,10 +2664,12 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.HasIndex(e => e.AccountId, "UQ__Wallets__349DA587207D60C0").IsUnique();
 
+            entity.Ignore(e => e.UnbannedBy);
+            entity.Ignore(e => e.UnbannedByNavigation);
+
             entity.Property(e => e.WalletId).HasColumnName("WalletID");
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
             entity.Property(e => e.Balance).HasColumnType("decimal(12, 0)");
-            entity.Property(e => e.UnbannedBy).HasColumnName("UnbannedBy");
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
@@ -2685,10 +2689,6 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasForeignKey<Wallet>(d => d.AccountId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Wallets_Accounts");
-
-            entity.HasOne(d => d.UnbannedByNavigation).WithMany(p => p.WalletUnbannedByNavigations)
-                .HasForeignKey(d => d.UnbannedBy)
-                .HasConstraintName("FK_Wallets_UnbannedBy");
         });
 
         modelBuilder.Entity<WalletPin>(entity =>
