@@ -13,13 +13,16 @@ public class AdminWalletService : IAdminWalletService
     private const string WalletStatusClosed = "Closed";
 
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ICurrentUserService _currentUserService;
     private readonly IValidator<UpdateWalletStatusDto> _updateWalletStatusValidator;
 
     public AdminWalletService(
         IUnitOfWork unitOfWork,
+        ICurrentUserService currentUserService,
         IValidator<UpdateWalletStatusDto> updateWalletStatusValidator)
     {
         _unitOfWork = unitOfWork;
+        _currentUserService = currentUserService;
         _updateWalletStatusValidator = updateWalletStatusValidator;
     }
 
@@ -95,10 +98,16 @@ public class AdminWalletService : IAdminWalletService
 
         var nextStatus = NormalizeWalletStatus(dto.Status) ?? WalletStatusActive;
         var shouldReactivate = string.Equals(nextStatus, WalletStatusActive, StringComparison.OrdinalIgnoreCase);
+        var isUnfreeze = shouldReactivate
+            && string.Equals(wallet.Status, WalletStatusFrozen, StringComparison.OrdinalIgnoreCase);
 
         if (!string.Equals(wallet.Status, nextStatus, StringComparison.OrdinalIgnoreCase))
         {
             wallet.Status = nextStatus;
+            if (isUnfreeze && _currentUserService.AccountId > 0)
+            {
+                wallet.UnbannedBy = _currentUserService.AccountId;
+            }
             wallet.UpdatedAt = DateTime.UtcNow;
             _unitOfWork.Wallets.UpdateWallet(wallet);
         }
@@ -118,7 +127,8 @@ public class AdminWalletService : IAdminWalletService
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return Result<AdminWalletListDto>.Success(MapWallet(wallet));
+        var updatedWallet = await _unitOfWork.Wallets.GetAdminByIdAsync(wallet.WalletId, cancellationToken) ?? wallet;
+        return Result<AdminWalletListDto>.Success(MapWallet(updatedWallet));
     }
 
     private static AdminWalletListDto MapWallet(Domain.Entities.Wallet wallet)
@@ -133,6 +143,9 @@ public class AdminWalletService : IAdminWalletService
         {
             WalletId = wallet.WalletId,
             Account = accountDisplay,
+            UnbannedByName = string.IsNullOrWhiteSpace(wallet.UnbannedByNavigation?.AccountName)
+                ? null
+                : wallet.UnbannedByNavigation.AccountName.Trim(),
             Status = wallet.Status,
             CreatedAt = wallet.CreatedAt,
             UpdatedAt = wallet.UpdatedAt

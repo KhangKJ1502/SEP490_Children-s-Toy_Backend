@@ -26,6 +26,4 @@ public partial class AiPromptTemplate
     public virtual BlogCategory? DefaultCategory { get; set; }
 
     public virtual ICollection<AiBlogQueue> AiBlogQueues { get; set; } = new List<AiBlogQueue>();
-
-    public virtual ICollection<AiBlogGenerationHistory> AiBlogGenerationHistories { get; set; } = new List<AiBlogGenerationHistory>();
 }

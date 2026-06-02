@@ -2665,6 +2665,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.WalletId).HasColumnName("WalletID");
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
             entity.Property(e => e.Balance).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.UnbannedBy).HasColumnName("UnbannedBy");
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
@@ -2684,6 +2685,10 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasForeignKey<Wallet>(d => d.AccountId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Wallets_Accounts");
+
+            entity.HasOne(d => d.UnbannedByNavigation).WithMany(p => p.WalletUnbannedByNavigations)
+                .HasForeignKey(d => d.UnbannedBy)
+                .HasConstraintName("FK_Wallets_UnbannedBy");
         });
 
         modelBuilder.Entity<WalletPin>(entity =>
