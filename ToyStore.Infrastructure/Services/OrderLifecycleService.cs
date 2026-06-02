@@ -155,6 +155,7 @@ public class OrderLifecycleService : IOrderLifecycleService
             order.StatusId = cancelledId;
             order.CancelledAt = now;
             order.CancelReason = reason;
+            order.CancelledBy = cancelledByAccountId == 0 ? null : cancelledByAccountId;
 
             await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
             {

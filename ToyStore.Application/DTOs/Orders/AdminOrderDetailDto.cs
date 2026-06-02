@@ -19,6 +19,7 @@ public class AdminOrderDetailDto
     public DateTime? CompletedAt { get; set; }
     public DateTime? CancelledAt { get; set; }
     public string? CancelReason { get; set; }
+    public string? CancelledByName { get; set; }
 
     // Dia chi giao hang
     public string ShippingName { get; set; } = string.Empty;

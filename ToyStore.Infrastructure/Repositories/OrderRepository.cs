@@ -139,6 +139,7 @@ public class OrderRepository : IOrderRepository
             .Include(o => o.Status)
             .Include(o => o.Account)
             .Include(o => o.AssignedToStaff)
+            .Include(o => o.CancelledByNavigation)
             .Include(o => o.OrderDetails)
             .Include(o => o.OrderStatusHistories.OrderBy(h => h.HistoryId))
                 .ThenInclude(h => h.ChangedByNavigation)

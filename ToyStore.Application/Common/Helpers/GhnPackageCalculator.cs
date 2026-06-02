@@ -53,13 +53,18 @@ public record GhnDimensionViolation(
 
 public static class GhnShippingLimits
 {
+    /// <summary>
+    /// GHN giới hạn 150 cm/chiều cho CẢ HAI service type (Type2 và Type5).
+    /// Sự khác biệt giữa Type2 và Type5 chỉ là weight limit (20 kg vs 50 kg).
+    /// Xác nhận thực tế từ GHN API error: LENGTH_IS_OVER_LIMIT = 150.
+    /// </summary>
     public const int Type2MaxCm = 150;
-    public const int Type5MaxCm = 200;
+    public const int Type5MaxCm = 150;  // GHN thực tế = 150cm, không phải 200cm
     public const int Type2ServiceId = 2;
     public const int Type5ServiceId = 5;
 
     public static int MaxDimensionCm(int serviceTypeId) =>
-        serviceTypeId == Type5ServiceId ? Type5MaxCm : Type2MaxCm;
+        Type2MaxCm;  // Cả hai loại đều là 150cm
 
     public static bool HasUnshippableDimensions(IEnumerable<ShippingItem> items) =>
         items.Any(i => i.LengthCm > Type5MaxCm || i.WidthCm > Type5MaxCm || i.HeightCm > Type5MaxCm);
