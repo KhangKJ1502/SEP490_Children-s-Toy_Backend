@@ -82,19 +82,19 @@ public class AccountsController : ControllerBase
         return result.ToCreatedResult($"api/accounts/{result.Data?.AccountId}");
     }
 
-    /// <summary>
-    /// Cập nhật trạng thái account.
-    /// </summary>
-    [HttpPut("{accountId:int}/status")]
-    public async Task<ActionResult<AccountDto>> UpdateAccountStatus(
+    [HttpPut("{accountId:int}")]
+    public async Task<ActionResult<AccountDto>> UpdateAccountInfo(
         [FromRoute] int accountId,
-        [FromBody] UpdateAccountStatusDto dto,
+        [FromBody] UpdateAccountInfoDto dto,
         CancellationToken cancellationToken = default)
     {
-        var result = await _accountService.UpdateAccountStatusAsync(accountId, dto, cancellationToken);
+        var result = await _accountService.UpdateAccountInfoAsync(accountId, dto, cancellationToken);
         return result.ToActionResult();
     }
 
+    /// <summary>
+    /// Cập nhật trạng thái account.
+    /// </summary>
     /// <summary>
     /// Admin đổi mật khẩu cho tài khoản Staff/Merchandise.
     /// </summary>

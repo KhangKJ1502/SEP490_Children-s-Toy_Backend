@@ -69,13 +69,15 @@ Query string example:
 1. POST account with roleId <= 0 returns 400.
 2. POST account with roleId not in {3,4} returns 400.
 3. POST account with accountName shorter than 2 characters returns 400.
-4. POST account with accountName containing special characters or spaces returns 400.
-5. POST account with accountName length greater than 99 returns 400.
-6. POST account with invalid Vietnamese phone number format returns 400.
-7. POST account with invalid email format returns 400.
-8. POST account with weak password returns 400.
-9. PUT status with missing isActive returns 400.
-10. GET list with pageNumber < 1 or pageSize > 100 returns 400.
+4. POST account with accountName containing special characters returns 400.
+5. POST account with accountName containing spaces between words returns 201.
+6. POST account with accountName containing only whitespace returns 400.
+7. POST account with accountName length greater than 99 returns 400.
+8. POST account with invalid Vietnamese phone number format returns 400.
+9. POST account with invalid email format returns 400.
+10. POST account with weak password returns 400.
+11. PUT status with missing isActive returns 400.
+12. GET list with pageNumber < 1 or pageSize > 100 returns 400.
 
 ## Authorization Cases
 
