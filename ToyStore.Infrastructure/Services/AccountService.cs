@@ -21,6 +21,7 @@ public class AccountService : IAccountService
     private readonly ICurrentUserService _currentUserService;
     private readonly ILogger<AccountService> _logger;
     private readonly IValidator<CreateAccountDto> _createAccountValidator;
+    private readonly IValidator<UpdateAccountInfoDto> _updateAccountInfoValidator;
     private readonly IValidator<UpdateAccountStatusDto> _updateAccountStatusValidator;
     private readonly IValidator<UpdateAccountPasswordDto> _updateAccountPasswordValidator;
 
@@ -30,6 +31,7 @@ public class AccountService : IAccountService
         ICurrentUserService currentUserService,
         ILogger<AccountService> logger,
         IValidator<CreateAccountDto> createAccountValidator,
+        IValidator<UpdateAccountInfoDto> updateAccountInfoValidator,
         IValidator<UpdateAccountStatusDto> updateAccountStatusValidator,
         IValidator<UpdateAccountPasswordDto> updateAccountPasswordValidator)
     {
@@ -38,6 +40,7 @@ public class AccountService : IAccountService
         _currentUserService = currentUserService;
         _logger = logger;
         _createAccountValidator = createAccountValidator;
+        _updateAccountInfoValidator = updateAccountInfoValidator;
         _updateAccountStatusValidator = updateAccountStatusValidator;
         _updateAccountPasswordValidator = updateAccountPasswordValidator;
     }
@@ -105,6 +108,8 @@ public class AccountService : IAccountService
         CreateAccountDto dto,
         CancellationToken cancellationToken = default)
     {
+        dto.AccountName = dto.AccountName?.Trim() ?? string.Empty;
+
         var validationResult = await _createAccountValidator.ValidateAsync(dto, cancellationToken);
         if (!validationResult.IsValid)
         {
@@ -169,6 +174,86 @@ public class AccountService : IAccountService
         {
             await _unitOfWork.RollbackTransactionAsync(cancellationToken);
             _logger.LogError(ex, "Failed to create account with email {Email}.", dto.Email);
+            throw;
+        }
+    }
+
+    public async Task<Result<AccountDto>> UpdateAccountInfoAsync(
+        int accountId,
+        UpdateAccountInfoDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        if (accountId <= 0)
+        {
+            return Result<AccountDto>.Failure("VALIDATION_ERROR", "Account ID must be greater than 0.");
+        }
+
+        dto.AccountName = dto.AccountName?.Trim() ?? string.Empty;
+        dto.PhoneNumber = NormalizeNullable(dto.PhoneNumber);
+
+        var validationResult = await _updateAccountInfoValidator.ValidateAsync(dto, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            var errors = validationResult.Errors
+                .GroupBy(x => x.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ErrorMessage).ToArray());
+
+            return Result<AccountDto>.ValidationFailure(errors);
+        }
+
+        var existing = await _unitOfWork.Accounts.GetByIdForProfileAsync(accountId, cancellationToken);
+        if (existing == null)
+        {
+            return Result<AccountDto>.NotFound("Account", accountId);
+        }
+
+        var nextIsActive = dto.IsActive!.Value;
+
+        if (dto.PhoneNumber != null)
+        {
+            var isPhoneNumberExisted = await _unitOfWork.Accounts.ExistsByPhoneNumberAsync(
+                dto.PhoneNumber,
+                accountId,
+                cancellationToken);
+
+            if (isPhoneNumberExisted)
+            {
+                return Result<AccountDto>.ValidationFailure(new Dictionary<string, string[]>
+                {
+                    ["PhoneNumber"] = ["Phone number already exists."]
+                });
+            }
+        }
+
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var updated = await _unitOfWork.Accounts.UpdateProfileAsync(
+                accountId,
+                dto.AccountName,
+                existing.ImageUrl,
+                dto.PhoneNumber,
+                existing.Dob,
+                existing.SexId,
+                cancellationToken);
+
+            if (existing.IsActive != nextIsActive)
+            {
+                updated = await _unitOfWork.Accounts.UpdateStatusAsync(
+                    accountId,
+                    nextIsActive,
+                    cancellationToken);
+            }
+
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            _logger.LogInformation("Account {AccountId} info updated successfully.", accountId);
+            return Result<AccountDto>.Success(_mapper.Map<AccountDto>(updated));
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Failed to update account info for account {AccountId}.", accountId);
             throw;
         }
     }
