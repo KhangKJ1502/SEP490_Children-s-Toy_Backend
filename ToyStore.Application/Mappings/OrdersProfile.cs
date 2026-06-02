@@ -27,6 +27,8 @@ public class OrdersProfile : Profile
             .ForMember(d => d.StatusName, opt => opt.MapFrom(s => s.Status.StatusName))
             .ForMember(d => d.FulfillmentLabel, opt => opt.MapFrom(s => AdminOrderFulfillmentMapper.GetFulfillmentLabel(s)))
             .ForMember(d => d.GhnShippingStatus, opt => opt.MapFrom(s => AdminOrderFulfillmentMapper.GetLatestGhnStatus(s)))
+            .ForMember(d => d.CancelledByName, opt => opt.MapFrom(s =>
+                s.CancelledByNavigation != null ? s.CancelledByNavigation.AccountName : null))
             .ForMember(d => d.AssignedToStaffName, opt => opt.MapFrom(s =>
                 s.AssignedToStaff != null ? s.AssignedToStaff.AccountName : null))
             .ForMember(d => d.Items, opt => opt.MapFrom(s => s.OrderDetails))
