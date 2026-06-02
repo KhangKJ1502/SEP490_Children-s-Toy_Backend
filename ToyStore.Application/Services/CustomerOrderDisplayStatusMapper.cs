@@ -114,10 +114,10 @@ public static class CustomerOrderDisplayStatusMapper
 
     public static bool HasActiveRefund(Order order)
         => order.OrderRefunds.Any(r =>
-            r.StatusId == (byte)RefundStatusEnum.RefundRequested
-            || r.StatusId == (byte)RefundStatusEnum.RefundApproved
-            || r.Status?.StatusName == RefundStatuses.Requested
-            || r.Status?.StatusName == RefundStatuses.Approved);
+            r.StatusId != (byte)RefundStatusEnum.RefundRejected
+            && r.StatusId != (byte)RefundStatusEnum.RefundCancelled
+            && r.Status?.StatusName != RefundStatuses.Rejected
+            && r.Status?.StatusName != RefundStatuses.Cancelled);
 
     public static string MapOrderListStatus(Order order)
     {

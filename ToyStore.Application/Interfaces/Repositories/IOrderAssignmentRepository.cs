@@ -14,6 +14,7 @@ public interface IOrderAssignmentRepository
         CancellationToken cancellationToken = default);
 
     Task<List<OrderAssignment>> GetActiveAssignmentsAsync(int orderId, CancellationToken cancellationToken = default);
+    Task<List<OrderAssignment>> GetAssignmentsByOrderIdAsync(int orderId, CancellationToken cancellationToken = default);
 
     Task<List<OrderAssignment>> GetActiveAssignmentsForOrdersAsync(List<int> orderIds, CancellationToken cancellationToken = default);
 

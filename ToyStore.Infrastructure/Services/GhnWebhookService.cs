@@ -30,6 +30,7 @@ public class GhnWebhookService : IGhnWebhookService
     private readonly IShippingReturnFlowService _returnFlow;
     private readonly IShiftAssignmentService _shiftAssignmentService;
     private readonly IShippingStatusMapper _statusMapper;
+    private readonly IShippingWebhookService _shippingWebhookService;
 
     public GhnWebhookService(
         IUnitOfWork unitOfWork,
@@ -39,7 +40,8 @@ public class GhnWebhookService : IGhnWebhookService
         IOrderLifecycleService orderLifecycle,
         IShippingReturnFlowService returnFlow,
         IShiftAssignmentService shiftAssignmentService,
-        IShippingStatusMapper statusMapper)
+        IShippingStatusMapper statusMapper,
+        IShippingWebhookService shippingWebhookService)
     {
         _unitOfWork = unitOfWork;
         _eventPublisher = eventPublisher;
@@ -49,6 +51,7 @@ public class GhnWebhookService : IGhnWebhookService
         _returnFlow = returnFlow;
         _shiftAssignmentService = shiftAssignmentService;
         _statusMapper = statusMapper;
+        _shippingWebhookService = shippingWebhookService;
     }
 
     public async Task ProcessAsync(GhnWebhookPayload payload, CancellationToken cancellationToken = default)
@@ -63,6 +66,15 @@ public class GhnWebhookService : IGhnWebhookService
         if (string.IsNullOrWhiteSpace(status))
         {
             _logger.LogWarning("GHN Webhook: Empty status in payload.");
+            return;
+        }
+
+        var orderCode = payload.OrderCode.Trim();
+        var refund = await _unitOfWork.Refunds.GetByShippingOrderCodeAsync(orderCode, cancellationToken);
+        if (refund is not null)
+        {
+            _logger.LogInformation("GHN Webhook: OrderCode '{Code}' matches refund request. Delegating to IShippingWebhookService.", orderCode);
+            await _shippingWebhookService.HandleAsync("GHN", JsonSerializer.Serialize(payload), cancellationToken);
             return;
         }
 

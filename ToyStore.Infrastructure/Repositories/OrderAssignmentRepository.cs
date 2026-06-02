@@ -60,6 +60,14 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
             .ToListAsync(cancellationToken);
     }
 
+    public Task<List<OrderAssignment>> GetAssignmentsByOrderIdAsync(int orderId, CancellationToken cancellationToken = default)
+    {
+        return _context.OrderAssignments
+            .Include(x => x.Account)
+            .Where(x => x.OrderId == orderId)
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<List<OrderAssignment>> GetActiveAssignmentsForOrdersAsync(List<int> orderIds, CancellationToken cancellationToken = default)
     {
         return _context.OrderAssignments

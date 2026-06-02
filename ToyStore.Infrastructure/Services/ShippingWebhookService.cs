@@ -72,18 +72,21 @@ public class ShippingWebhookService : IShippingWebhookService
                 return;
             }
 
+            providerOrderCode = providerOrderCode.Trim();
+            newStatus = newStatus.Trim();
+
+            var refund = await _unitOfWork.Refunds.GetByShippingOrderCodeAsync(providerOrderCode, cancellationToken);
+            if (refund is not null)
+            {
+                await HandleRefundWebhookAsync(refund, newStatus, rawPayload, cancellationToken);
+                return;
+            }
+
             var tx = await _unitOfWork.Orders.GetShippingTransactionByProviderCodeAsync(
                 providerOrderCode, cancellationToken);
 
             if (tx is null)
             {
-                var refund = await _unitOfWork.Refunds.GetByShippingOrderCodeAsync(providerOrderCode, cancellationToken);
-                if (refund is not null)
-                {
-                    await HandleRefundWebhookAsync(refund, newStatus, rawPayload, cancellationToken);
-                    return;
-                }
-
                 _logger.LogWarning(
                     "Shipping webhook from {Provider}: ProviderOrderCode '{Code}' not found in shipping transactions or refund requests",
                     provider, providerOrderCode);
@@ -278,7 +281,7 @@ public class ShippingWebhookService : IShippingWebhookService
     {
         try
         {
-            byte? targetRefundStatusId = newStatus switch
+            byte? targetRefundStatusId = newStatus.ToLowerInvariant() switch
             {
                 ShippingStatuses.ReadyToPick or ShippingStatuses.Storing => (byte)RefundStatusEnum.RefundPickupCreated,
                 
@@ -296,55 +299,87 @@ public class ShippingWebhookService : IShippingWebhookService
                 _ => null
             };
 
-            if (targetRefundStatusId is null)
-            {
-                _logger.LogInformation(
-                    "Refund webhook: No mapping found for GHN status '{Status}' on Refund request ID {RefundId}",
-                    newStatus, refund.RefundId);
-                return;
-            }
-
-            if (refund.StatusId == targetRefundStatusId.Value)
-            {
-                return;
-            }
-
-            if (refund.StatusId == (byte)RefundStatusEnum.RefundCompleted || 
-                refund.StatusId == (byte)RefundStatusEnum.RefundCancelled)
-            {
-                _logger.LogInformation(
-                    "Refund webhook: Skip updating Refund request ID {RefundId} (status is already final: {Status})",
-                    refund.RefundId, refund.StatusId);
-                return;
-            }
-
             var now = _timeProvider.UtcNow;
+            var tx = await _unitOfWork.Orders.GetShippingTransactionByProviderCodeAsync(refund.ShippingOrderCode ?? "", cancellationToken);
+            var previousStatus = tx?.Status ?? string.Empty;
+
+            if (tx is not null && await _unitOfWork.Orders.ExistsShippingStatusHistoryAsync(
+                    tx.ShippingTransactionId, newStatus, rawPayload, cancellationToken))
+            {
+                _logger.LogInformation(
+                    "Refund shipping webhook duplicate skipped: code={Code}, status={Status}",
+                    refund.ShippingOrderCode, newStatus);
+                return;
+            }
+
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
             try
             {
-                refund.StatusId = targetRefundStatusId.Value;
-                refund.UpdatedAt = now;
-
-                if (targetRefundStatusId.Value == (byte)RefundStatusEnum.RefundCancelled)
+                // 1. Ensure ShippingProviderTransaction and ShippingStatusHistory exist
+                if (tx is null)
                 {
-                    refund.CancelledAt = now;
+                    tx = new ShippingProviderTransaction
+                    {
+                        OrderId = refund.OrderId,
+                        Provider = "GHN",
+                        ProviderOrderCode = refund.ShippingOrderCode,
+                        Status = newStatus,
+                        CreatedAt = now,
+                        UpdatedAt = now
+                    };
+                    await _unitOfWork.Orders.AddShippingTransactionAsync(tx, cancellationToken);
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
+                }
+                else
+                {
+                    tx.Status = newStatus;
+                    tx.UpdatedAt = now;
                 }
 
-                refund.RefundStatusHistories.Add(new RefundStatusHistory
+                await _unitOfWork.Orders.AddShippingStatusHistoryAsync(new ShippingStatusHistory
                 {
-                    StatusId = targetRefundStatusId.Value,
-                    ChangedBy = null,
-                    Note = $"Auto-updated from GHN shipping webhook: {newStatus}",
-                    CreatedAt = now
-                });
+                    ShippingTxId = tx.ShippingTransactionId,
+                    OrderId = tx.OrderId,
+                    PreviousStatus = previousStatus,
+                    NewStatus = newStatus,
+                    Source = WebhookSource,
+                    RawPayload = rawPayload,
+                    ProcessedAt = now
+                }, cancellationToken);
 
-                _unitOfWork.Refunds.Update(refund);
+                // 2. Process Refund Status transition
+                if (targetRefundStatusId is not null && refund.StatusId != targetRefundStatusId.Value)
+                {
+                    if (refund.StatusId != (byte)RefundStatusEnum.RefundCompleted && 
+                        refund.StatusId != (byte)RefundStatusEnum.RefundCancelled)
+                    {
+                        refund.StatusId = targetRefundStatusId.Value;
+                        refund.UpdatedAt = now;
+
+                        if (targetRefundStatusId.Value == (byte)RefundStatusEnum.RefundCancelled)
+                        {
+                            refund.CancelledAt = now;
+                            await _unitOfWork.OrderAssignments.ReleaseCapacityAsync(refund.OrderId, cancellationToken);
+                        }
+
+                        refund.RefundStatusHistories.Add(new RefundStatusHistory
+                        {
+                            StatusId = targetRefundStatusId.Value,
+                            ChangedBy = null,
+                            Note = $"Auto-updated from GHN shipping webhook: {newStatus}",
+                            CreatedAt = now
+                        });
+
+                        _unitOfWork.Refunds.Update(refund);
+                    }
+                }
+
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
                 _logger.LogInformation(
                     "Refund webhook processed: RefundId={RefundId}, status transitioned to StatusId={StatusId} via provider status={ProviderStatus}",
-                    refund.RefundId, targetRefundStatusId.Value, newStatus);
+                    refund.RefundId, targetRefundStatusId?.ToString() ?? "none", newStatus);
             }
             catch (Exception ex)
             {

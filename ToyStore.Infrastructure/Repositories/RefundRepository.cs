@@ -187,13 +187,11 @@ public class RefundRepository : IRefundRepository
                 ApprovedAmount = r.ApprovedAmount,
                 RefundStatus = r.Status.StatusName,
                 CreatedAt = r.CreatedAt,
-                AssignedToStaffName = (r.StatusId != (byte)ToyStore.Domain.Enums.RefundStatusEnum.RefundRequested && r.Order.AssignedToStaff != null) ? r.Order.AssignedToStaff.AccountName : null,
-                AssignedToMerchName = (r.StatusId != (byte)ToyStore.Domain.Enums.RefundStatusEnum.RefundRequested)
-                    ? _context.Set<OrderAssignment>()
-                        .Where(a => a.OrderId == r.OrderId && a.RoleId == 4 && a.IsActive) // 4 is Merchandise assignment role in OrderAccessRoles.cs
-                        .Select(a => a.Account.AccountName)
-                        .FirstOrDefault()
-                    : null
+                AssignedToStaffName = r.Order.AssignedToStaff != null ? r.Order.AssignedToStaff.AccountName : null,
+                AssignedToMerchName = _context.Set<OrderAssignment>()
+                    .Where(a => a.OrderId == r.OrderId && a.RoleId == 4 && a.IsActive) // 4 is Merchandise assignment role in OrderAccessRoles.cs
+                    .Select(a => a.Account.AccountName)
+                    .FirstOrDefault()
             })
             .ToListAsync(cancellationToken);
 
