@@ -158,9 +158,14 @@ public interface IBlogRepository
         int pageNumber,
         int pageSize,
         string? searchTerm,
+        string? status,
+        bool sortDesc,
         CancellationToken cancellationToken = default);
 
-    Task<int> CountCustomerCommentPermissionAccountsAsync(string? searchTerm, CancellationToken cancellationToken = default);
+    Task<int> CountCustomerCommentPermissionAccountsAsync(
+        string? searchTerm,
+        string? status,
+        CancellationToken cancellationToken = default);
 
     Task<BlogCommentViolationCount?> GetCommentPermissionStateAsync(
         int accountId,

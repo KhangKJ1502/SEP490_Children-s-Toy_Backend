@@ -35,6 +35,11 @@ public interface IAccountService
         CreateAccountDto dto,
         CancellationToken cancellationToken = default);
 
+    Task<Result<AccountDto>> UpdateAccountInfoAsync(
+        int accountId,
+        UpdateAccountInfoDto dto,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Cập nhật trạng thái Account.
     /// </summary>

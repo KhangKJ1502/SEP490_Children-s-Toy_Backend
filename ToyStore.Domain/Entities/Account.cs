@@ -127,6 +127,8 @@ public partial class Account
 
     public virtual Wallet? Wallet { get; set; }
 
+    public virtual ICollection<Wallet> WalletUnbannedByNavigations { get; set; } = new List<Wallet>();
+
     public virtual ICollection<WalletPinAttempt> WalletPinAttempts { get; set; } = new List<WalletPinAttempt>();
 
     public virtual ICollection<WalletTransaction> WalletTransactions { get; set; } = new List<WalletTransaction>();

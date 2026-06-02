@@ -31,6 +31,7 @@ public class BlogService : IBlogService
     private const string ManualReviewStatus = "ManualReview";
     private const int CommentRateLimitPerMinute = 5;
     private const byte CommentViolationBanThreshold = 20;
+    private const int CommentBanDurationDays = 7;
     private const string ApprovePublishNowDecision = "ApprovePublishNow";
     private const string ApproveKeepScheduleDecision = "ApproveKeepSchedule";
 
@@ -920,6 +921,8 @@ public class BlogService : IBlogService
         int pageNumber = 1,
         int pageSize = 10,
         string? searchTerm = null,
+        string? status = null,
+        bool sortDesc = true,
         CancellationToken cancellationToken = default)
     {
         if (!IsPrivilegedUser())
@@ -932,8 +935,15 @@ public class BlogService : IBlogService
             return Result<PaginatedResponse<BlogReviewPermissionDto>>.Failure("VALIDATION_ERROR", "Invalid pagination values.");
         }
 
-        var accounts = await _unitOfWork.Blogs.GetPagedCustomerCommentPermissionAccountsAsync(pageNumber, pageSize, searchTerm, cancellationToken);
-        var totalCount = await _unitOfWork.Blogs.CountCustomerCommentPermissionAccountsAsync(searchTerm, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(status)
+            && !string.Equals(status, "active", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(status, "banned", StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<PaginatedResponse<BlogReviewPermissionDto>>.Failure("VALIDATION_ERROR", "Status must be Active or Banned.");
+        }
+
+        var accounts = await _unitOfWork.Blogs.GetPagedCustomerCommentPermissionAccountsAsync(pageNumber, pageSize, searchTerm, status, sortDesc, cancellationToken);
+        var totalCount = await _unitOfWork.Blogs.CountCustomerCommentPermissionAccountsAsync(searchTerm, status, cancellationToken);
         var mapped = accounts.Select(MapPermissionFromAccount).ToList();
         foreach (var item in mapped)
         {
@@ -976,6 +986,7 @@ public class BlogService : IBlogService
 
         var now = _timeProvider.UtcNow;
         state.IsCommentBanned = false;
+        state.BannedAt = null;
         state.BanExpiresAt = null;
         state.ViolationCount = 0;
         state.LastViolatedAt = null;
@@ -1850,8 +1861,7 @@ public class BlogService : IBlogService
                 state.BannedAt = now;
             }
 
-            // Auto-ban after reaching threshold is treated as indefinite until manual restore.
-            state.BanExpiresAt = null;
+            state.BanExpiresAt = now.AddDays(CommentBanDurationDays);
             state.UnbannedAt = null;
             state.UnbannedBy = null;
         }
