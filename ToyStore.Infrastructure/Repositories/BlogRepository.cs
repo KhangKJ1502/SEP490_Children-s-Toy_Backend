@@ -507,10 +507,12 @@ public class BlogRepository : IBlogRepository
         if (state.BanExpiresAt.HasValue && state.BanExpiresAt.Value <= utcNow)
         {
             state.IsCommentBanned = false;
+            state.BannedAt = null;
             state.BanExpiresAt = null;
             state.ViolationCount = 0;
             state.LastViolatedAt = null;
             state.UnbannedAt = utcNow;
+            state.UnbannedBy = null;
             state.UpdatedAt = utcNow;
             await _context.SaveChangesAsync(cancellationToken);
             return (false, null);
@@ -523,20 +525,36 @@ public class BlogRepository : IBlogRepository
         int pageNumber,
         int pageSize,
         string? searchTerm,
+        string? status,
+        bool sortDesc,
         CancellationToken cancellationToken = default)
     {
-        return BuildCustomerCommentPermissionAccountsQuery(searchTerm)
-            .OrderByDescending(x => x.BlogCommentViolationCountAccount != null && x.BlogCommentViolationCountAccount.IsCommentBanned)
-            .ThenByDescending(x => x.BlogCommentViolationCountAccount != null ? x.BlogCommentViolationCountAccount.BannedAt : null)
-            .ThenBy(x => x.AccountName)
+        var query = BuildCustomerCommentPermissionAccountsQuery(searchTerm, status);
+
+        query = sortDesc
+            ? query
+                .OrderByDescending(x => x.BlogCommentViolationCountAccount != null ? x.BlogCommentViolationCountAccount.UpdatedAt : null)
+                .ThenByDescending(x => x.BlogCommentViolationCountAccount != null ? x.BlogCommentViolationCountAccount.BannedAt : null)
+                .ThenByDescending(x => x.BlogCommentViolationCountAccount != null && x.BlogCommentViolationCountAccount.IsCommentBanned)
+                .ThenBy(x => x.AccountName)
+            : query
+                .OrderBy(x => x.BlogCommentViolationCountAccount != null ? x.BlogCommentViolationCountAccount.UpdatedAt : null)
+                .ThenBy(x => x.BlogCommentViolationCountAccount != null ? x.BlogCommentViolationCountAccount.BannedAt : null)
+                .ThenByDescending(x => x.BlogCommentViolationCountAccount != null && x.BlogCommentViolationCountAccount.IsCommentBanned)
+                .ThenBy(x => x.AccountName);
+
+        return query
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
     }
 
-    public Task<int> CountCustomerCommentPermissionAccountsAsync(string? searchTerm, CancellationToken cancellationToken = default)
+    public Task<int> CountCustomerCommentPermissionAccountsAsync(
+        string? searchTerm,
+        string? status,
+        CancellationToken cancellationToken = default)
     {
-        return BuildCustomerCommentPermissionAccountsQuery(searchTerm).CountAsync(cancellationToken);
+        return BuildCustomerCommentPermissionAccountsQuery(searchTerm, status).CountAsync(cancellationToken);
     }
 
     public Task<BlogCommentViolationCount?> GetCommentPermissionStateAsync(
@@ -615,7 +633,7 @@ public class BlogRepository : IBlogRepository
         return state;
     }
 
-    private IQueryable<Account> BuildCustomerCommentPermissionAccountsQuery(string? searchTerm)
+    private IQueryable<Account> BuildCustomerCommentPermissionAccountsQuery(string? searchTerm, string? status)
     {
         var query = _context.Accounts
             .AsNoTracking()
@@ -631,6 +649,15 @@ public class BlogRepository : IBlogRepository
                 x.AccountName.Contains(term)
                 || x.Email.Contains(term)
                 || x.AccountId.ToString().Contains(term));
+        }
+
+        if (string.Equals(status, "banned", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(x => x.BlogCommentViolationCountAccount != null && x.BlogCommentViolationCountAccount.IsCommentBanned);
+        }
+        else if (string.Equals(status, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(x => x.BlogCommentViolationCountAccount == null || !x.BlogCommentViolationCountAccount.IsCommentBanned);
         }
 
         return query;

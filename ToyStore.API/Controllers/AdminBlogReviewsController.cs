@@ -63,9 +63,11 @@ public class AdminBlogReviewsController : ControllerBase
         [FromQuery] int pageNumber = 1,
         [FromQuery] int pageSize = 10,
         [FromQuery] string? searchTerm = null,
+        [FromQuery] string? status = null,
+        [FromQuery] bool sortDesc = true,
         CancellationToken cancellationToken = default)
     {
-        var result = await _blogService.GetBlogReviewPermissionsAsync(pageNumber, pageSize, searchTerm, cancellationToken);
+        var result = await _blogService.GetBlogReviewPermissionsAsync(pageNumber, pageSize, searchTerm, status, sortDesc, cancellationToken);
         return result.ToActionResult();
     }
 
