@@ -61,10 +61,12 @@ public class BlogCommentPermissionUnlockJob : BackgroundService
             foreach (var state in expiredBans)
             {
                 state.IsCommentBanned = false;
+                state.BannedAt = null;
                 state.BanExpiresAt = null;
                 state.ViolationCount = 0;
                 state.LastViolatedAt = null;
                 state.UnbannedAt = nowUtc;
+                state.UnbannedBy = null;
                 state.UpdatedAt = nowUtc;
             }
 
