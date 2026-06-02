@@ -5,13 +5,11 @@ namespace ToyStore.Application.Validators.Wallets;
 
 public class UpdateWalletStatusValidator : AbstractValidator<UpdateWalletStatusDto>
 {
-    private static readonly string[] AllowedStatuses = { "Active", "Frozen" };
-
     public UpdateWalletStatusValidator()
     {
         RuleFor(x => x.Status)
             .NotEmpty().WithMessage("Status is required.")
-            .Must(status => AllowedStatuses.Contains(status?.Trim(), StringComparer.OrdinalIgnoreCase))
-            .WithMessage("Status must be either Active or Frozen.");
+            .Must(status => string.Equals(status?.Trim(), "Active", StringComparison.OrdinalIgnoreCase))
+            .WithMessage("Admin and Staff can only activate customer wallets.");
     }
 }

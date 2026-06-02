@@ -10,19 +10,15 @@ public class AdminWalletService : IAdminWalletService
 {
     private const string WalletStatusActive = "Active";
     private const string WalletStatusFrozen = "Frozen";
-    private const string WalletStatusClosed = "Closed";
 
     private readonly IUnitOfWork _unitOfWork;
-    private readonly ICurrentUserService _currentUserService;
     private readonly IValidator<UpdateWalletStatusDto> _updateWalletStatusValidator;
 
     public AdminWalletService(
         IUnitOfWork unitOfWork,
-        ICurrentUserService currentUserService,
         IValidator<UpdateWalletStatusDto> updateWalletStatusValidator)
     {
         _unitOfWork = unitOfWork;
-        _currentUserService = currentUserService;
         _updateWalletStatusValidator = updateWalletStatusValidator;
     }
 
@@ -91,38 +87,28 @@ public class AdminWalletService : IAdminWalletService
             return Result<AdminWalletListDto>.NotFound("Wallet", walletId);
         }
 
-        if (string.Equals(wallet.Status, WalletStatusClosed, StringComparison.OrdinalIgnoreCase))
-        {
-            return Result<AdminWalletListDto>.BusinessError("Closed wallet cannot be reopened or modified.");
-        }
-
         var nextStatus = NormalizeWalletStatus(dto.Status) ?? WalletStatusActive;
-        var shouldReactivate = string.Equals(nextStatus, WalletStatusActive, StringComparison.OrdinalIgnoreCase);
-        var isUnfreeze = shouldReactivate
-            && string.Equals(wallet.Status, WalletStatusFrozen, StringComparison.OrdinalIgnoreCase);
+        if (!string.Equals(nextStatus, WalletStatusActive, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<AdminWalletListDto>.BusinessError(
+                "Wallet deactivation is disabled. Admin and Staff can only activate customer wallets.");
+        }
 
         if (!string.Equals(wallet.Status, nextStatus, StringComparison.OrdinalIgnoreCase))
         {
             wallet.Status = nextStatus;
-            if (isUnfreeze && _currentUserService.AccountId > 0)
-            {
-                wallet.UnbannedBy = _currentUserService.AccountId;
-            }
             wallet.UpdatedAt = DateTime.UtcNow;
             _unitOfWork.Wallets.UpdateWallet(wallet);
         }
 
-        if (shouldReactivate)
+        var activePin = await _unitOfWork.Wallets.GetActivePinByWalletIdAsync(wallet.WalletId, cancellationToken);
+        if (activePin != null)
         {
-            var activePin = await _unitOfWork.Wallets.GetActivePinByWalletIdAsync(wallet.WalletId, cancellationToken);
-            if (activePin != null)
-            {
-                activePin.FailedAttempts = 0;
-                activePin.TotalFailedAttempts = 0;
-                activePin.LockedUntil = null;
-                activePin.UpdatedAt = DateTime.UtcNow;
-                _unitOfWork.Wallets.UpdatePin(activePin);
-            }
+            activePin.FailedAttempts = 0;
+            activePin.TotalFailedAttempts = 0;
+            activePin.LockedUntil = null;
+            activePin.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.Wallets.UpdatePin(activePin);
         }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -143,9 +129,7 @@ public class AdminWalletService : IAdminWalletService
         {
             WalletId = wallet.WalletId,
             Account = accountDisplay,
-            UnbannedByName = string.IsNullOrWhiteSpace(wallet.UnbannedByNavigation?.AccountName)
-                ? null
-                : wallet.UnbannedByNavigation.AccountName.Trim(),
+            UnbannedByName = null,
             Status = wallet.Status,
             CreatedAt = wallet.CreatedAt,
             UpdatedAt = wallet.UpdatedAt
@@ -180,18 +164,12 @@ public class AdminWalletService : IAdminWalletService
             return WalletStatusFrozen;
         }
 
-        if (string.Equals(trimmed, WalletStatusClosed, StringComparison.OrdinalIgnoreCase))
-        {
-            return WalletStatusClosed;
-        }
-
         return trimmed;
     }
 
     private static bool IsKnownStatus(string status)
     {
         return string.Equals(status, WalletStatusActive, StringComparison.Ordinal)
-            || string.Equals(status, WalletStatusFrozen, StringComparison.Ordinal)
-            || string.Equals(status, WalletStatusClosed, StringComparison.Ordinal);
+            || string.Equals(status, WalletStatusFrozen, StringComparison.Ordinal);
     }
 }
