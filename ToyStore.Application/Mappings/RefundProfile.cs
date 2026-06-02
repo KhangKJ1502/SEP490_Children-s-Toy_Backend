@@ -23,7 +23,8 @@ public class RefundProfile : Profile
             .ForMember(dest => dest.Details, opt => opt.MapFrom(src => src.RefundDetails))
             .ForMember(dest => dest.StatusHistory, opt => opt.MapFrom(src => src.RefundStatusHistories))
             .ForMember(dest => dest.Images, opt => opt.MapFrom(src => src.RefundImages.Where(i => !i.IsDeleted).Select(i => i.ImageUrl).ToList()))
-            .ForMember(dest => dest.ShippingHistory, opt => opt.MapFrom(src => MapOrderShippingHistory(src.Order)));
+            .ForMember(dest => dest.ShippingOrderCode, opt => opt.MapFrom(src => src.ShippingOrderCode))
+            .ForMember(dest => dest.ShippingHistory, opt => opt.MapFrom(src => MapRefundShippingHistory(src)));
 
         CreateMap<OrderRefund, RefundListDto>()
             .ForMember(dest => dest.OrderCode, opt => opt.MapFrom(src => src.Order.OrderCode))
@@ -48,12 +49,15 @@ public class RefundProfile : Profile
             .ForMember(dest => dest.ChangedByName, opt => opt.MapFrom(src => src.ChangedByNavigation != null ? src.ChangedByNavigation.AccountName : null));
     }
 
-    private static System.Collections.Generic.List<ShippingStatusHistory> MapOrderShippingHistory(Order order)
+    private static System.Collections.Generic.List<ShippingStatusHistory> MapRefundShippingHistory(OrderRefund refund)
     {
-        if (order == null) return new System.Collections.Generic.List<ShippingStatusHistory>();
-        var tx = order.ShippingProviderTransactions
-            .OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt)
-            .FirstOrDefault();
-        return tx?.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt).ToList() ?? new System.Collections.Generic.List<ShippingStatusHistory>();
+        if (refund == null || string.IsNullOrWhiteSpace(refund.ShippingOrderCode) || refund.Order == null)
+            return new System.Collections.Generic.List<ShippingStatusHistory>();
+
+        var tx = refund.Order.ShippingProviderTransactions
+            .FirstOrDefault(t => t.ProviderOrderCode == refund.ShippingOrderCode);
+
+        return tx?.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt).ToList() 
+            ?? new System.Collections.Generic.List<ShippingStatusHistory>();
     }
 }

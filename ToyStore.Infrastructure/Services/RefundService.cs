@@ -30,6 +30,7 @@ public class RefundService : IRefundService
     private readonly ShopAddressOptions _shopAddress;
     private readonly IWalletRefundCreditor _walletRefundCreditor;
     private readonly IShiftAssignmentService _shiftAssignmentService;
+    private readonly ITimeProvider _timeProvider;
 
     public RefundService(
         IUnitOfWork unitOfWork,
@@ -39,7 +40,8 @@ public class RefundService : IRefundService
         IOptions<GhnOptions> ghnOptions,
         IOptions<ShopAddressOptions> shopAddress,
         IWalletRefundCreditor walletRefundCreditor,
-        IShiftAssignmentService shiftAssignmentService)
+        IShiftAssignmentService shiftAssignmentService,
+        ITimeProvider timeProvider)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
@@ -49,6 +51,7 @@ public class RefundService : IRefundService
         _shopAddress = shopAddress.Value;
         _walletRefundCreditor = walletRefundCreditor;
         _shiftAssignmentService = shiftAssignmentService;
+        _timeProvider = timeProvider;
     }
 
     private byte? MapStatusStringToId(string statusStr)
@@ -226,6 +229,21 @@ public class RefundService : IRefundService
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
 
+            // Reactivate original order assignments and increment shift workloads
+            var orderAssignments = await _unitOfWork.OrderAssignments.GetAssignmentsByOrderIdAsync(refund.OrderId, cancellationToken);
+            foreach (var oa in orderAssignments)
+            {
+                oa.IsActive = true;
+
+                var capacity = await _unitOfWork.StaffShiftCapacities.GetByScheduleIdForUpdateAsync(oa.ScheduleId, cancellationToken);
+                if (capacity is not null)
+                {
+                    capacity.CurrentLoad++;
+                    capacity.UpdatedAt = DateTime.UtcNow;
+                }
+            }
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             // Notify staff about the new refund request
@@ -318,6 +336,22 @@ public class RefundService : IRefundService
 
         await _unitOfWork.Refunds.AddAsync(refund, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Reactivate original order assignments and increment shift workloads
+        var orderAssignments = await _unitOfWork.OrderAssignments.GetAssignmentsByOrderIdAsync(refund.OrderId, cancellationToken);
+        foreach (var oa in orderAssignments)
+        {
+            oa.IsActive = true;
+
+            var capacity = await _unitOfWork.StaffShiftCapacities.GetByScheduleIdForUpdateAsync(oa.ScheduleId, cancellationToken);
+            if (capacity is not null)
+            {
+                capacity.CurrentLoad++;
+                capacity.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
         return refund;
     }
 
@@ -369,6 +403,8 @@ public class RefundService : IRefundService
                 CreatedAt = DateTime.UtcNow
             });
 
+            await _shiftAssignmentService.ReleaseCapacityAsync(refund.OrderId, cancellationToken);
+
             _unitOfWork.Refunds.Update(refund);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
@@ -388,38 +424,77 @@ public class RefundService : IRefundService
         return await _unitOfWork.Refunds.GetAdminRefundsAsync(filter, cancellationToken);
     }
 
-    public async Task<Result<RefundDto>> AdminGetRefundByIdAsync(int refundId, CancellationToken cancellationToken = default)
+    public async Task<Result<RefundDto>> AdminGetRefundByIdAsync(int refundId, int currentUserId, byte currentUserRoleId, bool isAdmin, CancellationToken cancellationToken = default)
     {
         var refund = await _unitOfWork.Refunds.GetByIdAsync(refundId, cancellationToken);
         if (refund == null)
             return Result<RefundDto>.NotFound("Refund", refundId);
 
+        if (!isAdmin)
+        {
+            var hasAssignment = await _unitOfWork.OrderAssignments.HasActiveAssignmentAsync(
+                refund.OrderId,
+                currentUserId,
+                currentUserRoleId,
+                cancellationToken);
+
+            if (!hasAssignment)
+            {
+                return Result<RefundDto>.Failure("FORBIDDEN", "You are not authorized to view this refund request.");
+            }
+        }
+
         var dto = _mapper.Map<RefundDto>(refund);
 
-        if (refund.StatusId != (byte)RefundStatusEnum.RefundRequested)
-        {
-            var assignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(refund.OrderId, cancellationToken);
-            var staffAssig = assignments.FirstOrDefault(a => a.RoleId == 3);
-            var merchAssig = assignments.FirstOrDefault(a => a.RoleId == 4);
+        var assignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(refund.OrderId, cancellationToken);
+        var staffAssig = assignments.FirstOrDefault(a => a.RoleId == 3);
+        var merchAssig = assignments.FirstOrDefault(a => a.RoleId == 4);
 
-            if (staffAssig != null)
-            {
-                dto.AssignedToStaffName = staffAssig.Account?.AccountName;
-            }
-            if (merchAssig != null)
-            {
-                dto.AssignedToMerchName = merchAssig.Account?.AccountName;
-            }
+        if (staffAssig != null)
+        {
+            dto.AssignedToStaffName = staffAssig.Account?.AccountName;
+        }
+        if (merchAssig != null)
+        {
+            dto.AssignedToMerchName = merchAssig.Account?.AccountName;
         }
 
         return Result<RefundDto>.Success(dto);
     }
 
-    public async Task<Result<RefundDto>> UpdateRefundStatusAsync(int staffId, int refundId, UpdateRefundStatusDto dto, bool isAdmin = false, CancellationToken cancellationToken = default)
+    public async Task<Result<RefundDto>> UpdateRefundStatusAsync(int staffId, byte roleId, int refundId, UpdateRefundStatusDto dto, bool isAdmin = false, CancellationToken cancellationToken = default)
     {
         var refund = await _unitOfWork.Refunds.GetByIdAsync(refundId, cancellationToken);
         if (refund == null)
             return Result<RefundDto>.NotFound("Refund", refundId);
+
+        if (!isAdmin)
+        {
+            // 1. Shift check
+            var schedules = await _unitOfWork.WorkSchedules.GetByAccountAndDateAsync(staffId, _timeProvider.TodayVn, cancellationToken);
+            var nowTime = _timeProvider.VnNow.TimeOfDay;
+            var hasActiveShift = schedules.Any(s =>
+                s.Status == "OnDuty" &&
+                s.ShiftTemplate.StartTime <= nowTime &&
+                s.ShiftTemplate.EndTime >= nowTime);
+
+            if (!hasActiveShift)
+            {
+                return Result<RefundDto>.BusinessError("You do not have an active shift right now. Please contact the Admin to assign your shift before processing refunds.");
+            }
+
+            // 2. Order assignment check
+            var hasAssignment = await _unitOfWork.OrderAssignments.HasActiveAssignmentAsync(
+                refund.OrderId,
+                staffId,
+                roleId,
+                cancellationToken);
+
+            if (!hasAssignment)
+            {
+                return Result<RefundDto>.BusinessError("You do not have an active assignment for this refund request.");
+            }
+        }
 
         var order = await _unitOfWork.Orders.GetByIdForUpdateAsync(refund.OrderId, cancellationToken);
         if (order == null)
@@ -527,6 +602,21 @@ public class RefundService : IRefundService
             if (!string.IsNullOrWhiteSpace(dto.ShippingOrderCode))
             {
                 refund.ShippingOrderCode = dto.ShippingOrderCode;
+
+                var existingTx = await _unitOfWork.Orders.GetShippingTransactionByProviderCodeAsync(dto.ShippingOrderCode, cancellationToken);
+                if (existingTx is null)
+                {
+                    var tx = new ShippingProviderTransaction
+                    {
+                        OrderId = refund.OrderId,
+                        Provider = "GHN",
+                        ProviderOrderCode = dto.ShippingOrderCode,
+                        Status = ShippingStatuses.ReadyToPick,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+                    await _unitOfWork.Orders.AddShippingTransactionAsync(tx, cancellationToken);
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(dto.AdminNote))
@@ -577,6 +667,11 @@ public class RefundService : IRefundService
                     : $"Reject Reason: {dto.RejectReason}",
                 CreatedAt = DateTime.UtcNow
             });
+
+            if (newStatusId == (byte)RefundStatusEnum.RefundCompleted || newStatusId == (byte)RefundStatusEnum.RefundRejected)
+            {
+                await _shiftAssignmentService.ReleaseCapacityAsync(refund.OrderId, cancellationToken);
+            }
 
             _unitOfWork.Refunds.Update(refund);
             await _unitOfWork.SaveChangesAsync(cancellationToken);

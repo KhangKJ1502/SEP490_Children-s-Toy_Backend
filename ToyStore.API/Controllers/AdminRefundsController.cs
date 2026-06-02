@@ -29,6 +29,10 @@ public class AdminRefundsController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         filter.AssignedAccountId = _currentUserService.AccountId;
+        if (!User.IsInRole("Admin"))
+        {
+            filter.AssignedToMe = true;
+        }
         var result = await _refundService.GetAdminRefundsAsync(filter, cancellationToken);
         return Ok(ApiResponse<PaginatedResponse<RefundListDto>>.Ok(result));
     }
@@ -38,7 +42,9 @@ public class AdminRefundsController : ControllerBase
         [FromRoute] int refundId,
         CancellationToken cancellationToken = default)
     {
-        var result = await _refundService.AdminGetRefundByIdAsync(refundId, cancellationToken);
+        var isAdmin = User.IsInRole("Admin");
+        var result = await _refundService.AdminGetRefundByIdAsync(
+            refundId, _currentUserService.AccountId, _currentUserService.RoleId, isAdmin, cancellationToken);
         return result.ToActionResult();
     }
 
@@ -50,7 +56,7 @@ public class AdminRefundsController : ControllerBase
     {
         var isAdmin = User.IsInRole("Admin");
         var result = await _refundService.UpdateRefundStatusAsync(
-            _currentUserService.AccountId, refundId, dto, isAdmin, cancellationToken);
+            _currentUserService.AccountId, _currentUserService.RoleId, refundId, dto, isAdmin, cancellationToken);
         return result.ToActionResult();
     }
 
