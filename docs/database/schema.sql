@@ -64,7 +64,7 @@ GO
 
 CREATE TABLE [Sexes] (
     [SexID]    TINYINT IDENTITY(1,1) PRIMARY KEY,
-    [SexName]  NVARCHAR(4) NOT NULL UNIQUE,
+    [SexName]  NVARCHAR(8) NOT NULL UNIQUE,
     [CreatedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE()
 );
 GO
@@ -890,8 +890,7 @@ GO
 CREATE TABLE [AIPromptTemplates] (
     [TemplateID] INT IDENTITY(1,1) PRIMARY KEY,
     [TemplateName] NVARCHAR(100) NOT NULL UNIQUE,
-    [Description] NVARCHAR(255) NULL,
-    [PromptStructure] NVARCHAR(MAX) NOT NULL, -- Cấu trúc prompt với các placeholder
+     [PromptStructure] NVARCHAR(MAX) NOT NULL, -- Cấu trúc prompt với các placeholder
     [DefaultTone] NVARCHAR(50) NULL,          -- Tone mặc định: formal/casual/friendly
     [DefaultCategoryID] SMALLINT NULL,        -- Danh mục blog mặc định khi dùng template này
     [IsActive] BIT NOT NULL DEFAULT 1,
@@ -905,7 +904,6 @@ GO
 
 -- Hàng đợi các yêu cầu sinh nội dung AI
 -- Background job đọc từ bảng này theo Priority DESC, RequestedAt ASC
--- Sau khi xử lý xong, kết quả được lưu vào AIBlogGenerationHistory
 CREATE TABLE [AIBlogQueue] (
     [QueueID] INT IDENTITY(1,1) PRIMARY KEY,
     [BlogPostID] INT NOT NULL,
@@ -938,60 +936,6 @@ CREATE TABLE [AIBlogQueue] (
 );
 GO
 
--- Lịch sử toàn bộ lần sinh nội dung AI (audit trail)
--- Mỗi lần retry tạo 1 row mới → không mất lịch sử
--- IsAppliedToBlog = 1 nghĩa là lần sinh này đã được áp vào BlogPosts.BlogContent
-CREATE TABLE [AIBlogGenerationHistory] (
-    [HistoryID] BIGINT IDENTITY(1,1) PRIMARY KEY,
-    [BlogPostID] INT NOT NULL,
-    [QueueID] INT NULL,                -- Queue job tương ứng
-    [StaffID] INT NOT NULL,
-    [TemplateID] INT NULL,
-
-    -- Thông số gọi AI
-    [PromptData] NVARCHAR(MAX) NOT NULL,
-    [ModelName] NVARCHAR(100) NULL,    -- VD: claude-sonnet-4-6
-    [Temperature] DECIMAL(4,2) NULL,
-    [MaxTokens] INT NULL,
-    [Language] NVARCHAR(20) NULL,      -- VD: vi, en
-    [Tone] NVARCHAR(50) NULL,
-
-    -- Kết quả trả về
-    [GeneratedContent] NVARCHAR(MAX) NULL,
-    [ContentHash] VARCHAR(64) NULL,    -- Hash SHA-256 để phát hiện nội dung trùng lặp
-    [TokenInput] INT NULL,             -- Số token đầu vào (dùng để tính chi phí)
-    [TokenOutput] INT NULL,            -- Số token đầu ra
-    [LatencyMs] INT NULL,              -- Thời gian phản hồi (ms)
-
-    [Status] VARCHAR(20) NOT NULL
-        CONSTRAINT [CK_AIBlogGenerationHistory_Status]
-        CHECK ([Status] IN (
-            'Pending', 'Processing', 'Completed', 'Failed', 'Cancelled'
-        )),
-
-    [ErrorMessage] NVARCHAR(1000) NULL,
-    [RetryCount] INT NOT NULL DEFAULT 0,
-    [CorrelationId] VARCHAR(64) NULL,  -- ID liên kết các request trong cùng 1 luồng
-    [IdempotencyKey] VARCHAR(100) NULL, -- Tránh gọi AI trùng lặp khi retry
-    [IsAppliedToBlog] BIT NOT NULL DEFAULT 0,
-    [AppliedAt] DATETIME2(0) NULL,
-
-    [RequestedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE(),
-    [ProcessedAt] DATETIME2(0) NULL,
-    [CompletedAt] DATETIME2(0) NULL,
-    [CreatedAt] DATETIME2(0) NOT NULL DEFAULT GETDATE(),
-    [UpdatedAt] DATETIME2(0) NULL,
-
-    CONSTRAINT [FK_AIBlogGenerationHistory_BlogPosts]
-        FOREIGN KEY ([BlogPostID]) REFERENCES [BlogPosts]([BlogPostID]),
-    CONSTRAINT [FK_AIBlogGenerationHistory_AIBlogQueue]
-        FOREIGN KEY ([QueueID]) REFERENCES [AIBlogQueue]([QueueID]),
-    CONSTRAINT [FK_AIBlogGenerationHistory_Staff]
-        FOREIGN KEY ([StaffID]) REFERENCES [Accounts]([AccountID]),
-    CONSTRAINT [FK_AIBlogGenerationHistory_Template]
-        FOREIGN KEY ([TemplateID]) REFERENCES [AIPromptTemplates]([TemplateID])
-);
-GO
 
 
 /* =============================================
@@ -1307,14 +1251,9 @@ CREATE TABLE [dbo].[BlogCommentBanReasons] (
 GO
 
 INSERT INTO [dbo].[BlogCommentBanReasons] ([Content]) VALUES
-(N'Insulting, abusive, or discriminatory content'),
+(N'Insulting, abusive, discriminatory, or otherwise inappropriate content'),
 (N'Spam, ads, links, or repeated meaningless content'),
-(N'Content unrelated to the blog or product'),
-(N'False or misleading information'),
-(N'Content unsuitable for children'),
 (N'Sharing private or sensitive personal information'),
-(N'Harassment, bullying, or targeting specific users'),
-(N'Violent content, threats, or incitement'),
 (N'Manual review was not completed within 24 hours, so the comment was automatically rejected'),
 (N'AI moderation is currently unavailable. Your comment will be sent for manual review');
 GO
@@ -1562,37 +1501,6 @@ CREATE INDEX [IX_AIBlogQueue_BlogPost_RequestedAt]
 ON [AIBlogQueue]([BlogPostID], [RequestedAt] DESC, [QueueID] DESC);
 GO
 
--- Xem lịch sử sinh AI của 1 bài blog (mới nhất lên đầu)
-CREATE INDEX [IX_AIBlogGenerationHistory_BlogPost_RequestedAt]
-ON [AIBlogGenerationHistory]([BlogPostID], [RequestedAt] DESC);
-GO
-
--- Background job theo dõi các generation đang ở trạng thái nào
-CREATE INDEX [IX_AIBlogGenerationHistory_Status_RequestedAt]
-ON [AIBlogGenerationHistory]([Status], [RequestedAt]);
-GO
-
--- Xem lịch sử Staff đã yêu cầu AI sinh nội dung
-CREATE INDEX [IX_AIBlogGenerationHistory_Staff_RequestedAt]
-ON [AIBlogGenerationHistory]([StaffID], [RequestedAt] DESC);
-GO
-
--- Tìm kiếm generation theo CorrelationId (debug/trace)
-CREATE INDEX [IX_AIBlogGenerationHistory_CorrelationId]
-ON [AIBlogGenerationHistory]([CorrelationId])
-WHERE [CorrelationId] IS NOT NULL;
-GO
-
--- Chặn gọi AI trùng lặp khi retry (idempotency check)
-CREATE UNIQUE INDEX [UQ_AIBlogGenerationHistory_IdempotencyKey]
-ON [AIBlogGenerationHistory]([IdempotencyKey])
-WHERE [IdempotencyKey] IS NOT NULL;
-GO
-
--- Tìm các generation đã hoặc chưa được áp vào bài blog
-CREATE INDEX [IX_AIBlogGenerationHistory_Applied]
-ON [AIBlogGenerationHistory]([BlogPostID], [IsAppliedToBlog], [AppliedAt]);
-GO
 
 /* =============================================
    TRIGGERS
@@ -1876,12 +1784,14 @@ CREATE TABLE [Wallets] (
     [AccountID]         INT NOT NULL UNIQUE,
     [Currency]          CHAR(3) NOT NULL DEFAULT 'VND',
     [Balance]           DECIMAL(12,0) NOT NULL DEFAULT 0 CHECK ([Balance] >= 0),
+    [UnbannedBy]        INT NULL,
     [Status]            VARCHAR(10) NOT NULL DEFAULT 'Active'
-        CHECK ([Status] IN ('Active', 'Frozen', 'Closed')),
+        CHECK ([Status] IN ('Active', 'Frozen')),
     [LastTransactionAt] DATETIME2(0) NULL,
     [CreatedAt]         DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [UpdatedAt]         DATETIME2(0) NULL,
-    CONSTRAINT [FK_Wallets_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [Accounts]([AccountID])
+    CONSTRAINT [FK_Wallets_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [FK_Wallets_UnbannedBy]  FOREIGN KEY ([UnbannedBy]) REFERENCES [Accounts]([AccountID])
 );
 GO
      
@@ -3053,3 +2963,5 @@ GO
 CREATE NONCLUSTERED INDEX [IX_WalletPinAttempts_Wallet]
 ON [WalletPinAttempts]([WalletID], [CreatedAt] DESC);
 GO
+
+
