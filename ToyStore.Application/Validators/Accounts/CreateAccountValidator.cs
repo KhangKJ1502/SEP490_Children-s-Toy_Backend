@@ -15,10 +15,14 @@ public class CreateAccountValidator : AbstractValidator<CreateAccountDto>
             .Must(IsAllowedRoleId).WithMessage("Role ID must be either 3 (Staff) or 4 (Merchandiser).");
 
         RuleFor(x => x.AccountName)
-            .NotEmpty().WithMessage("Account name is required.")
-            .MinimumLength(2).WithMessage("Account name must be at least 2 characters.")
-            .MaximumLength(99).WithMessage("Account name must not exceed 99 characters.")
-            .Matches(@"^[\p{L}\p{N}]+$").WithMessage("Account name can contain only letters and numbers.");
+            .Cascade(CascadeMode.Stop)
+            .Must(value => !string.IsNullOrWhiteSpace(value)).WithMessage("Account name is required.")
+            .Must(value => value.Trim().Length >= 2).WithMessage("Account name must be at least 2 characters.")
+            .Must(value => value.Trim().Length <= 99).WithMessage("Account name must not exceed 99 characters.")
+            .Must(value => System.Text.RegularExpressions.Regex.IsMatch(
+                value.Trim(),
+                @"^[\p{L}\p{N}]+(?: [\p{L}\p{N}]+)*$"))
+            .WithMessage("Account name can contain only letters, numbers, and single spaces between words.");
 
         RuleFor(x => x.PhoneNumber)
             .Matches(@"^0\d{9}$").WithMessage("Phone number must start with 0 and contain exactly 10 digits.")

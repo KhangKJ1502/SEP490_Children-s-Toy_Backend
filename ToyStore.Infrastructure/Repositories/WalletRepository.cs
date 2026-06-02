@@ -60,6 +60,13 @@ public class WalletRepository : IWalletRepository
     {
         return _context.Wallets
             .Include(x => x.Account)
+            .Include(x => x.UnbannedByNavigation)
+            .FirstOrDefaultAsync(x => x.WalletId == walletId, cancellationToken);
+    }
+
+    public Task<Wallet?> GetAdminByIdAsync(int walletId, CancellationToken cancellationToken = default)
+    {
+        return BuildAdminQuery(null, null)
             .FirstOrDefaultAsync(x => x.WalletId == walletId, cancellationToken);
     }
 
@@ -133,7 +140,10 @@ public class WalletRepository : IWalletRepository
 
     private IQueryable<Wallet> BuildAdminQuery(string? accountSearchTerm, string? status)
     {
-        var query = _context.Wallets.Include(x => x.Account).AsQueryable();
+        var query = _context.Wallets
+            .Include(x => x.Account)
+            .Include(x => x.UnbannedByNavigation)
+            .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(accountSearchTerm))
         {

@@ -27,6 +27,8 @@ public interface IWalletRepository
 
     Task<Wallet?> GetByIdWithAccountAsync(int walletId, CancellationToken cancellationToken = default);
 
+    Task<Wallet?> GetAdminByIdAsync(int walletId, CancellationToken cancellationToken = default);
+
     Task<Wallet> CreateAsync(Wallet wallet, CancellationToken cancellationToken = default);
 
     Task AddPinAsync(WalletPin walletPin, CancellationToken cancellationToken = default);

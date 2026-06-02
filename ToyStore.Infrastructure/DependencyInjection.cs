@@ -86,6 +86,7 @@ public static class DependencyInjection
 
 
         services.AddScoped<IValidator<CreateAccountDto>, CreateAccountValidator>();
+        services.AddScoped<IValidator<UpdateAccountInfoDto>, UpdateAccountInfoValidator>();
         services.AddScoped<IValidator<UpdateAccountStatusDto>, UpdateAccountStatusValidator>();
         services.AddScoped<IValidator<UpdateAccountPasswordDto>, UpdateAccountPasswordValidator>();
         services.AddScoped<IValidator<UpdateCustomerDto>, UpdateCustomerValidator>();
