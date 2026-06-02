@@ -24,6 +24,7 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
         "Manual review was not completed within 24 hours, so the comment was automatically rejected";
     private const string TimeoutBanReasonPrefix = "Manual review was not completed within 24 hours";
     private const int ViolationThreshold = 20;
+    private const int CommentBanDurationDays = 7;
 
     public BlogCommentManualReviewTimeoutJob(
         IServiceProvider services,
@@ -240,7 +241,7 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
             state.BannedAt = nowUtc;
         }
 
-        state.BanExpiresAt = null;
+        state.BanExpiresAt = nowUtc.AddDays(CommentBanDurationDays);
         state.UpdatedAt = nowUtc;
 
         await db.SaveChangesAsync(ct);

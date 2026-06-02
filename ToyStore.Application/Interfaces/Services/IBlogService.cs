@@ -116,6 +116,8 @@ public interface IBlogService
         int pageNumber = 1,
         int pageSize = 10,
         string? searchTerm = null,
+        string? status = null,
+        bool sortDesc = true,
         CancellationToken cancellationToken = default);
 
     Task<Result<BlogReviewPermissionDto>> UpdateBlogReviewPermissionAsync(
