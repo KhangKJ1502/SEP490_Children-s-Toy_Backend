@@ -363,24 +363,48 @@ public class AdminOrderService : IAdminOrderService
 
         // Lấy chi tiết các item kèm kích thước, cân nặng thực tế cho don hang
         var shippingItems = await _unitOfWork.Orders.GetShippingItemsForOrderAsync(orderId, cancellationToken);
-        var package = GhnPackageCalculator.Calculate(
+        var sanitizedShippingItems = GhnPackageCalculator.SanitizeItems(
             shippingItems,
             _ghnOptions.DefaultItemWeight,
             _ghnOptions.DefaultLength,
             _ghnOptions.DefaultWidth,
             _ghnOptions.DefaultHeight);
 
-        // Xay dung request goi GHN
+        if (GhnShippingLimits.HasUnshippableDimensions(sanitizedShippingItems))
+        {
+            var violations = GhnShippingLimits.GetViolations(
+                sanitizedShippingItems,
+                GhnShippingLimits.Type5ServiceId);
+            return Result<ShipOrderResponseDto>.UnprocessableEntity(
+                GhnShippingLimits.FormatViolationMessage(violations));
+        }
+
+        var requestedServiceTypeId = GhnShippingLimits.Type2ServiceId;
+        if (int.TryParse(request.ServiceType, out var parsedServiceTypeId) && parsedServiceTypeId > 0)
+            requestedServiceTypeId = parsedServiceTypeId;
+
+        var dimensionViolations = GhnShippingLimits.GetViolations(
+            sanitizedShippingItems,
+            requestedServiceTypeId);
+        if (dimensionViolations.Count > 0)
+        {
+            return Result<ShipOrderResponseDto>.UnprocessableEntity(
+                GhnShippingLimits.FormatViolationMessage(dimensionViolations));
+        }
+
         var codAmount = string.Equals(order.PaymentMethod, "SHIP_COD", StringComparison.OrdinalIgnoreCase)
             ? order.TotalAmount
             : 0m;
 
-        // Resolve service_type_id: honour admin's explicit choice first, otherwise use package.ServiceTypeId
-        int serviceTypeId = package.ServiceTypeId;
-        if (int.TryParse(request.ServiceType, out var parsedServiceTypeId) && parsedServiceTypeId > 0)
-        {
-            serviceTypeId = parsedServiceTypeId;
-        }
+        var package = GhnPackageCalculator.CalculateForServiceType(
+            shippingItems,
+            requestedServiceTypeId,
+            _ghnOptions.DefaultItemWeight,
+            _ghnOptions.DefaultLength,
+            _ghnOptions.DefaultWidth,
+            _ghnOptions.DefaultHeight);
+
+        var serviceTypeId = package.ServiceTypeId;
 
         var ghnRequest = new ShippingOrderCreateRequestDto
         {
@@ -419,6 +443,10 @@ public class AdminOrderService : IAdminOrderService
         {
             _logger.LogWarning("GHN create order failed for Order {OrderId}: {Error}",
                 orderId, ghnResult.ErrorMessage);
+
+            if (string.Equals(ghnResult.ErrorCode, "GHN_DIMENSION_ERROR", StringComparison.Ordinal))
+                return Result<ShipOrderResponseDto>.UnprocessableEntity(ghnResult.ErrorMessage!);
+
             return Result<ShipOrderResponseDto>.BadGateway(
                 $"Shipping provider error: {ghnResult.ErrorMessage}");
         }

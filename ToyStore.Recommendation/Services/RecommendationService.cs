@@ -60,6 +60,7 @@ public class RecommendationService : IRecommendationService
         string widgetCode,
         int? accountId,
         int? productId,
+        int? orderId,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(widgetCode))
@@ -84,7 +85,7 @@ public class RecommendationService : IRecommendationService
                           || widget.WidgetCode == "after_purchase";
 
         // ── 1. Cache lookup
-        var cacheKey = BuildCacheKey(widgetCode, accountId, productId);
+        var cacheKey = BuildCacheKey(widgetCode, accountId, productId, orderId);
         var cached = await GetCachedAsync(cacheKey, ct);
         if (cached != null)
         {
@@ -103,7 +104,7 @@ public class RecommendationService : IRecommendationService
         }
 
         // ── 2. Chạy thuật toán chính theo widget.Algorithm
-        var candidates = await RunAlgorithmAsync(widget.Algorithm, accountId, productId, maxItems, ct);
+        var candidates = await RunAlgorithmAsync(widget.WidgetCode, widget.Algorithm, accountId, productId, orderId, maxItems, ct);
         _logger.LogInformation(
             "Widget {Code} algorithm {Algo} returned {Count} candidates",
             widget.WidgetCode, widget.Algorithm, candidates.Count);
@@ -164,7 +165,7 @@ public class RecommendationService : IRecommendationService
         // ── 5. Save cache (best-effort)
         if (items.Count > 0)
         {
-            await SaveCacheAsync(cacheKey, widgetCode, accountId, productId, items, ct);
+            await SaveCacheAsync(cacheKey, widgetCode, accountId, productId, orderId, items, ct);
         }
 
         return Result<RecommendationWidgetResponseDto>.Success(new RecommendationWidgetResponseDto
@@ -178,7 +179,7 @@ public class RecommendationService : IRecommendationService
 
     /// <summary>Chọn algorithm theo tên (column Algorithm trong Widgets).</summary>
     private Task<List<RecommendationCandidate>> RunAlgorithmAsync(
-        string algorithm, int? accountId, int? productId, int maxItems, CancellationToken ct)
+        string widgetCode, string algorithm, int? accountId, int? productId, int? orderId, int maxItems, CancellationToken ct)
     {
         return algorithm.ToLowerInvariant() switch
         {
@@ -186,7 +187,9 @@ public class RecommendationService : IRecommendationService
             "content_based" => productId.HasValue
                 ? _contentBased.GetCandidatesAsync(productId.Value, maxItems, ct)
                 : Task.FromResult(new List<RecommendationCandidate>()),
-            "collaborative" => productId.HasValue
+            "collaborative" => widgetCode == "after_purchase" && orderId.HasValue
+                ? _coPurchase.GetCandidatesByOrderAsync(orderId.Value, maxItems, ct)
+                : productId.HasValue
                 ? _coPurchase.GetCandidatesAsync(productId.Value, maxItems, ct)
                 : Task.FromResult(new List<RecommendationCandidate>()),
             "weighted_score" => accountId.HasValue
@@ -218,9 +221,9 @@ public class RecommendationService : IRecommendationService
         return await _trending.GetCandidatesAsync("global", maxItems, ct);
     }
 
-    private static string BuildCacheKey(string widgetCode, int? accountId, int? productId)
+    private static string BuildCacheKey(string widgetCode, int? accountId, int? productId, int? orderId)
     {
-        return $"{widgetCode}|acc:{accountId?.ToString() ?? "guest"}|prod:{productId?.ToString() ?? "-"}";
+        return $"{widgetCode}|acc:{accountId?.ToString() ?? "guest"}|prod:{productId?.ToString() ?? "-"}|ord:{orderId?.ToString() ?? "-"}";
     }
 
     private async Task<RecommendationCacheDocument?> GetCachedAsync(string cacheKey, CancellationToken ct)
@@ -249,6 +252,7 @@ public class RecommendationService : IRecommendationService
         string widgetCode,
         int? accountId,
         int? productId,
+        int? orderId,
         List<RecommendationItemDto> items,
         CancellationToken ct)
     {
@@ -260,6 +264,7 @@ public class RecommendationService : IRecommendationService
                 WidgetCode = widgetCode,
                 AccountId = accountId,
                 ProductId = productId,
+                OrderId = orderId,
                 CreatedAt = DateTime.UtcNow,
                 ExpiresAt = DateTime.UtcNow.AddMinutes(Math.Max(1, _options.CacheTtlMinutes)),
                 Items = items.Select(i => new CachedRecommendationItem

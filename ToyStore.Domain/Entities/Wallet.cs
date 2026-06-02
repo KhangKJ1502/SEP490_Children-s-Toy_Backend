@@ -13,6 +13,8 @@ public partial class Wallet
 
     public decimal Balance { get; set; }
 
+    public int? UnbannedBy { get; set; }
+
     public string Status { get; set; } = null!;
 
     public DateTime? LastTransactionAt { get; set; }
@@ -22,6 +24,8 @@ public partial class Wallet
     public DateTime? UpdatedAt { get; set; }
 
     public virtual Account Account { get; set; } = null!;
+
+    public virtual Account? UnbannedByNavigation { get; set; }
 
     public virtual ICollection<WalletPin> WalletPins { get; set; } = new List<WalletPin>();
 

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 
 namespace ToyStore.Domain.Entities;
 
@@ -38,6 +37,4 @@ public partial class AiBlogQueue
     public virtual Account Staff { get; set; } = null!;
 
     public virtual AiPromptTemplate? Template { get; set; }
-
-    public virtual ICollection<AiBlogGenerationHistory> AiBlogGenerationHistories { get; set; } = new List<AiBlogGenerationHistory>();
 }

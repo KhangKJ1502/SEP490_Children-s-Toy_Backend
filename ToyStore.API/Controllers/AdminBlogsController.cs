@@ -32,7 +32,6 @@ public class AiBlogGenerateRequest
 public class AiBlogGenerateResult
 {
     public int BlogPostId { get; set; }
-    public int? HistoryId { get; set; }
     public string Title { get; set; } = string.Empty;
     public string BlogContent { get; set; } = string.Empty;
     public int BlogCategoryId { get; set; }
@@ -308,7 +307,6 @@ public class AdminBlogsController : ControllerBase
         return Ok(new AiBlogGenerateResult
         {
             BlogPostId = request.BlogPostId.GetValueOrDefault(0),
-            HistoryId = null,
             Title = generatedTitle,
             BlogContent = aiGenerated.Content,
             BlogCategoryId = request.DefaultCategoryId,

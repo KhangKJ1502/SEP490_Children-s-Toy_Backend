@@ -19,5 +19,6 @@ public interface IRecommendationService
         string widgetCode,
         int? accountId,
         int? productId,
+        int? orderId,
         CancellationToken cancellationToken = default);
 }

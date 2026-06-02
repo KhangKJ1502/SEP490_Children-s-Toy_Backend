@@ -25,6 +25,9 @@ public class RecommendationCacheDocument
     [BsonElement("productId")]
     public int? ProductId { get; set; }
 
+    [BsonElement("orderId")]
+    public int? OrderId { get; set; }
+
     /// <summary>Danh sách item kèm score + reason để FE render.</summary>
     [BsonElement("items")]
     public List<CachedRecommendationItem> Items { get; set; } = new();

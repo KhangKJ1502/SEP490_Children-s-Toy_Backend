@@ -34,6 +34,7 @@ public class RecommendationsController : ControllerBase
     public async Task<ActionResult<RecommendationWidgetResponseDto>> GetRecommendations(
         [FromQuery] string widgetCode,
         [FromQuery] int? productId,
+        [FromQuery] int? orderId,
         [FromQuery] int? accountId,
         CancellationToken cancellationToken = default)
     {
@@ -47,6 +48,7 @@ public class RecommendationsController : ControllerBase
             widgetCode.Trim(),
             resolvedAccountId,
             productId,
+            orderId,
             cancellationToken);
 
         return result.ToActionResult();
