@@ -19,6 +19,7 @@ public class OrderQueueRepository : IOrderQueueRepository
         return _context.OrderQueues
             .AsNoTracking()
             .Include(x => x.Order)
+                .ThenInclude(o => o.Status)
             .Where(x => !x.IsResolved)
             .OrderBy(x => x.QueuedAt)
             .ToListAsync(cancellationToken);

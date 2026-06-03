@@ -370,6 +370,7 @@ public class AdminOrderService : IAdminOrderService
             _ghnOptions.DefaultWidth,
             _ghnOptions.DefaultHeight);
 
+        // Guard: nếu dimension vượt giới hạn tuyệt đối của GHN (>200cm Type5)
         if (GhnShippingLimits.HasUnshippableDimensions(sanitizedShippingItems))
         {
             var violations = GhnShippingLimits.GetViolations(
@@ -379,23 +380,17 @@ public class AdminOrderService : IAdminOrderService
                 GhnShippingLimits.FormatViolationMessage(violations));
         }
 
+        // Lấy service type từ request (nếu có), không dùng để validate trước
+        // vì CalculateForServiceType sẽ tự upgrade lên Type5 khi cần
         var requestedServiceTypeId = GhnShippingLimits.Type2ServiceId;
         if (int.TryParse(request.ServiceType, out var parsedServiceTypeId) && parsedServiceTypeId > 0)
             requestedServiceTypeId = parsedServiceTypeId;
-
-        var dimensionViolations = GhnShippingLimits.GetViolations(
-            sanitizedShippingItems,
-            requestedServiceTypeId);
-        if (dimensionViolations.Count > 0)
-        {
-            return Result<ShipOrderResponseDto>.UnprocessableEntity(
-                GhnShippingLimits.FormatViolationMessage(dimensionViolations));
-        }
 
         var codAmount = string.Equals(order.PaymentMethod, "SHIP_COD", StringComparison.OrdinalIgnoreCase)
             ? order.TotalAmount
             : 0m;
 
+        // CalculateForServiceType tự chọn serviceTypeId phù hợp (upgrade lên Type5 nếu bulky/heavy)
         var package = GhnPackageCalculator.CalculateForServiceType(
             shippingItems,
             requestedServiceTypeId,
@@ -694,6 +689,7 @@ public class AdminOrderService : IAdminOrderService
         var activeAssignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(orderId, cancellationToken);
         var hasExistingForRole = activeAssignments.Any(a => a.RoleId == assignmentRoleId.Value);
 
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
             if (hasExistingForRole)
@@ -712,40 +708,32 @@ public class AdminOrderService : IAdminOrderService
                     onDutySchedule.ScheduleId, cancellationToken);
                 if (schedule?.StaffShiftCapacity is null)
                 {
+                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
                     return Result.Failure("CONFIGURATION_ERROR", "Shift capacity not found for target schedule.");
                 }
 
                 if (schedule.StaffShiftCapacity.CurrentLoad >= schedule.StaffShiftCapacity.MaxLoad)
                 {
+                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
                     return Result.Failure("BUSINESS_RULE_VIOLATION", "Target schedule is at full capacity.");
                 }
 
-                await _unitOfWork.BeginTransactionAsync(cancellationToken);
-                try
+                await _unitOfWork.OrderAssignments.AddAsync(new OrderAssignment
                 {
-                    await _unitOfWork.OrderAssignments.AddAsync(new OrderAssignment
-                    {
-                        OrderId = orderId,
-                        ScheduleId = schedule.ScheduleId,
-                        AccountId = schedule.AccountId,
-                        RoleId = assignmentRoleId.Value,
-                        IsActive = true,
-                        AssignedAt = now,
-                        AssignedBy = _currentUser.AccountId,
-                        Notes = note
-                    }, cancellationToken);
+                    OrderId = orderId,
+                    ScheduleId = schedule.ScheduleId,
+                    AccountId = schedule.AccountId,
+                    RoleId = assignmentRoleId.Value,
+                    IsActive = true,
+                    AssignedAt = now,
+                    AssignedBy = _currentUser.AccountId,
+                    Notes = note
+                }, cancellationToken);
 
-                    schedule.StaffShiftCapacity.CurrentLoad += 1;
-                    schedule.StaffShiftCapacity.UpdatedAt = now;
+                schedule.StaffShiftCapacity.CurrentLoad += 1;
+                schedule.StaffShiftCapacity.UpdatedAt = now;
 
-                    await _unitOfWork.SaveChangesAsync(cancellationToken);
-                    await _unitOfWork.CommitTransactionAsync(cancellationToken);
-                }
-                catch
-                {
-                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    throw;
-                }
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
 
             if (assignmentRoleId == OrderAccessRoles.AssignmentStaff)
@@ -765,6 +753,7 @@ public class AdminOrderService : IAdminOrderService
             }, cancellationToken);
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Order {OrderId} assigned to account {TargetId} (OA role {RoleId}) by Admin {AdminId}",
@@ -777,7 +766,13 @@ public class AdminOrderService : IAdminOrderService
         }
         catch (InvalidOperationException ex)
         {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
             return Result.Failure("BUSINESS_RULE_VIOLATION", ex.Message);
+        }
+        catch (Exception)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw;
         }
     }
 

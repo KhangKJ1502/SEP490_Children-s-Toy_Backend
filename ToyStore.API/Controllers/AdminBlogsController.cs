@@ -72,21 +72,6 @@ public class AdminBlogsController : ControllerBase
 {
     private const string BlogThumbnailFolder = "SEP490_Blogs";
     private const string AiModerationHttpClientName = "AI_MODERATION";
-    private static readonly HashSet<string> AiMeaninglessSingleTokens = new(StringComparer.Ordinal)
-    {
-        "test",
-        "testing",
-        "qwerty",
-        "qwertyuiop",
-        "asdf",
-        "asdfghjkl",
-        "abcxyz",
-    };
-    private static readonly HashSet<string> AiMeaninglessPhrases = new(StringComparer.Ordinal)
-    {
-        "random text",
-        "lorem ipsum",
-    };
     private static readonly string[] AiKeyboardRows =
     {
         "qwertyuiop",
@@ -94,6 +79,7 @@ public class AdminBlogsController : ControllerBase
         "zxcvbnm",
     };
     private static readonly HashSet<char> AiVowels = ['a', 'e', 'i', 'o', 'u', 'y'];
+    private static readonly IReadOnlyDictionary<char, (double Column, int Row)> AiKeyboardCoordinates = BuildKeyboardCoordinates();
     private readonly IBlogService _blogService;
     private readonly IImageUploadService _imageUploadService;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -249,7 +235,7 @@ public class AdminBlogsController : ControllerBase
         {
             return BadRequest(new { code = "VALIDATION_ERROR", message = "Title, PromptStructure, and Category are required." });
         }
-        if (request.DefaultCategoryId > short.MaxValue)
+        if (request.DefaultCategoryId <= 0 || request.DefaultCategoryId > short.MaxValue)
         {
             return BadRequest(new { code = "VALIDATION_ERROR", message = "Category is invalid." });
         }
@@ -411,22 +397,27 @@ public class AdminBlogsController : ControllerBase
             return $"{fieldLabel} appears to be meaningless.";
         }
 
-        if (compact.Length >= 3 && IsRepeatedSingleCharacter(compact))
+        if (compact.Length < 3 && normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length == 1)
         {
             return $"{fieldLabel} appears to be meaningless.";
         }
 
-        if (compact.Length >= 6 && IsRepeatedPattern(compact))
+        if (compact.Length >= 2 && IsRepeatedSingleCharacter(compact))
         {
             return $"{fieldLabel} appears to be meaningless.";
         }
 
-        if (compact.Length >= 5 && IsKeyboardMash(compact))
+        if (compact.Length >= 4 && IsRepeatedPattern(compact))
         {
             return $"{fieldLabel} appears to be meaningless.";
         }
 
-        if (IsPlaceholderLike(normalized))
+        if (IsNearRepeatedPattern(compact))
+        {
+            return $"{fieldLabel} appears to be meaningless.";
+        }
+
+        if (IsKeyboardMash(compact))
         {
             return $"{fieldLabel} appears to be meaningless.";
         }
@@ -479,7 +470,7 @@ public class AdminBlogsController : ControllerBase
             }
 
             var repetitions = compact.Length / size;
-            if (repetitions < 3)
+            if (repetitions < 2)
             {
                 continue;
             }
@@ -504,8 +495,37 @@ public class AdminBlogsController : ControllerBase
         return false;
     }
 
+    private static bool IsNearRepeatedPattern(string compact)
+    {
+        if (compact.Length < 6)
+        {
+            return false;
+        }
+
+        if (IsRepeatedPattern(compact))
+        {
+            return true;
+        }
+
+        for (var index = 0; index < compact.Length; index++)
+        {
+            var withoutOneChar = compact.Remove(index, 1);
+            if (withoutOneChar.Length >= 6 && IsRepeatedPattern(withoutOneChar))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool IsKeyboardMash(string compact)
     {
+        if (compact.Length < 3 || compact.Any(ch => ch < 'a' || ch > 'z'))
+        {
+            return false;
+        }
+
         foreach (var row in AiKeyboardRows)
         {
             if (row.Contains(compact, StringComparison.Ordinal) ||
@@ -515,41 +535,136 @@ public class AdminBlogsController : ControllerBase
             }
         }
 
+        if (compact.Length > 8 || !IsKeyboardWalk(compact))
+        {
+            return false;
+        }
+
+        var vowelRatio = GetVowelRatio(compact);
+        return LongestConsonantRun(compact) >= 2 ||
+            vowelRatio < 0.3 ||
+            GetUniqueLetterRatio(compact) <= 0.6;
+    }
+
+    private static bool IsKeyboardChunk(string value)
+    {
+        if (value.Length < 2)
+        {
+            return false;
+        }
+
+        foreach (var row in AiKeyboardRows)
+        {
+            if (row.Contains(value, StringComparison.Ordinal) ||
+                Reverse(row).Contains(value, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 
-    private static bool IsPlaceholderLike(string normalized)
+    private static bool IsKeyboardWalk(string compact)
     {
-        if (AiMeaninglessPhrases.Contains(normalized))
+        for (var index = 1; index < compact.Length; index++)
         {
-            return true;
+            if (!AiKeyboardCoordinates.TryGetValue(compact[index - 1], out var previous) ||
+                !AiKeyboardCoordinates.TryGetValue(compact[index], out var current))
+            {
+                return false;
+            }
+
+            var horizontalDistance = Math.Abs(previous.Column - current.Column);
+            var verticalDistance = Math.Abs(previous.Row - current.Row);
+            if (horizontalDistance > 1.5 || verticalDistance > 1)
+            {
+                return false;
+            }
         }
 
-        var tokens = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (tokens.Length == 0)
+        return true;
+    }
+
+    private static double GetVowelRatio(string token)
+    {
+        if (token.Length == 0)
         {
-            return true;
+            return 0;
         }
 
-        if (tokens.Length == 1)
+        var vowelCount = token.Count(ch => AiVowels.Contains(ch));
+        return (double)vowelCount / token.Length;
+    }
+
+    private static double GetUniqueLetterRatio(string token)
+    {
+        return token.Length == 0 ? 0 : (double)token.Distinct().Count() / token.Length;
+    }
+
+    private static bool HasRepeatedKeyboardChunk(string token)
+    {
+        if (token.Length < 6)
         {
-            return AiMeaninglessSingleTokens.Contains(tokens[0]);
+            return false;
         }
 
-        if (tokens.Length >= 2 &&
-            tokens.All(token => string.Equals(token, tokens[0], StringComparison.Ordinal)) &&
-            AiMeaninglessSingleTokens.Contains(tokens[0]))
+        for (var size = 3; size <= Math.Min(4, token.Length / 2); size++)
         {
-            return true;
+            var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (var index = 0; index <= token.Length - size; index++)
+            {
+                var chunk = token.Substring(index, size);
+                if (!IsKeyboardChunk(chunk))
+                {
+                    continue;
+                }
+
+                counts[chunk] = counts.TryGetValue(chunk, out var count) ? count + 1 : 1;
+                if (counts[chunk] >= 2)
+                {
+                    return true;
+                }
+            }
         }
 
         return false;
+    }
+
+    private static bool HasLowDiversityNoiseShape(string token)
+    {
+        if (token.Length < 7)
+        {
+            return false;
+        }
+
+        var uniqueLetters = token.Distinct().Count();
+        if (uniqueLetters > 3)
+        {
+            return false;
+        }
+
+        var bigrams = new HashSet<string>(StringComparer.Ordinal);
+        for (var index = 0; index < token.Length - 1; index++)
+        {
+            bigrams.Add(token.Substring(index, 2));
+        }
+
+        return (double)bigrams.Count / (token.Length - 1) <= 0.55;
     }
 
     private static bool LooksLikeRandomGibberish(string normalized)
     {
-        var tokens = normalized
+        var rawTokens = normalized
             .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToArray();
+
+        if (rawTokens.Any(IsSuspiciousMixedAlphanumericToken))
+        {
+            return true;
+        }
+
+        var tokens = rawTokens
             .Where(token => token.Length >= 3 && token.All(char.IsLetter))
             .ToArray();
         if (tokens.Length == 0)
@@ -557,29 +672,96 @@ public class AdminBlogsController : ControllerBase
             return false;
         }
 
-        var suspiciousTokens = tokens.Count(IsSuspiciousAlphabeticToken);
+        var suspiciousTokens = tokens.Count(token => IsSuspiciousAlphabeticToken(token) || IsLowVowelNoiseToken(token));
         if (suspiciousTokens == 0)
         {
             return false;
         }
 
-        return suspiciousTokens == tokens.Length && tokens.Sum(token => token.Length) >= 10;
+        return suspiciousTokens == tokens.Length;
     }
 
-    private static bool IsSuspiciousAlphabeticToken(string token)
+    private static bool IsSuspiciousMixedAlphanumericToken(string token)
     {
-        if (string.IsNullOrWhiteSpace(token) || token.Length < 6)
+        if (!token.Any(char.IsLetter) || !token.Any(char.IsDigit))
         {
             return false;
         }
 
+        var lettersOnly = new string(token.Where(char.IsLetter).ToArray());
+        if (lettersOnly.Length < 3)
+        {
+            return true;
+        }
+
+        var digitGroups = Regex.Matches(token, @"\d+").Count;
+        var letterSegments = Regex.Split(token, @"\d+").Where(segment => !string.IsNullOrWhiteSpace(segment)).ToArray();
+        if (letterSegments.Length >= 2)
+        {
+            return true;
+        }
+
+        return IsSuspiciousAlphabeticToken(lettersOnly)
+            || IsLowVowelNoiseToken(lettersOnly)
+            || digitGroups >= 2;
+    }
+
+    private static bool IsSuspiciousAlphabeticToken(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token) || token.Length < 3)
+        {
+            return false;
+        }
+
+        if (IsKeyboardMash(token) || IsNearRepeatedPattern(token) || HasRepeatedKeyboardChunk(token))
+        {
+            return true;
+        }
+
+        var longestConsonants = LongestConsonantRun(token);
         var vowelCount = token.Count(ch => AiVowels.Contains(ch));
+        if (token.Length <= 4)
+        {
+            return vowelCount == 0 || longestConsonants >= token.Length;
+        }
+
+        if (vowelCount == 0)
+        {
+            return true;
+        }
+
         if (vowelCount <= 1)
         {
             return true;
         }
 
-        return LongestConsonantRun(token) >= 5;
+        if (longestConsonants >= 4)
+        {
+            return true;
+        }
+
+        if (GetVowelRatio(token) < 0.25)
+        {
+            return true;
+        }
+
+        return HasLowDiversityNoiseShape(token);
+    }
+
+    private static bool IsLowVowelNoiseToken(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token) || token.Length < 5)
+        {
+            return false;
+        }
+
+        var vowelRatio = GetVowelRatio(token);
+        if (vowelRatio > 0.35)
+        {
+            return false;
+        }
+
+        return LongestConsonantRun(token) >= 3 || GetUniqueLetterRatio(token) <= 0.45;
     }
 
     private static int LongestConsonantRun(string token)
@@ -610,6 +792,22 @@ public class AdminBlogsController : ControllerBase
         var buffer = value.ToCharArray();
         Array.Reverse(buffer);
         return new string(buffer);
+    }
+
+    private static IReadOnlyDictionary<char, (double Column, int Row)> BuildKeyboardCoordinates()
+    {
+        var coordinates = new Dictionary<char, (double Column, int Row)>();
+        for (var rowIndex = 0; rowIndex < AiKeyboardRows.Length; rowIndex++)
+        {
+            var rowOffset = rowIndex * 0.5;
+            var row = AiKeyboardRows[rowIndex];
+            for (var columnIndex = 0; columnIndex < row.Length; columnIndex++)
+            {
+                coordinates[row[columnIndex]] = (columnIndex + rowOffset, rowIndex);
+            }
+        }
+
+        return coordinates;
     }
 
     [HttpPost("blogs/thumbnail/upload")]

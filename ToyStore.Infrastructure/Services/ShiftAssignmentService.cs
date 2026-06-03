@@ -1,6 +1,8 @@
+using System.Linq;
 using AutoMapper;
 using FluentValidation;
 using ToyStore.Application.Constants;
+using ToyStore.Domain.Constants;
 using ToyStore.Application.Common.Models;
 using ToyStore.Application.DTOs.Assignments;
 using ToyStore.Application.Interfaces.Notifications;
@@ -161,36 +163,75 @@ public class ShiftAssignmentService : IShiftAssignmentService
 
     public async Task<Result> TryAssignOldestQueueAsync(CancellationToken cancellationToken = default)
     {
-        var queueEntry = await _unitOfWork.OrderQueues.GetOldestPendingAsync(cancellationToken);
-        if (queueEntry is null)
+        var pendingQueue = await _unitOfWork.OrderQueues.GetPendingAsync(cancellationToken);
+        if (pendingQueue.Count == 0)
         {
             return Result.Success();
         }
 
-        var assignResult = await _unitOfWork.OrderAssignments.AutoAssignAsync(queueEntry.OrderId, null, cancellationToken);
-        if (!string.Equals(assignResult.Result, "ASSIGNED", StringComparison.OrdinalIgnoreCase))
-        {
-            return Result.Success();
-        }
-
+        // Xử lý hàng loạt lên đến 10 đơn hàng cũ nhất trong Queue
+        var batch = pendingQueue.Take(10).ToList();
         var now = _timeProvider.UtcNow;
-        queueEntry.IsResolved = true;
-        queueEntry.ResolvedAt = now;
+        bool anyResolved = false;
 
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        // Các trạng thái đơn hàng còn đang hoạt động cần phân công ca trực
+        var operationalStatuses = new[]
+        {
+            OrderStatuses.Pending,
+            OrderStatuses.Confirmed,
+            OrderStatuses.Processing,
+            OrderStatuses.Shipped,
+            OrderStatuses.Delivering,
+            OrderStatuses.Delivered,
+            OrderStatuses.DeliveryFailed
+        };
 
-        await _eventPublisher.PublishAsync(
-            "Order",
-            queueEntry.OrderId.ToString(),
-            ShiftEventTypes.OrderAssigned,
-            new
+        foreach (var queueEntry in batch)
+        {
+            var order = queueEntry.Order;
+
+            // Nếu đơn hàng không tồn tại, đã bị xóa, hoặc đã chuyển sang các trạng thái không hoạt động (đã Hủy, đã Hoàn thành,...)
+            // thì tự động đánh dấu giải quyết (resolve) hàng đợi này để tránh làm kẹt hàng đợi của các đơn hàng khác!
+            if (order is null || order.IsDeleted || order.Status is null || !operationalStatuses.Contains(order.Status.StatusName))
             {
-                orderId = queueEntry.OrderId,
-                orderCode = queueEntry.Order?.OrderCode,
-                staffAccountId = assignResult.StaffAccountId,
-                merchAccountId = assignResult.MerchAccountId
-            },
-            CancellationToken.None);
+                queueEntry.IsResolved = true;
+                queueEntry.ResolvedAt = now;
+                anyResolved = true;
+                continue;
+            }
+
+            var assignResult = await _unitOfWork.OrderAssignments.AutoAssignAsync(queueEntry.OrderId, null, cancellationToken);
+            
+            // Kiểm tra xem đơn hàng đã được phân công đầy đủ cả 2 vai trò chưa
+            var activeAssignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(queueEntry.OrderId, cancellationToken);
+            var hasStaff = activeAssignments.Any(x => x.RoleId == StaffRoleId);
+            var hasMerch = activeAssignments.Any(x => x.RoleId == MerchRoleId);
+
+            if (hasStaff && hasMerch)
+            {
+                queueEntry.IsResolved = true;
+                queueEntry.ResolvedAt = now;
+                anyResolved = true;
+
+                await _eventPublisher.PublishAsync(
+                    "Order",
+                    queueEntry.OrderId.ToString(),
+                    ShiftEventTypes.OrderAssigned,
+                    new
+                    {
+                        orderId = queueEntry.OrderId,
+                        orderCode = queueEntry.Order?.OrderCode,
+                        staffAccountId = assignResult.StaffAccountId,
+                        merchAccountId = assignResult.MerchAccountId
+                    },
+                    CancellationToken.None);
+            }
+        }
+
+        if (anyResolved)
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
 
         return Result.Success();
     }

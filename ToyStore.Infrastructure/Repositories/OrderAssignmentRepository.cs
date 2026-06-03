@@ -60,6 +60,14 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
             .ToListAsync(cancellationToken);
     }
 
+    public Task<List<OrderAssignment>> GetAssignmentsByOrderIdAsync(int orderId, CancellationToken cancellationToken = default)
+    {
+        return _context.OrderAssignments
+            .Include(x => x.Account)
+            .Where(x => x.OrderId == orderId)
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<List<OrderAssignment>> GetActiveAssignmentsForOrdersAsync(List<int> orderIds, CancellationToken cancellationToken = default)
     {
         return _context.OrderAssignments
@@ -132,33 +140,6 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
             var needStaff = !hasStaff;
             var needMerch = !hasMerch;
 
-            if ((needStaff && staffCapacity is null) || (needMerch && merchCapacity is null))
-            {
-                if (staffCapacity is not null)
-                {
-                    await RollbackCapacityClaimAsync(staffCapacity.ScheduleId, now, cancellationToken);
-                    staffCapacity = null;
-                }
-
-                if (merchCapacity is not null)
-                {
-                    await RollbackCapacityClaimAsync(merchCapacity.ScheduleId, now, cancellationToken);
-                    merchCapacity = null;
-                }
-
-                var queueReason = await BuildQueueReasonAsync(
-                    needStaff, staffCapacity, needMerch, merchCapacity, cancellationToken);
-                await UpsertQueueEntryAsync(orderId, queueReason, now, cancellationToken);
-                await _context.SaveChangesAsync(cancellationToken);
-
-                if (ownsTransaction)
-                {
-                    await transaction!.CommitAsync(cancellationToken);
-                }
-
-                return new AssignmentResultDto { Result = "QUEUED", Reason = queueReason };
-            }
-
             var newAssignments = new List<OrderAssignment>();
 
             if (needStaff && staffCapacity is not null)
@@ -189,18 +170,50 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
                 });
             }
 
+            // Nếu không thể phân công được bất kỳ vai trò mới nào và vẫn đang cần phân công
+            if (newAssignments.Count == 0 && (needStaff || needMerch))
+            {
+                var queueReason = await BuildQueueReasonAsync(
+                    needStaff, staffCapacity, needMerch, merchCapacity, cancellationToken);
+                await UpsertQueueEntryAsync(orderId, queueReason, now, cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
+
+                if (ownsTransaction)
+                {
+                    await transaction!.CommitAsync(cancellationToken);
+                }
+
+                return new AssignmentResultDto { Result = "QUEUED", Reason = queueReason };
+            }
+
+            // Lưu các phân công mới được tạo
             if (newAssignments.Count > 0)
             {
                 await _context.OrderAssignments.AddRangeAsync(newAssignments, cancellationToken);
             }
 
-            var pendingQueue = await _context.OrderQueues
-                .FirstOrDefaultAsync(oq => oq.OrderId == orderId && !oq.IsResolved, cancellationToken);
+            // Chỉ đánh dấu hoàn thành Queue khi cả 2 vai trò đều được lấp đầy (đã được gán từ trước hoặc mới được gán thêm)
+            var hasAllRequired = (hasStaff || staffCapacity is not null) && (hasMerch || merchCapacity is not null);
 
-            if (pendingQueue is not null)
+            if (hasAllRequired)
             {
-                pendingQueue.IsResolved = true;
-                pendingQueue.ResolvedAt = now;
+                var pendingQueue = await _context.OrderQueues
+                    .FirstOrDefaultAsync(oq => oq.OrderId == orderId && !oq.IsResolved, cancellationToken);
+
+                if (pendingQueue is not null)
+                {
+                    pendingQueue.IsResolved = true;
+                    pendingQueue.ResolvedAt = now;
+                }
+            }
+            else
+            {
+                // Vẫn đang thiếu vai trò còn lại, cập nhật Queue với lý do tương ứng
+                var missingStaff = !hasStaff && staffCapacity is null;
+                var missingMerch = !hasMerch && merchCapacity is null;
+                var queueReason = await BuildQueueReasonAsync(
+                    missingStaff, staffCapacity, missingMerch, merchCapacity, cancellationToken);
+                await UpsertQueueEntryAsync(orderId, queueReason, now, cancellationToken);
             }
 
             await _context.SaveChangesAsync(cancellationToken);
@@ -628,7 +641,7 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
             from o in _context.Orders
             join s in _context.StatusOrders on o.StatusId equals s.StatusId
             where !o.IsDeleted
-                  && o.PaymentStatus == "PAID"
+                  && (o.PaymentStatus == "PAID" || o.PaymentStatus == "COD_PENDING")
                   && operationalStatuses.Contains(s.StatusName)
                   && (
                       !_context.OrderAssignments.Any(oa => oa.OrderId == o.OrderId && oa.IsActive && oa.RoleId == StaffRoleId)
