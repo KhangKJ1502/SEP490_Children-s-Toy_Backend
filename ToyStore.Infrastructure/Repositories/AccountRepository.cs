@@ -323,6 +323,11 @@ public class AccountRepository : IAccountRepository
         IReadOnlyCollection<int> accountIds,
         CancellationToken cancellationToken)
     {
+        var cases = await _context.CustomerDeliveryAbuseCases
+            .AsNoTracking()
+            .Where(x => accountIds.Contains(x.AccountId))
+            .ToDictionaryAsync(x => x.AccountId, cancellationToken);
+
         var suspiciousOrders = await _context.Orders
             .AsNoTracking()
             .Where(o => accountIds.Contains(o.AccountId)
@@ -340,19 +345,60 @@ public class AccountRepository : IAccountRepository
             })
             .ToListAsync(cancellationToken);
 
-        return suspiciousOrders
+        var summaries = suspiciousOrders
             .GroupBy(o => o.AccountId)
             .Select(g =>
             {
-                var lastOrder = g.OrderByDescending(o => o.OrderDate).First();
+                var scopedOrders = cases.TryGetValue(g.Key, out var abuseCase) && abuseCase.CountingFrom.HasValue
+                    ? g.Where(o => o.OrderDate >= abuseCase.CountingFrom.Value).ToList()
+                    : g.ToList();
+
+                if (scopedOrders.Count == 0 && abuseCase is { Status: "NORMAL" })
+                {
+                    return null;
+                }
+
+                if (scopedOrders.Count == 0)
+                {
+                    scopedOrders = g.ToList();
+                }
+
+                var lastOrder = scopedOrders.OrderByDescending(o => o.OrderDate).First();
                 return new CustomerDeliveryAbuseSummaryDto
                 {
                     AccountId = g.Key,
-                    SuspiciousOrderCount = g.Count(),
+                    SuspiciousOrderCount = scopedOrders.Count,
                     LastOrderDate = lastOrder.OrderDate,
-                    LastFailCode = lastOrder.LastGHNFailCode
+                    LastFailCode = lastOrder.LastGHNFailCode,
+                    PolicyStatus = abuseCase?.Status,
+                    StrictPeriodUntil = abuseCase?.StrictPeriodUntil
                 };
             })
+            .Where(x => x is not null)
+            .Cast<CustomerDeliveryAbuseSummaryDto>()
             .ToList();
+
+        foreach (var abuseCase in cases.Values)
+        {
+            if (summaries.Any(x => x.AccountId == abuseCase.AccountId))
+            {
+                continue;
+            }
+
+            if (abuseCase.Status is not "NORMAL")
+            {
+                summaries.Add(new CustomerDeliveryAbuseSummaryDto
+                {
+                    AccountId = abuseCase.AccountId,
+                    SuspiciousOrderCount = abuseCase.SuspiciousOrderCount,
+                    LastOrderDate = abuseCase.LastSuspiciousOrderDate,
+                    LastFailCode = abuseCase.LastGHNFailCode,
+                    PolicyStatus = abuseCase.Status,
+                    StrictPeriodUntil = abuseCase.StrictPeriodUntil
+                });
+            }
+        }
+
+        return summaries;
     }
 }

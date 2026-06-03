@@ -113,12 +113,6 @@ public partial class Account
 
     public virtual ICollection<StaffReviewProductReply> StaffReviewProductReplies { get; set; } = new List<StaffReviewProductReply>();
 
-    public virtual ICollection<UserBlockHistory> UserBlockHistoryAccounts { get; set; } = new List<UserBlockHistory>();
-
-    public virtual ICollection<UserBlockHistory> UserBlockHistoryBlockedByNavigations { get; set; } = new List<UserBlockHistory>();
-
-    public virtual ICollection<UserBlockHistory> UserBlockHistoryUnblockedByNavigations { get; set; } = new List<UserBlockHistory>();
-
     public virtual ICollection<UserProductScore> UserProductScores { get; set; } = new List<UserProductScore>();
 
     public virtual ICollection<VoucherUsageLog> VoucherUsageLogs { get; set; } = new List<VoucherUsageLog>();

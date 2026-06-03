@@ -18,6 +18,10 @@ public class CustomerListDto
 
     public int SuspiciousDeliveryFailOrderCount { get; set; }
 
+    public bool IsCodRestricted { get; set; }
+
+    public bool IsManualBlockRecommended { get; set; }
+
     public string? LastSuspiciousGHNFailCode { get; set; }
 
     public DateTime? LastSuspiciousOrderDate { get; set; }

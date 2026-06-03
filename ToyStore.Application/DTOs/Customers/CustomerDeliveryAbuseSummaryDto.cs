@@ -9,4 +9,8 @@ public class CustomerDeliveryAbuseSummaryDto
     public string? LastFailCode { get; set; }
 
     public DateTime? LastOrderDate { get; set; }
+
+    public string? PolicyStatus { get; set; }
+
+    public DateTime? StrictPeriodUntil { get; set; }
 }

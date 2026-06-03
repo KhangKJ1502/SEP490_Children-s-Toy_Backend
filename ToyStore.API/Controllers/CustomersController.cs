@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using ToyStore.API.Extensions;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Customers;
@@ -11,6 +12,7 @@ namespace ToyStore.API.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Roles = "Admin")]
 public class CustomersController : ControllerBase
 {
     private readonly ICustomerService _customerService;
@@ -65,6 +67,16 @@ public class CustomersController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var result = await _customerService.UpdateCustomerAsync(accountId, dto, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpPost("{accountId:int}/delivery-abuse/block")]
+    public async Task<ActionResult<CustomerDetailDto>> BlockCustomerForDeliveryAbuse(
+        [FromRoute] int accountId,
+        [FromBody] ManualBlockCustomerDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _customerService.BlockCustomerForDeliveryAbuseAsync(accountId, dto, cancellationToken);
         return result.ToActionResult();
     }
 }

@@ -22,8 +22,6 @@ public partial class SEP490ToyStoreContext : DbContext
 
     public virtual DbSet<BackgroundJob> BackgroundJobs { get; set; }
 
-    public virtual DbSet<BlockReason> BlockReasons { get; set; }
-
     public virtual DbSet<BlogCategory> BlogCategories { get; set; }
 
     public virtual DbSet<BlogPost> BlogPosts { get; set; }
@@ -155,8 +153,6 @@ public partial class SEP490ToyStoreContext : DbContext
     public virtual DbSet<Template> Templates { get; set; }
 
     public virtual DbSet<TrendingProduct> TrendingProducts { get; set; }
-
-    public virtual DbSet<UserBlockHistory> UserBlockHistories { get; set; }
 
     public virtual DbSet<UserProductScore> UserProductScores { get; set; }
 
@@ -324,21 +320,6 @@ public partial class SEP490ToyStoreContext : DbContext
                 .IsUnicode(false);
             entity.Property(e => e.LastRunTime).HasPrecision(0);
             entity.Property(e => e.NextRunTime).HasPrecision(0);
-        });
-
-        modelBuilder.Entity<BlockReason>(entity =>
-        {
-            entity.HasKey(e => e.BlockReasonId).HasName("PK__BlockRea__8F5DFA9632AB4BD3");
-
-            entity.Property(e => e.BlockReasonId)
-                .ValueGeneratedOnAdd()
-                .HasColumnName("BlockReasonID");
-            entity.Property(e => e.Content).HasMaxLength(150);
-            entity.Property(e => e.CreatedAt)
-                .HasPrecision(0)
-                .HasDefaultValueSql("(getdate())");
-            entity.Property(e => e.Description).HasMaxLength(255);
-            entity.Property(e => e.UpdatedAt).HasPrecision(0);
         });
 
         modelBuilder.Entity<BlogCategory>(entity =>
@@ -2507,49 +2488,6 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasForeignKey(d => d.ProductId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Trending_Products");
-        });
-
-        modelBuilder.Entity<UserBlockHistory>(entity =>
-        {
-            entity.HasKey(e => e.BlockId).HasName("PK__UserBloc__144215117FE0AB63");
-
-            entity.ToTable("UserBlockHistory");
-
-            entity.HasIndex(e => new { e.BlockedUntil, e.AccountId }, "IX_UserBlockHistory_PendingUnblock").HasFilter("([UnblockedAt] IS NULL)");
-
-            entity.Property(e => e.BlockId).HasColumnName("BlockID");
-            entity.Property(e => e.AccountId).HasColumnName("AccountID");
-            entity.Property(e => e.BlockReasonId).HasColumnName("BlockReasonID");
-            entity.Property(e => e.BlockedAt)
-                .HasPrecision(0)
-                .HasDefaultValueSql("(getdate())");
-            entity.Property(e => e.BlockedUntil).HasPrecision(0);
-            entity.Property(e => e.Note).HasMaxLength(500);
-            entity.Property(e => e.UnblockedAt).HasPrecision(0);
-            entity.Property(e => e.UnblockedByJobId).HasColumnName("UnblockedByJobID");
-            entity.Property(e => e.UpdatedAt).HasPrecision(0);
-
-            entity.HasOne(d => d.Account).WithMany(p => p.UserBlockHistoryAccounts)
-                .HasForeignKey(d => d.AccountId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_UserBlockHistory_Account");
-
-            entity.HasOne(d => d.BlockReason).WithMany(p => p.UserBlockHistories)
-                .HasForeignKey(d => d.BlockReasonId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_UserBlockHistory_BlockReasons");
-
-            entity.HasOne(d => d.BlockedByNavigation).WithMany(p => p.UserBlockHistoryBlockedByNavigations)
-                .HasForeignKey(d => d.BlockedBy)
-                .HasConstraintName("FK_UserBlockHistory_BlockedBy");
-
-            entity.HasOne(d => d.UnblockedByNavigation).WithMany(p => p.UserBlockHistoryUnblockedByNavigations)
-                .HasForeignKey(d => d.UnblockedBy)
-                .HasConstraintName("FK_UserBlockHistory_UnblockedBy");
-
-            entity.HasOne(d => d.UnblockedByJob).WithMany(p => p.UserBlockHistories)
-                .HasForeignKey(d => d.UnblockedByJobId)
-                .HasConstraintName("FK_UserBlockHistory_BackgroundJobs");
         });
 
         modelBuilder.Entity<UserProductScore>(entity =>
