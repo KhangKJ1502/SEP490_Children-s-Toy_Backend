@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ToyStore.Application.DTOs.Customers;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Domain.Entities;
 using ToyStore.Infrastructure.Data;
@@ -9,6 +10,14 @@ public class AccountRepository : IAccountRepository
 {
     private const byte StaffRoleId = 3;
     private const byte MerchandiseRoleId = 4;
+    private static readonly string[] DeliveryAbuseFailCodes =
+    {
+        "GHN-DFC1A2",
+        "GHN-DFC1A7",
+        "GHN-DCD1A5",
+        "GHN-DCD0A8",
+        "GHN-DCD1A1"
+    };
 
     private readonly SEP490ToyStoreContext _context;
 
@@ -298,4 +307,52 @@ public class AccountRepository : IAccountRepository
             .CountAsync(cancellationToken);
     }
 
+    public Task<List<CustomerDeliveryAbuseSummaryDto>> GetDeliveryAbuseSummariesAsync(
+        IReadOnlyCollection<int> accountIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (accountIds.Count == 0)
+        {
+            return Task.FromResult(new List<CustomerDeliveryAbuseSummaryDto>());
+        }
+
+        return GetDeliveryAbuseSummariesCoreAsync(accountIds, cancellationToken);
+    }
+
+    private async Task<List<CustomerDeliveryAbuseSummaryDto>> GetDeliveryAbuseSummariesCoreAsync(
+        IReadOnlyCollection<int> accountIds,
+        CancellationToken cancellationToken)
+    {
+        var suspiciousOrders = await _context.Orders
+            .AsNoTracking()
+            .Where(o => accountIds.Contains(o.AccountId)
+                     && !o.IsDeleted
+                     && o.DeliveryFailCount >= 3
+                     && o.PaymentMethod == "SHIP_COD"
+                     && o.PaymentStatus != "PAID"
+                     && o.LastGHNFailCode != null
+                     && DeliveryAbuseFailCodes.Contains(o.LastGHNFailCode))
+            .Select(o => new
+            {
+                o.AccountId,
+                o.OrderDate,
+                o.LastGHNFailCode
+            })
+            .ToListAsync(cancellationToken);
+
+        return suspiciousOrders
+            .GroupBy(o => o.AccountId)
+            .Select(g =>
+            {
+                var lastOrder = g.OrderByDescending(o => o.OrderDate).First();
+                return new CustomerDeliveryAbuseSummaryDto
+                {
+                    AccountId = g.Key,
+                    SuspiciousOrderCount = g.Count(),
+                    LastOrderDate = lastOrder.OrderDate,
+                    LastFailCode = lastOrder.LastGHNFailCode
+                };
+            })
+            .ToList();
+    }
 }

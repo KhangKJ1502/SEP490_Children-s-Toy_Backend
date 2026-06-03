@@ -64,6 +64,7 @@ public class CustomerService : ICustomerService
             cancellationToken);
 
         var mappedItems = _mapper.Map<List<CustomerListDto>>(customers);
+        await EnrichDeliveryAbuseSummariesAsync(mappedItems, cancellationToken);
         var response = new PaginatedResponse<CustomerListDto>(mappedItems, totalCount, pageNumber, pageSize);
         return Result<PaginatedResponse<CustomerListDto>>.Success(response);
     }
@@ -83,7 +84,9 @@ public class CustomerService : ICustomerService
             return Result<CustomerDetailDto>.NotFound("Customer", accountId);
         }
 
-        return Result<CustomerDetailDto>.Success(_mapper.Map<CustomerDetailDto>(customer));
+        var dto = _mapper.Map<CustomerDetailDto>(customer);
+        await EnrichDeliveryAbuseSummaryAsync(dto, cancellationToken);
+        return Result<CustomerDetailDto>.Success(dto);
     }
 
     public async Task<Result<CustomerDetailDto>> UpdateCustomerAsync(
@@ -130,8 +133,11 @@ public class CustomerService : ICustomerService
                 return Result<CustomerDetailDto>.NotFound("Customer", accountId);
             }
 
+            var updatedDto = _mapper.Map<CustomerDetailDto>(updated);
+            await EnrichDeliveryAbuseSummaryAsync(updatedDto, cancellationToken);
+
             _logger.LogInformation("Customer {AccountId} status updated to {IsActive}.", accountId, nextIsActive);
-            return Result<CustomerDetailDto>.Success(_mapper.Map<CustomerDetailDto>(updated));
+            return Result<CustomerDetailDto>.Success(updatedDto);
         }
         catch (Exception ex)
         {
@@ -149,5 +155,46 @@ public class CustomerService : ICustomerService
         }
 
         return value.Trim();
+    }
+
+    private async Task EnrichDeliveryAbuseSummariesAsync(
+        List<CustomerListDto> customers,
+        CancellationToken cancellationToken)
+    {
+        var accountIds = customers.Select(x => x.AccountId).ToArray();
+        var summaries = await _unitOfWork.Accounts.GetDeliveryAbuseSummariesAsync(accountIds, cancellationToken);
+        var summaryByAccountId = summaries.ToDictionary(x => x.AccountId);
+
+        foreach (var customer in customers)
+        {
+            if (!summaryByAccountId.TryGetValue(customer.AccountId, out var summary))
+            {
+                continue;
+            }
+
+            customer.SuspiciousDeliveryFailOrderCount = summary.SuspiciousOrderCount;
+            customer.IsSuspiciousDeliveryAbuse = summary.SuspiciousOrderCount >= 3;
+            customer.LastSuspiciousGHNFailCode = summary.LastFailCode;
+            customer.LastSuspiciousOrderDate = summary.LastOrderDate;
+        }
+    }
+
+    private async Task EnrichDeliveryAbuseSummaryAsync(
+        CustomerDetailDto customer,
+        CancellationToken cancellationToken)
+    {
+        var summaries = await _unitOfWork.Accounts.GetDeliveryAbuseSummariesAsync(
+            new[] { customer.AccountId },
+            cancellationToken);
+        var summary = summaries.FirstOrDefault();
+        if (summary is null)
+        {
+            return;
+        }
+
+        customer.SuspiciousDeliveryFailOrderCount = summary.SuspiciousOrderCount;
+        customer.IsSuspiciousDeliveryAbuse = summary.SuspiciousOrderCount >= 3;
+        customer.LastSuspiciousGHNFailCode = summary.LastFailCode;
+        customer.LastSuspiciousOrderDate = summary.LastOrderDate;
     }
 }
