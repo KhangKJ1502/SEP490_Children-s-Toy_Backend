@@ -2625,6 +2625,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.HasOne(d => d.CreatedByNavigation).WithMany(p => p.Vouchers)
                 .HasForeignKey(d => d.CreatedBy)
+                .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Vouchers_Accounts");
         });
 

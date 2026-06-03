@@ -745,7 +745,7 @@ GO
 ============================================= */
 CREATE TABLE [Vouchers] (
     [VoucherID]          INT IDENTITY(1,1) PRIMARY KEY,
-    [CreatedBy]          INT NULL,
+    [CreatedBy]          INT NOT NULL,
     [VoucherCode]        VARCHAR(30) NOT NULL,
     [VoucherName]        NVARCHAR(255) NOT NULL,
     [VoucherDescription] NVARCHAR(255) NOT NULL,
@@ -904,6 +904,7 @@ GO
 
 -- Hàng đợi các yêu cầu sinh nội dung AI
 -- Background job đọc từ bảng này theo Priority DESC, RequestedAt ASC
+-- Sau khi xử lý xong, kết quả được lưu vào AIBlogGenerationHistory
 CREATE TABLE [AIBlogQueue] (
     [QueueID] INT IDENTITY(1,1) PRIMARY KEY,
     [BlogPostID] INT NOT NULL,
@@ -935,8 +936,6 @@ CREATE TABLE [AIBlogQueue] (
         FOREIGN KEY ([TemplateID]) REFERENCES [AIPromptTemplates]([TemplateID])
 );
 GO
-
-
 
 /* =============================================
    7. REVIEWS & REACTIONS (+ AI MODERATION)
@@ -1363,6 +1362,19 @@ CREATE NONCLUSTERED INDEX [IX_BCVC_Banned]
     -- dùng cho cả: Admin lọc danh sách + Job định kỳ check hết hạn
 GO
 
+CREATE TABLE [dbo].[BlogPostReactions]
+    (
+        [ReactionPostID] INT IDENTITY(1,1) PRIMARY KEY,
+        [BlogPostID]     INT NOT NULL,
+        [AccountID]      INT NOT NULL,
+        [ReactionTypeID] INT NOT NULL,
+        [CreatedAt]      DATETIME2(0) NOT NULL CONSTRAINT [DF_BlogPostReactions_CreatedAt] DEFAULT (GETDATE()),
+        CONSTRAINT [FK_BlogPostReactions_BlogPosts] FOREIGN KEY ([BlogPostID]) REFERENCES [dbo].[BlogPosts]([BlogPostID]),
+        CONSTRAINT [FK_BlogPostReactions_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [dbo].[Accounts]([AccountID]),
+        CONSTRAINT [FK_BlogPostReactions_ReactionTypes] FOREIGN KEY ([ReactionTypeID]) REFERENCES [dbo].[ReactionTypes]([ReactionTypeID]),
+        CONSTRAINT [UQ_BlogPostReactions_AccountPost] UNIQUE ([AccountID], [BlogPostID])
+    );
+
 CREATE TABLE [ReviewBlogReactions] (
     [ReactionBlogID] INT IDENTITY(1,1) PRIMARY KEY,
     [ReviewBlogID]   INT NOT NULL,
@@ -1376,18 +1388,6 @@ CREATE TABLE [ReviewBlogReactions] (
 );
 GO
 
-CREATE TABLE [dbo].[BlogPostReactions]
-    (
-        [ReactionPostID] INT IDENTITY(1,1) PRIMARY KEY,
-        [BlogPostID]     INT NOT NULL,
-        [AccountID]      INT NOT NULL,
-        [ReactionTypeID] INT NOT NULL,
-        [CreatedAt]      DATETIME2(0) NOT NULL CONSTRAINT [DF_BlogPostReactions_CreatedAt] DEFAULT (GETDATE()),
-        CONSTRAINT [FK_BlogPostReactions_BlogPosts] FOREIGN KEY ([BlogPostID]) REFERENCES [dbo].[BlogPosts]([BlogPostID]),
-        CONSTRAINT [FK_BlogPostReactions_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [dbo].[Accounts]([AccountID]),
-        CONSTRAINT [FK_BlogPostReactions_ReactionTypes] FOREIGN KEY ([ReactionTypeID]) REFERENCES [dbo].[ReactionTypes]([ReactionTypeID]),
-        CONSTRAINT [UQ_BlogPostReactions_AccountPost] UNIQUE ([AccountID], [BlogPostID])
-    );
 
 
 CREATE TABLE [dbo].[ReviewBlogReplyReactions]
@@ -1409,86 +1409,6 @@ CREATE TABLE [dbo].[ReviewBlogReplyReactions]
 
 CREATE INDEX [IX_BlogPostStats_Score]
 ON [BlogPostStats]([LikeCount] DESC, [CommentCount] DESC);
-GO
-
-CREATE TRIGGER [trg_BlogReaction_UpdateLikeCount]
-ON [ReviewBlogReactions] AFTER INSERT, UPDATE, DELETE
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    WITH affected AS (
-        SELECT rb.[BlogPostID]
-        FROM [ReviewBlogs] rb
-        JOIN inserted i ON rb.[ReviewBlogID] = i.[ReviewBlogID]
-        UNION
-        SELECT rb.[BlogPostID]
-        FROM [ReviewBlogs] rb
-        JOIN deleted d ON rb.[ReviewBlogID] = d.[ReviewBlogID]
-    )
-    UPDATE s
-    SET
-        s.[LikeCount] = (
-            SELECT COUNT(*)
-            FROM [ReviewBlogReactions] r
-            JOIN [ReviewBlogs] rb ON r.[ReviewBlogID] = rb.[ReviewBlogID]
-            WHERE rb.[BlogPostID] = s.[BlogPostID]
-        ),
-        s.[UpdatedAt] = GETDATE()
-    FROM [BlogPostStats] s
-    WHERE s.[BlogPostID] IN (SELECT [BlogPostID] FROM affected);
-END;
-GO
-
-CREATE TRIGGER [trg_BlogComment_UpdateCommentCount]
-ON [ReviewBlogs] AFTER INSERT, UPDATE, DELETE
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    WITH affected AS (
-        SELECT [BlogPostID] FROM inserted
-        UNION
-        SELECT [BlogPostID] FROM deleted
-    )
-    UPDATE s
-    SET
-        s.[CommentCount] = (
-            SELECT COUNT(*)
-            FROM [ReviewBlogs] rb
-            WHERE rb.[BlogPostID] = s.[BlogPostID]
-            AND rb.[IsDeleted] = 0
-        ),
-        s.[UpdatedAt] = GETDATE()
-    FROM [BlogPostStats] s
-    WHERE s.[BlogPostID] IN (SELECT [BlogPostID] FROM affected);
-END;
-GO
-
--- Lọc bài blog theo trạng thái + IsDeleted (query phổ biến nhất ở listing page)
-CREATE INDEX [IX_BlogPosts_Status_IsDeleted]
-ON [BlogPosts]([Status], [IsDeleted]);
-GO
-
--- Tìm bài sắp được publish theo lịch (background job dùng)
-CREATE INDEX [IX_BlogPosts_BlogAt]
-ON [BlogPosts]([BlogAt]);
-GO
-
--- Background job quét các bài có AI đang xử lý (AIStatus = Processing/Pending)
-CREATE INDEX [IX_BlogPosts_AIStatus]
-ON [BlogPosts]([AIStatus]);
-GO
-
-
--- Đếm reaction theo loại trên từng bài (VD: 10 Like, 5 Love)
-CREATE INDEX [IX_BlogPostReactions_Stats]
-ON [BlogPostReactions]([BlogPostID], [ReactionTypeID]);
-GO
-
--- Đếm reaction theo loại trên từng reply
-CREATE INDEX [IX_ReviewBlogReplyReactions_Stats]
-ON [ReviewBlogReplyReactions]([ReplyBlogID], [ReactionTypeID]);
 GO
 
 -- Background job lấy job AI tiếp theo cần xử lý (theo Priority + thời gian)
@@ -1524,30 +1444,6 @@ END;
 GO
 
 
--- 2. Cập nhật LikeCount khi react vào bài blog
-CREATE TRIGGER [trg_BlogPostReaction_UpdateLikeCount]
-ON [BlogPostReactions]
-AFTER INSERT, DELETE
-AS
-BEGIN
-    SET NOCOUNT ON;
-    WITH delta AS (
-        SELECT [BlogPostID], COUNT(*) AS cnt FROM inserted GROUP BY [BlogPostID]
-        UNION ALL
-        SELECT [BlogPostID], -COUNT(*) AS cnt FROM deleted GROUP BY [BlogPostID]
-    ),
-    grouped AS (
-        SELECT [BlogPostID], SUM(cnt) AS net FROM delta GROUP BY [BlogPostID]
-    )
-    UPDATE s
-    SET s.[LikeCount] = s.[LikeCount] + g.net,
-        s.[UpdatedAt] = GETDATE()
-    FROM [BlogPostStats] s
-    JOIN grouped g ON s.[BlogPostID] = g.[BlogPostID];
-END;
-GO
-
-
 -- 3. Cập nhật CommentCount khi có comment/xóa comment
 CREATE TRIGGER [trg_ReviewBlog_UpdateCommentCount]
 ON [ReviewBlogs]
@@ -1555,65 +1451,198 @@ AFTER INSERT, UPDATE, DELETE
 AS
 BEGIN
     SET NOCOUNT ON;
-    WITH delta AS (
-        SELECT [BlogPostID], 1 AS sign
-        FROM inserted
-        WHERE [IsDeleted] = 0
-          AND NOT EXISTS (SELECT 1 FROM deleted d WHERE d.[ReviewBlogID] = inserted.[ReviewBlogID])
-        UNION ALL
-        SELECT [BlogPostID], -1
-        FROM deleted
-        WHERE [IsDeleted] = 0
-          AND NOT EXISTS (SELECT 1 FROM inserted i WHERE i.[ReviewBlogID] = deleted.[ReviewBlogID])
-        UNION ALL
-        SELECT i.[BlogPostID], -1
-        FROM inserted i JOIN deleted d ON i.[ReviewBlogID] = d.[ReviewBlogID]
-        WHERE d.[IsDeleted] = 0 AND i.[IsDeleted] = 1
-        UNION ALL
-        SELECT i.[BlogPostID], 1
-        FROM inserted i JOIN deleted d ON i.[ReviewBlogID] = d.[ReviewBlogID]
-        WHERE d.[IsDeleted] = 1 AND i.[IsDeleted] = 0
-    ),
-    grouped AS (
-        SELECT [BlogPostID], SUM(sign) AS net FROM delta GROUP BY [BlogPostID]
+IF NOT EXISTS (SELECT 1 FROM inserted) AND NOT EXISTS (SELECT 1 FROM deleted) RETURN;
+
+IF EXISTS (SELECT 1 FROM inserted) AND NOT EXISTS (
+    SELECT 1 FROM inserted i
+    LEFT JOIN deleted d ON i.[ReviewBlogID] = d.[ReviewBlogID]
+    WHERE d.[ReviewBlogID] IS NULL
+       OR i.[IsDeleted]        <> d.[IsDeleted]
+       OR i.[ModerationStatus] <> d.[ModerationStatus]
+) RETURN;
+    ;WITH affected AS
+    (
+        SELECT BlogPostID FROM inserted
+        UNION
+        SELECT BlogPostID FROM deleted
     )
     UPDATE s
-    SET s.[CommentCount] = s.[CommentCount] + g.net,
-        s.[UpdatedAt] = GETDATE()
-    FROM [BlogPostStats] s
-    JOIN grouped g ON s.[BlogPostID] = g.[BlogPostID]
-    WHERE g.net <> 0;
+    SET
+        CommentCount =
+        (
+            SELECT COUNT(*)
+            FROM ReviewBlogs rb
+            WHERE rb.BlogPostID = s.BlogPostID
+              AND rb.IsDeleted = 0
+              AND rb.ModerationStatus = 'Approved'
+        )
+        +
+        (
+            SELECT COUNT(*)
+            FROM ReviewBlogReplies rbr
+            INNER JOIN ReviewBlogs rb
+                ON rb.ReviewBlogID = rbr.ReviewBlogID
+            WHERE rb.BlogPostID = s.BlogPostID
+              AND rbr.IsDeleted = 0
+              AND rbr.ModerationStatus = 'Approved'
+        ),
+        UpdatedAt = GETDATE()
+    FROM BlogPostStats s
+    WHERE s.BlogPostID IN (SELECT BlogPostID FROM affected);
 END;
 GO
 
--- 4. Tự động cập nhật IsFeatured top 5 khi BlogPostStats thay đổi
-CREATE TRIGGER [trg_BlogPostStats_UpdateFeatured]
-ON [BlogPostStats] AFTER INSERT, UPDATE
+-- =============================================
+-- HELPER: Macro tính LikeCount tuyệt đối cho 1 BlogPostID
+-- Dùng chung logic cho cả 3 trigger bên dưới
+-- =============================================
+-- LikeCount = BlogPostReactions + ReviewBlogReactions + ReviewBlogReplyReactions
+-- Không lọc ModerationStatus vì reaction không qua kiểm duyệt
+
+-- =============================================
+-- TRIGGER 1: React vào bài viết
+-- =============================================
+CREATE TRIGGER [trg_BlogPostReaction_UpdateLikeCount]
+ON [BlogPostReactions]
+AFTER INSERT, DELETE
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- Reset toàn bộ
+    WITH affected AS (
+        SELECT [BlogPostID] FROM inserted
+        UNION
+        SELECT [BlogPostID] FROM deleted
+    )
+    UPDATE s
+    SET s.[LikeCount] = (
+            -- React vào bài
+            SELECT COUNT(*) FROM [BlogPostReactions] r
+            WHERE r.[BlogPostID] = s.[BlogPostID]
+        ) + (
+            -- React vào comment thuộc bài
+            SELECT COUNT(*) FROM [ReviewBlogReactions] r
+            JOIN [ReviewBlogs] rb ON rb.[ReviewBlogID] = r.[ReviewBlogID]
+            WHERE rb.[BlogPostID] = s.[BlogPostID]
+        ) + (
+            -- React vào reply thuộc comment thuộc bài
+            SELECT COUNT(*) FROM [ReviewBlogReplyReactions] r
+            JOIN [ReviewBlogReplies] rbr ON rbr.[ReplyBlogID] = r.[ReplyBlogID]
+            JOIN [ReviewBlogs] rb ON rb.[ReviewBlogID] = rbr.[ReviewBlogID]
+            WHERE rb.[BlogPostID] = s.[BlogPostID]
+        ),
+        s.[UpdatedAt] = GETDATE()
+    FROM [BlogPostStats] s
+    WHERE s.[BlogPostID] IN (SELECT [BlogPostID] FROM affected);
+END;
+GO
+
+-- =============================================
+-- TRIGGER 2: React vào comment
+-- =============================================
+CREATE TRIGGER [trg_ReviewBlogReaction_UpdateLikeCount]
+ON [ReviewBlogReactions]
+AFTER INSERT, DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    WITH affected AS (
+        SELECT rb.[BlogPostID]
+        FROM inserted i
+        JOIN [ReviewBlogs] rb ON rb.[ReviewBlogID] = i.[ReviewBlogID]
+        UNION
+        SELECT rb.[BlogPostID]
+        FROM deleted d
+        JOIN [ReviewBlogs] rb ON rb.[ReviewBlogID] = d.[ReviewBlogID]
+    )
+    UPDATE s
+    SET s.[LikeCount] = (
+            SELECT COUNT(*) FROM [BlogPostReactions] r
+            WHERE r.[BlogPostID] = s.[BlogPostID]
+        ) + (
+            SELECT COUNT(*) FROM [ReviewBlogReactions] r
+            JOIN [ReviewBlogs] rb ON rb.[ReviewBlogID] = r.[ReviewBlogID]
+            WHERE rb.[BlogPostID] = s.[BlogPostID]
+        ) + (
+            SELECT COUNT(*) FROM [ReviewBlogReplyReactions] r
+            JOIN [ReviewBlogReplies] rbr ON rbr.[ReplyBlogID] = r.[ReplyBlogID]
+            JOIN [ReviewBlogs] rb ON rb.[ReviewBlogID] = rbr.[ReviewBlogID]
+            WHERE rb.[BlogPostID] = s.[BlogPostID]
+        ),
+        s.[UpdatedAt] = GETDATE()
+    FROM [BlogPostStats] s
+    WHERE s.[BlogPostID] IN (SELECT [BlogPostID] FROM affected);
+END;
+GO
+
+-- =============================================
+-- TRIGGER 3: React vào reply
+-- =============================================
+CREATE TRIGGER [trg_ReviewBlogReplyReaction_UpdateLikeCount]
+ON [ReviewBlogReplyReactions]
+AFTER INSERT, DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    WITH affected AS (
+        SELECT rb.[BlogPostID]
+        FROM inserted i
+        JOIN [ReviewBlogReplies] rbr ON rbr.[ReplyBlogID] = i.[ReplyBlogID]
+        JOIN [ReviewBlogs] rb ON rb.[ReviewBlogID] = rbr.[ReviewBlogID]
+        UNION
+        SELECT rb.[BlogPostID]
+        FROM deleted d
+        JOIN [ReviewBlogReplies] rbr ON rbr.[ReplyBlogID] = d.[ReplyBlogID]
+        JOIN [ReviewBlogs] rb ON rb.[ReviewBlogID] = rbr.[ReviewBlogID]
+    )
+    UPDATE s
+    SET s.[LikeCount] = (
+            SELECT COUNT(*) FROM [BlogPostReactions] r
+            WHERE r.[BlogPostID] = s.[BlogPostID]
+        ) + (
+            SELECT COUNT(*) FROM [ReviewBlogReactions] r
+            JOIN [ReviewBlogs] rb ON rb.[ReviewBlogID] = r.[ReviewBlogID]
+            WHERE rb.[BlogPostID] = s.[BlogPostID]
+        ) + (
+            SELECT COUNT(*) FROM [ReviewBlogReplyReactions] r
+            JOIN [ReviewBlogReplies] rbr ON rbr.[ReplyBlogID] = r.[ReplyBlogID]
+            JOIN [ReviewBlogs] rb ON rb.[ReviewBlogID] = rbr.[ReviewBlogID]
+            WHERE rb.[BlogPostID] = s.[BlogPostID]
+        ),
+        s.[UpdatedAt] = GETDATE()
+    FROM [BlogPostStats] s
+    WHERE s.[BlogPostID] IN (SELECT [BlogPostID] FROM affected);
+END;
+GO
+
+CREATE OR ALTER PROCEDURE [dbo].[SP_RecomputeFeaturedBlogs]
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET TRANSACTION ISOLATION LEVEL SERIALIZABLE; -- ✅ chống race condition
+    BEGIN TRANSACTION;
+
     UPDATE [BlogPosts]
     SET [IsFeatured] = 0
     WHERE [IsDeleted] = 0 AND [Status] = 'Published';
 
-    -- Set top 5
     WITH TopFeatured AS (
         SELECT TOP 5 bp.[BlogPostID]
         FROM [BlogPosts] bp
         JOIN [BlogPostStats] s ON bp.[BlogPostID] = s.[BlogPostID]
-        WHERE bp.[IsDeleted] = 0
-          AND bp.[Status] = 'Published'
+        WHERE bp.[IsDeleted] = 0 AND bp.[Status] = 'Published'
         ORDER BY
             (s.[LikeCount] + s.[CommentCount]) DESC,
             s.[LikeCount] DESC,
             bp.[CreatedAt] DESC
     )
-    UPDATE bp
-    SET bp.[IsFeatured] = 1
+    UPDATE bp SET bp.[IsFeatured] = 1
     FROM [BlogPosts] bp
     JOIN TopFeatured tf ON bp.[BlogPostID] = tf.[BlogPostID];
+
+    COMMIT;
 END;
 GO
 
@@ -1632,40 +1661,52 @@ AFTER INSERT, UPDATE, DELETE
 AS
 BEGIN
     SET NOCOUNT ON;
-    WITH delta AS (
-        SELECT rb.[BlogPostID], 1 AS sign
+IF NOT EXISTS (SELECT 1 FROM inserted) AND NOT EXISTS (SELECT 1 FROM deleted) RETURN;
+
+IF EXISTS (SELECT 1 FROM inserted) AND NOT EXISTS (
+    SELECT 1 FROM inserted i
+    LEFT JOIN deleted d ON i.[ReplyBlogID] = d.[ReplyBlogID]
+    WHERE d.[ReplyBlogID] IS NULL
+       OR i.[IsDeleted]        <> d.[IsDeleted]
+       OR i.[ModerationStatus] <> d.[ModerationStatus]
+) RETURN;
+    ;WITH affected AS
+    (
+        SELECT rb.BlogPostID
         FROM inserted i
-        JOIN [ReviewBlogs] rb ON rb.[ReviewBlogID] = i.[ReviewBlogID]
-        WHERE i.[IsDeleted] = 0
-          AND NOT EXISTS (SELECT 1 FROM deleted d WHERE d.[ReplyBlogID] = i.[ReplyBlogID])
-        UNION ALL
-        SELECT rb.[BlogPostID], -1
+        JOIN ReviewBlogs rb
+            ON rb.ReviewBlogID = i.ReviewBlogID
+
+        UNION
+
+        SELECT rb.BlogPostID
         FROM deleted d
-        JOIN [ReviewBlogs] rb ON rb.[ReviewBlogID] = d.[ReviewBlogID]
-        WHERE d.[IsDeleted] = 0
-          AND NOT EXISTS (SELECT 1 FROM inserted i WHERE i.[ReplyBlogID] = d.[ReplyBlogID])
-        UNION ALL
-        SELECT rb.[BlogPostID], -1
-        FROM inserted i
-        JOIN deleted d ON i.[ReplyBlogID] = d.[ReplyBlogID]
-        JOIN [ReviewBlogs] rb ON rb.[ReviewBlogID] = i.[ReviewBlogID]
-        WHERE d.[IsDeleted] = 0 AND i.[IsDeleted] = 1
-        UNION ALL
-        SELECT rb.[BlogPostID], 1
-        FROM inserted i
-        JOIN deleted d ON i.[ReplyBlogID] = d.[ReplyBlogID]
-        JOIN [ReviewBlogs] rb ON rb.[ReviewBlogID] = i.[ReviewBlogID]
-        WHERE d.[IsDeleted] = 1 AND i.[IsDeleted] = 0
-    ),
-    grouped AS (
-        SELECT [BlogPostID], SUM(sign) AS net FROM delta GROUP BY [BlogPostID]
+        JOIN ReviewBlogs rb
+            ON rb.ReviewBlogID = d.ReviewBlogID
     )
     UPDATE s
-    SET s.[CommentCount] = s.[CommentCount] + g.net,
-        s.[UpdatedAt] = GETDATE()
-    FROM [BlogPostStats] s
-    JOIN grouped g ON s.[BlogPostID] = g.[BlogPostID]
-    WHERE g.net <> 0;
+    SET
+        CommentCount =
+        (
+            SELECT COUNT(*)
+            FROM ReviewBlogs rb
+            WHERE rb.BlogPostID = s.BlogPostID
+              AND rb.IsDeleted = 0
+              AND rb.ModerationStatus = 'Approved'
+        )
+        +
+        (
+            SELECT COUNT(*)
+            FROM ReviewBlogReplies rbr
+            INNER JOIN ReviewBlogs rb
+                ON rb.ReviewBlogID = rbr.ReviewBlogID
+            WHERE rb.BlogPostID = s.BlogPostID
+              AND rbr.IsDeleted = 0
+              AND rbr.ModerationStatus = 'Approved'
+        ),
+        UpdatedAt = GETDATE()
+    FROM BlogPostStats s
+    WHERE s.BlogPostID IN (SELECT BlogPostID FROM affected);
 END;
 GO
 
@@ -1678,6 +1719,13 @@ AFTER INSERT, UPDATE
 AS
 BEGIN
     SET NOCOUNT ON;
+  -- ✅ Guard: chỉ chạy khi Status thực sự thay đổi (tránh loop với trg_AIBlogQueue_UpdateTime)
+    IF NOT EXISTS (
+        SELECT 1 FROM inserted i
+        LEFT JOIN deleted d ON i.[QueueID] = d.[QueueID]
+        WHERE d.[QueueID] IS NULL          -- INSERT mới
+           OR i.[Status] <> d.[Status]     -- hoặc Status thay đổi
+    ) RETURN;
     ;WITH affected_blog AS (
         SELECT DISTINCT [BlogPostID] FROM inserted
     ),
@@ -1723,45 +1771,20 @@ INCLUDE ([BlogPostID], [CreatedAt]);
 GO
 
 
-
--- Stored Procedure tính lại top 5 bài featured
--- Gọi thủ công hoặc qua background job định kỳ (không dùng trigger để tránh lock toàn bảng)
--- Logic: reset hết IsFeatured=0 → set top 5 theo (LikeCount + CommentCount) DESC
-CREATE OR ALTER PROCEDURE [dbo].[SP_RecomputeFeaturedBlogs]
-AS
-BEGIN
-    SET NOCOUNT ON;
-    BEGIN TRANSACTION;
-    UPDATE [BlogPosts]
-    SET [IsFeatured] = 0
-    WHERE [IsFeatured] = 1 AND [IsDeleted] = 0 AND [Status] = 'Published';
-
-    WITH TopFeatured AS (
-        SELECT TOP 5 bp.[BlogPostID]
-        FROM [BlogPosts] bp
-        JOIN [BlogPostStats] s ON bp.[BlogPostID] = s.[BlogPostID]
-        WHERE bp.[IsDeleted] = 0 AND bp.[Status] = 'Published'
-        ORDER BY (s.[LikeCount] + s.[CommentCount]) DESC,
-                  s.[LikeCount] DESC,
-                  bp.[CreatedAt] DESC
-    )
-    UPDATE bp SET bp.[IsFeatured] = 1
-    FROM [BlogPosts] bp
-    JOIN TopFeatured tf ON bp.[BlogPostID] = tf.[BlogPostID];
-    COMMIT;
-END;
-GO
-
--- Tự động set ProcessedAt và CompletedAt trên AIBlogQueue
--- ProcessedAt: set lần đầu khi status chuyển sang Processing
--- CompletedAt: set lần đầu khi status chuyển sang Completed/Failed/Cancelled
--- Dùng IS NULL để không ghi đè nếu đã có giá trị từ trước
-CREATE TRIGGER [trg_AIBlogQueue_UpdateTime]
+CREATE OR ALTER TRIGGER [trg_AIBlogQueue_UpdateTime]
 ON [AIBlogQueue]
 AFTER UPDATE
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    -- Tránh loop vì chính trigger này UPDATE UpdatedAt → kích hoạt lại
+    IF NOT EXISTS (
+        SELECT 1 FROM inserted i
+        JOIN deleted d ON i.[QueueID] = d.[QueueID]
+        WHERE i.[Status] <> d.[Status]
+    ) RETURN;
+
     UPDATE q SET
         q.[ProcessedAt] = CASE
             WHEN i.[Status] = 'Processing' AND q.[ProcessedAt] IS NULL
@@ -1775,7 +1798,6 @@ BEGIN
 END;
 GO
 
-
 /* =============================================
    8. PAYMENT & WALLET
 ============================================= */
@@ -1784,9 +1806,9 @@ CREATE TABLE [Wallets] (
     [AccountID]         INT NOT NULL UNIQUE,
     [Currency]          CHAR(3) NOT NULL DEFAULT 'VND',
     [Balance]           DECIMAL(12,0) NOT NULL DEFAULT 0 CHECK ([Balance] >= 0),
-    [UnbannedBy]        INT NULL,
     [Status]            VARCHAR(10) NOT NULL DEFAULT 'Active'
         CHECK ([Status] IN ('Active', 'Frozen')),
+    [UnbannedBy]        INT NULL,
     [LastTransactionAt] DATETIME2(0) NULL,
     [CreatedAt]         DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [UpdatedAt]         DATETIME2(0) NULL,
@@ -2963,5 +2985,4 @@ GO
 CREATE NONCLUSTERED INDEX [IX_WalletPinAttempts_Wallet]
 ON [WalletPinAttempts]([WalletID], [CreatedAt] DESC);
 GO
-
 

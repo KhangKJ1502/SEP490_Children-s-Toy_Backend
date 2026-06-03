@@ -7,7 +7,7 @@ public partial class Voucher
 {
     public int VoucherId { get; set; }
 
-    public int? CreatedBy { get; set; }
+    public int CreatedBy { get; set; }
 
     public string VoucherCode { get; set; } = null!;
 
@@ -44,7 +44,7 @@ public partial class Voucher
 
     public DateTime? UpdatedAt { get; set; }
 
-    public virtual Account? CreatedByNavigation { get; set; }
+    public virtual Account CreatedByNavigation { get; set; } = null!;
 
     public virtual ICollection<OrderVoucher> OrderVouchers { get; set; } = new List<OrderVoucher>();
 
