@@ -27,6 +27,7 @@ public class BlogService : IBlogService
     private const string RejectedStatus = "Rejected";
     private const string HiddenStatus = "Hidden";
     private const string ModerationPending = "Pending";
+    private const string ModerationProcessing = "Processing";
     private const string ModerationApproved = "Approved";
     private const string ManualReviewStatus = "ManualReview";
     private const int CommentRateLimitPerMinute = 5;
@@ -168,6 +169,8 @@ public class BlogService : IBlogService
         dto.LoveCount = summary.LoveCount;
         dto.HahaCount = summary.HahaCount;
         dto.CurrentUserReaction = summary.CurrentUserReaction;
+        dto.CommentCount = await _unitOfWork.Blogs.CountApprovedReviewsByBlogIdAsync(blogPostId, cancellationToken);
+        dto.TotalInteraction = dto.LikeCount + dto.CommentCount;
 
         return Result<BlogDetailDto>.Success(dto);
     }
@@ -629,6 +632,11 @@ public class BlogService : IBlogService
             if (parentReply == null || parentReply.ReviewBlogId != reviewBlogId)
             {
                 return Result<BlogReviewReplyDto>.Failure("VALIDATION_ERROR", "Parent reply is invalid.");
+            }
+
+            if (!string.Equals(parentReply.ModerationStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase))
+            {
+                return Result<BlogReviewReplyDto>.BusinessError("Only approved reply can be replied.");
             }
         }
 
@@ -1471,6 +1479,8 @@ public class BlogService : IBlogService
             Comment = review.Comment ?? string.Empty,
             Status = review.IsDeleted ? "Hidden" : "Visible",
             ModerationStatus = review.ModerationStatus,
+            IsHidden = review.IsHidden,
+            CanReply = CanReplyToModeratedContent(review.ModerationStatus, review.IsDeleted, review.IsHidden),
             LikeCount = GetReactionCount(counts, ReactionLike),
             LoveCount = GetReactionCount(counts, ReactionLove),
             HahaCount = GetReactionCount(counts, ReactionHaha),
@@ -1504,6 +1514,7 @@ public class BlogService : IBlogService
             Comment = reply.Comment,
             Status = reply.IsDeleted ? "Hidden" : "Visible",
             ModerationStatus = reply.ModerationStatus,
+            CanReply = CanReplyToModeratedContent(reply.ModerationStatus, reply.IsDeleted, reply.IsHidden),
             LikeCount = GetReactionCount(counts, ReactionLike),
             LoveCount = GetReactionCount(counts, ReactionLove),
             HahaCount = GetReactionCount(counts, ReactionHaha),
@@ -1794,7 +1805,12 @@ public class BlogService : IBlogService
         }
 
         var isOwner = _currentUserService.AccountId > 0 && review.AccountId == _currentUserService.AccountId;
-        return string.Equals(review.ModerationStatus, ModerationApproved, StringComparison.OrdinalIgnoreCase) || isOwner;
+        if (string.Equals(review.ModerationStatus, ModerationApproved, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return isOwner && IsOwnerVisibleModerationStatus(review.ModerationStatus);
     }
 
     private bool IsReplyVisibleToCurrentUser(ReviewBlogReply reply)
@@ -1805,7 +1821,26 @@ public class BlogService : IBlogService
         }
 
         var isOwner = _currentUserService.AccountId > 0 && reply.AccountId == _currentUserService.AccountId;
-        return string.Equals(reply.ModerationStatus, ModerationApproved, StringComparison.OrdinalIgnoreCase) || isOwner;
+        if (string.Equals(reply.ModerationStatus, ModerationApproved, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return isOwner && IsOwnerVisibleModerationStatus(reply.ModerationStatus);
+    }
+
+    private static bool IsOwnerVisibleModerationStatus(string moderationStatus)
+    {
+        return string.Equals(moderationStatus, ModerationPending, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(moderationStatus, ModerationProcessing, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(moderationStatus, ManualReviewStatus, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool CanReplyToModeratedContent(string moderationStatus, bool isDeleted, bool isHidden)
+    {
+        return !isDeleted
+            && !isHidden
+            && string.Equals(moderationStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<Result<bool>> ValidateCommentPermissionAsync(int accountId, CancellationToken cancellationToken)
