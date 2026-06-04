@@ -86,12 +86,21 @@ public class ShiftAssignmentService : IShiftAssignmentService
 
         if (string.Equals(assignResult.Result, "ASSIGNED", StringComparison.OrdinalIgnoreCase))
         {
-            if (assignResult.StaffAccountId.HasValue)
+            if (assignResult.StaffAccountId.HasValue || assignResult.MerchAccountId.HasValue)
             {
                 var orderForUpdate = await _unitOfWork.Orders.GetByIdForUpdateAsync(orderId, cancellationToken);
                 if (orderForUpdate is not null)
                 {
-                    orderForUpdate.AssignedToStaffId = assignResult.StaffAccountId.Value;
+                    if (assignResult.StaffAccountId.HasValue)
+                    {
+                        orderForUpdate.AssignedToStaffId = assignResult.StaffAccountId.Value;
+                    }
+
+                    if (assignResult.MerchAccountId.HasValue)
+                    {
+                        orderForUpdate.AssignedToMerchId = assignResult.MerchAccountId.Value;
+                    }
+
                     orderForUpdate.UpdatedAt = _timeProvider.UtcNow;
                     await _unitOfWork.SaveChangesAsync(cancellationToken);
                 }
@@ -350,12 +359,21 @@ public class ShiftAssignmentService : IShiftAssignmentService
             },
             CancellationToken.None);
 
-        if (staffSchedule.AccountId > 0)
+        if (staffSchedule.AccountId > 0 || merchSchedule.AccountId > 0)
         {
             var orderForUpdate = await _unitOfWork.Orders.GetByIdForUpdateAsync(queueEntry.OrderId, cancellationToken);
             if (orderForUpdate is not null)
             {
-                orderForUpdate.AssignedToStaffId = staffSchedule.AccountId;
+                if (staffSchedule.AccountId > 0)
+                {
+                    orderForUpdate.AssignedToStaffId = staffSchedule.AccountId;
+                }
+
+                if (merchSchedule.AccountId > 0)
+                {
+                    orderForUpdate.AssignedToMerchId = merchSchedule.AccountId;
+                }
+
                 orderForUpdate.UpdatedAt = _timeProvider.UtcNow;
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
@@ -407,12 +425,20 @@ public class ShiftAssignmentService : IShiftAssignmentService
             dto.Notes,
             cancellationToken);
 
-        if (dto.RoleId == StaffRoleId)
+        if (dto.RoleId is StaffRoleId or MerchRoleId)
         {
             var orderForUpdate = await _unitOfWork.Orders.GetByIdForUpdateAsync(orderId, cancellationToken);
             if (orderForUpdate is not null)
             {
-                orderForUpdate.AssignedToStaffId = schedule.AccountId;
+                if (dto.RoleId == StaffRoleId)
+                {
+                    orderForUpdate.AssignedToStaffId = schedule.AccountId;
+                }
+                else
+                {
+                    orderForUpdate.AssignedToMerchId = schedule.AccountId;
+                }
+
                 orderForUpdate.UpdatedAt = _timeProvider.UtcNow;
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
             }

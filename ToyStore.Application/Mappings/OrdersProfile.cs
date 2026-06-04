@@ -19,7 +19,10 @@ public class OrdersProfile : Profile
             .ForMember(d => d.CustomerName, opt => opt.MapFrom(s => s.ShippingName))
             .ForMember(d => d.CustomerPhone, opt => opt.MapFrom(s => s.ShippingPhone))
             .ForMember(d => d.AssignedToStaffName, opt => opt.MapFrom(s =>
-                s.AssignedToStaff != null ? s.AssignedToStaff.AccountName : null));
+                s.AssignedToStaff != null ? s.AssignedToStaff.AccountName : null))
+            .ForMember(d => d.AssignedToMerchId, opt => opt.MapFrom(s => s.AssignedToMerchId))
+            .ForMember(d => d.AssignedToMerchName, opt => opt.MapFrom(s =>
+                s.AssignedToMerch != null ? s.AssignedToMerch.AccountName : null));
 
         // Chi tiet don hang (admin)
         CreateMap<Order, AdminOrderDetailDto>()
@@ -31,6 +34,9 @@ public class OrdersProfile : Profile
                 s.CancelledByNavigation != null ? s.CancelledByNavigation.AccountName : null))
             .ForMember(d => d.AssignedToStaffName, opt => opt.MapFrom(s =>
                 s.AssignedToStaff != null ? s.AssignedToStaff.AccountName : null))
+            .ForMember(d => d.AssignedToMerchId, opt => opt.MapFrom(s => s.AssignedToMerchId))
+            .ForMember(d => d.AssignedToMerchName, opt => opt.MapFrom(s =>
+                s.AssignedToMerch != null ? s.AssignedToMerch.AccountName : null))
             .ForMember(d => d.Items, opt => opt.MapFrom(s => s.OrderDetails))
             .ForMember(d => d.StatusHistory, opt => opt.MapFrom(s => s.OrderStatusHistories))
             .ForMember(d => d.Shipping, opt => opt.MapFrom(s =>

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Common.Helpers;
+using ToyStore.Application.Constants;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Services;
 using ToyStore.Application.Interfaces.Services;
@@ -35,6 +36,7 @@ public class OrderRepository : IOrderRepository
         bool restrictToAssignment,
         int currentAccountId,
         byte assignmentRoleId,
+        string? assignmentScope,
         string? keyword,
         DateTime? fromDate,
         DateTime? toDate,
@@ -42,7 +44,7 @@ public class OrderRepository : IOrderRepository
     {
         var query = BuildAdminQuery(
             allowedStatusNames, statusId, statusIds, restrictToAssignment,
-            currentAccountId, assignmentRoleId, keyword, fromDate, toDate);
+            currentAccountId, assignmentRoleId, assignmentScope, keyword, fromDate, toDate);
 
         return await query
             .OrderByDescending(o => o.OrderDate)
@@ -77,6 +79,7 @@ public class OrderRepository : IOrderRepository
         bool restrictToAssignment,
         int currentAccountId,
         byte assignmentRoleId,
+        string? assignmentScope,
         string? keyword,
         DateTime? fromDate,
         DateTime? toDate,
@@ -84,7 +87,7 @@ public class OrderRepository : IOrderRepository
     {
         var query = BuildAdminQuery(
             allowedStatusNames, statusId, statusIds, restrictToAssignment,
-            currentAccountId, assignmentRoleId, keyword, fromDate, toDate);
+            currentAccountId, assignmentRoleId, assignmentScope, keyword, fromDate, toDate);
 
         return await query.CountAsync(cancellationToken);
     }
@@ -121,14 +124,27 @@ public class OrderRepository : IOrderRepository
         byte assignmentRoleId,
         CancellationToken cancellationToken = default)
     {
+        var processedStatuses = OrderStatuses.GetProcessedMilestoneStatuses(assignmentRoleId);
+
         return await BuildAdminDetailQuery()
             .Where(o => o.OrderId == orderId
                         && !o.IsDeleted
-                        && _context.OrderAssignments.Any(oa =>
-                            oa.OrderId == o.OrderId
-                            && oa.AccountId == accountId
-                            && oa.RoleId == assignmentRoleId
-                            && oa.IsActive))
+                        && (
+                            _context.OrderAssignments.Any(oa =>
+                                oa.OrderId == o.OrderId
+                                && oa.AccountId == accountId
+                                && oa.RoleId == assignmentRoleId
+                                && oa.IsActive)
+                            || (
+                                _context.OrderAssignments.Any(oa =>
+                                    oa.OrderId == o.OrderId
+                                    && oa.AccountId == accountId
+                                    && oa.RoleId == assignmentRoleId)
+                                && _context.OrderStatusHistories.Any(h =>
+                                    h.OrderId == o.OrderId
+                                    && h.ChangedBy == accountId
+                                    && h.Status != null
+                                    && processedStatuses.Contains(h.Status.StatusName)))))
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -139,6 +155,7 @@ public class OrderRepository : IOrderRepository
             .Include(o => o.Status)
             .Include(o => o.Account)
             .Include(o => o.AssignedToStaff)
+            .Include(o => o.AssignedToMerch)
             .Include(o => o.CancelledByNavigation)
             .Include(o => o.OrderDetails)
             .Include(o => o.OrderStatusHistories.OrderBy(h => h.HistoryId))
@@ -407,6 +424,7 @@ public class OrderRepository : IOrderRepository
         bool restrictToAssignment,
         int currentAccountId,
         byte assignmentRoleId,
+        string? assignmentScope,
         string? keyword,
         DateTime? fromDate,
         DateTime? toDate)
@@ -415,6 +433,7 @@ public class OrderRepository : IOrderRepository
             .AsNoTracking()
             .Include(o => o.Status)
             .Include(o => o.AssignedToStaff)
+            .Include(o => o.AssignedToMerch)
             .Include(o => o.ShippingProviderTransactions)
             .Where(o => !o.IsDeleted);
 
@@ -434,12 +453,11 @@ public class OrderRepository : IOrderRepository
 
         if (restrictToAssignment)
         {
-            query = query.Where(o => o.Status.StatusName != OrderStatuses.Completed);
-            query = query.Where(o => _context.OrderAssignments
-                .Any(oa => oa.OrderId == o.OrderId
-                         && oa.AccountId == currentAccountId
-                         && oa.RoleId == assignmentRoleId
-                         && oa.IsActive));
+            query = ApplyStaffMerchAssignmentScope(
+                query,
+                currentAccountId,
+                assignmentRoleId,
+                assignmentScope);
         }
 
         if (!string.IsNullOrWhiteSpace(keyword))
@@ -470,6 +488,46 @@ public class OrderRepository : IOrderRepository
         }
 
         return query;
+    }
+
+    private IQueryable<Order> ApplyStaffMerchAssignmentScope(
+        IQueryable<Order> query,
+        int currentAccountId,
+        byte assignmentRoleId,
+        string? assignmentScope)
+    {
+        var scope = OrderAssignmentScopes.Normalize(assignmentScope);
+        var processedStatuses = OrderStatuses.GetProcessedMilestoneStatuses(assignmentRoleId);
+        var completedTabStatuses = OrderStatuses.StaffMerchCompletedTabStatuses;
+
+        if (scope == OrderAssignmentScopes.Completed)
+        {
+            return query.Where(o =>
+                _context.OrderAssignments.Any(oa =>
+                    oa.OrderId == o.OrderId
+                    && oa.AccountId == currentAccountId
+                    && oa.RoleId == assignmentRoleId)
+                && _context.OrderStatusHistories.Any(h =>
+                    h.OrderId == o.OrderId
+                    && h.ChangedBy == currentAccountId
+                    && h.Status != null
+                    && processedStatuses.Contains(h.Status.StatusName))
+                && (
+                    !_context.OrderAssignments.Any(oa =>
+                        oa.OrderId == o.OrderId
+                        && oa.AccountId == currentAccountId
+                        && oa.RoleId == assignmentRoleId
+                        && oa.IsActive)
+                    || completedTabStatuses.Contains(o.Status.StatusName)));
+        }
+
+        return query.Where(o =>
+            o.Status.StatusName != OrderStatuses.Completed
+            && _context.OrderAssignments.Any(oa =>
+                oa.OrderId == o.OrderId
+                && oa.AccountId == currentAccountId
+                && oa.RoleId == assignmentRoleId
+                && oa.IsActive));
     }
 
     private IQueryable<Order> ApplyAdminStatusFilter(IQueryable<Order> query, IReadOnlyCollection<int> filterStatusIds)

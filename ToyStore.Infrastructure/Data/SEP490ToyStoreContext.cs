@@ -1095,6 +1095,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
             entity.Property(e => e.ActualShippingFee).HasColumnType("decimal(10, 0)");
             entity.Property(e => e.AssignedToStaffId).HasColumnName("AssignedToStaffID");
+            entity.Property(e => e.AssignedToMerchId).HasColumnName("AssignedToMerchID");
             entity.Property(e => e.CancelReason).HasMaxLength(500);
             entity.Property(e => e.CancelledAt).HasPrecision(0);
             entity.Property(e => e.CompletedAt).HasPrecision(0);
@@ -1158,6 +1159,10 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.HasOne(d => d.AssignedToStaff).WithMany(p => p.OrderAssignedToStaffs)
                 .HasForeignKey(d => d.AssignedToStaffId)
                 .HasConstraintName("FK_Orders_AssignedStaff");
+
+            entity.HasOne(d => d.AssignedToMerch).WithMany(p => p.OrderAssignedToMerchs)
+                .HasForeignKey(d => d.AssignedToMerchId)
+                .HasConstraintName("FK_Orders_AssignedMerch");
 
             entity.HasOne(d => d.CancelledByNavigation).WithMany(p => p.OrderCancelledByNavigations)
                 .HasForeignKey(d => d.CancelledBy)

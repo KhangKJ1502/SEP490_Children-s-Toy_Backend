@@ -306,7 +306,7 @@ public class OrderCustomerService : IOrderCustomerService
             return Result<string>.UnprocessableEntity("Receipt can only be confirmed after the order has been successfully delivered.");
         }
 
-        var result = await _orderLifecycle.CompleteOrderAsync(orderId, cancellationToken);
+        var result = await _orderLifecycle.CompleteOrderAsync(orderId, accountId, cancellationToken);
         if (!result.IsSuccess)
             return Result<string>.Failure(result.ErrorCode!, result.ErrorMessage!);
 

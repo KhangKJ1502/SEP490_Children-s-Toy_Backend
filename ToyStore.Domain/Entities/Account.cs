@@ -73,6 +73,8 @@ public partial class Account
 
     public virtual ICollection<Order> OrderAssignedToStaffs { get; set; } = new List<Order>();
 
+    public virtual ICollection<Order> OrderAssignedToMerchs { get; set; } = new List<Order>();
+
     public virtual ICollection<Order> OrderCancelledByNavigations { get; set; } = new List<Order>();
 
     public virtual ICollection<OrderRefund> OrderRefundApprovedByNavigations { get; set; } = new List<OrderRefund>();

@@ -52,13 +52,35 @@ public class OrderAccessService : IOrderAccessService
             return Result.Failure("FORBIDDEN", "You are not authorized to view this order.");
         }
 
-        var hasAssignment = await _unitOfWork.OrderAssignments.HasActiveAssignmentAsync(
+        var hasActiveAssignment = await _unitOfWork.OrderAssignments.HasActiveAssignmentAsync(
             orderId,
             _currentUser.AccountId,
             assignmentRoleId,
             cancellationToken);
 
-        if (!hasAssignment)
+        if (hasActiveAssignment)
+        {
+            return Result.Success();
+        }
+
+        var hasAnyAssignment = await _unitOfWork.OrderAssignments.HasAssignmentForAccountAsync(
+            orderId,
+            _currentUser.AccountId,
+            assignmentRoleId,
+            cancellationToken);
+
+        if (!hasAnyAssignment)
+        {
+            return Result.Failure("FORBIDDEN", "You are not authorized to view this order.");
+        }
+
+        var hasProcessed = await _unitOfWork.OrderAssignments.HasProcessedOrderByAssigneeAsync(
+            orderId,
+            _currentUser.AccountId,
+            assignmentRoleId,
+            cancellationToken);
+
+        if (!hasProcessed)
         {
             return Result.Failure("FORBIDDEN", "You are not authorized to view this order.");
         }
