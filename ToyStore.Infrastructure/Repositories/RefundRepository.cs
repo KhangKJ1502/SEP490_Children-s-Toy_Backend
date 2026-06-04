@@ -119,7 +119,17 @@ public class RefundRepository : IRefundRepository
             .AsNoTracking();
 
         if (!string.IsNullOrEmpty(filter.RefundStatus))
-            query = query.Where(r => r.Status.StatusName == filter.RefundStatus);
+        {
+            var statuses = filter.RefundStatus.Split(',').Select(s => s.Trim()).ToList();
+            if (statuses.Count > 1)
+            {
+                query = query.Where(r => statuses.Contains(r.Status.StatusName));
+            }
+            else
+            {
+                query = query.Where(r => r.Status.StatusName == filter.RefundStatus);
+            }
+        }
 
         if (filter.OrderId.HasValue)
             query = query.Where(r => r.OrderId == filter.OrderId.Value);
