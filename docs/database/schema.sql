@@ -476,7 +476,7 @@ CREATE TABLE [Orders] (
              CHECK ([PaymentMethod] IN ('SHIP_COD', 'SE_PAY', 'WALLET')),
     [PaymentStatus]         VARCHAR(20)   NOT NULL DEFAULT 'PENDING'
         CONSTRAINT [CK_Orders_PaymentStatus]
-        CHECK ([PaymentStatus] IN ('PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED', 'COD_PENDING','CANCELLED')),
+        CHECK ([PaymentStatus] IN ('PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED', 'PARTIALLY_REFUNDED', 'COD_PENDING','CANCELLED')),
     [PaymentCode]           VARCHAR(50)   NULL,
     [PaidAt]                DATETIME2(0)  NULL,
     [SubTotal]              DECIMAL(12,0) NOT NULL,
