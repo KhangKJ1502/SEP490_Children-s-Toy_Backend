@@ -3,6 +3,24 @@
 > **Quy táº¯c:** Entry má»›i nháº¥t náº±m TRÃŠN CÃ™NG.
 > **Cáº­p nháº­t file nÃ y** má»—i khi thay Ä‘á»•i schema (thÃªm báº£ng, cá»™t, index).
 
+## [2026-06-04] `v3.6 - Remove Voucher ImageURL`
+
+### Thay đổi
+
+| Loại | Bảng | Chi tiết |
+|---|---|---|
+| 🗑️ Xoá cột | `dbo.Vouchers` | Xoá cột `ImageURL` không còn sử dụng |
+
+### Lý do
+
+> Đơn giản hóa cấu trúc Voucher và loại bỏ thuộc tính hình ảnh không cần thiết của mã giảm giá.
+
+### Script
+
+`docs/database/changes/20260604_2028_RemoveVoucherImageUrl.sql`
+
+---
+
 ## [2026-05-26] `v3.3 - Add Refund/Return Tables`
 
 ### Thay đổi
