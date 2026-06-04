@@ -133,6 +133,18 @@ public class BlogRepository : IBlogRepository
             .ToListAsync(cancellationToken);
     }
 
+    public Task<int> CountApprovedReviewsByBlogIdAsync(int blogPostId, CancellationToken cancellationToken = default)
+    {
+        return _context.ReviewBlogs
+            .AsNoTracking()
+            .CountAsync(x =>
+                x.BlogPostId == blogPostId
+                && !x.IsDeleted
+                && !x.IsHidden
+                && x.ModerationStatus == "Approved",
+                cancellationToken);
+    }
+
     public Task<List<ReviewBlogReply>> GetRepliesByReviewIdsAsync(List<int> reviewIds, bool includeHidden, CancellationToken cancellationToken = default)
     {
         var query = _context.ReviewBlogReplies

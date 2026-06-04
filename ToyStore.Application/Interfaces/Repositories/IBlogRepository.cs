@@ -74,6 +74,8 @@ public interface IBlogRepository
 
     Task<List<ReviewBlog>> GetReviewsByBlogIdAsync(int blogPostId, bool includeHidden, CancellationToken cancellationToken = default);
 
+    Task<int> CountApprovedReviewsByBlogIdAsync(int blogPostId, CancellationToken cancellationToken = default);
+
     Task<List<ReviewBlogReply>> GetRepliesByReviewIdsAsync(List<int> reviewIds, bool includeHidden, CancellationToken cancellationToken = default);
 
     Task<ReviewBlog?> GetReviewByIdAsync(int reviewBlogId, CancellationToken cancellationToken = default);
