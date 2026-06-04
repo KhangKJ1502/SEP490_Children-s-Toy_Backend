@@ -139,6 +139,7 @@ public class RefundRepository : IRefundRepository
         if (filter.AssignedToMe && filter.AssignedAccountId.HasValue)
         {
             query = query.Where(r => r.Order.AssignedToStaffId == filter.AssignedAccountId.Value ||
+                r.Order.AssignedToMerchId == filter.AssignedAccountId.Value ||
                 _context.Set<OrderAssignment>().Any(a => a.OrderId == r.OrderId && a.AccountId == filter.AssignedAccountId.Value && a.IsActive));
         }
 
@@ -189,9 +190,10 @@ public class RefundRepository : IRefundRepository
                 CreatedAt = r.CreatedAt,
                 AssignedToStaffName = r.Order.AssignedToStaff != null ? r.Order.AssignedToStaff.AccountName : null,
                 AssignedToMerchName = _context.Set<OrderAssignment>()
-                    .Where(a => a.OrderId == r.OrderId && a.RoleId == 4 && a.IsActive) // 4 is Merchandise assignment role in OrderAccessRoles.cs
+                    .Where(a => a.OrderId == r.OrderId && a.RoleId == 4 && a.IsActive)
                     .Select(a => a.Account.AccountName)
                     .FirstOrDefault()
+                    ?? (r.Order.AssignedToMerch != null ? r.Order.AssignedToMerch.AccountName : null)
             })
             .ToListAsync(cancellationToken);
 
@@ -203,6 +205,8 @@ public class RefundRepository : IRefundRepository
         return await _dbSet
             .Include(r => r.Status)
             .Include(r => r.Order).ThenInclude(o => o.Status)
+            .Include(r => r.Order).ThenInclude(o => o.AssignedToStaff)
+            .Include(r => r.Order).ThenInclude(o => o.AssignedToMerch)
             .Include(r => r.Order).ThenInclude(o => o.ShippingProviderTransactions).ThenInclude(t => t.ShippingStatusHistories)
             .Include(r => r.RefundReason)
             .Include(r => r.Customer)

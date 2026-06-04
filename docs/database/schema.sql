@@ -450,6 +450,7 @@ CREATE TABLE [Orders] (
     [AccountID]             INT           NOT NULL,
     [StatusID]              TINYINT       NOT NULL,
     [AssignedToStaffID]     INT           NULL,
+    [AssignedToMerchID]     INT           NULL,
     [OrderCode]             VARCHAR(30)   NOT NULL UNIQUE,
     [ShippingOrderCode]     VARCHAR(50)   NULL,
     [ShippingName]          NVARCHAR(100) NOT NULL,
@@ -492,6 +493,7 @@ CREATE TABLE [Orders] (
     CONSTRAINT FK_Orders_Accounts      FOREIGN KEY ([AccountID])         REFERENCES [Accounts]([AccountID]),
     CONSTRAINT FK_Orders_StatusOrders  FOREIGN KEY ([StatusID])          REFERENCES [StatusOrders]([StatusID]),
     CONSTRAINT FK_Orders_AssignedStaff FOREIGN KEY ([AssignedToStaffID]) REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT FK_Orders_AssignedMerch FOREIGN KEY ([AssignedToMerchID]) REFERENCES [Accounts]([AccountID]),
     CONSTRAINT FK_Orders_CancelledBy   FOREIGN KEY ([CancelledBy])       REFERENCES [Accounts]([AccountID]),
     CONSTRAINT CK_Orders_Amounts CHECK (
         [SubTotal] >= 0 AND [EstimatedShippingFee] >= 0

@@ -2,9 +2,8 @@ using AutoMapper;
 using FluentValidation;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using ToyStore.Application.Common.Models;
+using ToyStore.Application.Common.Helpers;
 using ToyStore.Application.Constants;
-using ToyStore.Domain.Entities;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Checkouts;
 using ToyStore.Application.DTOs.Orders;
@@ -12,7 +11,7 @@ using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
-using ToyStore.Application.Common.Helpers;
+using ToyStore.Domain.Entities;
 using ToyStore.Infrastructure.Options;
 
 namespace ToyStore.Infrastructure.Services;
@@ -39,9 +38,9 @@ public class AdminOrderService : IAdminOrderService
     private readonly IOrderAccessService _orderAccess;
 
     // Role names khop voi ClaimTypes.Role trong JWT
-    private const string RoleStaff       = "Staff";
+    private const string RoleStaff = "Staff";
     private const string RoleMerchandise = "Merchandise";
-    private const string RoleAdmin       = "Admin";
+    private const string RoleAdmin = "Admin";
 
     public AdminOrderService(
         IUnitOfWork unitOfWork,
@@ -59,20 +58,20 @@ public class AdminOrderService : IAdminOrderService
         IOrderLifecycleService orderLifecycle,
         IOrderAccessService orderAccess)
     {
-        _unitOfWork      = unitOfWork;
-        _currentUser     = currentUser;
-        _mapper          = mapper;
-        _ghnClient       = ghnClient;
-        _ghnOptions      = ghnOptions.Value;
-        _shopAddress     = shopAddress.Value;
-        _shipValidator   = shipValidator;
+        _unitOfWork = unitOfWork;
+        _currentUser = currentUser;
+        _mapper = mapper;
+        _ghnClient = ghnClient;
+        _ghnOptions = ghnOptions.Value;
+        _shopAddress = shopAddress.Value;
+        _shipValidator = shipValidator;
         _cancelValidator = cancelValidator;
         _assignValidator = assignValidator;
-        _eventPublisher  = eventPublisher;
-        _logger          = logger;
-        _timeProvider    = timeProvider;
-        _orderLifecycle  = orderLifecycle;
-        _orderAccess     = orderAccess;
+        _eventPublisher = eventPublisher;
+        _logger = logger;
+        _timeProvider = timeProvider;
+        _orderLifecycle = orderLifecycle;
+        _orderAccess = orderAccess;
     }
 
     // ── UC1: Danh sach don hang ───────────────────────────────────────────────
@@ -96,6 +95,8 @@ public class AdminOrderService : IAdminOrderService
             ? (IReadOnlyCollection<int>?)query.StatusIds
             : null;
 
+        var assignmentScope = restrictToAssignment ? query.AssignmentScope : null;
+
         var items = await _unitOfWork.Orders.GetAdminPagedAsync(
             allowedStatuses,
             pageNumber,
@@ -105,6 +106,7 @@ public class AdminOrderService : IAdminOrderService
             restrictToAssignment,
             _currentUser.AccountId,
             assignmentRoleId,
+            assignmentScope,
             query.Keyword,
             query.FromDate,
             query.ToDate,
@@ -117,6 +119,7 @@ public class AdminOrderService : IAdminOrderService
             restrictToAssignment,
             _currentUser.AccountId,
             assignmentRoleId,
+            assignmentScope,
             query.Keyword,
             query.FromDate,
             query.ToDate,
@@ -129,11 +132,12 @@ public class AdminOrderService : IAdminOrderService
             var orderIds = dtos.Select(x => x.OrderId).ToList();
             var activeAssignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsForOrdersAsync(orderIds, cancellationToken);
 
-            foreach (var dto in dtos)
+            for (var i = 0; i < dtos.Count; i++)
             {
                 ApplyAssignmentNamesToDto(
-                    dto,
-                    activeAssignments.Where(a => a.OrderId == dto.OrderId));
+                    dtos[i],
+                    items[i],
+                    activeAssignments.Where(a => a.OrderId == dtos[i].OrderId));
             }
         }
 
@@ -169,7 +173,7 @@ public class AdminOrderService : IAdminOrderService
         var dto = _mapper.Map<AdminOrderDetailDto>(order);
 
         var activeAssignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(orderId, cancellationToken);
-        ApplyAssignmentNamesToDto(dto, activeAssignments);
+        ApplyAssignmentNamesToDto(dto, order, activeAssignments);
 
         if (!_orderAccess.IsPrivileged(_currentUser.RoleId))
         {
@@ -220,16 +224,16 @@ public class AdminOrderService : IAdminOrderService
         try
         {
             order.AssignedToStaffId = _currentUser.AccountId;
-            order.StatusId          = confirmedId;
-            order.ConfirmedAt       = now;
-            order.UpdatedAt         = now;
+            order.StatusId = confirmedId;
+            order.ConfirmedAt = now;
+            order.UpdatedAt = now;
 
             await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
             {
-                OrderId   = order.OrderId,
-                StatusId  = confirmedId,
+                OrderId = order.OrderId,
+                StatusId = confirmedId,
                 ChangedBy = _currentUser.AccountId,
-                Note      = request.Note,
+                Note = request.Note,
                 CreatedAt = now
             }, cancellationToken);
 
@@ -246,8 +250,8 @@ public class AdminOrderService : IAdminOrderService
 
             return Result<ConfirmOrderResponseDto>.Success(new ConfirmOrderResponseDto
             {
-                OrderId     = order.OrderId,
-                StatusName  = OrderStatuses.Confirmed,
+                OrderId = order.OrderId,
+                StatusName = OrderStatuses.Confirmed,
                 ConfirmedAt = now
             });
         }
@@ -292,16 +296,19 @@ public class AdminOrderService : IAdminOrderService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            // Phan cong thuc te nam o OrderAssignments; khong ghi de AssignedToStaffId bang Merch.
             order.StatusId = processingId;
             order.UpdatedAt = now;
+            if (IsMerchandiseOrAdmin())
+            {
+                order.AssignedToMerchId = _currentUser.AccountId;
+            }
 
             await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
             {
-                OrderId   = order.OrderId,
-                StatusId  = processingId,
+                OrderId = order.OrderId,
+                StatusId = processingId,
                 ChangedBy = _currentUser.AccountId,
-                Note      = request.Note,
+                Note = request.Note,
                 CreatedAt = now
             }, cancellationToken);
 
@@ -316,7 +323,7 @@ public class AdminOrderService : IAdminOrderService
 
             return Result<ProcessOrderResponseDto>.Success(new ProcessOrderResponseDto
             {
-                OrderId    = order.OrderId,
+                OrderId = order.OrderId,
                 StatusName = OrderStatuses.Processing
             });
         }
@@ -401,33 +408,51 @@ public class AdminOrderService : IAdminOrderService
 
         var serviceTypeId = package.ServiceTypeId;
 
+        if (string.IsNullOrWhiteSpace(order.ShippingWardCode))
+        {
+            return Result<ShipOrderResponseDto>.UnprocessableEntity(
+                "Order is missing a valid receiver ward code (ShippingWardCode). Update the shipping address before creating a GHN shipment.");
+        }
+
+        if (order.ShippingDistrictId <= 0)
+        {
+            return Result<ShipOrderResponseDto>.UnprocessableEntity(
+                "Order is missing a valid receiver district (ShippingDistrictId). Update the shipping address before creating a GHN shipment.");
+        }
+
+        if (package.Items.Count == 0)
+        {
+            return Result<ShipOrderResponseDto>.UnprocessableEntity(
+                "Order has no shippable items with product dimensions. Ensure each product has ProductDetails (weight and size) before shipping.");
+        }
+
         var ghnRequest = new ShippingOrderCreateRequestDto
         {
             ClientOrderCode = order.OrderCode,
-            ToName          = order.ShippingName,
-            ToPhone         = order.ShippingPhone,
-            ToAddress       = order.ShippingAddress,
-            ToDistrictId    = order.ShippingDistrictId,
-            ToWardCode      = order.ShippingWardCode,
-            ServiceTypeId   = serviceTypeId,
-            InsuranceValue  = 0m,
-            CodAmount       = codAmount,
-            Weight          = Math.Max(package.Weight, 1),
-            Length          = package.Length,
-            Width           = package.Width,
-            Height          = package.Height,
-            Note            = request.Note,
-            RequiredNote    = !string.IsNullOrWhiteSpace(request.RequiredNote) ? request.RequiredNote : "KHONGCHOXEMHANG",
-            Items           = package.Items.Select(x => new ShippingOrderCreateItemDto
+            ToName = order.ShippingName,
+            ToPhone = order.ShippingPhone,
+            ToAddress = order.ShippingAddress,
+            ToDistrictId = order.ShippingDistrictId,
+            ToWardCode = order.ShippingWardCode,
+            ServiceTypeId = serviceTypeId,
+            InsuranceValue = 0m,
+            CodAmount = codAmount,
+            Weight = Math.Max(package.Weight, 1),
+            Length = package.Length,
+            Width = package.Width,
+            Height = package.Height,
+            Note = request.Note,
+            RequiredNote = !string.IsNullOrWhiteSpace(request.RequiredNote) ? request.RequiredNote : "KHONGCHOXEMHANG",
+            Items = package.Items.Select(x => new ShippingOrderCreateItemDto
             {
-                Name     = x.Name,
-                Code     = x.Code,
+                Name = x.Name,
+                Code = x.Code,
                 Quantity = x.Quantity,
-                Price    = x.Price,
-                Weight   = x.Weight,
-                Length   = x.Length,
-                Width    = x.Width,
-                Height   = x.Height,
+                Price = x.Price,
+                Weight = x.Weight,
+                Length = x.Length,
+                Width = x.Width,
+                Height = x.Height,
                 Category = x.Category
             }).ToList()
         };
@@ -442,6 +467,7 @@ public class AdminOrderService : IAdminOrderService
             if (string.Equals(ghnResult.ErrorCode, "GHN_DIMENSION_ERROR", StringComparison.Ordinal))
                 return Result<ShipOrderResponseDto>.UnprocessableEntity(ghnResult.ErrorMessage!);
 
+
             return Result<ShipOrderResponseDto>.BadGateway(
                 $"Shipping provider error: {ghnResult.ErrorMessage}");
         }
@@ -455,10 +481,10 @@ public class AdminOrderService : IAdminOrderService
             var leadtimeResult = await _ghnClient.GetLeadtimeAsync(new LeadtimeRequestDTO
             {
                 FromDistrictId = _ghnOptions.FromDistrictId,
-                FromWardCode   = _ghnOptions.FromWardCode,
-                ToDistrictId   = order.ShippingDistrictId,
-                ToWardCode     = order.ShippingWardCode,
-                ServiceTypeId  = serviceTypeId
+                FromWardCode = _ghnOptions.FromWardCode,
+                ToDistrictId = order.ShippingDistrictId,
+                ToWardCode = order.ShippingWardCode,
+                ServiceTypeId = serviceTypeId
             }, cancellationToken);
 
             if (leadtimeResult.IsSuccess && leadtimeResult.Data!.LeadtimeUnix > 0)
@@ -472,16 +498,16 @@ public class AdminOrderService : IAdminOrderService
             var feeResult = await _ghnClient.GetFeeAsync(new FeeRequestDTO
             {
                 FromDistrictId = _ghnOptions.FromDistrictId,
-                FromWardCode   = _ghnOptions.FromWardCode,
-                ToDistrictId   = order.ShippingDistrictId,
-                ToWardCode     = order.ShippingWardCode,
+                FromWardCode = _ghnOptions.FromWardCode,
+                ToDistrictId = order.ShippingDistrictId,
+                ToWardCode = order.ShippingWardCode,
                 InsuranceValue = 0m,
-                CodValue       = codAmount,
-                Weight         = Math.Max(package.Weight, 1),
-                Length         = package.Length,
-                Width          = package.Width,
-                Height         = package.Height,
-                ServiceTypeId  = package.ServiceTypeId
+                CodValue = codAmount,
+                Weight = Math.Max(package.Weight, 1),
+                Length = package.Length,
+                Width = package.Width,
+                Height = package.Height,
+                ServiceTypeId = package.ServiceTypeId
             }, cancellationToken);
 
             if (feeResult.IsSuccess)
@@ -496,35 +522,35 @@ public class AdminOrderService : IAdminOrderService
             // INSERT ShippingProviderTransaction
             await _unitOfWork.Orders.AddShippingTransactionAsync(new ShippingProviderTransaction
             {
-                OrderId           = order.OrderId,
-                Provider          = request.Provider.ToUpperInvariant(),
+                OrderId = order.OrderId,
+                Provider = request.Provider.ToUpperInvariant(),
                 ProviderOrderCode = ghnData.OrderCode,
-                TrackingNumber    = ghnData.OrderCode,
-                ServiceType       = request.ServiceType,
-                Status            = "ready_to_pick",
-                ShippingFee       = actualFee,
-                CodAmount         = codAmount,
+                TrackingNumber = ghnData.OrderCode,
+                ServiceType = request.ServiceType,
+                Status = "ready_to_pick",
+                ShippingFee = actualFee,
+                CodAmount = codAmount,
                 EstimatedDelivery = estimatedDelivery,
-                CreatedAt         = now,
-                RowVersion        = []
+                CreatedAt = now,
+                RowVersion = []
             }, cancellationToken);
 
             // UPDATE Order
-            order.StatusId          = shippedId;
-            order.ShippedAt         = now;
+            order.StatusId = shippedId;
+            order.ShippedAt = now;
             order.ActualShippingFee = actualFee > 0 ? actualFee : null;
             // Sync EstimatedShippingFee with the real GHN fee so customers see the accurate price
             if (actualFee > 0)
                 order.EstimatedShippingFee = actualFee;
             order.ShippingOrderCode = ghnData.OrderCode;
-            order.UpdatedAt         = now;
+            order.UpdatedAt = now;
 
             await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
             {
-                OrderId   = order.OrderId,
-                StatusId  = shippedId,
+                OrderId = order.OrderId,
+                StatusId = shippedId,
                 ChangedBy = _currentUser.AccountId,
-                Note      = request.Note,
+                Note = request.Note,
                 CreatedAt = now
             }, cancellationToken);
 
@@ -540,10 +566,10 @@ public class AdminOrderService : IAdminOrderService
 
             return Result<ShipOrderResponseDto>.Success(new ShipOrderResponseDto
             {
-                TrackingNumber    = ghnData.OrderCode,
+                TrackingNumber = ghnData.OrderCode,
                 ProviderOrderCode = ghnData.OrderCode,
                 EstimatedDelivery = estimatedDelivery,
-                ShippingFee       = actualFee
+                ShippingFee = actualFee
             });
         }
         catch
@@ -616,7 +642,7 @@ public class AdminOrderService : IAdminOrderService
 
         var cancelPayload = new { orderId = order.OrderId, orderCode = order.OrderCode, reason = request.Reason };
         await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderCancelled, cancelPayload, CancellationToken.None);
-        
+
         if (!(order.PaymentMethod == "SE_PAY" && order.PaymentStatus != "PAID"))
         {
             await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.StaffCancelRequested, cancelPayload, CancellationToken.None);
@@ -624,7 +650,7 @@ public class AdminOrderService : IAdminOrderService
 
         return Result<CancelOrderResponseDto>.Success(new CancelOrderResponseDto
         {
-            OrderId     = order.OrderId,
+            OrderId = order.OrderId,
             CancelledAt = order.CancelledAt ?? _timeProvider.UtcNow
         });
     }
@@ -740,6 +766,10 @@ public class AdminOrderService : IAdminOrderService
             {
                 order.AssignedToStaffId = request.TargetAccountId;
             }
+            else if (assignmentRoleId == OrderAccessRoles.AssignmentMerchandise)
+            {
+                order.AssignedToMerchId = request.TargetAccountId;
+            }
 
             order.UpdatedAt = now;
 
@@ -817,9 +847,9 @@ public class AdminOrderService : IAdminOrderService
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
             try
             {
-                order.StatusId    = confirmedId;
+                order.StatusId = confirmedId;
                 order.ConfirmedAt = now;
-                order.UpdatedAt   = now;
+                order.UpdatedAt = now;
 
                 var staffAssignment = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(orderId, cancellationToken);
                 var staffRow = staffAssignment.FirstOrDefault(a => a.RoleId == OrderAccessRoles.AssignmentStaff);
@@ -827,10 +857,10 @@ public class AdminOrderService : IAdminOrderService
 
                 await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
                 {
-                    OrderId   = order.OrderId,
-                    StatusId  = confirmedId,
+                    OrderId = order.OrderId,
+                    StatusId = confirmedId,
                     ChangedBy = null,
-                    Note      = "Auto-confirmed: payment received",
+                    Note = "Auto-confirmed: payment received",
                     CreatedAt = now
                 }, cancellationToken);
 
@@ -863,16 +893,16 @@ public class AdminOrderService : IAdminOrderService
 
     // ── Role helpers ──────────────────────────────────────────────────────────
 
-    private bool IsStaffOrAdmin()   => _currentUser.RoleName is RoleStaff or RoleAdmin;
+    private bool IsStaffOrAdmin() => _currentUser.RoleName is RoleStaff or RoleAdmin;
     private bool IsMerchandiseOrAdmin() => _currentUser.RoleName is RoleMerchandise or RoleAdmin;
-    private bool IsAdmin()          => _currentUser.RoleName == RoleAdmin;
+    private bool IsAdmin() => _currentUser.RoleName == RoleAdmin;
 
     private static IReadOnlyCollection<string> GetAllowedStatusesForRole(string roleName) =>
         roleName switch
         {
-            RoleStaff       => OrderStatuses.StaffVisibleStatuses,
+            RoleStaff => OrderStatuses.StaffVisibleStatuses,
             RoleMerchandise => OrderStatuses.MerchandiseVisibleStatuses,
-            _               => OrderStatuses.AdminVisibleStatuses
+            _ => OrderStatuses.AdminVisibleStatuses
         };
 
     /// <summary>
@@ -881,41 +911,88 @@ public class AdminOrderService : IAdminOrderService
     /// </summary>
     private static void ApplyAssignmentNamesToDto(
         AdminOrderListItemDto dto,
-        IEnumerable<OrderAssignment> assignments)
+        Order order,
+        IEnumerable<OrderAssignment> activeAssignments)
     {
-        var staffAssig = assignments.FirstOrDefault(a => a.RoleId == OrderAccessRoles.AssignmentStaff);
-        var merchAssig = assignments.FirstOrDefault(a => a.RoleId == OrderAccessRoles.AssignmentMerchandise);
+        ApplyAssignmentNames(
+            activeAssignments,
+            order,
+            out var staffId,
+            out var staffName,
+            out var merchId,
+            out var merchName);
 
-        if (staffAssig != null)
+        if (staffId.HasValue)
         {
-            dto.AssignedToStaffId = staffAssig.AccountId;
-            dto.AssignedToStaffName = staffAssig.Account?.AccountName;
+            dto.AssignedToStaffId = staffId;
+            dto.AssignedToStaffName = staffName;
         }
 
-        if (merchAssig != null)
+        if (merchId.HasValue)
         {
-            dto.AssignedToMerchId = merchAssig.AccountId;
-            dto.AssignedToMerchName = merchAssig.Account?.AccountName;
+            dto.AssignedToMerchId = merchId;
+            dto.AssignedToMerchName = merchName;
         }
     }
 
     private static void ApplyAssignmentNamesToDto(
         AdminOrderDetailDto dto,
-        IEnumerable<OrderAssignment> assignments)
+        Order order,
+        IEnumerable<OrderAssignment> activeAssignments)
     {
-        var staffAssig = assignments.FirstOrDefault(a => a.RoleId == OrderAccessRoles.AssignmentStaff);
-        var merchAssig = assignments.FirstOrDefault(a => a.RoleId == OrderAccessRoles.AssignmentMerchandise);
+        ApplyAssignmentNames(
+            activeAssignments,
+            order,
+            out var staffId,
+            out var staffName,
+            out var merchId,
+            out var merchName);
+
+        if (staffId.HasValue)
+        {
+            dto.AssignedToStaffId = staffId;
+            dto.AssignedToStaffName = staffName;
+        }
+
+        if (merchId.HasValue)
+        {
+            dto.AssignedToMerchId = merchId;
+            dto.AssignedToMerchName = merchName;
+        }
+    }
+
+    /// <summary>Active OA first; fallback to Orders snapshot (Staff/Merch PIC).</summary>
+    private static void ApplyAssignmentNames(
+        IEnumerable<OrderAssignment> activeAssignments,
+        Order order,
+        out int? staffId,
+        out string? staffName,
+        out int? merchId,
+        out string? merchName)
+    {
+        var staffAssig = activeAssignments.FirstOrDefault(a => a.RoleId == OrderAccessRoles.AssignmentStaff);
+        var merchAssig = activeAssignments.FirstOrDefault(a => a.RoleId == OrderAccessRoles.AssignmentMerchandise);
 
         if (staffAssig != null)
         {
-            dto.AssignedToStaffId = staffAssig.AccountId;
-            dto.AssignedToStaffName = staffAssig.Account?.AccountName;
+            staffId = staffAssig.AccountId;
+            staffName = staffAssig.Account?.AccountName;
+        }
+        else
+        {
+            staffId = order.AssignedToStaffId;
+            staffName = order.AssignedToStaff?.AccountName;
         }
 
         if (merchAssig != null)
         {
-            dto.AssignedToMerchId = merchAssig.AccountId;
-            dto.AssignedToMerchName = merchAssig.Account?.AccountName;
+            merchId = merchAssig.AccountId;
+            merchName = merchAssig.Account?.AccountName;
+        }
+        else
+        {
+            merchId = order.AssignedToMerchId;
+            merchName = order.AssignedToMerch?.AccountName;
         }
     }
 

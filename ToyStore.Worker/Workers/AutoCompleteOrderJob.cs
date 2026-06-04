@@ -66,7 +66,7 @@ public class AutoCompleteOrderJob : BackgroundService
             foreach (var order in ordersToComplete)
             {
                 // Gọi lifecycle service để xử lý status + release capacity
-                var result = await lifecycleService.CompleteOrderAsync(order.OrderId, ct);
+                var result = await lifecycleService.CompleteOrderAsync(order.OrderId, cancellationToken: ct);
                 if (!result.IsSuccess)
                 {
                     _logger.LogWarning("Failed to complete order {OrderId} in job: {Error}", order.OrderId, result.ErrorMessage);
