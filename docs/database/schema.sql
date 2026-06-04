@@ -763,7 +763,6 @@ CREATE TABLE [Vouchers] (
     [EndDate]            DATETIME2(0) NOT NULL,
     [Status]             VARCHAR(15) NOT NULL CHECK ([Status] IN ('Scheduled', 'Active', 'Inactive', 'Expired', 'Pending', 'Rejected')),
     [Reason]             NVARCHAR(500) NULL,
-    [ImageURL]           VARCHAR(500) NULL,
     [IsDeleted]          BIT NOT NULL DEFAULT 0,
     [CreatedAt]          DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [UpdatedAt]          DATETIME2(0) NULL,

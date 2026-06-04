@@ -37,7 +37,6 @@ public partial class Voucher
 
     public string Status { get; set; } = null!;
     public string? Reason { get; set; }
-    public string? ImageUrl { get; set; }
     public bool IsDeleted { get; set; }
 
     public DateTime CreatedAt { get; set; }
