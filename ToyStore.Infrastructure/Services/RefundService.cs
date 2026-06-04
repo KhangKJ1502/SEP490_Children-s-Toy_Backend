@@ -523,14 +523,10 @@ public class RefundService : IRefundService
         var staffAssig = assignments.FirstOrDefault(a => a.RoleId == 3);
         var merchAssig = assignments.FirstOrDefault(a => a.RoleId == 4);
 
-        if (staffAssig != null)
-        {
-            dto.AssignedToStaffName = staffAssig.Account?.AccountName;
-        }
-        if (merchAssig != null)
-        {
-            dto.AssignedToMerchName = merchAssig.Account?.AccountName;
-        }
+        dto.AssignedToStaffName = staffAssig?.Account?.AccountName
+            ?? refund.Order.AssignedToStaff?.AccountName;
+        dto.AssignedToMerchName = merchAssig?.Account?.AccountName
+            ?? refund.Order.AssignedToMerch?.AccountName;
 
         return Result<RefundDto>.Success(dto);
     }

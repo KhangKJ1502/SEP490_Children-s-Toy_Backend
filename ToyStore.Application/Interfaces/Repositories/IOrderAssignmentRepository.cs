@@ -13,6 +13,21 @@ public interface IOrderAssignmentRepository
         byte roleId,
         CancellationToken cancellationToken = default);
 
+    Task<bool> HasAssignmentForAccountAsync(
+        int orderId,
+        int accountId,
+        byte roleId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when assignee performed their role milestone (Staff: Confirmed; Merch: Processing/Shipped).
+    /// </summary>
+    Task<bool> HasProcessedOrderByAssigneeAsync(
+        int orderId,
+        int accountId,
+        byte assignmentRoleId,
+        CancellationToken cancellationToken = default);
+
     Task<List<OrderAssignment>> GetActiveAssignmentsAsync(int orderId, CancellationToken cancellationToken = default);
     Task<List<OrderAssignment>> GetAssignmentsByOrderIdAsync(int orderId, CancellationToken cancellationToken = default);
 

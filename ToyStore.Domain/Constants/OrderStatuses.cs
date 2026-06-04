@@ -42,6 +42,28 @@ public static class OrderStatuses
     public static readonly IReadOnlyCollection<string> AdminVisibleStatuses = [];
 
     /// <summary>
+    /// Trang thai hien thi tab "Da xong" (Staff/Merch) va dieu kien list completed.
+    /// </summary>
+    public static readonly IReadOnlyCollection<string> StaffMerchCompletedTabStatuses =
+    [
+        Completed, Cancelled, Refunded, Delivered,
+        Delivering, DeliveryFailed, Returning, ReturnCompleted,
+        WaitingReturn, ReturnFailed, Lost, Damaged
+    ];
+
+    /// <summary>Milestone xu ly cua Staff (OrderAssignments.RoleID = 3).</summary>
+    public static readonly IReadOnlyCollection<string> StaffProcessedMilestoneStatuses = [Confirmed];
+
+    /// <summary>Milestone xu ly cua Merchandise (OrderAssignments.RoleID = 4).</summary>
+    public static readonly IReadOnlyCollection<string> MerchandiseProcessedMilestoneStatuses =
+        [Processing, Shipped];
+
+    public static IReadOnlyCollection<string> GetProcessedMilestoneStatuses(byte assignmentRoleId) =>
+        assignmentRoleId == 3
+            ? StaffProcessedMilestoneStatuses
+            : MerchandiseProcessedMilestoneStatuses;
+
+    /// <summary>
     /// Trang thai cho phep Staff/Admin huy don hang.
     /// </summary>
     public static readonly IReadOnlyCollection<string> CancellableStatuses =
