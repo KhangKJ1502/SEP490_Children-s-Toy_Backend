@@ -363,11 +363,18 @@ public class AccountRepository : IAccountRepository
                     scopedOrders = g.ToList();
                 }
 
+                var effectiveSuspiciousOrderCount = abuseCase?.Status is "PENDING_ADMIN_REVIEW"
+                        or "MANUALLY_BLOCKED"
+                        or "APPEAL_REJECTED"
+                        or "PERMANENT_BLOCKED"
+                    ? Math.Max(3, Math.Max(scopedOrders.Count, abuseCase.SuspiciousOrderCount))
+                    : scopedOrders.Count;
+
                 var lastOrder = scopedOrders.OrderByDescending(o => o.OrderDate).First();
                 return new CustomerDeliveryAbuseSummaryDto
                 {
                     AccountId = g.Key,
-                    SuspiciousOrderCount = scopedOrders.Count,
+                    SuspiciousOrderCount = effectiveSuspiciousOrderCount,
                     LastOrderDate = lastOrder.OrderDate,
                     LastFailCode = lastOrder.LastGHNFailCode,
                     PolicyStatus = abuseCase?.Status,
@@ -390,7 +397,12 @@ public class AccountRepository : IAccountRepository
                 summaries.Add(new CustomerDeliveryAbuseSummaryDto
                 {
                     AccountId = abuseCase.AccountId,
-                    SuspiciousOrderCount = abuseCase.SuspiciousOrderCount,
+                    SuspiciousOrderCount = abuseCase.Status is "PENDING_ADMIN_REVIEW"
+                            or "MANUALLY_BLOCKED"
+                            or "APPEAL_REJECTED"
+                            or "PERMANENT_BLOCKED"
+                        ? Math.Max(3, abuseCase.SuspiciousOrderCount)
+                        : abuseCase.SuspiciousOrderCount,
                     LastOrderDate = abuseCase.LastSuspiciousOrderDate,
                     LastFailCode = abuseCase.LastGHNFailCode,
                     PolicyStatus = abuseCase.Status,
