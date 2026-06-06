@@ -53,8 +53,16 @@ public class CustomerDeliveryAbuseScanJob : BackgroundService
         var intervalMinutes = configuration.GetValue<int?>("CustomerAbuseScan:IntervalMinutes") ?? 2;
         _interval = TimeSpan.FromMinutes(Math.Max(1, intervalMinutes));
 
-        var codRestrictionReviewDays = configuration.GetValue<int?>("CustomerAbuseScan:CodRestrictionReviewDays") ?? 7;
-        _codRestrictionReviewDelay = TimeSpan.FromDays(Math.Max(1, codRestrictionReviewDays));
+        var codRestrictionReviewMinutes = configuration.GetValue<int?>("CustomerAbuseScan:CodRestrictionReviewMinutes");
+        if (codRestrictionReviewMinutes.HasValue)
+        {
+            _codRestrictionReviewDelay = TimeSpan.FromMinutes(Math.Max(1, codRestrictionReviewMinutes.Value));
+        }
+        else
+        {
+            var codRestrictionReviewDays = configuration.GetValue<int?>("CustomerAbuseScan:CodRestrictionReviewDays") ?? 7;
+            _codRestrictionReviewDelay = TimeSpan.FromDays(Math.Max(1, codRestrictionReviewDays));
+        }
 
         var codProbationDays = configuration.GetValue<int?>("CustomerAbuseScan:CodProbationDays") ?? 30;
         _codProbationPeriod = TimeSpan.FromDays(Math.Max(1, codProbationDays));
@@ -92,7 +100,7 @@ public class CustomerDeliveryAbuseScanJob : BackgroundService
         {
             var now = _timeProvider.UtcNow;
             await RestoreCodRestrictionCasesAsync(db, dispatcher, now, _codRestrictionReviewDelay, _codProbationPeriod, ct);
-            await RestoreCodProbationCasesAsync(db, dispatcher, now, ct);
+            await RestoreCodProbationCasesAsync(db, dispatcher, now, _codProbationPeriod, ct);
             await RestoreStrictCasesAsync(db, dispatcher, now, ct);
 
             var suspiciousOrders = await db.Orders
@@ -403,7 +411,6 @@ public class CustomerDeliveryAbuseScanJob : BackgroundService
             abuseCase.SuspiciousOrderCount = Math.Max(abuseCase.SuspiciousOrderCount, CodRestrictionThreshold);
             abuseCase.CountingFrom = now;
             abuseCase.CodRestrictedAt = null;
-            abuseCase.StrictPeriodUntil = now.Add(probationPeriod);
             abuseCase.Note = $"COD restored after {reviewDelay.TotalDays:0} day(s) without new suspicious COD delivery failures. Customer is now under COD probation for {probationPeriod.TotalDays:0} day(s).";
             abuseCase.UpdatedAt = now;
 
@@ -433,12 +440,14 @@ public class CustomerDeliveryAbuseScanJob : BackgroundService
         SEP490ToyStoreContext db,
         INotificationDispatcher dispatcher,
         DateTime now,
+        TimeSpan probationPeriod,
         CancellationToken ct)
     {
+        var probationStartedBefore = now.Subtract(probationPeriod);
         var probationCases = await db.CustomerDeliveryAbuseCases
             .Where(x => x.Status == StatusCodProbation
-                     && x.StrictPeriodUntil.HasValue
-                     && x.StrictPeriodUntil.Value <= now)
+                     && x.CountingFrom.HasValue
+                     && x.CountingFrom.Value <= probationStartedBefore)
             .ToListAsync(ct);
 
         foreach (var abuseCase in probationCases)
@@ -453,7 +462,6 @@ public class CustomerDeliveryAbuseScanJob : BackgroundService
             abuseCase.WarningLevel = 0;
             abuseCase.SuspiciousOrderCount = 0;
             abuseCase.CountingFrom = now;
-            abuseCase.StrictPeriodUntil = null;
             abuseCase.Note = "Restored to normal after COD probation ended without new suspicious COD delivery failures.";
             abuseCase.UpdatedAt = now;
 
