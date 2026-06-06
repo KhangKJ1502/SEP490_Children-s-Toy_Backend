@@ -18,5 +18,6 @@ public class AdminRefundFilterDto
     public bool AssignedToMe { get; set; } = false;
     public int? AssignedAccountId { get; set; }
     public string? Keyword { get; set; }
+    public string? AssignmentScope { get; set; }
 }
 
