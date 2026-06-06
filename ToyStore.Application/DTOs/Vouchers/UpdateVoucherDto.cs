@@ -19,6 +19,5 @@ public class UpdateVoucherDto
     public DateTime? EndDate { get; set; }
     public string? Status { get; set; }
     public string? Reason { get; set; }
-    public string? ImageUrl { get; set; }
     public bool? IsDeleted { get; set; }
 }

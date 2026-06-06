@@ -6,7 +6,7 @@ namespace ToyStore.Application.DTOs.Vouchers;
 public class VoucherDto
 {
     public int VoucherId { get; set; }
-    public int? CreatedBy { get; set; }
+    public int CreatedBy { get; set; }
     public string VoucherCode { get; set; } = string.Empty;
     public string VoucherName { get; set; } = string.Empty;
     public string VoucherDescription { get; set; } = string.Empty;
@@ -22,7 +22,6 @@ public class VoucherDto
     public DateTime EndDate { get; set; }
     public string Status { get; set; } = string.Empty;
     public string? Reason { get; set; }
-    public string? ImageUrl { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }

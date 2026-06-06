@@ -60,11 +60,13 @@ public class CreateVoucherValidator : AbstractValidator<CreateVoucherDto>
             .When(x => IsPercentage(x.DiscountType))
             .WithMessage("Max discount cap is required for percentage vouchers.");
 
-        // MaxDiscountCap chỉ áp dụng cho loại PERCENTAGE, trừ khi target là FINAL_PRICE
+        // MaxDiscountCap chỉ áp dụng cho loại PERCENTAGE, trừ khi target là FINAL_PRICE hoặc SHIPPING_FEE
         RuleFor(x => x.MaxDiscountCap)
             .Null()
-            .When(x => IsFixed(x.DiscountType) && !string.Equals(x.DiscountTarget?.Trim(), "FINAL_PRICE", StringComparison.OrdinalIgnoreCase))
-            .WithMessage("Max discount cap is only allowed for percentage vouchers, unless the target is FINAL_PRICE.");
+            .When(x => IsFixed(x.DiscountType) 
+                && !string.Equals(x.DiscountTarget?.Trim(), "FINAL_PRICE", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(x.DiscountTarget?.Trim(), "SHIPPING_FEE", StringComparison.OrdinalIgnoreCase))
+            .WithMessage("Max discount cap is only allowed for percentage vouchers, unless the target is FINAL_PRICE or SHIPPING_FEE.");
 
         RuleFor(x => x.MinOrderAmount)
             .GreaterThanOrEqualTo(0).When(x => x.MinOrderAmount.HasValue)

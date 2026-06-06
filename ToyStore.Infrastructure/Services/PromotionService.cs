@@ -297,103 +297,192 @@ public class PromotionService : IPromotionService
         }
         else
         {
-            if (existingPromotion.Status == "Expired")
+            var oldStatus = existingPromotion.Status;
+            var now = _timeProvider.UtcNow;
+            bool hasTransactions = existingPromotion.ProductPromotions.Any(p => p.SoldQuantity > 0)
+                || existingPromotion.PromotionTimeSlots.Any(ts => ts.PromotionProductSlots.Any(pps => pps.SoldQuantity > 0));
+
+            if (string.Equals(oldStatus, "Expired", StringComparison.OrdinalIgnoreCase))
             {
                 return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot update an Expired promotion.");
             }
 
-            if (existingPromotion.Status == "Active")
+            // Enforce edit safeguards on products and time slots if promotion is active or has transactions
+            if (hasTransactions || string.Equals(oldStatus, "Active", StringComparison.OrdinalIgnoreCase))
             {
-                if (request.Status != "Inactive" && request.Status != "Active")
+                if (request.PromotionType is not null && !string.Equals(request.PromotionType, existingPromotion.PromotionType, StringComparison.OrdinalIgnoreCase))
                 {
-                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Active promotion can only be changed to Inactive.");
+                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot modify PromotionType for a promotion that is active or has transactions.");
                 }
 
-                // Allow updating status, description and priority
-                existingPromotion.Status = request.Status;
-                if (request.Description != null)
+                if (request.ProductPromotions is not null)
                 {
-                    existingPromotion.Description = request.Description;
+                    var existingActiveProducts = existingPromotion.ProductPromotions.Where(p => !p.IsDeleted).ToList();
+                    var incomingProductIds = request.ProductPromotions.Select(p => p.ProductId).ToList();
+                    var existingProductIds = existingActiveProducts.Select(p => p.ProductId).ToList();
+
+                    if (incomingProductIds.Count != existingProductIds.Count || !incomingProductIds.All(existingProductIds.Contains))
+                    {
+                        return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot add or remove products for a promotion that is active or has transactions.");
+                    }
+
+                    foreach (var incomingPp in request.ProductPromotions)
+                    {
+                        var existingPp = existingActiveProducts.First(p => p.ProductId == incomingPp.ProductId);
+                        if (incomingPp.SalePrice != existingPp.SalePrice || incomingPp.SaleQuantity != existingPp.SaleQuantity)
+                        {
+                            return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot modify sale price or sale quantity for products in a promotion that is active or has transactions.");
+                        }
+                    }
                 }
-                if (request.Priority.HasValue)
+
+                if (request.PromotionTimeSlots is not null)
                 {
-                    existingPromotion.Priority = request.Priority.Value;
+                    var existingActiveTimeSlots = existingPromotion.PromotionTimeSlots.Where(ts => !ts.IsDeleted).ToList();
+
+                    if (request.PromotionTimeSlots.Count != existingActiveTimeSlots.Count)
+                    {
+                        return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot add or remove time slots for a promotion that is active or has transactions.");
+                    }
+
+                    foreach (var incomingTs in request.PromotionTimeSlots)
+                    {
+                        var existingTs = existingActiveTimeSlots.FirstOrDefault(ts => ts.StartAt == incomingTs.StartAt);
+                        if (existingTs is null)
+                        {
+                            int idx = request.PromotionTimeSlots.IndexOf(incomingTs);
+                            if (idx >= 0 && idx < existingActiveTimeSlots.Count)
+                            {
+                                existingTs = existingActiveTimeSlots[idx];
+                            }
+                        }
+
+                        if (existingTs is not null)
+                        {
+                            var existingSlotProducts = existingTs.PromotionProductSlots.Where(p => !p.IsDeleted).ToList();
+                            var incomingSlotProductIds = incomingTs.PromotionProductSlots.Select(p => p.ProductId).ToList();
+                            var existingSlotProductIds = existingSlotProducts.Select(p => p.ProductId).ToList();
+
+                            if (incomingSlotProductIds.Count != existingSlotProductIds.Count || !incomingSlotProductIds.All(existingSlotProductIds.Contains))
+                            {
+                                return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot add or remove products in time slots for a promotion that is active or has transactions.");
+                            }
+
+                            foreach (var incomingPs in incomingTs.PromotionProductSlots)
+                            {
+                                var existingPs = existingSlotProducts.First(p => p.ProductId == incomingPs.ProductId);
+                                if (incomingPs.SalePrice != existingPs.SalePrice || incomingPs.SaleQuantity != existingPs.SaleQuantity)
+                                {
+                                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot modify sale price or sale quantity in time slots for a promotion that is active or has transactions.");
+                                }
+                            }
+                        }
+                    }
                 }
-                existingPromotion.UpdatedAt = _timeProvider.UtcNow;
             }
-            else if (existingPromotion.Status == "Inactive")
+
+            var targetStatus = request.Status ?? oldStatus;
+            var targetStartDate = request.StartDate ?? existingPromotion.StartDate;
+            var targetEndDate = request.EndDate ?? existingPromotion.EndDate;
+
+            if (targetStartDate >= targetEndDate)
             {
-                // Inactive -> Scheduled allowed only if it has never been Active (SoldQuantity == 0)
-                if (request.Status == "Scheduled")
-                {
-                    bool hasTransactions = existingPromotion.ProductPromotions.Any(p => p.SoldQuantity > 0)
-                        || existingPromotion.PromotionTimeSlots.Any(ts => ts.PromotionProductSlots.Any(pps => pps.SoldQuantity > 0));
+                return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Start date must be earlier than end date.");
+            }
 
-                    if (hasTransactions)
-                    {
-                        return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot reschedule an Inactive promotion that has already had transactions.");
-                    }
+            if (string.Equals(targetStatus, "Active", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(targetStatus, "Scheduled", StringComparison.OrdinalIgnoreCase))
+            {
+                if (targetEndDate <= now)
+                {
+                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot activate or schedule a promotion with an end date in the past. Please extend the End Date.");
                 }
-                else if (request.Status != "Inactive")
+            }
+
+            // Handle transition checks
+            if (string.Equals(oldStatus, "Active", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!string.Equals(targetStatus, "Active", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(targetStatus, "Inactive", StringComparison.OrdinalIgnoreCase))
                 {
-                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Inactive promotion can only be rescheduled or wait to expire.");
+                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Active promotion can only be changed to Inactive or remain Active.");
                 }
-
-                existingPromotion.Status = request.Status;
-                existingPromotion.UpdatedAt = _timeProvider.UtcNow;
-
-                // Allow updates if it goes back to Scheduled
-                if (request.Status == "Scheduled")
+            }
+            else if (string.Equals(oldStatus, "Inactive", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!string.Equals(targetStatus, "Inactive", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(targetStatus, "Scheduled", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(targetStatus, "Active", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (request.StartDate != existingPromotion.StartDate && request.StartDate < _timeProvider.UtcNow.AddMinutes(9))
-                    {
-                        return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Start date must be at least 10 minutes from now.");
-                    }
+                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Inactive promotion can only be rescheduled/reactivated or remain Inactive.");
+                }
+            }
+            else if (string.Equals(oldStatus, "Scheduled", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!string.Equals(targetStatus, "Scheduled", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(targetStatus, "Active", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(targetStatus, "Inactive", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Scheduled promotion can only be changed to Active, Inactive, or remain Scheduled.");
+                }
+            }
 
-                    _mapper.Map(request, existingPromotion);
+            // Normalization of StartDate / Status on reactivation or rescheduling
+            if (string.Equals(targetStatus, "Scheduled", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(targetStatus, "Active", StringComparison.OrdinalIgnoreCase))
+            {
+                if (targetStartDate <= now)
+                {
+                    existingPromotion.StartDate = now;
+                    existingPromotion.Status = "Active";
                 }
                 else
                 {
-                    // Allow updating description and priority even when staying Inactive
-                    if (request.Description != null)
-                    {
-                        existingPromotion.Description = request.Description;
-                    }
-                    if (request.Priority.HasValue)
-                    {
-                        existingPromotion.Priority = request.Priority.Value;
-                    }
+                    existingPromotion.StartDate = targetStartDate;
+                    existingPromotion.Status = "Scheduled";
                 }
             }
             else
             {
-                // Scheduled promotion
-                if (request.Status == "Inactive")
+                existingPromotion.Status = targetStatus;
+                if (request.StartDate.HasValue)
                 {
-                    existingPromotion.Status = request.Status;
-                    existingPromotion.UpdatedAt = _timeProvider.UtcNow;
-                }
-                else
-                {
-                    if (request.StartDate != existingPromotion.StartDate && request.StartDate < _timeProvider.UtcNow.AddMinutes(9))
-                    {
-                        return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Start date must be at least 10 minutes from now.");
-                    }
-
-                    _mapper.Map(request, existingPromotion);
-                    existingPromotion.UpdatedAt = _timeProvider.UtcNow;
-
-                    var promotionNameExists = await _unitOfWork.Promotions.ExistsPromotionNameAsync(
-                        existingPromotion.PromotionName,
-                        promotionId,
-                        cancellationToken);
-
-                    if (promotionNameExists)
-                    {
-                        return Result<PromotionDto>.Conflict("Promotion name already exists.");
-                    }
+                    existingPromotion.StartDate = request.StartDate.Value;
                 }
             }
+
+            existingPromotion.EndDate = targetEndDate;
+
+            if (request.PromotionType is not null && !hasTransactions && !string.Equals(oldStatus, "Active", StringComparison.OrdinalIgnoreCase))
+            {
+                existingPromotion.PromotionType = request.PromotionType;
+            }
+
+            if (request.PromotionName is not null)
+            {
+                existingPromotion.PromotionName = request.PromotionName;
+                var promotionNameExists = await _unitOfWork.Promotions.ExistsPromotionNameAsync(
+                    existingPromotion.PromotionName,
+                    promotionId,
+                    cancellationToken);
+
+                if (promotionNameExists)
+                {
+                    return Result<PromotionDto>.Conflict("Promotion name already exists.");
+                }
+            }
+
+            if (request.Description is not null)
+            {
+                existingPromotion.Description = request.Description;
+            }
+
+            if (request.Priority.HasValue)
+            {
+                existingPromotion.Priority = request.Priority.Value;
+            }
+
+            existingPromotion.UpdatedAt = now;
 
             if (request.ProductPromotions != null)
             {

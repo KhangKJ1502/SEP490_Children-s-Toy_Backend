@@ -38,9 +38,10 @@ public class BirthdayNotificationJob : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             var now = _timeProvider.VnNow;
+            //  var next = now.Date.AddHours(8);
+            // if (now.Hour >= 8) next = next.AddDays(1);
             var next = now.Date.AddHours(8);
             if (now.Hour >= 8) next = next.AddDays(1);
-
             await Task.Delay(next - now, stoppingToken);
             if (stoppingToken.IsCancellationRequested) break;
 

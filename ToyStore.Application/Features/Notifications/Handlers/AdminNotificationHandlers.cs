@@ -127,7 +127,7 @@ public class BlogPendingApprovalHandler : IOutboxEventHandler
                 ReferenceId  = $"{blogId}:{admin.AccountId}",
                 SendBell     = true,
                 SendEmail    = false,
-                ActionTarget = $"/admin/blogs/{blogId}",
+                ActionTarget = "/admin/blogs",
             }, ct);
         }
     }

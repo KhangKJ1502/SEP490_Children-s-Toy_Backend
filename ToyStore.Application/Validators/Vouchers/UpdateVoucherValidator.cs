@@ -65,11 +65,14 @@ public class UpdateVoucherValidator : AbstractValidator<UpdateVoucherDto>
             .GreaterThan(0).When(x => x.MaxDiscountCap.HasValue)
             .WithMessage("Max discount cap must be greater than 0 when provided.");
 
-        // MaxDiscountCap chỉ áp dụng cho loại PERCENTAGE, trừ khi target là FINAL_PRICE
+        // MaxDiscountCap chỉ áp dụng cho loại PERCENTAGE, trừ khi target là FINAL_PRICE hoặc SHIPPING_FEE
         RuleFor(x => x.MaxDiscountCap)
             .Null()
-            .When(x => IsFixed(x.DiscountType) && x.MaxDiscountCap.HasValue && !string.Equals(x.DiscountTarget?.Trim(), "FINAL_PRICE", StringComparison.OrdinalIgnoreCase))
-            .WithMessage("Max discount cap is only allowed for percentage vouchers, unless the target is FINAL_PRICE.");
+            .When(x => IsFixed(x.DiscountType) 
+                && x.MaxDiscountCap.HasValue 
+                && !string.Equals(x.DiscountTarget?.Trim(), "FINAL_PRICE", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(x.DiscountTarget?.Trim(), "SHIPPING_FEE", StringComparison.OrdinalIgnoreCase))
+            .WithMessage("Max discount cap is only allowed for percentage vouchers, unless the target is FINAL_PRICE or SHIPPING_FEE.");
 
         RuleFor(x => x.MinOrderAmount)
             .GreaterThanOrEqualTo(0).When(x => x.MinOrderAmount.HasValue)

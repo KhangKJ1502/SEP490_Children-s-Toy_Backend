@@ -12,6 +12,7 @@ public class BlogReviewDto
     public string Status { get; set; } = "Visible";
     public string ModerationStatus { get; set; } = "Pending";
     public bool IsHidden { get; set; }
+    public bool CanReply { get; set; }
     public byte? BanReasonId { get; set; }
     public string? BanReasonContent { get; set; }
     public int LikeCount { get; set; }
@@ -36,6 +37,7 @@ public class BlogReviewReplyDto
     public string Comment { get; set; } = string.Empty;
     public string Status { get; set; } = "Visible";
     public string ModerationStatus { get; set; } = "Pending";
+    public bool CanReply { get; set; }
     public byte? BanReasonId { get; set; }
     public string? BanReasonContent { get; set; }
     public int LikeCount { get; set; }

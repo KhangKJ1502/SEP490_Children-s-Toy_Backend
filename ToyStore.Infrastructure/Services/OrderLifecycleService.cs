@@ -186,7 +186,7 @@ public class OrderLifecycleService : IOrderLifecycleService
         }
     }
 
-    public async Task<Result> CompleteOrderAsync(int orderId, CancellationToken cancellationToken = default)
+    public async Task<Result> CompleteOrderAsync(int orderId, int? changedByAccountId = null, CancellationToken cancellationToken = default)
     {
         var order = await _unitOfWork.Orders.GetByIdForUpdateAsync(orderId, cancellationToken);
         if (order is null) return Result.NotFound("Order", orderId);
@@ -216,7 +216,7 @@ public class OrderLifecycleService : IOrderLifecycleService
             {
                 OrderId = order.OrderId,
                 StatusId = completedId,
-                ChangedBy = null,
+                ChangedBy = changedByAccountId,
                 Note = "Order completed",
                 CreatedAt = now
             }, cancellationToken);
