@@ -23,7 +23,5 @@ public partial class BackgroundJob
 
     public virtual ICollection<Delivery> Deliveries { get; set; } = new List<Delivery>();
 
-    public virtual ICollection<UserBlockHistory> UserBlockHistories { get; set; } = new List<UserBlockHistory>();
-
     public virtual ICollection<CampaignSchedule> CampaignSchedules { get; set; } = new List<CampaignSchedule>();
 }

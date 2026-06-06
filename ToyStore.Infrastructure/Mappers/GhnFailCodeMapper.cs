@@ -9,6 +9,8 @@ public static class GhnFailCodeMapper
         "GHN-DFC1A2",  // Chặn số
         "GHN-DCD1A5",  // Không có tiền
         "GHN-DCD1A1",  // Báo không đặt hàng (nghi đơn bơm)
+        "GHN-DFC1A7",
+        "GHN-DCD0A8",
     };
 
     private static readonly HashSet<string> RefundableCodes = new()
