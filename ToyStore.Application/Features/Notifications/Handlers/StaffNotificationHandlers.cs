@@ -90,7 +90,7 @@ public class ReviewNeedsModerationHandler : IOutboxEventHandler
                 ReferenceId  = $"{reviewId}:{staff.AccountId}",
                 SendBell     = true,
                 SendEmail    = false,
-                ActionTarget = $"/admin/reviews/{reviewId}",
+                ActionTarget = "/admin/product-reviews",
             }, ct);
         }
     }
@@ -136,7 +136,7 @@ public class ReviewLowRatingHandler : IOutboxEventHandler
                 ReferenceId  = $"{reviewId}:{staff.AccountId}",
                 SendBell     = true,
                 SendEmail    = false,
-                ActionTarget = $"/admin/reviews/{reviewId}",
+                ActionTarget = "/admin/product-reviews",
             }, ct);
         }
     }
