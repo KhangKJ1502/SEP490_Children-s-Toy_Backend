@@ -37,6 +37,22 @@ public class CheckoutService : ICheckoutService
     private const string PayMethodSepay = "SE_PAY";
     private const string PayMethodWallet = "WALLET";
     private const decimal MaxCheckoutSubTotal = 100_000_000m;
+    private const int CodRestrictionThreshold = 2;
+    private const string StatusNormal = "NORMAL";
+    private const string StatusCodRestricted = "COD_RESTRICTED";
+    private const string StatusCodProbation = "COD_PROBATION";
+    private const string StatusPendingReview = "PENDING_ADMIN_REVIEW";
+    private const string StatusManuallyBlocked = "MANUALLY_BLOCKED";
+    private const string StatusAppealApprovedStrict = "APPEAL_APPROVED_STRICT";
+    private const string StatusPermanentBlocked = "PERMANENT_BLOCKED";
+    private static readonly string[] DeliveryAbuseFailCodes =
+    {
+        "GHN-DFC1A2",
+        "GHN-DFC1A7",
+        "GHN-DCD1A5",
+        "GHN-DCD0A8",
+        "GHN-DCD1A1"
+    };
 
     public CheckoutService(
         IUnitOfWork uow,
@@ -121,6 +137,13 @@ public class CheckoutService : ICheckoutService
         }
 
         var normalizedPaymentMethod = string.IsNullOrWhiteSpace(paymentMethod) ? PayMethodCod : paymentMethod;
+        normalizedPaymentMethod = normalizedPaymentMethod.Trim().ToUpperInvariant();
+        if (normalizedPaymentMethod == PayMethodCod
+            && await IsCodRestrictedAsync(accountId, cancellationToken))
+        {
+            return Result<CheckoutPreviewResponseDto>.BusinessError(
+                "Cash on Delivery is temporarily unavailable for your account due to repeated failed COD deliveries. Please choose QR bank transfer or wallet payment.");
+        }
 
         if (!string.IsNullOrWhiteSpace(orderVoucherCode)
             && !string.IsNullOrWhiteSpace(shippingVoucherCode)
@@ -335,6 +358,22 @@ public class CheckoutService : ICheckoutService
         });
     }
 
+    public async Task<Result<CheckoutPaymentOptionsDto>> GetPaymentOptionsAsync(
+        int accountId,
+        CancellationToken cancellationToken = default)
+    {
+        var policy = await GetDeliveryAbusePolicyAsync(accountId, cancellationToken);
+
+        return Result<CheckoutPaymentOptionsDto>.Success(new CheckoutPaymentOptionsDto
+        {
+            IsCodRestricted = policy.IsCodRestricted,
+            SuspiciousDeliveryFailOrderCount = policy.SuspiciousOrderCount,
+            CodRestrictionReason = policy.IsCodRestricted
+                ? "Cash on Delivery is temporarily unavailable for your account due to repeated failed COD deliveries. Please choose QR bank transfer or wallet payment."
+                : null
+        });
+    }
+
     public async Task<Result<CheckoutConfirmResponseDto>> ConfirmAsync(
         int accountId,
         CheckoutConfirmRequestDto request,
@@ -347,6 +386,18 @@ public class CheckoutService : ICheckoutService
         // Guard: mỗi user chỉ được có 1 đơn SE_PAY PENDING tại một thời điểm.
         // Nếu đã có đơn pending → trả orderId hiện tại để FE redirect về QR thay vì tạo đơn mới.
         var payMethodNorm = (request.PaymentMethod ?? "").Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(payMethodNorm))
+        {
+            payMethodNorm = PayMethodCod;
+        }
+
+        if (payMethodNorm == PayMethodCod
+            && await IsCodRestrictedAsync(accountId, cancellationToken))
+        {
+            return Result<CheckoutConfirmResponseDto>.BusinessError(
+                "Cash on Delivery is temporarily unavailable for your account due to repeated failed COD deliveries. Please choose QR bank transfer or wallet payment.");
+        }
+
         if (payMethodNorm == PayMethodSepay)
         {
             var existingPending = await _db.Orders
@@ -517,7 +568,7 @@ public class CheckoutService : ICheckoutService
         };
 
         // For COD orders pass subTotal so GHN applies the discounted COD shipping rate
-        feeReq.CodValue = request.PaymentMethod == PayMethodCod ? subTotal : 0m;
+        feeReq.CodValue = payMethodNorm == PayMethodCod ? subTotal : 0m;
         var feeResult = await _ghnClient.GetFeeAsync(feeReq, cancellationToken);
         if (!feeResult.IsSuccess)
             return Result<CheckoutConfirmResponseDto>.BusinessError("Could not calculate shipping fee. Please try again.");
@@ -597,7 +648,7 @@ public class CheckoutService : ICheckoutService
             shippingDiscount = Math.Min(CalculateDiscount(shippingVoucher, shippingFee), shippingFee);
         }
 
-        if (request.PaymentMethod == PayMethodCod && shippingFee > 0)
+        if (payMethodNorm == PayMethodCod && shippingFee > 0)
         {
             feeReq.CodValue = subTotal;
             var feeRetryResult = await _ghnClient.GetFeeAsync(feeReq, cancellationToken);
@@ -623,7 +674,7 @@ public class CheckoutService : ICheckoutService
         var orderCode = GenerateOrderCode();
         var now = _timeProvider.UtcNow;
 
-        var payMethod = request.PaymentMethod?.ToUpperInvariant() ?? PayMethodCod;
+        var payMethod = payMethodNorm;
 
         // ── Trong transaction ─────────────────────────────────────────────────
         await _uow.BeginTransactionAsync(cancellationToken);
@@ -1191,6 +1242,54 @@ public class CheckoutService : ICheckoutService
             remainingByProductId[cartItem.ProductId] = remainingQty - cartQty;
         }
     }
+
+    private async Task<bool> IsCodRestrictedAsync(int accountId, CancellationToken cancellationToken)
+    {
+        var policy = await GetDeliveryAbusePolicyAsync(accountId, cancellationToken);
+        return policy.IsCodRestricted;
+    }
+
+    private async Task<DeliveryAbusePolicy> GetDeliveryAbusePolicyAsync(
+        int accountId,
+        CancellationToken cancellationToken)
+    {
+        var abuseCase = await _db.CustomerDeliveryAbuseCases
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.AccountId == accountId, cancellationToken);
+
+        var countFrom = abuseCase?.CountingFrom;
+        var suspiciousOrderCount = await CountSuspiciousCodFailOrdersAsync(accountId, countFrom, cancellationToken);
+        var isCodRestricted = abuseCase?.Status is StatusCodProbation
+            ? false
+            : abuseCase?.Status is StatusCodRestricted
+            or StatusPendingReview
+            or StatusManuallyBlocked
+            or StatusAppealApprovedStrict
+            or StatusPermanentBlocked
+            || (abuseCase?.Status is not StatusNormal && suspiciousOrderCount >= CodRestrictionThreshold);
+
+        return new DeliveryAbusePolicy(suspiciousOrderCount, isCodRestricted);
+    }
+
+    private Task<int> CountSuspiciousCodFailOrdersAsync(
+        int accountId,
+        DateTime? countFrom,
+        CancellationToken cancellationToken)
+    {
+        return _db.Orders
+            .AsNoTracking()
+            .CountAsync(o => o.AccountId == accountId
+                          && !o.IsDeleted
+                          && (!countFrom.HasValue || o.OrderDate >= countFrom.Value)
+                          && o.DeliveryFailCount >= 3
+                          && o.PaymentMethod == PayMethodCod
+                          && o.PaymentStatus != "PAID"
+                          && o.LastGHNFailCode != null
+                          && DeliveryAbuseFailCodes.Contains(o.LastGHNFailCode),
+                cancellationToken);
+    }
+
+    private sealed record DeliveryAbusePolicy(int SuspiciousOrderCount, bool IsCodRestricted);
 
     private static bool IsUniqueViolation(DbUpdateException ex)
         => ex.InnerException?.Message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase) == true
