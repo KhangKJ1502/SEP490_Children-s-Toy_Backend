@@ -153,6 +153,23 @@ public class RefundRepository : IRefundRepository
                 _context.Set<OrderAssignment>().Any(a => a.OrderId == r.OrderId && a.AccountId == filter.AssignedAccountId.Value && a.IsActive));
         }
 
+        if (!string.IsNullOrEmpty(filter.AssignmentScope))
+        {
+            var scope = filter.AssignmentScope.Trim().ToLower();
+            if (scope == "completed")
+            {
+                query = query.Where(r => r.Status.StatusName == "RefundCompleted" ||
+                                         r.Status.StatusName == "RefundCancelled" ||
+                                         r.Status.StatusName == "RefundRejected");
+            }
+            else if (scope == "inprogress")
+            {
+                query = query.Where(r => r.Status.StatusName != "RefundCompleted" &&
+                                         r.Status.StatusName != "RefundCancelled" &&
+                                         r.Status.StatusName != "RefundRejected");
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(filter.Keyword))
         {
             var kw = filter.Keyword.Trim();

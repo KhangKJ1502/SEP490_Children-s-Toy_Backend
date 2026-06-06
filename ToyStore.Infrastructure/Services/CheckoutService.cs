@@ -236,6 +236,11 @@ public class CheckoutService : ICheckoutService
                 return Result<CheckoutPreviewResponseDto>.BusinessError("Voucher is not applicable for this target.");
             }
 
+            if (string.Equals(target, "FINAL_PRICE", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(shippingVoucherCode))
+            {
+                return Result<CheckoutPreviewResponseDto>.BusinessError("Cannot apply shipping voucher when a compensation voucher is active.");
+            }
+
             decimal baseAmount = string.Equals(target, "FINAL_PRICE", StringComparison.OrdinalIgnoreCase)
                 ? (subTotal + shippingFee)
                 : subTotal;
@@ -558,6 +563,11 @@ public class CheckoutService : ICheckoutService
                 !string.Equals(target, "FINAL_PRICE", StringComparison.OrdinalIgnoreCase))
             {
                 return Result<CheckoutConfirmResponseDto>.BusinessError("Voucher is not applicable for this target.");
+            }
+
+            if (string.Equals(target, "FINAL_PRICE", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(shippingVoucherCode))
+            {
+                return Result<CheckoutConfirmResponseDto>.BusinessError("Cannot apply shipping voucher when a compensation voucher is active.");
             }
 
             var voucherCheck = await ValidateVoucherAsync(orderVoucher, accountId, subTotal, target, cancellationToken);
