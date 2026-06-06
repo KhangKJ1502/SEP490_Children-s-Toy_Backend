@@ -170,113 +170,98 @@ public class EmailChannel : INotificationChannel
 <head>
     <meta charset=""utf-8""/>
     <meta content=""width=device-width, initial-scale=1.0"" name=""viewport""/>
-    <title>Happy Birthday Email</title>
-    <script src=""https://cdn.tailwindcss.com?plugins=forms,container-queries""></script>
-    <link href=""https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"" rel=""stylesheet""/>
-    <link href=""https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Plus+Jakarta+Sans:wght@500;700&display=swap"" rel=""stylesheet""/>
-    
-    <script id=""tailwind-config"">
-        tailwind.config = {{
-            darkMode: ""class"",
-            theme: {{
-                extend: {{
-                    colors: {{
-                        ""primary"": ""#a93100"",
-                        ""primary-container"": ""#d34000"",
-                        ""primary-fixed"": ""#ffdbd0"",
-                        ""on-primary"": ""#ffffff"",
-                        ""on-primary-fixed-variant"": ""#842500"",
-                        ""canvas"": ""#fafafa"",
-                        ""canvas-soft"": ""#ffffff"",
-                        ""ink-soft"": ""#1e293b"",
-                        ""ink-mid"": ""#334155"",
-                        ""body-mid"": ""#64748b"",
-                        ""surface-container"": ""#ffe9e3"",
-                        ""surface-container-low"": ""#fff1ed"",
-                        ""mute"": ""#cbd5e1"",
-                    }},
-                    fontFamily: {{
-                        ""button"": [""Inter"", ""sans-serif""],
-                        ""body-lg"": [""Inter"", ""sans-serif""],
-                        ""body-md"": [""Inter"", ""sans-serif""],
-                        ""headline-md"": [""Inter"", ""sans-serif""],
-                        ""display-hero"": [""Plus Jakarta Sans"", ""sans-serif""],
-                        ""display-hero-mobile"": [""Plus Jakarta Sans"", ""sans-serif""],
-                        ""label-sm"": [""Inter"", ""sans-serif""]
-                    }}
-                }}
-            }}
-        }}
-    </script>
-    <style>
-        .material-symbols-outlined {{
-            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-        }}
-    </style>
+    <title>Happy Birthday!</title>
 </head>
-<body class=""bg-gradient-to-b from-surface-container-low to-canvas text-ink-soft font-body-md antialiased min-h-screen flex flex-col items-center justify-center"">
-    
-    <!-- Main Content Canvas -->
-    <main class=""w-full max-w-[1200px] mx-auto px-4 md:px-12 py-12 flex flex-col items-center"">
-        
-        <!-- Email Container Card -->
-        <div class=""w-full max-w-2xl bg-canvas-soft rounded-3xl border border-mute/50 shadow-xl shadow-primary/5 overflow-hidden"">
-            
-            <!-- Hero Image Section -->
-            <div class=""w-full h-64 sm:h-80 bg-surface-container relative flex items-center justify-center border-b border-mute/30"">
-                <img alt=""Happy Birthday Graphic"" class=""max-h-full w-auto object-contain p-8 drop-shadow-md hover:scale-105 transition-transform duration-500"" src=""https://lh3.googleusercontent.com/aida-public/AB6AXuC-gSAhclG4f1-gtfSw1vynh3SOC1JpFS8mHQ_QT7FSMT1dppYUdINh9hPWsw7AYtB89Q_TnvQWCvdEaNwZlJISfm-ZE9xTdMRbpqbwkPNzijMKqgrBqoRQIa5XdT8t8lQF4ZqbL72y7Nvp8tOl8b8qi4JeAeSsjqAbhiFfHK3zpi7jlq3Jy_JwNLoNuqXbJedecvg8qtpxXOaa15MBdHeY5Edc4R8OjAf_UPgrMfVsa-JCpogu66xnWRF4R_BLsDGAtYJtAOoyMXO5""/>
-            </div>
-            
-            <!-- Content Padding -->
-            <div class=""p-8 md:p-12 flex flex-col items-center text-center"">
-                
-                <!-- Greeting -->
-                <h1 class=""font-display-hero-mobile md:font-display-hero text-4xl md:text-5xl text-ink-soft mb-6 font-bold leading-tight"">
-                    Happy Birthday to your little one! 🎂
-                </h1>
-                <p class=""font-body-lg text-lg text-body-mid max-w-lg mb-10 leading-relaxed"">
-                    Each passing year is a wonderful journey of love and growth. As your little angel welcomes a new age, we send the warmest wishes to both parents and your child. May this special day be filled with joy, laughter, and unforgettable memories!
-                </p>
-                
-                <!-- User Info Card (Nested) -->
-                <div class=""w-full max-w-md bg-canvas rounded-2xl border border-mute/40 p-6 mb-10 text-center shadow-sm"">
-                    <h2 class=""font-headline-md text-2xl text-ink-soft mb-6 flex items-center justify-center gap-2 font-semibold"">
-                        <span class=""material-symbols-outlined text-primary text-[28px]"">celebration</span>
-                        Birthday Profile
-                    </h2>
-                    <div class=""grid grid-cols-2 gap-4"">
-                        <div class=""bg-surface-container-low p-4 rounded-2xl flex flex-col items-center text-center border border-primary-fixed"">
-                            <span class=""material-symbols-outlined text-primary mb-2"">face</span>
-                            <span class=""font-label-sm text-body-mid uppercase tracking-widest text-[10px] mb-1"">NAME</span>
-                            <span class=""font-body-md text-ink-soft font-bold text-lg"">{System.Net.WebUtility.HtmlEncode(childName)}</span>
-                        </div>
-                        <div class=""bg-surface-container-low p-4 rounded-2xl flex flex-col items-center text-center border border-primary-fixed"">
-                            <span class=""material-symbols-outlined text-primary mb-2"">child_care</span>
-                            <span class=""font-label-sm text-body-mid uppercase tracking-widest text-[10px] mb-1"">NICKNAME</span>
-                            <span class=""font-body-md text-ink-soft font-bold text-lg"">{System.Net.WebUtility.HtmlEncode(childNickname)}</span>
-                        </div>
-                        <div class=""bg-surface-container-low p-4 rounded-2xl flex flex-col items-center text-center border border-primary-fixed"">
-                            <span class=""material-symbols-outlined text-primary mb-2"">wc</span>
-                            <span class=""font-label-sm text-body-mid uppercase tracking-widest text-[10px] mb-1"">GENDER</span>
-                            <span class=""font-body-md text-ink-soft font-bold text-lg"">{System.Net.WebUtility.HtmlEncode(childGender)}</span>
-                        </div>
-                        <div class=""bg-surface-container-low p-4 rounded-2xl flex flex-col items-center text-center border border-primary-fixed"">
-                            <span class=""material-symbols-outlined text-primary mb-2"">cake</span>
-                            <span class=""font-label-sm text-body-mid uppercase tracking-widest text-[10px] mb-1"">BIRTH DATE</span>
-                            <span class=""font-body-md text-ink-soft font-bold text-lg"">{System.Net.WebUtility.HtmlEncode(childBirthDate)}</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- CTA Button -->
-                <a href=""{url}"" style=""text-decoration:none;"" class=""bg-primary text-on-primary font-button text-lg py-4 px-10 rounded-full hover:bg-primary-container transition-all duration-300 shadow-lg hover:shadow-primary/40 active:scale-95 flex items-center gap-2 group"">
-                    Visit our website
-                    <span class=""material-symbols-outlined text-[24px] group-hover:translate-x-2 transition-transform"">arrow_forward</span>
-                </a>
-            </div>
-        </div>
-    </main>
-
+<body style=""margin: 0; padding: 0; background-color: #fff1ed; font-family: 'Segoe UI', Arial, sans-serif; -webkit-font-smoothing: antialiased;"">
+    <table width=""100%"" cellpadding=""0"" cellspacing=""0"" border=""0"" style=""background-color: #fff1ed; padding: 40px 0;"">
+        <tr>
+            <td align=""center"">
+                <table width=""580"" cellpadding=""0"" cellspacing=""0"" border=""0"" style=""background-color: #ffffff; border-radius: 24px; overflow: hidden; box-shadow: 0 8px 30px rgba(169, 49, 0, 0.08); border: 1px solid #cbd5e1;"">
+                    <!-- Hero Image Section -->
+                    <tr>
+                        <td align=""center"" style=""background-color: #ffe9e3; padding: 32px; border-bottom: 1px solid #cbd5e1;"">
+                            <img alt=""Happy Birthday Graphic"" width=""300"" style=""display: block; max-width: 100%; height: auto; border: 0;"" src=""https://lh3.googleusercontent.com/aida-public/AB6AXuC-gSAhclG4f1-gtfSw1vynh3SOC1JpFS8mHQ_QT7FSMT1dppYUdINh9hPWsw7AYtB89Q_TnvQWCvdEaNwZlJISfm-ZE9xTdMRbpqbwkPNzijMKqgrBqoRQIa5XdT8t8lQF4ZqbL72y7Nvp8tOl8b8qi4JeAeSsjqAbhiFfHK3zpi7jlq3Jy_JwNLoNuqXbJedecvg8qtpxXOaa15MBdHeY5Edc4R8OjAf_UPgrMfVsa-JCpogu66xnWRF4R_BLsDGAtYJtAOoyMXO5""/>
+                        </td>
+                    </tr>
+                    <!-- Content Body -->
+                    <tr>
+                        <td style=""padding: 40px 48px; text-align: center;"">
+                            <h1 style=""margin: 0 0 20px 0; font-family: 'Segoe UI', Arial, sans-serif; font-size: 32px; font-weight: 700; color: #1e293b; line-height: 1.2;"">
+                                Happy Birthday to your little one! 🎂
+                            </h1>
+                            <p style=""margin: 0 0 32px 0; font-family: 'Segoe UI', Arial, sans-serif; font-size: 16px; color: #64748b; line-height: 1.6;"">
+                                Each passing year is a wonderful journey of love and growth. As your little angel welcomes a new age, we send the warmest wishes to both parents and your child. May this special day be filled with joy, laughter, and unforgettable memories!
+                            </p>
+                            
+                            <!-- Birthday Profile Card -->
+                            <table width=""100%"" cellpadding=""0"" cellspacing=""0"" border=""0"" style=""background-color: #fafafa; border-radius: 16px; border: 1px solid #cbd5e1; padding: 24px; margin-bottom: 32px;"">
+                                <tr>
+                                    <td align=""center"">
+                                        <h2 style=""margin: 0 0 16px 0; font-family: 'Segoe UI', Arial, sans-serif; font-size: 20px; font-weight: 600; color: #1e293b;"">
+                                            🎉 Birthday Profile
+                                        </h2>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <table width=""100%"" cellpadding=""0"" cellspacing=""0"" border=""0"">
+                                            <tr>
+                                                <td width=""50%"" valign=""top"" style=""padding: 0 8px 16px 0;"">
+                                                    <div style=""background-color: #fff1ed; border: 1px solid #ffdbd0; border-radius: 12px; padding: 12px 8px; text-align: center;"">
+                                                        <div style=""font-size: 20px; margin-bottom: 2px;"">👤</div>
+                                                        <div style=""font-family: Arial, sans-serif; font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px;"">NAME</div>
+                                                        <div style=""font-family: Arial, sans-serif; font-size: 15px; font-weight: bold; color: #1e293b;"">{System.Net.WebUtility.HtmlEncode(childName)}</div>
+                                                    </div>
+                                                </td>
+                                                <td width=""50%"" valign=""top"" style=""padding: 0 0 16px 8px;"">
+                                                    <div style=""background-color: #fff1ed; border: 1px solid #ffdbd0; border-radius: 12px; padding: 12px 8px; text-align: center;"">
+                                                        <div style=""font-size: 20px; margin-bottom: 2px;"">🧸</div>
+                                                        <div style=""font-family: Arial, sans-serif; font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px;"">NICKNAME</div>
+                                                        <div style=""font-family: Arial, sans-serif; font-size: 15px; font-weight: bold; color: #1e293b;"">{System.Net.WebUtility.HtmlEncode(childNickname)}</div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td width=""50%"" valign=""top"" style=""padding: 0 8px 0 0;"">
+                                                    <div style=""background-color: #fff1ed; border: 1px solid #ffdbd0; border-radius: 12px; padding: 12px 8px; text-align: center;"">
+                                                        <div style=""font-size: 20px; margin-bottom: 2px;"">🚻</div>
+                                                        <div style=""font-family: Arial, sans-serif; font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px;"">GENDER</div>
+                                                        <div style=""font-family: Arial, sans-serif; font-size: 15px; font-weight: bold; color: #1e293b;"">{System.Net.WebUtility.HtmlEncode(childGender)}</div>
+                                                    </div>
+                                                </td>
+                                                <td width=""50%"" valign=""top"" style=""padding: 0 0 0 8px;"">
+                                                    <div style=""background-color: #fff1ed; border: 1px solid #ffdbd0; border-radius: 12px; padding: 12px 8px; text-align: center;"">
+                                                        <div style=""font-size: 20px; margin-bottom: 2px;"">🎂</div>
+                                                        <div style=""font-family: Arial, sans-serif; font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px;"">BIRTH DATE</div>
+                                                        <div style=""font-family: Arial, sans-serif; font-size: 15px; font-weight: bold; color: #1e293b;"">{System.Net.WebUtility.HtmlEncode(childBirthDate)}</div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- CTA Button -->
+                            <div style=""margin-top: 32px;"">
+                                <a href=""{url}"" style=""display: inline-block; background-color: #a93100; color: #ffffff; text-decoration: none; padding: 14px 36px; border-radius: 30px; font-family: 'Segoe UI', Arial, sans-serif; font-size: 16px; font-weight: 600; letter-spacing: 0.5px; box-shadow: 0 4px 12px rgba(169, 49, 0, 0.25);"">
+                                    Visit our website &rarr;
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    <!-- Footer -->
+                    <tr>
+                        <td style=""background-color: #f8f9fa; padding: 24px; text-align: center; border-top: 1px solid #cbd5e1;"">
+                            <p style=""margin: 0; font-family: 'Segoe UI', Arial, sans-serif; color: #94a3b8; font-size: 12px;"">
+                                &copy; {DateTime.Now.Year} ToyStore. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
 </body>
 </html>";
     }
