@@ -9,7 +9,6 @@ COPY ToyStore.Application/*.csproj ./ToyStore.Application/
 COPY ToyStore.Domain/*.csproj ./ToyStore.Domain/
 COPY ToyStore.Infrastructure/*.csproj ./ToyStore.Infrastructure/
 COPY ToyStore.Recommendation/*.csproj ./ToyStore.Recommendation/
-COPY ToyStore.Chatbot/*.csproj ./ToyStore.Chatbot/
 COPY ToyStore.Worker/*.csproj ./ToyStore.Worker/
 
 # Restore dependencies

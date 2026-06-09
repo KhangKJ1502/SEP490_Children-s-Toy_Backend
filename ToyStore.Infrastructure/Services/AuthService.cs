@@ -126,7 +126,7 @@ public class AuthService : IAuthService
 
         if (!account.IsActive)
         {
-            return Result<AuthResponseDto>.Failure("ACCOUNT_INACTIVE", "Your account has been deactivated. Please contact support.");
+            return Result<AuthResponseDto>.Failure("ACCOUNT_INACTIVE", "Your account has been locked for violating our system policy. Please contact support.");
         }
 
         // Đăng nhập thành công → reset các lần thất bại
@@ -256,7 +256,7 @@ public class AuthService : IAuthService
 
         if (!account.IsActive)
         {
-            return Result.Failure("ACCOUNT_INACTIVE", "Your account has been deactivated. Please contact support.");
+            return Result.Failure("ACCOUNT_INACTIVE", "Your account has been locked for violating our system policy. Please contact support.");
         }
 
         var otpCode = GenerateOtpCode();
@@ -302,7 +302,7 @@ public class AuthService : IAuthService
 
         if (!account.IsActive)
         {
-            return Result.Failure("ACCOUNT_INACTIVE", "Your account has been deactivated. Please contact support.");
+            return Result.Failure("ACCOUNT_INACTIVE", "Your account has been locked for violating our system policy. Please contact support.");
         }
 
         await _unitOfWork.Accounts.UpdatePasswordHashAsync(account.AccountId, HashPassword(dto.NewPassword), cancellationToken);
@@ -426,7 +426,7 @@ public class AuthService : IAuthService
 
         if (!existingAccount.IsActive)
         {
-            return Result<AuthResponseDto>.Failure("ACCOUNT_INACTIVE", "Your account has been deactivated. Please contact support.");
+            return Result<AuthResponseDto>.Failure("ACCOUNT_INACTIVE", "Your account has been locked for violating our system policy. Please contact support.");
         }
 
         var provider = existingAccount.Provider?.Trim().ToLowerInvariant();

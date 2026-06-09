@@ -14,6 +14,18 @@ public class CustomerListDto
 
     public bool IsActive { get; set; }
 
+    public bool IsSuspiciousDeliveryAbuse { get; set; }
+
+    public int SuspiciousDeliveryFailOrderCount { get; set; }
+
+    public bool IsCodRestricted { get; set; }
+
+    public bool IsManualBlockRecommended { get; set; }
+
+    public string? LastSuspiciousGHNFailCode { get; set; }
+
+    public DateTime? LastSuspiciousOrderDate { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }

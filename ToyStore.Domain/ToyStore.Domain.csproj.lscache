@@ -63,7 +63,6 @@ Entities/
  Address.cs
  Age.cs
  BackgroundJob.cs
- BlockReason.cs
  BlogCategory.cs
  BlogPost.cs
  BlogPostReaction.cs
@@ -130,7 +129,6 @@ Entities/
  SuperCategory.cs
  Template.cs
  TrendingProduct.cs
- UserBlockHistory.cs
  UserPreference.cs
  UserProductScore.cs
  Voucher.cs

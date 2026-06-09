@@ -1,4 +1,5 @@
 using ToyStore.Domain.Entities;
+using ToyStore.Application.DTOs.Customers;
 
 namespace ToyStore.Application.Interfaces.Repositories;
 
@@ -121,4 +122,8 @@ public interface IAccountRepository
     /// Count customer accounts (non-deleted, active) in the given id set.
     /// </summary>
     Task<int> CountActiveCustomersByIdsAsync(IReadOnlyCollection<int> accountIds, CancellationToken cancellationToken = default);
+
+    Task<List<CustomerDeliveryAbuseSummaryDto>> GetDeliveryAbuseSummariesAsync(
+        IReadOnlyCollection<int> accountIds,
+        CancellationToken cancellationToken = default);
 }

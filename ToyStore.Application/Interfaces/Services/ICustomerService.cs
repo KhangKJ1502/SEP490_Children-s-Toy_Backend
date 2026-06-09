@@ -34,4 +34,9 @@ public interface ICustomerService
         int accountId,
         UpdateCustomerDto dto,
         CancellationToken cancellationToken = default);
+
+    Task<Result<CustomerDetailDto>> BlockCustomerForDeliveryAbuseAsync(
+        int accountId,
+        ManualBlockCustomerDto dto,
+        CancellationToken cancellationToken = default);
 }
