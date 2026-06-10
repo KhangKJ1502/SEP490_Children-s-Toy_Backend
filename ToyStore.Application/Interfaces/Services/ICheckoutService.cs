@@ -18,6 +18,10 @@ public interface ICheckoutService
         IReadOnlyList<CheckoutConfirmItemDto>? itemsSubset,
         CancellationToken cancellationToken = default);
 
+    Task<Result<CheckoutPaymentOptionsDto>> GetPaymentOptionsAsync(
+        int accountId,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Đặt hàng: tạo Order, trừ stock, xử lý thanh toán theo PaymentMethod.
     /// </summary>

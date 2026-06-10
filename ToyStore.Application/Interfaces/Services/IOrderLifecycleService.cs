@@ -20,7 +20,8 @@ public interface IOrderLifecycleService
     /// <summary>
     /// Hoàn thành đơn hàng (internal logic).
     /// </summary>
-    Task<Result> CompleteOrderAsync(int orderId, CancellationToken cancellationToken = default);
+    /// <param name="changedByAccountId">Người xác nhận (khách). null = hệ thống (auto-complete job).</param>
+    Task<Result> CompleteOrderAsync(int orderId, int? changedByAccountId = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Đánh dấu đơn hàng là đã giao (internal logic).

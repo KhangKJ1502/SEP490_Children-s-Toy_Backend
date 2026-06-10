@@ -12,6 +12,7 @@ public partial class SEP490ToyStoreContext
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<CartItem>().Ignore(e => e.IsSelected);
+        ConfigureCustomerDeliveryAbuseCases(modelBuilder);
 
         modelBuilder.Entity<AiPromptTemplate>(entity =>
         {

@@ -495,92 +495,100 @@ public class ReviewService : IReviewService
         if (review == null)
             return Result<AdminReviewDetailDto>.NotFound("Review", reviewId);
 
-        if (review.ModerationStatus == "Rejected")
-            return Result<AdminReviewDetailDto>.BusinessError("Cannot change moderation status of a rejected review.");
-
-        if (review.ModerationStatus != "ManualReview" && review.ModerationStatus != "Pending")
-            return Result<AdminReviewDetailDto>.BusinessError("Can only update status from Pending or ManualReview.");
-
-        if (dto.ModerationStatus != "Approved" && dto.ModerationStatus != "Rejected")
-            return Result<AdminReviewDetailDto>.BusinessError("Status can only be changed to Approved or Rejected.");
-
         var now = _timeProvider.UtcNow;
         var staffId = _currentUser.AccountId;
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            review.ModerationStatus = dto.ModerationStatus;
-            review.UpdatedAt = now;
-
-            // Log cho Review
-            await _unitOfWork.Reviews.AddModerationLogAsync(new ReviewModerationLog
+            if (dto.IsDeleted == true)
             {
-                TargetType = "Text",
-                ReviewId = reviewId,
-                ModeratorType = "Staff",
-                ModeratedBy = staffId,
-                Action = "Overridden",
-                ModerationResult = dto.ModerationStatus,
-                Reason = dto.Reason ?? $"Manually overridden to {dto.ModerationStatus}",
-                CreatedAt = now
-            }, cancellationToken);
+                review.IsDeleted = true;
+                review.UpdatedAt = now;
 
-            // Tự động override status của các ảnh chưa xoá theo review
-            foreach (var img in review.ReviewProductImages.Where(i => !i.IsDeleted))
+                foreach (var img in review.ReviewProductImages)
+                {
+                    img.IsDeleted = true;
+                    img.UpdatedAt = now;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(dto.ModerationStatus))
             {
-                img.ModerationStatus = dto.ModerationStatus;
-                img.UpdatedAt = now;
+                if (review.ModerationStatus == "Rejected")
+                    return Result<AdminReviewDetailDto>.BusinessError("Cannot change moderation status of a rejected review.");
 
+                if (review.ModerationStatus != "ManualReview" && review.ModerationStatus != "Pending" && review.ModerationStatus != "Approved")
+                    return Result<AdminReviewDetailDto>.BusinessError("Can only update status from Pending, ManualReview, or Approved.");
+
+                review.ModerationStatus = dto.ModerationStatus;
+                review.UpdatedAt = now;
+
+                // Log cho Review
                 await _unitOfWork.Reviews.AddModerationLogAsync(new ReviewModerationLog
                 {
-                    TargetType = "Image",
+                    TargetType = "Text",
                     ReviewId = reviewId,
-                    ImageId = img.ReviewProductImageId,
                     ModeratorType = "Staff",
                     ModeratedBy = staffId,
                     Action = "Overridden",
                     ModerationResult = dto.ModerationStatus,
-                    Reason = $"Cascade from review override to {dto.ModerationStatus}",
+                    Reason = dto.Reason ?? $"Manually overridden to {dto.ModerationStatus}",
                     CreatedAt = now
                 }, cancellationToken);
-            }
 
-            if (dto.ModerationStatus == "Rejected")
-            {
-                var productName = review.Product?.ProductName ?? "product";
-                var orderSuffix = review.Order != null ? $" from order #{review.Order.OrderCode}" : "";
-
-                var delivery = new Delivery
+                // Tự động override status của các ảnh chưa xoá theo review
+                foreach (var img in review.ReviewProductImages.Where(i => !i.IsDeleted))
                 {
-                    AccountId = review.AccountId,
-                    RecipientType = "CUSTOMER",
-                    Channel = "WEB_BELL",
-                    NotificationType = "SYSTEM",
-                    Title = "Your review was not approved",
-                    Message = string.IsNullOrWhiteSpace(dto.Reason)
-                        ? $"Your review for product '{productName}'{orderSuffix} has not been approved due to content guidelines violation."
-                        : $"Your review for product '{productName}'{orderSuffix} has not been approved due to content guidelines violation: {dto.Reason}",
-                    Payload = System.Text.Json.JsonSerializer.Serialize(new { reviewId = review.ReviewId, reason = dto.Reason }),
-                    Status = "Unread",
-                    ActionTarget = "/profile/reviews",
-                    IdempotencyKey = $"moderation:review:{reviewId}:rejected",
-                    CreatedAt = now
-                };
-                _unitOfWork.Deliveries.Add(delivery);
+                    img.ModerationStatus = dto.ModerationStatus;
+                    img.UpdatedAt = now;
+
+                    await _unitOfWork.Reviews.AddModerationLogAsync(new ReviewModerationLog
+                    {
+                        TargetType = "Image",
+                        ReviewId = reviewId,
+                        ImageId = img.ReviewProductImageId,
+                        ModeratorType = "Staff",
+                        ModeratedBy = staffId,
+                        Action = "Overridden",
+                        ModerationResult = dto.ModerationStatus,
+                        Reason = $"Cascade from review override to {dto.ModerationStatus}",
+                        CreatedAt = now
+                    }, cancellationToken);
+                }
+
+                if (dto.ModerationStatus == "Rejected")
+                {
+                    var productName = review.Product?.ProductName ?? "product";
+                    var orderSuffix = review.Order != null ? $" from order #{review.Order.OrderCode}" : "";
+
+                    var delivery = new Delivery
+                    {
+                        AccountId = review.AccountId,
+                        RecipientType = "CUSTOMER",
+                        Channel = "WEB_BELL",
+                        NotificationType = "SYSTEM",
+                        Title = "Your review was not approved",
+                        Message = string.IsNullOrWhiteSpace(dto.Reason)
+                            ? $"Your review for product '{productName}'{orderSuffix} has not been approved due to content guidelines violation."
+                            : $"Your review for product '{productName}'{orderSuffix} has not been approved due to content guidelines violation: {dto.Reason}",
+                        Payload = System.Text.Json.JsonSerializer.Serialize(new { reviewId = review.ReviewId, reason = dto.Reason }),
+                        Status = "Unread",
+                        ActionTarget = "/profile/reviews",
+                        IdempotencyKey = $"moderation:review:{reviewId}:rejected",
+                        CreatedAt = now
+                    };
+                    _unitOfWork.Deliveries.Add(delivery);
+                }
             }
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-            _logger.LogInformation("Staff {StaffId} overridden moderation status for review {ReviewId} to {Status}", staffId, reviewId, dto.ModerationStatus);
+            _logger.LogInformation("Staff {StaffId} updated review {ReviewId}: ModerationStatus={Status}, IsDeleted={IsDeleted}",
+                staffId, reviewId, dto.ModerationStatus, dto.IsDeleted);
 
-            // Publish when set to ManualReview
-            if (dto.ModerationStatus == "ManualReview")
-            {
-                await _eventPublisher.PublishAsync("Review", reviewId.ToString(), NotificationEventTypes.ReviewNeedsModeration,
-                    new { reviewId, moderatedBy = staffId }, cancellationToken);
-            }
+
 
             var completeReview = await _unitOfWork.Reviews.GetByIdForAdminAsync(reviewId, cancellationToken);
             return Result<AdminReviewDetailDto>.Success(_mapper.Map<AdminReviewDetailDto>(completeReview));
@@ -743,6 +751,8 @@ public class ReviewService : IReviewService
             IsLiked = isLikedNow
         });
     }
+
+
 
     // --- Private Helpers ---
 

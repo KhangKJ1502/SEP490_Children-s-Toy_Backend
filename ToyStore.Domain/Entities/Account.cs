@@ -73,6 +73,8 @@ public partial class Account
 
     public virtual ICollection<Order> OrderAssignedToStaffs { get; set; } = new List<Order>();
 
+    public virtual ICollection<Order> OrderAssignedToMerchs { get; set; } = new List<Order>();
+
     public virtual ICollection<Order> OrderCancelledByNavigations { get; set; } = new List<Order>();
 
     public virtual ICollection<OrderRefund> OrderRefundApprovedByNavigations { get; set; } = new List<OrderRefund>();
@@ -112,12 +114,6 @@ public partial class Account
     public virtual Role Role { get; set; } = null!;
 
     public virtual ICollection<StaffReviewProductReply> StaffReviewProductReplies { get; set; } = new List<StaffReviewProductReply>();
-
-    public virtual ICollection<UserBlockHistory> UserBlockHistoryAccounts { get; set; } = new List<UserBlockHistory>();
-
-    public virtual ICollection<UserBlockHistory> UserBlockHistoryBlockedByNavigations { get; set; } = new List<UserBlockHistory>();
-
-    public virtual ICollection<UserBlockHistory> UserBlockHistoryUnblockedByNavigations { get; set; } = new List<UserBlockHistory>();
 
     public virtual ICollection<UserProductScore> UserProductScores { get; set; } = new List<UserProductScore>();
 

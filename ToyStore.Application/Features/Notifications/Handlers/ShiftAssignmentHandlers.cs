@@ -185,7 +185,7 @@ public class ShiftStartedHandler : IOutboxEventHandler
             ReferenceId  = $"{scheduleId}:{accountId}",
             SendBell     = true,
             SendEmail    = false,
-            ActionTarget = $"/admin/shifts/{scheduleId}",
+            ActionTarget = "/admin/schedules",
         }, ct);
     }
 }
@@ -231,7 +231,7 @@ public class ShiftEndedWithPendingOrdersHandler : IOutboxEventHandler
                 ReferenceId  = $"{scheduleId}:{admin.AccountId}",
                 SendBell     = true,
                 SendEmail    = true,
-                ActionTarget = $"/admin/shifts/{scheduleId}",
+                ActionTarget = "/admin/schedules",
             }, ct);
         }
     }
@@ -294,7 +294,7 @@ public class ShiftFullHandler : IOutboxEventHandler
                 ReferenceId  = $"{scheduleId}:{admin.AccountId}",
                 SendBell     = true,
                 SendEmail    = true,
-                ActionTarget = $"/admin/shifts/{scheduleId}",
+                ActionTarget = "/admin/schedules",
                 Payload      = new Dictionary<string, object>
                 {
                     ["type"]       = "SHIFT_FULL",

@@ -137,6 +137,7 @@ if (!app.Environment.IsDevelopment())
 app.UseStaticFiles();
 app.UseCors("AllowAll");
 app.UseAuthentication();
+app.UseAccountStatusGuard();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<CartHub>("/hubs/cart");

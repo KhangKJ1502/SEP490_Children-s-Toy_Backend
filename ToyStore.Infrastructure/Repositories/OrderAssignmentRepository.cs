@@ -51,6 +51,39 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
                 cancellationToken);
     }
 
+    public Task<bool> HasAssignmentForAccountAsync(
+        int orderId,
+        int accountId,
+        byte roleId,
+        CancellationToken cancellationToken = default)
+    {
+        return _context.OrderAssignments
+            .AsNoTracking()
+            .AnyAsync(
+                x => x.OrderId == orderId
+                     && x.AccountId == accountId
+                     && x.RoleId == roleId,
+                cancellationToken);
+    }
+
+    public Task<bool> HasProcessedOrderByAssigneeAsync(
+        int orderId,
+        int accountId,
+        byte assignmentRoleId,
+        CancellationToken cancellationToken = default)
+    {
+        var milestoneStatuses = OrderStatuses.GetProcessedMilestoneStatuses(assignmentRoleId);
+
+        return _context.OrderStatusHistories
+            .AsNoTracking()
+            .AnyAsync(
+                h => h.OrderId == orderId
+                     && h.ChangedBy == accountId
+                     && h.Status != null
+                     && milestoneStatuses.Contains(h.Status.StatusName),
+                cancellationToken);
+    }
+
     public Task<List<OrderAssignment>> GetActiveAssignmentsAsync(int orderId, CancellationToken cancellationToken = default)
     {
         return _context.OrderAssignments

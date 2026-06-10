@@ -23,6 +23,14 @@ public class CheckoutController : ControllerBase
         _currentUser = currentUser;
     }
 
+    [HttpGet("payment-options")]
+    public async Task<ActionResult<CheckoutPaymentOptionsDto>> GetPaymentOptions(CancellationToken ct)
+    {
+        var accountId = _currentUser.AccountId;
+        var result = await _checkout.GetPaymentOptionsAsync(accountId, ct);
+        return result.ToActionResult();
+    }
+
     /// <summary>
     /// Tính phí ship + tổng đơn trước khi đặt (không tạo Order).
     /// POST /api/checkout/preview

@@ -7,7 +7,7 @@ public partial class Voucher
 {
     public int VoucherId { get; set; }
 
-    public int? CreatedBy { get; set; }
+    public int CreatedBy { get; set; }
 
     public string VoucherCode { get; set; } = null!;
 
@@ -37,14 +37,13 @@ public partial class Voucher
 
     public string Status { get; set; } = null!;
     public string? Reason { get; set; }
-    public string? ImageUrl { get; set; }
     public bool IsDeleted { get; set; }
 
     public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }
 
-    public virtual Account? CreatedByNavigation { get; set; }
+    public virtual Account CreatedByNavigation { get; set; } = null!;
 
     public virtual ICollection<OrderVoucher> OrderVouchers { get; set; } = new List<OrderVoucher>();
 

@@ -119,7 +119,17 @@ public class RefundRepository : IRefundRepository
             .AsNoTracking();
 
         if (!string.IsNullOrEmpty(filter.RefundStatus))
-            query = query.Where(r => r.Status.StatusName == filter.RefundStatus);
+        {
+            var statuses = filter.RefundStatus.Split(',').Select(s => s.Trim()).ToList();
+            if (statuses.Count > 1)
+            {
+                query = query.Where(r => statuses.Contains(r.Status.StatusName));
+            }
+            else
+            {
+                query = query.Where(r => r.Status.StatusName == filter.RefundStatus);
+            }
+        }
 
         if (filter.OrderId.HasValue)
             query = query.Where(r => r.OrderId == filter.OrderId.Value);
@@ -139,7 +149,25 @@ public class RefundRepository : IRefundRepository
         if (filter.AssignedToMe && filter.AssignedAccountId.HasValue)
         {
             query = query.Where(r => r.Order.AssignedToStaffId == filter.AssignedAccountId.Value ||
+                r.Order.AssignedToMerchId == filter.AssignedAccountId.Value ||
                 _context.Set<OrderAssignment>().Any(a => a.OrderId == r.OrderId && a.AccountId == filter.AssignedAccountId.Value && a.IsActive));
+        }
+
+        if (!string.IsNullOrEmpty(filter.AssignmentScope))
+        {
+            var scope = filter.AssignmentScope.Trim().ToLower();
+            if (scope == "completed")
+            {
+                query = query.Where(r => r.Status.StatusName == "RefundCompleted" ||
+                                         r.Status.StatusName == "RefundCancelled" ||
+                                         r.Status.StatusName == "RefundRejected");
+            }
+            else if (scope == "inprogress")
+            {
+                query = query.Where(r => r.Status.StatusName != "RefundCompleted" &&
+                                         r.Status.StatusName != "RefundCancelled" &&
+                                         r.Status.StatusName != "RefundRejected");
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(filter.Keyword))
@@ -189,9 +217,10 @@ public class RefundRepository : IRefundRepository
                 CreatedAt = r.CreatedAt,
                 AssignedToStaffName = r.Order.AssignedToStaff != null ? r.Order.AssignedToStaff.AccountName : null,
                 AssignedToMerchName = _context.Set<OrderAssignment>()
-                    .Where(a => a.OrderId == r.OrderId && a.RoleId == 4 && a.IsActive) // 4 is Merchandise assignment role in OrderAccessRoles.cs
+                    .Where(a => a.OrderId == r.OrderId && a.RoleId == 4 && a.IsActive)
                     .Select(a => a.Account.AccountName)
                     .FirstOrDefault()
+                    ?? (r.Order.AssignedToMerch != null ? r.Order.AssignedToMerch.AccountName : null)
             })
             .ToListAsync(cancellationToken);
 
@@ -203,6 +232,8 @@ public class RefundRepository : IRefundRepository
         return await _dbSet
             .Include(r => r.Status)
             .Include(r => r.Order).ThenInclude(o => o.Status)
+            .Include(r => r.Order).ThenInclude(o => o.AssignedToStaff)
+            .Include(r => r.Order).ThenInclude(o => o.AssignedToMerch)
             .Include(r => r.Order).ThenInclude(o => o.ShippingProviderTransactions).ThenInclude(t => t.ShippingStatusHistories)
             .Include(r => r.RefundReason)
             .Include(r => r.Customer)

@@ -263,6 +263,75 @@ public class VoucherService : IVoucherService
         else
         {
             var oldStatus = existingVoucher.Status;
+            var now = _timeProvider.UtcNow;
+
+            // Safeguard 1: Used Voucher Safeguard
+            if (existingVoucher.UsedQuantity > 0)
+            {
+                bool hasInvalidCriticalChanges =
+                    (normalizedRequest.VoucherCode is not null && !string.Equals(normalizedRequest.VoucherCode, existingVoucher.VoucherCode, StringComparison.OrdinalIgnoreCase)) ||
+                    (normalizedRequest.DiscountType is not null && !string.Equals(normalizedRequest.DiscountType, existingVoucher.DiscountType, StringComparison.OrdinalIgnoreCase)) ||
+                    (normalizedRequest.DiscountValue.HasValue && normalizedRequest.DiscountValue.Value != existingVoucher.DiscountValue) ||
+                    (normalizedRequest.MaxDiscountCap.HasValue && normalizedRequest.MaxDiscountCap.Value != existingVoucher.MaxDiscountCap) ||
+                    (normalizedRequest.DiscountTarget is not null && !string.Equals(normalizedRequest.DiscountTarget, existingVoucher.DiscountTarget, StringComparison.OrdinalIgnoreCase)) ||
+                    (normalizedRequest.MinOrderAmount.HasValue && normalizedRequest.MinOrderAmount.Value != existingVoucher.MinOrderAmount);
+
+                if (hasInvalidCriticalChanges)
+                {
+                    return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Cannot modify core financial fields (VoucherCode, DiscountType, DiscountValue, MaxDiscountCap, DiscountTarget, MinOrderAmount) for a voucher that has already been used.");
+                }
+
+                if (normalizedRequest.TotalQuantity.HasValue && normalizedRequest.TotalQuantity.Value < existingVoucher.UsedQuantity)
+                {
+                    return Result<VoucherDto>.Failure("VALIDATION_ERROR", $"Total quantity cannot be set below the used quantity ({existingVoucher.UsedQuantity}).");
+                }
+            }
+
+            // Safeguard 2: Expired Voucher Safeguard
+            bool isExpired = string.Equals(oldStatus, VoucherStatuses.Expired, StringComparison.OrdinalIgnoreCase) || existingVoucher.EndDate <= now;
+            if (isExpired)
+            {
+                // Expired vouchers are locked, except for EndDate, Status, and IsDeleted
+                bool hasInvalidExpiredChanges =
+                    (normalizedRequest.VoucherCode is not null && !string.Equals(normalizedRequest.VoucherCode, existingVoucher.VoucherCode, StringComparison.OrdinalIgnoreCase)) ||
+                    (normalizedRequest.VoucherName is not null && !string.Equals(normalizedRequest.VoucherName, existingVoucher.VoucherName, StringComparison.Ordinal)) ||
+                    (normalizedRequest.VoucherDescription is not null && !string.Equals(normalizedRequest.VoucherDescription, existingVoucher.VoucherDescription, StringComparison.Ordinal)) ||
+                    (normalizedRequest.DiscountType is not null && !string.Equals(normalizedRequest.DiscountType, existingVoucher.DiscountType, StringComparison.OrdinalIgnoreCase)) ||
+                    (normalizedRequest.DiscountValue.HasValue && normalizedRequest.DiscountValue.Value != existingVoucher.DiscountValue) ||
+                    (normalizedRequest.MaxDiscountCap.HasValue && normalizedRequest.MaxDiscountCap.Value != existingVoucher.MaxDiscountCap) ||
+                    (normalizedRequest.DiscountTarget is not null && !string.Equals(normalizedRequest.DiscountTarget, existingVoucher.DiscountTarget, StringComparison.OrdinalIgnoreCase)) ||
+                    (normalizedRequest.MinOrderAmount.HasValue && normalizedRequest.MinOrderAmount.Value != existingVoucher.MinOrderAmount) ||
+                    (normalizedRequest.TotalQuantity.HasValue && normalizedRequest.TotalQuantity.Value != existingVoucher.TotalQuantity) ||
+                    (normalizedRequest.MaxUsagePerUser.HasValue && normalizedRequest.MaxUsagePerUser.Value != existingVoucher.MaxUsagePerUser) ||
+                    (normalizedRequest.StartDate.HasValue && normalizedRequest.StartDate.Value != existingVoucher.StartDate);
+
+                if (hasInvalidExpiredChanges)
+                {
+                    return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Expired vouchers are locked. You can only update the End Date, Status, or delete it to reactivate/archive.");
+                }
+            }
+
+            // Rule 1: Check if Staff modifies financial fields of an Active or Scheduled voucher
+            if (string.Equals(_currentUserService.RoleName, "Staff", StringComparison.OrdinalIgnoreCase) &&
+                (string.Equals(oldStatus, VoucherStatuses.Active, StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(oldStatus, VoucherStatuses.Scheduled, StringComparison.OrdinalIgnoreCase)))
+            {
+                bool hasFinancialChanges = 
+                    (normalizedRequest.DiscountType is not null && !string.Equals(normalizedRequest.DiscountType, existingVoucher.DiscountType, StringComparison.OrdinalIgnoreCase)) ||
+                    (normalizedRequest.DiscountValue.HasValue && normalizedRequest.DiscountValue.Value != existingVoucher.DiscountValue) ||
+                    (normalizedRequest.MaxDiscountCap.HasValue && normalizedRequest.MaxDiscountCap.Value != existingVoucher.MaxDiscountCap) ||
+                    (normalizedRequest.DiscountTarget is not null && !string.Equals(normalizedRequest.DiscountTarget, existingVoucher.DiscountTarget, StringComparison.OrdinalIgnoreCase)) ||
+                    (normalizedRequest.MinOrderAmount.HasValue && normalizedRequest.MinOrderAmount.Value != existingVoucher.MinOrderAmount) ||
+                    (normalizedRequest.TotalQuantity.HasValue && normalizedRequest.TotalQuantity.Value != existingVoucher.TotalQuantity) ||
+                    (normalizedRequest.StartDate.HasValue && normalizedRequest.StartDate.Value != existingVoucher.StartDate) ||
+                    (normalizedRequest.EndDate.HasValue && normalizedRequest.EndDate.Value != existingVoucher.EndDate);
+
+                if (hasFinancialChanges)
+                {
+                    normalizedRequest.Status = VoucherStatuses.Pending;
+                    normalizedRequest.Reason = null;
+                }
+            }
 
             // Role-based logic before merge
             if (string.Equals(_currentUserService.RoleName, "Staff", StringComparison.OrdinalIgnoreCase))
@@ -301,15 +370,20 @@ public class VoucherService : IVoucherService
                 // Admin Approving clears Reason and calculates dynamic status
                 if (string.Equals(normalizedRequest.Status, VoucherStatuses.Scheduled, StringComparison.OrdinalIgnoreCase))
                 {
-                    var now = _timeProvider.UtcNow;
+                    var targetEndDate = normalizedRequest.EndDate ?? existingVoucher.EndDate;
                     
-                    if (existingVoucher.EndDate <= now)
+                    if (targetEndDate <= now)
                     {
                         return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Cannot approve a voucher that has already expired. Please reject it or ask staff to update the dates.");
                     }
                     
-                    if (existingVoucher.StartDate <= now)
+                    var targetStartDate = normalizedRequest.StartDate ?? existingVoucher.StartDate;
+                    if (targetStartDate <= now)
                     {
+                        if (normalizedRequest.StartDate.HasValue && normalizedRequest.StartDate.Value < now)
+                        {
+                            normalizedRequest.StartDate = now;
+                        }
                         normalizedRequest.Status = VoucherStatuses.Active;
                     }
                     else
@@ -319,13 +393,63 @@ public class VoucherService : IVoucherService
                     
                     normalizedRequest.Reason = null;
                 }
+
+                // If Admin updates dates without explicitly specifying Status
+                if (normalizedRequest.Status == null)
+                {
+                    var targetStartDate = normalizedRequest.StartDate ?? existingVoucher.StartDate;
+                    var targetEndDate = normalizedRequest.EndDate ?? existingVoucher.EndDate;
+
+                    if (targetEndDate > now)
+                    {
+                        if (targetStartDate <= now)
+                        {
+                            if (normalizedRequest.StartDate.HasValue && normalizedRequest.StartDate.Value < now)
+                            {
+                                normalizedRequest.StartDate = now;
+                            }
+                            if (string.Equals(oldStatus, VoucherStatuses.Scheduled, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(oldStatus, VoucherStatuses.Inactive, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(oldStatus, VoucherStatuses.Pending, StringComparison.OrdinalIgnoreCase))
+                            {
+                                normalizedRequest.Status = VoucherStatuses.Active;
+                            }
+                        }
+                        else
+                        {
+                            if (string.Equals(oldStatus, VoucherStatuses.Active, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(oldStatus, VoucherStatuses.Pending, StringComparison.OrdinalIgnoreCase))
+                            {
+                                normalizedRequest.Status = VoucherStatuses.Scheduled;
+                            }
+                        }
+                    }
+                }
             }
 
-            if (normalizedRequest.StartDate.HasValue && normalizedRequest.StartDate.Value != existingVoucher.StartDate)
+            // Rule 2: Limit Reactivation of Paused Vouchers (Inactive)
+            if (string.Equals(oldStatus, VoucherStatuses.Inactive, StringComparison.OrdinalIgnoreCase) &&
+                (string.Equals(normalizedRequest.Status, VoucherStatuses.Scheduled, StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(normalizedRequest.Status, VoucherStatuses.Active, StringComparison.OrdinalIgnoreCase) ||
+                 (string.Equals(_currentUserService.RoleName, "Staff", StringComparison.OrdinalIgnoreCase) && 
+                  string.Equals(normalizedRequest.Status, VoucherStatuses.Pending, StringComparison.OrdinalIgnoreCase))))
             {
-                if (normalizedRequest.StartDate.Value < _timeProvider.UtcNow.AddMinutes(9))
+                var targetEndDate = normalizedRequest.EndDate ?? existingVoucher.EndDate;
+                var targetTotalQuantity = normalizedRequest.TotalQuantity ?? existingVoucher.TotalQuantity;
+
+                if (existingVoucher.IsDeleted)
                 {
-                    return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Start date must be at least 10 minutes from now.");
+                    return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Cannot reactivate a deleted voucher.");
+                }
+
+                if (targetEndDate <= now)
+                {
+                    return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Cannot reactivate a voucher that has already expired. Please update the End Date to a future time.");
+                }
+
+                if (targetTotalQuantity.HasValue && existingVoucher.UsedQuantity >= targetTotalQuantity.Value)
+                {
+                    return Result<VoucherDto>.Failure("VALIDATION_ERROR", $"Cannot reactivate this voucher because it has reached its usage limit ({existingVoucher.UsedQuantity}/{targetTotalQuantity.Value}).");
                 }
             }
 

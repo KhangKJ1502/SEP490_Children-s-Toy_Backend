@@ -224,6 +224,12 @@ public sealed class GhnClient : IGhnClient
             ["from_address"] = !string.IsNullOrWhiteSpace(request.FromAddress) ? request.FromAddress : _shopAddressOptions.AddressLine,
             ["from_ward_name"] = !string.IsNullOrWhiteSpace(request.FromWardName) ? request.FromWardName : _shopAddressOptions.WardName,
             ["from_district_name"] = !string.IsNullOrWhiteSpace(request.FromDistrictName) ? request.FromDistrictName : _shopAddressOptions.DistrictName,
+            ["from_district_id"] = _ghnOptions.FromDistrictId > 0
+                ? _ghnOptions.FromDistrictId
+                : _shopAddressOptions.DistrictId,
+            ["from_ward_code"] = !string.IsNullOrWhiteSpace(_ghnOptions.FromWardCode)
+                ? _ghnOptions.FromWardCode
+                : _shopAddressOptions.WardCode,
             ["to_name"] = request.ToName,
             ["to_phone"] = request.ToPhone,
             ["to_address"] = request.ToAddress,
@@ -253,7 +259,9 @@ public sealed class GhnClient : IGhnClient
         };
 
         _logger.LogInformation(
-            "[GHN-CREATE-REQUEST] to_district={ToDistrict} to_ward={ToWard} weight={Weight}g length={Length} width={Width} height={Height} service_type_id={ServiceTypeId} insurance={Insurance} cod={Cod}",
+            "[GHN-CREATE-REQUEST] shop_id={ShopId} from_district={FromDistrict} from_ward={FromWard} to_district={ToDistrict} to_ward={ToWard} weight={Weight}g length={Length} width={Width} height={Height} service_type_id={ServiceTypeId} insurance={Insurance} cod={Cod}",
+            _ghnOptions.ShopId,
+            payload["from_district_id"], payload["from_ward_code"],
             request.ToDistrictId, request.ToWardCode,
             request.Weight, request.Length, request.Width, request.Height,
             payload["service_type_id"], RoundToInt(request.InsuranceValue), RoundToInt(request.CodAmount));

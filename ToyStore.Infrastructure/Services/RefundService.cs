@@ -97,6 +97,22 @@ public class RefundService : IRefundService
         };
     }
 
+    private string MapToCustomerFacingStatus(string internalStatus)
+    {
+        if (string.IsNullOrWhiteSpace(internalStatus))
+            return internalStatus;
+
+        return internalStatus switch
+        {
+            RefundStatuses.Requested => "Requested",
+            RefundStatuses.Approved or RefundStatuses.PickupCreated or RefundStatuses.Shipping or RefundStatuses.Received or RefundStatuses.InspectionPending => "Processing",
+            RefundStatuses.Completed => "Completed",
+            RefundStatuses.Rejected => "Rejected",
+            RefundStatuses.Cancelled => "Cancelled",
+            _ => internalStatus
+        };
+    }
+
     public async Task<List<RefundReasonDto>> GetRefundReasonsAsync(CancellationToken cancellationToken = default)
     {
         var reasons = await _unitOfWork.Refunds.GetActiveReasonsAsync(cancellationToken);
@@ -175,8 +191,20 @@ public class RefundService : IRefundService
             });
         }
 
+        bool isFullReturn = true;
+        foreach (var od in order.OrderDetails)
+        {
+            var retItem = returnItems.FirstOrDefault(ri => ri.ProductId == od.ProductId);
+            if (retItem == null || retItem.Quantity < od.Quantity)
+            {
+                isFullReturn = false;
+                break;
+            }
+        }
+
         var subTotal = refundDetails.Sum(d => d.RefundAmount);
-        var totalAmount = subTotal; // Shipping fee is 0 by default
+        var shippingFeeRefunded = isFullReturn ? (order.ActualShippingFee ?? order.EstimatedShippingFee) : 0m;
+        var totalAmount = subTotal + shippingFeeRefunded;
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
@@ -191,7 +219,7 @@ public class RefundService : IRefundService
                 ApprovedAmount = totalAmount,
                 RefundCode = "REF-" + DateTime.UtcNow.ToString("yyyyMMdd") + "-" + Guid.NewGuid().ToString().Substring(0, 8).ToUpper(),
                 SubTotal = subTotal,
-                ShippingFee = 0,
+                ShippingFee = shippingFeeRefunded,
                 TotalAmount = totalAmount,
                 StatusId = (byte)RefundStatusEnum.RefundRequested,
                 IsDeleted = false,
@@ -253,7 +281,9 @@ public class RefundService : IRefundService
                 CancellationToken.None);
 
             var createdRefund = await _unitOfWork.Refunds.GetByIdAsync(refund.RefundId, cancellationToken);
-            return Result<RefundDto>.Success(_mapper.Map<RefundDto>(createdRefund));
+            var dtoResult = _mapper.Map<RefundDto>(createdRefund);
+            dtoResult.RefundStatus = MapToCustomerFacingStatus(dtoResult.RefundStatus);
+            return Result<RefundDto>.Success(dtoResult);
         }
         catch
         {
@@ -357,17 +387,41 @@ public class RefundService : IRefundService
 
     public async Task<PaginatedResponse<RefundListDto>> GetRefundsAsync(int customerId, RefundFilterDto filter, CancellationToken cancellationToken = default)
     {
+        string? statusFilter = filter.RefundStatus;
+        if (!string.IsNullOrWhiteSpace(statusFilter))
+        {
+            var normalized = statusFilter.Trim().ToLowerInvariant();
+            if (normalized == "processing")
+            {
+                statusFilter = $"{RefundStatuses.Approved},{RefundStatuses.PickupCreated},{RefundStatuses.Shipping},{RefundStatuses.Received},{RefundStatuses.InspectionPending}";
+            }
+            else
+            {
+                statusFilter = NormalizeRefundStatusFilter(statusFilter);
+            }
+        }
+
         var adminFilter = new AdminRefundFilterDto
         {
             Page = filter.Page,
             PageSize = filter.PageSize,
             CustomerId = customerId,
-            RefundStatus = NormalizeRefundStatusFilter(filter.RefundStatus),
+            RefundStatus = statusFilter,
             OrderId = filter.OrderId,
             FromDate = filter.FromDate,
             ToDate = filter.ToDate
         };
-        return await _unitOfWork.Refunds.GetAdminRefundsAsync(adminFilter, cancellationToken);
+        var paginatedResult = await _unitOfWork.Refunds.GetAdminRefundsAsync(adminFilter, cancellationToken);
+
+        if (paginatedResult.Items != null)
+        {
+            foreach (var item in paginatedResult.Items)
+            {
+                item.RefundStatus = MapToCustomerFacingStatus(item.RefundStatus);
+            }
+        }
+
+        return paginatedResult;
     }
 
     public async Task<Result<RefundDto>> GetRefundByIdAsync(int customerId, int refundId, CancellationToken cancellationToken = default)
@@ -376,7 +430,24 @@ public class RefundService : IRefundService
         if (refund == null || refund.CustomerId != customerId)
             return Result<RefundDto>.NotFound("Refund", refundId);
 
-        return Result<RefundDto>.Success(_mapper.Map<RefundDto>(refund));
+        var dto = _mapper.Map<RefundDto>(refund);
+        dto.RefundStatus = MapToCustomerFacingStatus(dto.RefundStatus);
+
+        if (dto.StatusHistory != null)
+        {
+            var mappedHistory = new List<RefundStatusHistoryDto>();
+            foreach (var h in dto.StatusHistory)
+            {
+                h.StatusName = MapToCustomerFacingStatus(h.StatusName);
+                if (mappedHistory.Count == 0 || mappedHistory.Last().StatusName != h.StatusName)
+                {
+                    mappedHistory.Add(h);
+                }
+            }
+            dto.StatusHistory = mappedHistory;
+        }
+
+        return Result<RefundDto>.Success(dto);
     }
 
     public async Task<Result<RefundDto>> CancelRefundAsync(int customerId, int refundId, CancellationToken cancellationToken = default)
@@ -409,7 +480,9 @@ public class RefundService : IRefundService
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-            return Result<RefundDto>.Success(_mapper.Map<RefundDto>(refund));
+            var dtoResult = _mapper.Map<RefundDto>(refund);
+            dtoResult.RefundStatus = MapToCustomerFacingStatus(dtoResult.RefundStatus);
+            return Result<RefundDto>.Success(dtoResult);
         }
         catch
         {
@@ -450,14 +523,10 @@ public class RefundService : IRefundService
         var staffAssig = assignments.FirstOrDefault(a => a.RoleId == 3);
         var merchAssig = assignments.FirstOrDefault(a => a.RoleId == 4);
 
-        if (staffAssig != null)
-        {
-            dto.AssignedToStaffName = staffAssig.Account?.AccountName;
-        }
-        if (merchAssig != null)
-        {
-            dto.AssignedToMerchName = merchAssig.Account?.AccountName;
-        }
+        dto.AssignedToStaffName = staffAssig?.Account?.AccountName
+            ?? refund.Order.AssignedToStaff?.AccountName;
+        dto.AssignedToMerchName = merchAssig?.Account?.AccountName
+            ?? refund.Order.AssignedToMerch?.AccountName;
 
         return Result<RefundDto>.Success(dto);
     }

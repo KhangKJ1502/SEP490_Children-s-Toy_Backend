@@ -13,6 +13,8 @@ public partial class Order
 
     public int? AssignedToStaffId { get; set; }
 
+    public int? AssignedToMerchId { get; set; }
+
     public string OrderCode { get; set; } = null!;
 
     public string? ShippingOrderCode { get; set; }
@@ -88,6 +90,8 @@ public partial class Order
     public virtual Account Account { get; set; } = null!;
 
     public virtual Account? AssignedToStaff { get; set; }
+
+    public virtual Account? AssignedToMerch { get; set; }
 
     public virtual Account? CancelledByNavigation { get; set; }
 

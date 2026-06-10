@@ -5,14 +5,18 @@ namespace ToyStore.Application.Validators.Reviews;
 
 public class UpdateModerationStatusValidator : AbstractValidator<UpdateModerationStatusDto>
 {
-    private readonly string[] _allowedStatuses = { "Approved", "Rejected", "ManualReview" };
+    private readonly string[] _allowedStatuses = { "Approved", "Rejected" };
 
     public UpdateModerationStatusValidator()
     {
         RuleFor(x => x.ModerationStatus)
             .NotEmpty().WithMessage("ModerationStatus is required.")
-            .Must(status => _allowedStatuses.Contains(status))
-            .WithMessage("ModerationStatus must be one of: Approved, Rejected, ManualReview.");
+            .When(x => x.IsDeleted != true);
+
+        RuleFor(x => x.ModerationStatus)
+            .Must(status => _allowedStatuses.Contains(status!))
+            .WithMessage("ModerationStatus must be one of: Approved, Rejected.")
+            .When(x => !string.IsNullOrWhiteSpace(x.ModerationStatus));
             
         RuleFor(x => x.Reason)
             .MaximumLength(500).WithMessage("Reason must not exceed 500 characters.")
