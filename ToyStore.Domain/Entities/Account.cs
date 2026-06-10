@@ -138,4 +138,8 @@ public partial class Account
     public virtual UserPreference? UserPreference { get; set; }
 
     public virtual ICollection<ReviewModerationLog> ReviewModerationLogs { get; set; } = new List<ReviewModerationLog>();
+
+    public virtual ICollection<SavedBankAccount> SavedBankAccounts { get; set; } = new List<SavedBankAccount>();
+
+    public virtual ICollection<WithdrawalRequest> WithdrawalRequests { get; set; } = new List<WithdrawalRequest>();
 }

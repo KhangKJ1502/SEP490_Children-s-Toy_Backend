@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ToyStore.Domain.Entities;
@@ -23,6 +23,8 @@ public partial class Wallet
 
     public DateTime? UpdatedAt { get; set; }
 
+    public decimal LockedBalance { get; set; }
+
     public virtual Account Account { get; set; } = null!;
 
     public virtual Account? UnbannedByNavigation { get; set; }
@@ -32,4 +34,6 @@ public partial class Wallet
     public virtual ICollection<WalletPinAttempt> WalletPinAttempts { get; set; } = new List<WalletPinAttempt>();
 
     public virtual ICollection<WalletTransaction> WalletTransactions { get; set; } = new List<WalletTransaction>();
+
+    public virtual ICollection<WithdrawalRequest> WithdrawalRequests { get; set; } = new List<WithdrawalRequest>();
 }
