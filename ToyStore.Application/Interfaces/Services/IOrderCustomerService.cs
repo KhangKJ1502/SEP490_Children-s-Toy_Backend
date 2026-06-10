@@ -109,4 +109,8 @@ public class OrderPaymentInfoDto
     /// Effective payment status — cho phép FE redirect đúng trang (PAID → success, EXPIRED/CANCELLED → cart).
     /// </summary>
     public string PaymentStatus { get; set; } = string.Empty;
+    public string? BankName { get; set; }
+    public string? BankCode { get; set; }
+    public string? AccountNumber { get; set; }
+    public string? AccountName { get; set; }
 }

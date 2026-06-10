@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ToyStore.Domain.Entities;
@@ -48,4 +48,6 @@ public partial class WalletTransaction
     public virtual Order? RelatedOrder { get; set; }
 
     public virtual Wallet Wallet { get; set; } = null!;
+
+    public virtual ICollection<WithdrawalRequest> WithdrawalRequests { get; set; } = new List<WithdrawalRequest>();
 }

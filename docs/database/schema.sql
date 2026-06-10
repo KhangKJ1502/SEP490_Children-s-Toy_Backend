@@ -1,4 +1,3 @@
-
 /* =================================================================
    E-COMMERCE DATABASE SCHEMA (OPTIMIZED FULL VERSION + AI MODERATION)
    Platform: SQL Server | Version: 3.2
@@ -91,38 +90,50 @@ CREATE TABLE [Accounts] (
 );
 GO
 
-CREATE TABLE [BlockReasons] (
-    [BlockReasonID] TINYINT IDENTITY(1,1) PRIMARY KEY,
-    [Content]       NVARCHAR(150) NOT NULL,
-    [Description]   NVARCHAR(255) NULL,
-    [IsDeleted]     BIT NOT NULL DEFAULT 0,
-    [CreatedAt]     DATETIME2(0) NOT NULL DEFAULT GETDATE(),
-    [UpdatedAt]     DATETIME2(0) NULL
+-- ADDED FOR CUSTOMER DELIVERY ABUSE FLOW - START
+-- Purpose: stores COD delivery-abuse warning, admin review, manual block, appeal strict monitoring, permanent block, and restore state.
+CREATE TABLE [CustomerDeliveryAbuseCases] (
+    [CaseID]                  INT IDENTITY(1,1) PRIMARY KEY,
+    [AccountID]               INT NOT NULL,
+    [Status]                  VARCHAR(30) NOT NULL DEFAULT 'NORMAL',
+    [WarningLevel]            TINYINT NOT NULL DEFAULT 0,
+    [SuspiciousOrderCount]    INT NOT NULL DEFAULT 0,
+    [CountingFrom]            DATETIME2(0) NULL,
+    [LastGHNFailCode]         VARCHAR(20) NULL,
+    [LastSuspiciousOrderDate] DATETIME2(0) NULL,
+    [CodRestrictedAt]         DATETIME2(0) NULL,
+    [ReviewRequestedAt]       DATETIME2(0) NULL,
+    [BlockedAt]               DATETIME2(0) NULL,
+    [BlockedBy]               INT NULL,
+    [AppealReviewedAt]        DATETIME2(0) NULL,
+    [AppealReviewedBy]        INT NULL,
+    [AppealDecision]          VARCHAR(20) NULL,
+    [StrictPeriodUntil]       DATETIME2(0) NULL,
+    [PermanentBlockedAt]      DATETIME2(0) NULL,
+    [PermanentBlockReason]    NVARCHAR(500) NULL,
+    [Note]                    NVARCHAR(500) NULL,
+    [CreatedAt]               DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    [UpdatedAt]               DATETIME2(0) NULL,
+    CONSTRAINT [UQ_CustomerDeliveryAbuseCases_Account] UNIQUE ([AccountID]),
+    CONSTRAINT [FK_CustomerDeliveryAbuseCases_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [FK_CustomerDeliveryAbuseCases_BlockedBy] FOREIGN KEY ([BlockedBy]) REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [FK_CustomerDeliveryAbuseCases_AppealReviewedBy] FOREIGN KEY ([AppealReviewedBy]) REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [CK_CustomerDeliveryAbuseCases_Status] CHECK ([Status] IN (
+        'NORMAL',
+        'COD_RESTRICTED',
+        'COD_PROBATION',
+        'PENDING_ADMIN_REVIEW',
+        'MANUALLY_BLOCKED',
+        'APPEAL_APPROVED_STRICT',
+        'APPEAL_REJECTED',
+        'PERMANENT_BLOCKED'
+    )),
+    CONSTRAINT [CK_CustomerDeliveryAbuseCases_WarningLevel] CHECK ([WarningLevel] BETWEEN 0 AND 3),
+    CONSTRAINT [CK_CustomerDeliveryAbuseCases_AppealDecision] CHECK ([AppealDecision] IS NULL OR [AppealDecision] IN ('APPROVED', 'REJECTED')),
+    CONSTRAINT [CK_CustomerDeliveryAbuseCases_StrictPeriod] CHECK ([StrictPeriodUntil] IS NULL OR [AppealReviewedAt] IS NOT NULL)
 );
 GO
-
-CREATE TABLE [UserBlockHistory] (
-    [BlockID]          INT IDENTITY(1,1) PRIMARY KEY,
-    [AccountID]        INT NOT NULL,
-    [BlockedBy]        INT NULL,
-    [BlockReasonID]    TINYINT NOT NULL,
-    [Note]             NVARCHAR(500) NULL,
-    [UnblockedBy]      INT NULL,
-    [UnblockedByJobID] INT NULL,
-    [BlockedAt]        DATETIME2(0) NOT NULL DEFAULT GETDATE(),
-    [BlockedUntil]     DATETIME2(0) NOT NULL,
-    [UnblockedAt]      DATETIME2(0) NULL,
-    [UpdatedAt]        DATETIME2(0) NULL,
-    CONSTRAINT [FK_UserBlockHistory_Account]        FOREIGN KEY ([AccountID])        REFERENCES [Accounts]([AccountID]),
-    CONSTRAINT [FK_UserBlockHistory_BlockedBy]      FOREIGN KEY ([BlockedBy])        REFERENCES [Accounts]([AccountID]),
-    CONSTRAINT [FK_UserBlockHistory_UnblockedBy]    FOREIGN KEY ([UnblockedBy])      REFERENCES [Accounts]([AccountID]),
-    CONSTRAINT [FK_UserBlockHistory_BlockReasons]   FOREIGN KEY ([BlockReasonID])  REFERENCES [BlockReasons]([BlockReasonID]),
-    CONSTRAINT [FK_UserBlockHistory_BackgroundJobs] FOREIGN KEY ([UnblockedByJobID]) REFERENCES [System].[BackgroundJobs]([JobID]),
-    CONSTRAINT [CK_UserBlockHistory_ValidPeriod]           CHECK ([BlockedUntil] > [BlockedAt]),
-    CONSTRAINT [CK_UserBlockHistory_UnblockedAfterBlocked] CHECK ([UnblockedAt] IS NULL OR [UnblockedAt] >= [BlockedAt]),
-    CONSTRAINT [CK_UserBlockHistory_OneUnblockActor]       CHECK ([UnblockedBy] IS NULL OR [UnblockedByJobID] IS NULL)
-);
-GO
+-- ADDED FOR CUSTOMER DELIVERY ABUSE FLOW - END
 
 /* =============================================
    1.1. ADMINISTRATIVE DIVISIONS
@@ -1807,14 +1818,16 @@ CREATE TABLE [Wallets] (
     [AccountID]         INT NOT NULL UNIQUE,
     [Currency]          CHAR(3) NOT NULL DEFAULT 'VND',
     [Balance]           DECIMAL(12,0) NOT NULL DEFAULT 0 CHECK ([Balance] >= 0),
+    [LockedBalance]     DECIMAL(12,0) NOT NULL DEFAULT 0,
     [Status]            VARCHAR(10) NOT NULL DEFAULT 'Active'
         CHECK ([Status] IN ('Active', 'Frozen')),
     [UnbannedBy]        INT NULL,
     [LastTransactionAt] DATETIME2(0) NULL,
     [CreatedAt]         DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     [UpdatedAt]         DATETIME2(0) NULL,
-    CONSTRAINT [FK_Wallets_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [Accounts]([AccountID]),
-    CONSTRAINT [FK_Wallets_UnbannedBy]  FOREIGN KEY ([UnbannedBy]) REFERENCES [Accounts]([AccountID])
+    CONSTRAINT [FK_Wallets_Accounts]    FOREIGN KEY ([AccountID])  REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [FK_Wallets_UnbannedBy]  FOREIGN KEY ([UnbannedBy]) REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [CK_Wallets_LockedNotExceedBalance] CHECK ([LockedBalance] <= [Balance])
 );
 GO
      
@@ -1823,7 +1836,7 @@ CREATE TABLE [WalletTransactions] (
     [WalletID]            INT NOT NULL,
     [AccountID]           INT NOT NULL,
     [RelatedOrderID]      INT NULL,
-    [TxnType]             VARCHAR(20) NOT NULL CHECK ([TxnType] IN ('TopUp', 'Payment', 'Refund')),
+    [TxnType]             VARCHAR(20) NOT NULL CHECK ([TxnType] IN ('TopUp', 'Payment', 'Refund', 'Withdrawal', 'LockReserve', 'UnlockRelease')),
     [Direction]           CHAR(2) NOT NULL CHECK ([Direction] IN ('CR', 'DR')), 
     [Amount]              DECIMAL(12,0) NOT NULL CHECK ([Amount] > 0),
     [BalanceBefore]       DECIMAL(12,0) NOT NULL,
@@ -1847,6 +1860,7 @@ CREATE TABLE [WalletTransactions] (
     CONSTRAINT [CK_WalletTransactions_NoNegativeBalance] CHECK ([BalanceAfter] >= 0)
 );
 GO
+
 
 CREATE UNIQUE NONCLUSTERED INDEX [UQ_WalletTransactions_IdempotencyKey]
 ON [WalletTransactions]([IdempotencyKey])
@@ -2723,9 +2737,10 @@ GO
 /* =============================================
    10. PERFORMANCE INDEXES
 ============================================= */
-CREATE NONCLUSTERED INDEX [IX_UserBlockHistory_PendingUnblock]
-ON [UserBlockHistory] ([BlockedUntil], [AccountID])
-WHERE [UnblockedAt] IS NULL;
+-- ADDED INDEX FOR CUSTOMER DELIVERY ABUSE FLOW
+CREATE NONCLUSTERED INDEX [IX_CustomerDeliveryAbuseCases_Status_StrictUntil]
+ON [CustomerDeliveryAbuseCases] ([Status], [StrictPeriodUntil])
+INCLUDE ([AccountID], [SuspiciousOrderCount], [WarningLevel]);
 GO
 
 CREATE NONCLUSTERED INDEX [IX_UPS_User]
@@ -2947,6 +2962,7 @@ GO
    WALLET PIN MANAGEMENT
 ============================================= */
 
+
 CREATE TABLE [WalletPins] (
     [WalletPinID]         INT          IDENTITY(1,1) PRIMARY KEY,
     [WalletID]            INT          NOT NULL,
@@ -2975,7 +2991,7 @@ CREATE TABLE [WalletPinAttempts] (
     [AccountID]  INT          NOT NULL,
     [ActionType] VARCHAR(20)  NOT NULL
         CONSTRAINT [CK_WalletPinAttempts_ActionType]
-            CHECK ([ActionType] IN ('PAYMENT', 'VIEW_BALANCE', 'TOP_UP')),
+            CHECK ([ActionType] IN ('PAYMENT', 'VIEW_BALANCE', 'TOP_UP', 'WITHDRAWAL')),
     [IsSuccess]  BIT          NOT NULL,
     [CreatedAt]  DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     CONSTRAINT [FK_WalletPinAttempts_Wallets]  FOREIGN KEY ([WalletID])  REFERENCES [Wallets]([WalletID]),
@@ -2986,4 +3002,155 @@ GO
 CREATE NONCLUSTERED INDEX [IX_WalletPinAttempts_Wallet]
 ON [WalletPinAttempts]([WalletID], [CreatedAt] DESC);
 GO
+
+/* ============================================= */
+CREATE TABLE [dbo].[SavedBankAccounts] (
+    [SavedBankAccountID] INT           IDENTITY(1,1) NOT NULL,
+    [AccountID]          INT           NOT NULL,
+    [BankBin]            VARCHAR(10)   NOT NULL,
+    [BankName]           NVARCHAR(100) NOT NULL,
+    [BankShortName]      VARCHAR(20)   NOT NULL,
+    [BankCode]           VARCHAR(20)   NULL,
+    [AccountNumber]      VARCHAR(50)   NOT NULL,
+    [AccountName]        NVARCHAR(200) NOT NULL,
+    [IsDefault]          BIT           NOT NULL DEFAULT 0,
+    [IsDeleted]          BIT           NOT NULL DEFAULT 0,
+    [LastUsedAt]         DATETIME2(0)  NULL,
+    [CreatedAt]          DATETIME2(0)  NOT NULL DEFAULT GETDATE(),
+
+    CONSTRAINT [PK_SavedBankAccounts]          PRIMARY KEY ([SavedBankAccountID]),
+    CONSTRAINT [FK_SavedBankAccounts_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [dbo].[Accounts]([AccountID]),
+    CONSTRAINT [UQ_SavedBankAccounts_AccountBin]
+        UNIQUE ([AccountID], [BankBin], [AccountNumber])
+);
+GO
+
+CREATE UNIQUE INDEX [UQ_SavedBankAccounts_OneDefault]
+    ON [dbo].[SavedBankAccounts] ([AccountID])
+    WHERE [IsDefault] = 1 AND [IsDeleted] = 0;
+GO
+
+CREATE TABLE [dbo].[WithdrawalRequests] (
+    [WithdrawalID]          INT            IDENTITY(1,1) NOT NULL,
+    [WalletID]              INT            NOT NULL,
+    [AccountID]             INT            NOT NULL,
+    [WalletTransactionID]   INT            NULL,
+    [ReferenceId]           VARCHAR(100)   NOT NULL,
+    [Amount]                DECIMAL(12,0)  NOT NULL,
+    [ToBankBin]             VARCHAR(10)    NOT NULL,
+    [ToBankName]            NVARCHAR(100)  NOT NULL,
+    [ToAccountNumber]       VARCHAR(50)    NOT NULL,
+    [ToAccountName]         NVARCHAR(200)  NOT NULL,
+    [PayosPayoutId]         VARCHAR(100)   NULL,
+    [PayosTransactionId]    VARCHAR(100)   NULL,
+    [PayosRawResponse]      NVARCHAR(MAX)  NULL,
+    [Status]                VARCHAR(20)    NOT NULL,
+    [FailReason]            NVARCHAR(500)  NULL,
+    [RetryCount]            TINYINT        NOT NULL DEFAULT 0,
+    [ProcessingAt]          DATETIME2(0)   NULL,
+    [CompletedAt]           DATETIME2(0)   NULL,
+    [CancelledAt]           DATETIME2(0)   NULL,
+    [CreatedAt]             DATETIME2(0)   NOT NULL DEFAULT GETDATE(),
+
+    CONSTRAINT [PK_WithdrawalRequests]
+        PRIMARY KEY ([WithdrawalID]),
+    CONSTRAINT [FK_WithdrawalRequests_Wallets]
+        FOREIGN KEY ([WalletID]) REFERENCES [dbo].[Wallets]([WalletID]),
+    CONSTRAINT [FK_WithdrawalRequests_Accounts]
+        FOREIGN KEY ([AccountID]) REFERENCES [dbo].[Accounts]([AccountID]),
+    CONSTRAINT [FK_WithdrawalRequests_WalletTransactions]
+        FOREIGN KEY ([WalletTransactionID]) REFERENCES [dbo].[WalletTransactions]([WalletTransactionID]),
+    CONSTRAINT [CK_WithdrawalRequests_Status]
+        CHECK ([Status] IN ('PENDING', 'PROCESSING', 'SUCCESS', 'FAILED', 'CANCELLED')),
+    CONSTRAINT [CK_WithdrawalRequests_Amount]
+        CHECK ([Amount] > 0),
+    CONSTRAINT [CK_WithdrawalRequests_TxnConsistency]
+        CHECK (
+            [WalletTransactionID] IS NULL
+            OR ([Status] = 'SUCCESS' AND [CompletedAt] IS NOT NULL)
+        ),
+    CONSTRAINT [CK_WithdrawalRequests_FailConsistency]
+        CHECK (
+            [Status] != 'FAILED'
+            OR [FailReason] IS NOT NULL
+        )
+);
+GO
+
+ALTER TABLE [dbo].[WithdrawalRequests]
+ADD CONSTRAINT [UQ_WithdrawalRequests_ReferenceId]
+    UNIQUE ([ReferenceId]);
+GO
+
+CREATE INDEX [IX_WithdrawalRequests_Account]
+    ON [dbo].[WithdrawalRequests] ([AccountID], [CreatedAt] DESC);
+GO
+
+CREATE INDEX [IX_WithdrawalRequests_Pending]
+    ON [dbo].[WithdrawalRequests] ([Status], [CreatedAt] ASC)
+    WHERE [Status] IN ('PENDING', 'PROCESSING');
+GO
+
+CREATE INDEX [IX_WithdrawalRequests_PayosPayoutId]
+    ON [dbo].[WithdrawalRequests] ([PayosPayoutId])
+    WHERE [PayosPayoutId] IS NOT NULL;
+GO
+
+CREATE INDEX [IX_WithdrawalRequests_ReferenceId]
+    ON [dbo].[WithdrawalRequests] ([ReferenceId]);
+GO
+
+CREATE TABLE [dbo].[PayosWebhookLogs] (
+    [WebhookLogID]      BIGINT         IDENTITY(1,1) NOT NULL,
+    [WithdrawalID]      INT            NULL,
+    [WebhookEventId]    VARCHAR(100)   NULL,
+    [ReferenceId]       VARCHAR(100)   NULL,
+    [EventType]         VARCHAR(50)    NULL,
+    [IsSignatureValid]  BIT            NOT NULL DEFAULT 0,
+    [RawPayload]        NVARCHAR(MAX)  NOT NULL,
+    [ProcessStatus]     VARCHAR(20)    NOT NULL DEFAULT 'RECEIVED',
+    [CreatedAt]         DATETIME2(0)   NOT NULL DEFAULT GETDATE(),
+
+    CONSTRAINT [PK_PayosWebhookLogs]
+        PRIMARY KEY ([WebhookLogID]),
+    CONSTRAINT [FK_PayosWebhookLogs_WithdrawalRequests]
+        FOREIGN KEY ([WithdrawalID]) REFERENCES [dbo].[WithdrawalRequests]([WithdrawalID]),
+    CONSTRAINT [CK_PayosWebhookLogs_ProcessStatus]
+        CHECK ([ProcessStatus] IN ('RECEIVED', 'PROCESSED', 'IGNORED', 'ERROR'))
+);
+GO
+
+CREATE UNIQUE INDEX [UQ_PayosWebhookLogs_EventId]
+    ON [dbo].[PayosWebhookLogs] ([WebhookEventId])
+    WHERE [WebhookEventId] IS NOT NULL;
+GO
+
+CREATE INDEX [IX_PayosWebhookLogs_Unprocessed]
+    ON [dbo].[PayosWebhookLogs] ([ProcessStatus], [CreatedAt] ASC)
+    WHERE [ProcessStatus] IN ('RECEIVED', 'ERROR');
+GO
+
+CREATE TABLE [dbo].[WithdrawalStatusHistory] (
+    [HistoryID]     INT           IDENTITY(1,1) NOT NULL,
+    [WithdrawalID]  INT           NOT NULL,
+    [FromStatus]    VARCHAR(20)   NULL,
+    [ToStatus]      VARCHAR(20)   NOT NULL,
+    [Source]        VARCHAR(20)   NOT NULL,
+    [Note]          NVARCHAR(500) NULL,
+    [CreatedAt]     DATETIME2(0)  NOT NULL DEFAULT GETDATE(),
+
+    CONSTRAINT [PK_WithdrawalStatusHistory]
+        PRIMARY KEY ([HistoryID]),
+    CONSTRAINT [FK_WithdrawalStatusHistory_WithdrawalRequests]
+        FOREIGN KEY ([WithdrawalID]) REFERENCES [dbo].[WithdrawalRequests]([WithdrawalID]),
+    CONSTRAINT [CK_WithdrawalStatusHistory_Source]
+        CHECK ([Source] IN ('USER', 'SYSTEM', 'WEBHOOK', 'JOB'))
+);
+GO
+
+CREATE INDEX [IX_WithdrawalStatusHistory_Withdrawal]
+    ON [dbo].[WithdrawalStatusHistory] ([WithdrawalID], [CreatedAt] ASC);
+GO
+
+/* ============================================= */
 

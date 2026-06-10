@@ -442,7 +442,11 @@ public class WalletService : IWalletService
             AttemptCode = attemptCode,
             Amount = amount,
             QrImageUrl = qrImageUrl,
-            ExpiresAt = expiresAt
+            ExpiresAt = expiresAt,
+            BankName = _sePayOptions.BankCode,
+            BankCode = _sePayOptions.BankCode,
+            AccountNumber = _sePayOptions.AccountNumber,
+            AccountName = _sePayOptions.AccountName
         });
     }
 

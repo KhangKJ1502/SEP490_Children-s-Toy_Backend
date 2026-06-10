@@ -2610,6 +2610,9 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.WalletId).HasColumnName("WalletID");
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
             entity.Property(e => e.Balance).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.LockedBalance)
+                .HasColumnType("decimal(12, 0)")
+                .HasDefaultValue(0m);
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");

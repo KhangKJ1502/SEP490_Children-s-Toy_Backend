@@ -13,6 +13,7 @@ public partial class SEP490ToyStoreContext
     {
         modelBuilder.Entity<CartItem>().Ignore(e => e.IsSelected);
         ConfigureCustomerDeliveryAbuseCases(modelBuilder);
+        ConfigureWithdrawalFlow(modelBuilder);
 
         modelBuilder.Entity<AiPromptTemplate>(entity =>
         {
