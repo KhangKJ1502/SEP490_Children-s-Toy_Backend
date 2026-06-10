@@ -9,6 +9,12 @@ public interface IAuthService
 
     Task<Result> SendRegisterOtpAsync(SendRegisterOtpDto dto, CancellationToken cancellationToken = default);
 
+    Task<Result> RequestRegisterOtpAsync(RequestRegisterOtpDto dto, CancellationToken cancellationToken = default);
+
+    Task<Result> ResendRegisterOtpAsync(SendRegisterOtpDto dto, CancellationToken cancellationToken = default);
+
+    Task<Result<AuthResponseDto>> VerifyRegisterOtpAsync(VerifyRegisterOtpDto dto, CancellationToken cancellationToken = default);
+
     Task<Result<AccountInfoDto>> RegisterAsync(RegisterDto dto, CancellationToken cancellationToken = default);
 
     Task<Result> SendForgotPasswordOtpAsync(ForgotPasswordDto dto, CancellationToken cancellationToken = default);

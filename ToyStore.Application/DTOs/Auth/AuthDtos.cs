@@ -20,6 +20,20 @@ public class RegisterDto
     public string OtpCode { get; set; } = null!;
 }
 
+public class RequestRegisterOtpDto
+{
+    public string AccountName { get; set; } = null!;
+    public string Email { get; set; } = null!;
+    public string Password { get; set; } = null!;
+    public string ConfirmPassword { get; set; } = null!;
+}
+
+public class VerifyRegisterOtpDto
+{
+    public string Email { get; set; } = null!;
+    public string OtpCode { get; set; } = null!;
+}
+
 public class ForgotPasswordDto
 {
     public string Email { get; set; } = null!;
