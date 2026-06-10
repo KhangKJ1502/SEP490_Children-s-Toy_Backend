@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using AutoMapper;
 using FluentValidation;
 using Google.Apis.Auth;
@@ -21,6 +22,7 @@ public class AuthService : IAuthService
 {
     private const byte CustomerRoleId = 1;
     private const string OtpRegisterPrefix = "auth:otp:register:";
+    private const string PendingRegisterPrefix = "auth:pending-register:";
     private const string OtpForgotPrefix = "auth:otp:forgot:";
     private const string TokenBlacklistPrefix = "auth:blacklist:";
     private static readonly TimeSpan OtpExpiry = TimeSpan.FromMinutes(15);
@@ -33,6 +35,8 @@ public class AuthService : IAuthService
     private readonly IMapper _mapper;
     private readonly IValidator<LoginDto> _loginValidator;
     private readonly IValidator<SendRegisterOtpDto> _sendRegisterOtpValidator;
+    private readonly IValidator<RequestRegisterOtpDto> _requestRegisterOtpValidator;
+    private readonly IValidator<VerifyRegisterOtpDto> _verifyRegisterOtpValidator;
     private readonly IValidator<RegisterDto> _registerValidator;
     private readonly IValidator<ForgotPasswordDto> _forgotPasswordValidator;
     private readonly IValidator<ResetPasswordDto> _resetPasswordValidator;
@@ -50,6 +54,8 @@ public class AuthService : IAuthService
         IMapper mapper,
         IValidator<LoginDto> loginValidator,
         IValidator<SendRegisterOtpDto> sendRegisterOtpValidator,
+        IValidator<RequestRegisterOtpDto> requestRegisterOtpValidator,
+        IValidator<VerifyRegisterOtpDto> verifyRegisterOtpValidator,
         IValidator<RegisterDto> registerValidator,
         IValidator<ForgotPasswordDto> forgotPasswordValidator,
         IValidator<ResetPasswordDto> resetPasswordValidator,
@@ -66,6 +72,8 @@ public class AuthService : IAuthService
         _mapper                   = mapper;
         _loginValidator           = loginValidator;
         _sendRegisterOtpValidator = sendRegisterOtpValidator;
+        _requestRegisterOtpValidator = requestRegisterOtpValidator;
+        _verifyRegisterOtpValidator = verifyRegisterOtpValidator;
         _registerValidator        = registerValidator;
         _forgotPasswordValidator  = forgotPasswordValidator;
         _resetPasswordValidator   = resetPasswordValidator;
@@ -172,6 +180,183 @@ public class AuthService : IAuthService
 
         _logger.LogInformation("Register OTP sent to {Email}.", normalizedEmail);
         return Result.Success();
+    }
+
+    public async Task<Result> RequestRegisterOtpAsync(RequestRegisterOtpDto dto, CancellationToken cancellationToken = default)
+    {
+        var validationResult = await _requestRegisterOtpValidator.ValidateAsync(dto, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            var errors = validationResult.Errors
+                .GroupBy(x => x.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ErrorMessage).ToArray());
+            return Result.ValidationFailure(errors);
+        }
+
+        var normalizedEmail = dto.Email.Trim().ToLowerInvariant();
+        var emailExists = await _unitOfWork.Accounts.ExistsByEmailAsync(normalizedEmail, cancellationToken);
+        if (emailExists)
+        {
+            return Result.Conflict("Email already registered. Please use a different email.");
+        }
+
+        var otpCode = GenerateOtpCode();
+        var pendingRegistration = new PendingRegisterCache(
+            AccountName: dto.AccountName.Trim(),
+            Email: normalizedEmail,
+            PasswordHash: HashPassword(dto.Password.Trim()),
+            OtpCode: otpCode);
+
+        var redisKey = $"{PendingRegisterPrefix}{normalizedEmail}";
+        var pendingJson = JsonSerializer.Serialize(pendingRegistration);
+        await _redisService.SetAsync(redisKey, pendingJson, OtpExpiry);
+
+        await _emailService.SendRegisterOtpEmailAsync(normalizedEmail, otpCode, cancellationToken);
+
+        _logger.LogInformation("Pending registration OTP sent to {Email}.", normalizedEmail);
+        return Result.Success();
+    }
+
+    public async Task<Result> ResendRegisterOtpAsync(SendRegisterOtpDto dto, CancellationToken cancellationToken = default)
+    {
+        var validationResult = await _sendRegisterOtpValidator.ValidateAsync(dto, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            var errors = validationResult.Errors
+                .GroupBy(x => x.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ErrorMessage).ToArray());
+            return Result.ValidationFailure(errors);
+        }
+
+        var normalizedEmail = dto.Email.Trim().ToLowerInvariant();
+        var redisKey = $"{PendingRegisterPrefix}{normalizedEmail}";
+        var pendingJson = await _redisService.GetAsync(redisKey);
+        if (string.IsNullOrWhiteSpace(pendingJson))
+        {
+            return Result.Failure("OTP_EXPIRED", "OTP code has expired or was not requested. Please register again.");
+        }
+
+        PendingRegisterCache? pendingRegistration;
+        try
+        {
+            pendingRegistration = JsonSerializer.Deserialize<PendingRegisterCache>(pendingJson);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Invalid pending registration cache for {Email}.", normalizedEmail);
+            await _redisService.DeleteAsync(redisKey);
+            return Result.Failure("OTP_EXPIRED", "OTP code has expired or was not requested. Please register again.");
+        }
+
+        if (pendingRegistration == null || !string.Equals(pendingRegistration.Email, normalizedEmail, StringComparison.OrdinalIgnoreCase))
+        {
+            await _redisService.DeleteAsync(redisKey);
+            return Result.Failure("OTP_EXPIRED", "OTP code has expired or was not requested. Please register again.");
+        }
+
+        var emailExists = await _unitOfWork.Accounts.ExistsByEmailAsync(normalizedEmail, cancellationToken);
+        if (emailExists)
+        {
+            await _redisService.DeleteAsync(redisKey);
+            return Result.Conflict("Email already registered. Please use a different email.");
+        }
+
+        var otpCode = GenerateOtpCode();
+        var refreshedPendingRegistration = pendingRegistration with { OtpCode = otpCode };
+        var refreshedJson = JsonSerializer.Serialize(refreshedPendingRegistration);
+        await _redisService.SetAsync(redisKey, refreshedJson, OtpExpiry);
+
+        await _emailService.SendRegisterOtpEmailAsync(normalizedEmail, otpCode, cancellationToken);
+
+        _logger.LogInformation("Pending registration OTP resent to {Email}.", normalizedEmail);
+        return Result.Success();
+    }
+
+    public async Task<Result<AuthResponseDto>> VerifyRegisterOtpAsync(VerifyRegisterOtpDto dto, CancellationToken cancellationToken = default)
+    {
+        var validationResult = await _verifyRegisterOtpValidator.ValidateAsync(dto, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            var errors = validationResult.Errors
+                .GroupBy(x => x.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ErrorMessage).ToArray());
+            return Result<AuthResponseDto>.ValidationFailure(errors);
+        }
+
+        var normalizedEmail = dto.Email.Trim().ToLowerInvariant();
+        var redisKey = $"{PendingRegisterPrefix}{normalizedEmail}";
+        var pendingJson = await _redisService.GetAsync(redisKey);
+
+        if (string.IsNullOrWhiteSpace(pendingJson))
+        {
+            return Result<AuthResponseDto>.Failure("OTP_EXPIRED", "OTP code has expired or was not requested. Please register again.");
+        }
+
+        PendingRegisterCache? pendingRegistration;
+        try
+        {
+            pendingRegistration = JsonSerializer.Deserialize<PendingRegisterCache>(pendingJson);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Invalid pending registration cache for {Email}.", normalizedEmail);
+            await _redisService.DeleteAsync(redisKey);
+            return Result<AuthResponseDto>.Failure("OTP_EXPIRED", "OTP code has expired or was not requested. Please register again.");
+        }
+
+        if (pendingRegistration == null || !string.Equals(pendingRegistration.Email, normalizedEmail, StringComparison.OrdinalIgnoreCase))
+        {
+            await _redisService.DeleteAsync(redisKey);
+            return Result<AuthResponseDto>.Failure("OTP_EXPIRED", "OTP code has expired or was not requested. Please register again.");
+        }
+
+        if (!string.Equals(pendingRegistration.OtpCode, dto.OtpCode, StringComparison.Ordinal))
+        {
+            return Result<AuthResponseDto>.Failure("OTP_INVALID", "Invalid OTP code. Please try again.");
+        }
+
+        var emailExists = await _unitOfWork.Accounts.ExistsByEmailAsync(normalizedEmail, cancellationToken);
+        if (emailExists)
+        {
+            await _redisService.DeleteAsync(redisKey);
+            return Result<AuthResponseDto>.Conflict("Email already registered.");
+        }
+
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var created = await _unitOfWork.Accounts.CreateAsync(
+                CustomerRoleId,
+                null,
+                pendingRegistration.AccountName,
+                null,
+                normalizedEmail,
+                pendingRegistration.PasswordHash,
+                true,
+                "Email",
+                cancellationToken);
+
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+            await _redisService.DeleteAsync(redisKey);
+
+            var token = GenerateJwtToken(created);
+            var expirationMinutes = int.Parse(_configuration["Jwt:ExpirationMinutes"] ?? "1440");
+
+            _logger.LogInformation("Customer account {AccountId} registered successfully from pending OTP.", created.AccountId);
+            return Result<AuthResponseDto>.Success(new AuthResponseDto
+            {
+                AccessToken = token,
+                TokenType = "Bearer",
+                ExpiresIn = expirationMinutes * 60,
+                Account = _mapper.Map<AccountInfoDto>(created)
+            });
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            _logger.LogError(ex, "Failed to complete pending registration with email {Email}.", normalizedEmail);
+            throw;
+        }
     }
 
     public async Task<Result<AccountInfoDto>> RegisterAsync(RegisterDto dto, CancellationToken cancellationToken = default)
@@ -381,6 +566,12 @@ public class AuthService : IAuthService
     {
         return RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
     }
+
+    private sealed record PendingRegisterCache(
+        string AccountName,
+        string Email,
+        string PasswordHash,
+        string OtpCode);
 
     /// <summary>
     /// Đăng nhập bằng Google OAuth cho account đã tồn tại trong hệ thống.

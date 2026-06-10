@@ -51,6 +51,33 @@ public class AuthController : ControllerBase
         return result.ToActionResult();
     }
 
+    [HttpPost("register/request-otp")]
+    public async Task<ActionResult> RequestRegisterOtp(
+        [FromBody] RequestRegisterOtpDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _authService.RequestRegisterOtpAsync(dto, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpPost("register/resend-otp")]
+    public async Task<ActionResult> ResendRegisterOtp(
+        [FromBody] SendRegisterOtpDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _authService.ResendRegisterOtpAsync(dto, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpPost("register/verify-otp")]
+    public async Task<ActionResult<AuthResponseDto>> VerifyRegisterOtp(
+        [FromBody] VerifyRegisterOtpDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _authService.VerifyRegisterOtpAsync(dto, cancellationToken);
+        return result.ToActionResult();
+    }
+
     /// <summary>
     /// Đăng ký tài khoản khách hàng mới (yêu cầu OTP hợp lệ).
     /// </summary>
