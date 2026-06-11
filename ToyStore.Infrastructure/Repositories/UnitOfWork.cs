@@ -45,7 +45,8 @@ public class UnitOfWork : IUnitOfWork
         IOrderAssignmentRepository orderAssignments,
         IOrderQueueRepository orderQueues,
         ICampaignApprovalLogRepository campaignApprovalLogs,
-        ICampaignScheduleRepository campaignSchedules)
+        ICampaignScheduleRepository campaignSchedules,
+        ISavedBankAccountRepository savedBankAccounts)
     {
         _context = context;
         Vouchers = vouchers;
@@ -79,6 +80,7 @@ public class UnitOfWork : IUnitOfWork
         OrderQueues = orderQueues;
         CampaignApprovalLogs = campaignApprovalLogs;
         CampaignSchedules = campaignSchedules;
+        SavedBankAccounts = savedBankAccounts;
     }
 
     public IVoucherRepository Vouchers { get; }
@@ -142,6 +144,7 @@ public class UnitOfWork : IUnitOfWork
     public ICampaignApprovalLogRepository CampaignApprovalLogs { get; }
 
     public ICampaignScheduleRepository CampaignSchedules { get; }
+    public ISavedBankAccountRepository SavedBankAccounts { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

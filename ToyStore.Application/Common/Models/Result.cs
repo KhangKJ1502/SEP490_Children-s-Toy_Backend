@@ -173,6 +173,14 @@ public class Result
     }
 
     /// <summary>
+    /// Creates a failure result for unauthorized access.
+    /// </summary>
+    public static Result Unauthorized(string message = "You are not authorized to perform this action.")
+    {
+        return new Result(false, "UNAUTHORIZED", message, null);
+    }
+
+    /// <summary>
     /// Creates a failure result for upstream/provider failures.
     /// Maps to HTTP 502.
     /// </summary>
@@ -181,3 +189,4 @@ public class Result
         return new Result(false, "BAD_GATEWAY", message, null);
     }
 }
+
