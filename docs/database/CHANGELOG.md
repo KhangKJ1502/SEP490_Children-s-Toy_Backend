@@ -3,6 +3,26 @@
 > **Quy táº¯c:** Entry má»›i nháº¥t náº±m TRÃŠN CÃ™NG.
 > **Cáº­p nháº­t file nÃ y** má»—i khi thay Ä‘á»•i schema (thÃªm báº£ng, cá»™t, index).
 
+## [2026-06-11] `v3.7 - Add SavedBankAccounts and WithdrawalRequests`
+
+### Thay đổi
+
+| Loại | Bảng | Chi tiết |
+|---|---|---|
+| ➕ Thêm bảng | `dbo.SavedBankAccounts` | Bảng quản lý danh sách tài khoản ngân hàng đã lưu của user (schema v3.2) |
+| ➕ Thêm bảng | `dbo.WithdrawalRequests` | Bảng quản lý các yêu cầu rút tiền qua PayOS (schema v3.2) |
+| ➕ Thêm index | `UQ_SavedBankAccounts_OneDefault` | Unique filtered index đảm bảo chỉ có tối đa 1 tài khoản mặc định/user |
+
+### Lý do
+
+> Tích hợp tính năng rút tiền và quản lý tài khoản ngân hàng liên kết, hỗ trợ gọi BankLookup API tra cứu tên chủ tài khoản và đồng bộ luồng rút tiền PayOS.
+
+### Script
+
+`docs/database/changes/20260611_SavedBankAccounts.sql`
+
+---
+
 ## [2026-06-04] `v3.6 - Remove Voucher ImageURL`
 
 ### Thay đổi
