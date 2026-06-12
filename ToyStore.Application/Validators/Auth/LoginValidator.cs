@@ -15,5 +15,15 @@ public class LoginValidator : AbstractValidator<LoginDto>
         RuleFor(x => x.Password)
             .NotEmpty().WithMessage("Password is required.")
             .MaximumLength(255).WithMessage("Password must not exceed 255 characters.");
+
+        RuleFor(x => x.RoleId)
+            .InclusiveBetween((byte)1, (byte)5)
+            .When(x => x.RoleId.HasValue)
+            .WithMessage("Invalid role.");
+
+        RuleForEach(x => x.AllowedRoleIds)
+            .InclusiveBetween((byte)1, (byte)5)
+            .When(x => x.AllowedRoleIds is { Count: > 0 })
+            .WithMessage("Invalid role.");
     }
 }

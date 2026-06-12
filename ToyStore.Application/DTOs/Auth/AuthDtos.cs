@@ -4,6 +4,8 @@ public class LoginDto
 {
     public string Email { get; set; } = null!;
     public string Password { get; set; } = null!;
+    public byte? RoleId { get; set; }
+    public List<byte>? AllowedRoleIds { get; set; }
 }
 
 public class SendRegisterOtpDto

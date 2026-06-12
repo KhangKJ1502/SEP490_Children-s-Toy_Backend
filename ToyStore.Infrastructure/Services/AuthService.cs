@@ -137,6 +137,16 @@ public class AuthService : IAuthService
             return Result<AuthResponseDto>.Failure("ACCOUNT_INACTIVE", "Your account has been locked for violating our system policy. Please contact support.");
         }
 
+        if (dto.RoleId.HasValue && account.RoleId != dto.RoleId.Value)
+        {
+            return Result<AuthResponseDto>.Failure("ROLE_MISMATCH", "Invalid account.");
+        }
+
+        if (dto.AllowedRoleIds is { Count: > 0 } && !dto.AllowedRoleIds.Contains(account.RoleId))
+        {
+            return Result<AuthResponseDto>.Failure("ROLE_MISMATCH", "Invalid account.");
+        }
+
         // Đăng nhập thành công → reset các lần thất bại
         _loginAttemptService.ResetAttempts(normalizedEmail);
 
