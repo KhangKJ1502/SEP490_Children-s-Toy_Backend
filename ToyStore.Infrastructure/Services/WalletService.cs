@@ -443,7 +443,7 @@ public class WalletService : IWalletService
             Amount = amount,
             QrImageUrl = qrImageUrl,
             ExpiresAt = expiresAt,
-            BankName = _sePayOptions.BankCode,
+            BankName = string.IsNullOrWhiteSpace(_sePayOptions.BankName) ? _sePayOptions.BankCode : _sePayOptions.BankName,
             BankCode = _sePayOptions.BankCode,
             AccountNumber = _sePayOptions.AccountNumber,
             AccountName = _sePayOptions.AccountName
