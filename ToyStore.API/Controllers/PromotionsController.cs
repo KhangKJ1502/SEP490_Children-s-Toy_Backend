@@ -10,7 +10,7 @@ namespace ToyStore.API.Controllers;
 /// <summary>
 /// API quản lý promotion.
 /// </summary>
-[Authorize]
+[Authorize(Roles = "Admin,Staff")]
 [ApiController]
 [Route("api/[controller]")]
 public class PromotionsController : ControllerBase

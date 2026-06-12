@@ -1,4 +1,3 @@
-
 /* =================================================================
    DataSeed FULL v5.3 – SEP490_ToyStore
    Updated for Schema v3.2
@@ -29,7 +28,7 @@ VALUES
     (1, 'Customer', N'Customer', '2024-01-05 08:00:00'),
     (2, 'Admin', N'Administrator', '2024-01-05 08:00:00'),
     (3, 'Staff', N'Sales Staff', '2024-01-05 08:00:00'),
-    (4, 'Merchandise', N'Warehouse Staff', '2024-01-05 08:00:00');
+    (4, 'Merchandise', N'Merchandise Staff', '2024-01-05 08:00:00');
 SET IDENTITY_INSERT [dbo].[Roles] OFF;
 GO
 
@@ -216,7 +215,7 @@ VALUES
     (8, 'Cancelled', N'Cancelled'),
     (9, 'Refunded', N'Refunded'),
     (10, 'Returning', N'Return shipment in progress'),
-    (11, 'ReturnCompleted', N'Returned to warehouse, awaiting processing'),
+    (11, 'ReturnCompleted', N'Returned to merchandise, awaiting processing'),
     (12, 'DeliveryFailed', N'Delivery failed, awaiting resolution'),
     (13, 'WaitingReturn', N'Waiting for return shipment'),
     (14, 'ReturnFailed', N'Return shipment failed'),
@@ -250,8 +249,8 @@ VALUES
     (2, 'RefundApproved', N'Request approved, waiting for return shipment creation'),
     (3, 'RefundRejected', N'Request rejected'),
     (4, 'RefundPickupCreated', N'Return shipment created, waiting for pickup'),
-    (5, 'RefundShipping', N'Returned package is on the way to warehouse'),
-    (6, 'RefundReceived', N'Warehouse received returned package'),
+    (5, 'RefundShipping', N'Returned package is on the way to Merchandise'),
+    (6, 'RefundReceived', N'Merchandise received returned package'),
     (7, 'RefundInspectionPending', N'Package quality inspection in progress'),
     (8, 'RefundCompleted', N'Refund completed and inventory updated'),
     (9, 'RefundCancelled', N'Customer cancelled refund request');
@@ -1476,7 +1475,7 @@ BEGIN
     ),
         (
             N'Delivery failed / unable to deliver',
-            N'Automatic refund when GHN returns the package to warehouse due to failed delivery (System-only)',
+            N'Automatic refund when GHN returns the package to Merchandise due to failed delivery (System-only)',
             0, 1, GETDATE()
     );
 END
@@ -2037,7 +2036,7 @@ VALUES
     ('REFUND_COMPLETED', 'SYSTEM', N'Refund Completed', N'{{Amount}} VND from order {{OrderCode}} has been successfully refunded to your wallet.'),
 
     -- Products & Inventory
-    ('PRODUCT_BACK_IN_STOCK', 'SYSTEM', N'{{ProductName}} Is Back in Stock', N'Good news! {{ProductName}} is now back in stock at {{Price}}. Shop before it runs out!'),
+    ('PRODUCT_AVAILABLE_AGAIN', 'SYSTEM', N'{{ProductName}} Is Available Again', N'{{ProductName}} is available for purchase again at {{Price}}. Get yours before it’s gone!'),
     ('WISHLIST_PRICE_DROP', 'SYSTEM', N'Price Drop on {{ProductName}}', N'{{ProductName}} in your wishlist is now on sale for only {{Price}}.'),
 
     -- Reviews & Blog
@@ -2055,9 +2054,9 @@ VALUES
     -- Merchandise Notifications
     ('MERCH_READY_TO_PACK', 'SYSTEM', N'Order Ready for Packing', N'Order {{OrderCode}} is ready to be packed.'),
     ('MERCH_PICKED_UP', 'SYSTEM', N'Parcel Picked Up by Shipper', N'The shipper has successfully picked up the parcel for order {{OrderCode}}.'),
-    ('MERCH_RETURNED', 'SYSTEM', N'Return Received at Warehouse', N'Order {{OrderCode}} has been returned to the warehouse.'),
-    ('MERCH_LOW_STOCK', 'SYSTEM', N'Low Stock Warning', N'Only {{Quantity}} units of {{ProductName}} remaining.'),
-    ('MERCH_OUT_OF_STOCK', 'SYSTEM', N'Out of Stock Alert', N'{{ProductName}} is completely out of stock in the warehouse.'),
+    ('MERCH_RETURNED', 'SYSTEM', N'Return Received at Merchandise', N'Order {{OrderCode}} has been returned to the Merchandise.'),
+    ('MERCH_LOW_QUANTITY', 'SYSTEM', N'Low Product Quantity', N'{{ProductName}} has only {{Quantity}} units remaining.'),
+    ('MERCH_UNAVAILABLE', 'SYSTEM', N'Product Unavailable', N'{{ProductName}} is no longer available in the Merchandise.'),
 
     -- Admin Notifications
     ('ADMIN_PAYMENT_ERROR', 'SYSTEM', N'Payment Gateway Error', N'Payment gateway {{GatewayName}} reported an error: {{ErrorMessage}}.'),
@@ -2205,8 +2204,8 @@ SELECT
     'ORDER_DELIVERED',
     'CUSTOMER',
     'ORDER',
-    N'Review Your Products',
-    N'Order ' + o.OrderCode + N' has been successfully delivered.',
+    N'Review Your Products and Earn Reward Points!',
+    N'Order ' + o.OrderCode + N' has been successfully delivered. Leave a review now to earn 50 coins!',
     '{"orderId":' + CAST(o.OrderID AS VARCHAR) + ',"orderCode":"' + o.OrderCode + '"}',
     'Unread',
     'DLV-RV-' + o.OrderCode,
