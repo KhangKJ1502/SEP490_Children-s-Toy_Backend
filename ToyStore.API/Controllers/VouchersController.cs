@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using ToyStore.API.Extensions;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Vouchers;
@@ -51,6 +52,7 @@ public class VouchersController : ControllerBase
     /// Tạo mới voucher.
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,Staff")]
     public async Task<ActionResult<VoucherDto>> CreateVoucher(
         [FromBody] CreateVoucherDto request,
         CancellationToken cancellationToken = default)
@@ -72,6 +74,7 @@ public class VouchersController : ControllerBase
     /// Cập nhật voucher theo ID.
     /// </summary>
     [HttpPut("{voucherId:int}")]
+    [Authorize(Roles = "Admin,Staff")]
     public async Task<ActionResult<VoucherDto>> UpdateVoucher(
         int voucherId,
         [FromBody] UpdateVoucherDto request,

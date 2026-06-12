@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using ToyStore.API.Extensions;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.SuperCategories;
@@ -61,6 +62,7 @@ public class SuperCategoriesController : ControllerBase
     /// Tạo mới super category.
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,Merchandise")]
     public async Task<ActionResult<SuperCategoryListDto>> CreateSuperCategory(
         [FromBody] CreateSuperCategoryDto dto,
         CancellationToken cancellationToken = default)
@@ -78,6 +80,7 @@ public class SuperCategoriesController : ControllerBase
     /// Cập nhật super category.
     /// </summary>
     [HttpPut("{superCategoryId:int}")]
+    [Authorize(Roles = "Admin,Merchandise")]
     public async Task<ActionResult<SuperCategoryListDto>> UpdateSuperCategory(
         [FromRoute] short superCategoryId,
         [FromBody] UpdateSuperCategoryDto dto,
