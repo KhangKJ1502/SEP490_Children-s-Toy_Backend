@@ -20,6 +20,8 @@ using ToyStore.Application.DTOs.Templates;
 using ToyStore.Application.DTOs.Wallets;
 using ToyStore.Application.DTOs.Shifts;
 using ToyStore.Application.DTOs.Assignments;
+using ToyStore.Application.DTOs.BankAccounts;
+using ToyStore.Application.Validators.BankAccounts;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Application.Mappings;
@@ -132,6 +134,7 @@ public static class DependencyInjection
         services.AddScoped<IValidator<VerifyForgotWalletPinOtpRequestDto>, VerifyForgotWalletPinOtpRequestValidator>();
         services.AddScoped<IValidator<ResetForgotWalletPinRequestDto>, ResetForgotWalletPinRequestValidator>();
         services.AddScoped<IValidator<UpdateWalletStatusDto>, UpdateWalletStatusValidator>();
+        services.AddScoped<IValidator<CreateSavedBankAccountDto>, CreateSavedBankAccountValidator>();
 
         services.AddScoped<IValidator<CreateShiftTemplateDto>, CreateShiftTemplateValidator>();
         services.AddScoped<IValidator<UpdateShiftTemplateDto>, UpdateShiftTemplateValidator>();
@@ -173,6 +176,7 @@ public static class DependencyInjection
         services.AddScoped<IRefundImageRepository, RefundImageRepository>();
         services.AddScoped<IWalletTransactionRepository, WalletTransactionRepository>();
         services.AddScoped<IWalletRepository, WalletRepository>();
+        services.AddScoped<ISavedBankAccountRepository, SavedBankAccountRepository>();
         services.AddScoped<IShiftTemplateRepository, ShiftTemplateRepository>();
         services.AddScoped<IWorkScheduleRepository, WorkScheduleRepository>();
         services.AddScoped<IStaffShiftCapacityRepository, StaffShiftCapacityRepository>();
@@ -194,6 +198,8 @@ public static class DependencyInjection
         services.AddScoped<IReviewService, ReviewService>();
         services.AddScoped<IRefundService, RefundService>();
         services.AddScoped<IWalletService, WalletService>();
+        services.AddScoped<ISavedBankAccountService, SavedBankAccountService>();
+        services.AddScoped<IBankLookupService, BankLookupService>();
         services.AddScoped<IAdminWalletService, AdminWalletService>();
         services.AddScoped<IShiftTemplateService, ShiftTemplateService>();
         services.AddScoped<IWorkScheduleService, WorkScheduleService>();
@@ -270,6 +276,11 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(opts.TimeoutSeconds <= 0 ? 10 : opts.TimeoutSeconds);
         });
         services.AddScoped<IBlogCommentModerationGateway, BlogCommentModerationGateway>();
+
+        services.AddHttpClient("BankLookup", client =>
+        {
+            client.BaseAddress = new Uri("https://api.banklookup.net/");
+        });
 
         // --- SE_PAY / VietQR ---
         services.Configure<SePayOptions>(

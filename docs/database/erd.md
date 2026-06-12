@@ -526,6 +526,44 @@ erDiagram
         datetime2   CreatedAt
     }
 
+    SavedBankAccounts {
+        int         SavedBankAccountID PK
+        int         AccountID          FK
+        varchar10   BankBin
+        nvarchar100 BankName
+        varchar20   BankShortName
+        varchar20   BankCode           "nullable"
+        varchar50   AccountNumber
+        nvarchar200 AccountName
+        bit         IsDefault
+        bit         IsDeleted
+        datetime2   LastUsedAt         "nullable"
+        datetime2   CreatedAt
+    }
+
+    WithdrawalRequests {
+        int         WithdrawalID        PK
+        int         WalletID            FK
+        int         AccountID           FK
+        int         WalletTransactionID FK "nullable"
+        varchar100  ReferenceId         UK
+        decimal12_0 Amount
+        varchar10   ToBankBin
+        nvarchar100 ToBankName
+        varchar50   ToAccountNumber
+        nvarchar200 ToAccountName
+        varchar100  PayosPayoutId       "nullable"
+        varchar100  PayosTransactionId  "nullable"
+        nvarcharMAX PayosRawResponse    "nullable"
+        varchar20   Status
+        nvarchar500 FailReason          "nullable"
+        tinyint     RetryCount
+        datetime2   ProcessingAt        "nullable"
+        datetime2   CompletedAt         "nullable"
+        datetime2   CancelledAt         "nullable"
+        datetime2   CreatedAt
+    }
+
     StatusRefunds {
         tinyint     StatusID   PK
         varchar50   StatusName UK
@@ -720,6 +758,11 @@ erDiagram
     RefundStatusHistory  }o--||  StatusRefunds        : "trạng thái mới"
     RefundStatusHistory  }o--o|  Accounts             : "thay đổi bởi (ChangedBy)"
 
+    SavedBankAccounts    }o--||  Accounts             : "tài khoản ngân hàng của (AccountID)"
+    WithdrawalRequests   }o--||  Wallets              : "rút từ ví (WalletID)"
+    WithdrawalRequests   }o--||  Accounts             : "yêu cầu bởi (AccountID)"
+    WithdrawalRequests   }o--o|  WalletTransactions   : "giao dịch ví liên quan (WalletTransactionID)"
+
     NotificationDeliveries}o--|| Accounts            : "gửi cho user"
     NotificationDeliveries}o--|| NotificationTemplates : "dùng template"
     ChatMessages         }o--||  ChatConversations    : "tin nhắn trong hội thoại"
@@ -732,7 +775,7 @@ erDiagram
 
 | Module                 | Bảng                                                                                                                                                           |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 👤 User Management     | `Roles`, `Accounts`, `BlockReasons`, `UserBlockHistory`, `Addresses`                                                                                           |
+| 👤 User Management     | `Roles`, `Accounts`, `BlockReasons`, `UserBlockHistory`, `Addresses`, `SavedBankAccounts`                                                                                           |
 | 🧸 Product Catalog     | `SuperCategories`, `Categories`, `Brands`, `Materials`, `Ages`, `Sexes`, `Origins`, `PriceRanges`, `Products`, `ProductDetails`, `ProductImages`, `Promotions` |
 | 📦 Order Management    | `StatusOrders`, `Orders`, `OrderDetails`, `OrderStatusHistory`, `OrderAssignments`, `OrderQueue`                                                               |
 | 🕒 Shift Scheduling    | `ShiftTemplates`, `WorkSchedules`, `StaffShiftCapacity`                                                                                                        |
@@ -740,7 +783,7 @@ erDiagram
 | 🏷️ Vouchers            | `VoucherTypes`, `Vouchers`, `OrderVouchers`, `VoucherUsageLogs`                                                                                                |
 | 📝 Blog & Content      | `BlogCategories`, `BlogPosts`, `BlogPostCategories`, `Banners`                                                                                                 |
 | ⭐ Reviews             | `ReviewProducts`, `ReviewProductImages`, `ReviewProductReplies`, `ReviewProductReactions`                                                                      |
-| 💳 Payment & Wallet    | `Wallets`, `WalletTransactions`, `PaymentHistory`, `StatusRefunds`, `OrderRefunds`, `RefundDetails`, `RefundStatusHistory` |
+| 💳 Payment & Wallet    | `Wallets`, `WalletTransactions`, `PaymentHistory`, `StatusRefunds`, `OrderRefunds`, `RefundDetails`, `RefundStatusHistory`, `WithdrawalRequests` |
 | 🔔 Notification & Chat | `Notification.Templates`, `Notification.Deliveries`, `ChatConversations`, `ChatMessages`                                                                       |
 | 🤖 AI/System           | `Interaction.Events`, `Recommendation.ItemSimilarities`, `System.DomainEventOutbox`, `System.BackgroundJobs`                                                   |
 
