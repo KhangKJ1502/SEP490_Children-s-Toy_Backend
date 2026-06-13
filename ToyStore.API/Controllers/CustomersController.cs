@@ -12,7 +12,7 @@ namespace ToyStore.API.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin,Staff")]
 public class CustomersController : ControllerBase
 {
     private readonly ICustomerService _customerService;

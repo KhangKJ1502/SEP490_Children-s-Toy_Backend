@@ -10,7 +10,7 @@ namespace ToyStore.API.Controllers;
 /// <summary>
 /// API quản lý promotion.
 /// </summary>
-[Authorize]
+[Authorize(Roles = "Admin,Staff")]
 [ApiController]
 [Route("api/[controller]")]
 public class PromotionsController : ControllerBase
@@ -104,6 +104,18 @@ public class PromotionsController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var result = await _promotionService.UpdatePromotionAsync(promotionId, request, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Lấy danh sách promotion đang áp dụng cho một sản phẩm.
+    /// </summary>
+    [HttpGet("product/{productId:int}")]
+    public async Task<ActionResult<List<ProductPromotionInfoDto>>> GetPromotionsByProductId(
+        int productId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _promotionService.GetPromotionsByProductIdAsync(productId, cancellationToken);
         return result.ToActionResult();
     }
 }

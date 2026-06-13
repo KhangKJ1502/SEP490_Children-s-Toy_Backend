@@ -71,7 +71,7 @@ public class CartService : ICartService
 
         if (product.Quantity <= 0)
         {
-            return Result<CartDto>.BusinessError("Product is out of stock.");
+            return Result<CartDto>.BusinessError("Product is out of quantity.");
         }
 
         var cart = await EnsureCartAsync(accountId, cancellationToken);
@@ -189,7 +189,7 @@ public class CartService : ICartService
 
         if (item.Product.Quantity <= 0)
         {
-            return Result<CartDto>.BusinessError("Product is out of stock.");
+            return Result<CartDto>.BusinessError("Product is out of quantity.");
         }
 
         if (dto.Quantity > item.Product.Quantity)

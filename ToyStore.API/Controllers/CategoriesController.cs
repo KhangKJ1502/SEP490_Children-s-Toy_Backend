@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using ToyStore.API.Extensions;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Categories;
@@ -61,6 +62,7 @@ public class CategoriesController : ControllerBase
     /// Tạo mới category.
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,Merchandise")]
     public async Task<ActionResult<CategoryListDto>> CreateCategory(
         [FromBody] CreateCategoryDto dto,
         CancellationToken cancellationToken = default)
@@ -78,6 +80,7 @@ public class CategoriesController : ControllerBase
     /// Cập nhật category.
     /// </summary>
     [HttpPut("{categoryId:int}")]
+    [Authorize(Roles = "Admin,Merchandise")]
     public async Task<ActionResult<CategoryListDto>> UpdateCategory(
         [FromRoute] short categoryId,
         [FromBody] UpdateCategoryDto dto,

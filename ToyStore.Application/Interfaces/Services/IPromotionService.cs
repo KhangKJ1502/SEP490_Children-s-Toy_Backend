@@ -48,4 +48,11 @@ public interface IPromotionService
         int promotionId,
         UpdatePromotionDto request,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lấy danh sách promotion đang áp dụng cho một sản phẩm.
+    /// </summary>
+    Task<Result<List<ProductPromotionInfoDto>>> GetPromotionsByProductIdAsync(
+        int productId,
+        CancellationToken cancellationToken = default);
 }

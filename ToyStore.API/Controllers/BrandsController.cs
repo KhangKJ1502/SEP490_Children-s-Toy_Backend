@@ -41,7 +41,7 @@ public class BrandsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin,Staff")]
+    [Authorize(Roles = "Admin,Merchandise")]
     public async Task<ActionResult<BrandListDto>> CreateBrand(
         [FromBody] CreateBrandDto dto,
         CancellationToken cancellationToken = default)
@@ -56,7 +56,7 @@ public class BrandsController : ControllerBase
     }
 
     [HttpPut("{brandId:int}")]
-    [Authorize(Roles = "Admin,Staff")]
+    [Authorize(Roles = "Admin,Merchandise")]
     public async Task<ActionResult<BrandListDto>> UpdateBrand(
         [FromRoute] short brandId,
         [FromBody] UpdateBrandDto dto,

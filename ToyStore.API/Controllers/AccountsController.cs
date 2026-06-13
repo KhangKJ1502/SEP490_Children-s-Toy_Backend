@@ -10,6 +10,7 @@ namespace ToyStore.API.Controllers;
 /// <summary>
 /// APIs quản lý account.
 /// </summary>
+[Authorize(Roles = "Admin")]
 [ApiController]
 [Route("api/[controller]")]
 public class AccountsController : ControllerBase

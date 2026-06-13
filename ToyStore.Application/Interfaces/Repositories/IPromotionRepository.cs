@@ -60,6 +60,11 @@ public interface IPromotionRepository
     Task<bool> IsProductInActivePromotionAsync(int productId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Lấy danh sách promotion đang áp dụng cho một sản phẩm.
+    /// </summary>
+    Task<List<DTOs.Promotions.ProductPromotionInfoDto>> GetPromotionsByProductIdAsync(int productId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Lấy danh sách promotion FLASH_SALE đang Active hoặc Scheduled, bao gồm đầy đủ time slots và sản phẩm.
     /// </summary>
     Task<List<Promotion>> GetFlashSalePromotionsAsync(int visibilityDays = 2, CancellationToken cancellationToken = default);

@@ -380,10 +380,6 @@ public class VoucherService : IVoucherService
                     var targetStartDate = normalizedRequest.StartDate ?? existingVoucher.StartDate;
                     if (targetStartDate <= now)
                     {
-                        if (normalizedRequest.StartDate.HasValue && normalizedRequest.StartDate.Value < now)
-                        {
-                            normalizedRequest.StartDate = now;
-                        }
                         normalizedRequest.Status = VoucherStatuses.Active;
                     }
                     else
@@ -404,10 +400,6 @@ public class VoucherService : IVoucherService
                     {
                         if (targetStartDate <= now)
                         {
-                            if (normalizedRequest.StartDate.HasValue && normalizedRequest.StartDate.Value < now)
-                            {
-                                normalizedRequest.StartDate = now;
-                            }
                             if (string.Equals(oldStatus, VoucherStatuses.Scheduled, StringComparison.OrdinalIgnoreCase) ||
                                 string.Equals(oldStatus, VoucherStatuses.Inactive, StringComparison.OrdinalIgnoreCase) ||
                                 string.Equals(oldStatus, VoucherStatuses.Pending, StringComparison.OrdinalIgnoreCase))

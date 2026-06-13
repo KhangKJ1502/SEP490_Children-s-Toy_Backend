@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using ToyStore.API.Extensions;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Products;
@@ -25,6 +26,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPost("upload-image")]
+    [Authorize(Roles = "Admin,Merchandise")]
     public async Task<ActionResult<UploadImageResponseDto>> UploadImage(
         IFormFile file,
         CancellationToken cancellationToken = default)
@@ -107,6 +109,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin,Merchandise")]
     public async Task<ActionResult<ProductDto>> CreateProduct(
         [FromBody] CreateProductDto dto,
         CancellationToken cancellationToken = default)
@@ -121,6 +124,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPut("{productId:int}")]
+    [Authorize(Roles = "Admin,Merchandise")]
     public async Task<ActionResult<ProductDto>> UpdateProduct(
         [FromRoute] int productId,
         [FromBody] UpdateProductDto dto,
@@ -151,6 +155,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPost("product-quantity-report")]
+    [Authorize(Roles = "Admin,Merchandise")]
     public async Task<ActionResult<InventoryReportFileDto>> ExportInventoryReport(
         [FromBody] InventoryReportRequestDto request,
         CancellationToken cancellationToken = default)
