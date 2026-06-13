@@ -698,4 +698,23 @@ public class PromotionService : IPromotionService
 
         return Result<PromotionDto>.Success(_mapper.Map<PromotionDto>(updatedPromotion));
     }
+
+    public async Task<Result<List<ProductPromotionInfoDto>>> GetPromotionsByProductIdAsync(
+        int productId,
+        CancellationToken cancellationToken = default)
+    {
+        if (productId <= 0)
+        {
+            return Result<List<ProductPromotionInfoDto>>.Failure("VALIDATION_ERROR", "Product ID must be greater than 0.");
+        }
+
+        var product = await _unitOfWork.Products.GetByIdAsync(productId, cancellationToken);
+        if (product is null)
+        {
+            return Result<List<ProductPromotionInfoDto>>.NotFound("Product", productId);
+        }
+
+        var list = await _unitOfWork.Promotions.GetPromotionsByProductIdAsync(productId, cancellationToken);
+        return Result<List<ProductPromotionInfoDto>>.Success(list);
+    }
 }

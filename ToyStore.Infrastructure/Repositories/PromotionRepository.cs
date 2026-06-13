@@ -141,6 +141,50 @@ public class PromotionRepository : IPromotionRepository
         return inFlashSale;
     }
 
+    public async Task<List<ToyStore.Application.DTOs.Promotions.ProductPromotionInfoDto>> GetPromotionsByProductIdAsync(int productId, CancellationToken cancellationToken = default)
+    {
+        var discountPromos = await _context.ProductPromotions
+            .Include(pp => pp.Promotion)
+            .Where(pp => pp.ProductId == productId && !pp.IsDeleted && !pp.Promotion.IsDeleted)
+            .Select(pp => new ToyStore.Application.DTOs.Promotions.ProductPromotionInfoDto
+            {
+                PromotionId = pp.PromotionId,
+                PromotionName = pp.Promotion.PromotionName,
+                PromotionType = pp.Promotion.PromotionType,
+                StartDate = pp.Promotion.StartDate,
+                EndDate = pp.Promotion.EndDate,
+                Status = pp.Promotion.Status,
+                SalePrice = pp.SalePrice,
+                DiscountPercent = pp.DiscountPercent,
+                SaleQuantity = pp.SaleQuantity,
+                SoldQuantity = pp.SoldQuantity
+            })
+            .ToListAsync(cancellationToken);
+
+        var flashSalePromos = await _context.PromotionProductSlots
+            .Include(pps => pps.TimeSlot)
+            .ThenInclude(ts => ts.Promotion)
+            .Where(pps => pps.ProductId == productId && !pps.IsDeleted && !pps.TimeSlot.IsDeleted && !pps.TimeSlot.Promotion.IsDeleted)
+            .Select(pps => new ToyStore.Application.DTOs.Promotions.ProductPromotionInfoDto
+            {
+                PromotionId = pps.TimeSlot.PromotionId,
+                PromotionName = pps.TimeSlot.Promotion.PromotionName,
+                PromotionType = pps.TimeSlot.Promotion.PromotionType,
+                StartDate = pps.TimeSlot.StartAt,
+                EndDate = pps.TimeSlot.EndAt,
+                Status = pps.TimeSlot.Status,
+                SalePrice = pps.SalePrice,
+                DiscountPercent = pps.DiscountPercent,
+                SaleQuantity = pps.SaleQuantity,
+                SoldQuantity = pps.SoldQuantity
+            })
+            .ToListAsync(cancellationToken);
+
+        return discountPromos.Concat(flashSalePromos)
+            .OrderByDescending(p => p.StartDate)
+            .ToList();
+    }
+
     public async Task<List<Promotion>> GetFlashSalePromotionsAsync(
         int visibilityDays = 2,
         CancellationToken cancellationToken = default)

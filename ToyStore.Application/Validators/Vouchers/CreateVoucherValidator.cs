@@ -94,6 +94,13 @@ public class CreateVoucherValidator : AbstractValidator<CreateVoucherDto>
             .Must(x => x.StartDate < x.EndDate)
             .WithMessage("Start date must be earlier than end date.");
 
+        // Thời hạn voucher từ 1 đến 30 ngày
+        RuleFor(x => x)
+            .Must(x => (x.EndDate - x.StartDate).TotalDays >= 1.0)
+            .WithMessage("Voucher duration must be at least 1 day.")
+            .Must(x => (x.EndDate - x.StartDate).TotalDays <= 30.0)
+            .WithMessage("Voucher duration must not exceed 30 days.");
+
         // DiscountValue không được vượt MinOrderAmount đối với loại FIXED
         RuleFor(x => x)
             .Must(x => !IsFixed(x.DiscountType) || !x.MinOrderAmount.HasValue || x.DiscountValue <= x.MinOrderAmount.Value)

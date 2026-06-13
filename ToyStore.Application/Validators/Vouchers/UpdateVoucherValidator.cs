@@ -91,6 +91,15 @@ public class UpdateVoucherValidator : AbstractValidator<UpdateVoucherDto>
             .Must(x => !x.StartDate.HasValue || !x.EndDate.HasValue || x.StartDate.Value < x.EndDate.Value)
             .WithMessage("Start date must be earlier than end date when both dates are provided.");
 
+        // Thời hạn voucher từ 1 đến 30 ngày (khi cả 2 đều được cung cấp)
+        RuleFor(x => x)
+            .Must(x => (x.EndDate!.Value - x.StartDate!.Value).TotalDays >= 1.0)
+            .When(x => x.StartDate.HasValue && x.EndDate.HasValue)
+            .WithMessage("Voucher duration must be at least 1 day.")
+            .Must(x => (x.EndDate!.Value - x.StartDate!.Value).TotalDays <= 30.0)
+            .When(x => x.StartDate.HasValue && x.EndDate.HasValue)
+            .WithMessage("Voucher duration must not exceed 30 days.");
+
         // MaxUsagePerUser không được vượt TotalQuantity
         RuleFor(x => x)
             .Must(x => !x.TotalQuantity.HasValue || !x.MaxUsagePerUser.HasValue || x.MaxUsagePerUser.Value <= x.TotalQuantity.Value)
