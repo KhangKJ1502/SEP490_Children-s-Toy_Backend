@@ -23,6 +23,8 @@ public static class NotificationEventTypes
     public const string PaymentFailed  = "payment.failed";
     public const string WalletTopup    = "wallet.topup";
     public const string WalletRefund   = "wallet.refund";
+    public const string WalletWithdrawalSuccess = "wallet.withdrawal.success";
+    public const string WalletWithdrawalFailed  = "wallet.withdrawal.failed";
 
     // Customer — promotions & stock
     public const string ProductBackInStock   = "product.back_in_stock";

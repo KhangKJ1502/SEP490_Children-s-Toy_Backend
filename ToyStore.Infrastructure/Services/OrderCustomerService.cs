@@ -351,7 +351,7 @@ public class OrderCustomerService : IOrderCustomerService
                 PaymentStatus = effectiveStatus,
                 ExpiresAt = DateTime.SpecifyKind(order.CreatedAt, DateTimeKind.Utc)
                     .AddMinutes(_sePayOptions.PaymentTtlMinutes),
-                BankName = _sePayOptions.BankCode,
+                BankName = string.IsNullOrWhiteSpace(_sePayOptions.BankName) ? _sePayOptions.BankCode : _sePayOptions.BankName,
                 BankCode = _sePayOptions.BankCode,
                 AccountNumber = _sePayOptions.AccountNumber,
                 AccountName = _sePayOptions.AccountName
@@ -380,7 +380,7 @@ public class OrderCustomerService : IOrderCustomerService
             QrImageUrl = qrUrl,
             ExpiresAt = expiresAt,
             PaymentStatus = effectiveStatus,
-            BankName = _sePayOptions.BankCode,
+            BankName = string.IsNullOrWhiteSpace(_sePayOptions.BankName) ? _sePayOptions.BankCode : _sePayOptions.BankName,
             BankCode = _sePayOptions.BankCode,
             AccountNumber = _sePayOptions.AccountNumber,
             AccountName = _sePayOptions.AccountName

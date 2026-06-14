@@ -837,8 +837,12 @@ public class CheckoutService : ICheckoutService
                         "Wallet is not activated. Please set up your PIN on the Wallet page.");
                 }
 
+                // IMPORTANT: Check available balance = Balance - LockedBalance to prevent double-spending
+                // when a withdrawal is in-flight (LockedBalance > 0). Using Balance alone would allow
+                // spending funds already reserved for a pending/processing withdrawal, causing
+                // the withdrawal CommitAsync to fail with InsufficientAvailable and losing store money.
                 var walletAffected = await _db.Database.ExecuteSqlRawAsync(
-                    "UPDATE Wallets SET Balance = Balance - {0} WHERE AccountID = {1} AND Balance >= {0} AND Status = 'Active'",
+                    "UPDATE Wallets SET Balance = Balance - {0} WHERE AccountID = {1} AND (Balance - LockedBalance) >= {0} AND Status = 'Active'",
                     new object[] { totalAmount, accountId },
                     cancellationToken);
                 if (walletAffected == 0)

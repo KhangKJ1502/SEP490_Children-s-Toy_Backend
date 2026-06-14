@@ -15,8 +15,11 @@ public sealed class SePayOptions
     /// <summary>BIN ngân hàng (vd: "970422" cho MB Bank).</summary>
     public string BankBin { get; set; } = string.Empty;
 
-    /// <summary>Mã ngắn ngân hàng hiển thị (vd: "MBBank").</summary>
+    /// <summary>Mã ngắn ngân hàng hiển thị (vd: "BIDV").</summary>
     public string BankCode { get; set; } = string.Empty;
+
+    /// <summary>Tên đầy đủ ngân hàng để hiển thị (vd: "Ngân hàng BIDV"). Nếu để trống, dùng BankCode.</summary>
+    public string BankName { get; set; } = string.Empty;
 
     /// <summary>Số tài khoản nhận tiền.</summary>
     public string AccountNumber { get; set; } = string.Empty;

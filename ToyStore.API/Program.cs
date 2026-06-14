@@ -10,6 +10,16 @@ using ToyStore.Recommendation;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Allow multipart file uploads up to 10 MB (Cloudinary service validates ≤ 5 MB internally)
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 10 * 1024 * 1024; // 10 MB
+});
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = 10 * 1024 * 1024; // 10 MB
+});
+
 builder.Services.AddControllers()
     .AddJsonOptions(opts =>
     {

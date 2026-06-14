@@ -177,6 +177,7 @@ public static class DependencyInjection
         services.AddScoped<IWalletTransactionRepository, WalletTransactionRepository>();
         services.AddScoped<IWalletRepository, WalletRepository>();
         services.AddScoped<ISavedBankAccountRepository, SavedBankAccountRepository>();
+        services.AddScoped<IWithdrawalRepository, WithdrawalRepository>();
         services.AddScoped<IShiftTemplateRepository, ShiftTemplateRepository>();
         services.AddScoped<IWorkScheduleRepository, WorkScheduleRepository>();
         services.AddScoped<IStaffShiftCapacityRepository, StaffShiftCapacityRepository>();
@@ -201,6 +202,10 @@ public static class DependencyInjection
         services.AddScoped<ISavedBankAccountService, SavedBankAccountService>();
         services.AddScoped<IBankLookupService, BankLookupService>();
         services.AddScoped<IAdminWalletService, AdminWalletService>();
+        services.AddScoped<IWithdrawalLedgerService, WithdrawalLedgerService>();
+        services.AddScoped<IWithdrawalService, WithdrawalService>();
+        services.AddScoped<IPayOsPayoutService, PayOsPayoutService>();
+        services.AddScoped<IWithdrawalPayOsSyncService, WithdrawalPayOsSyncService>();
         services.AddScoped<IShiftTemplateService, ShiftTemplateService>();
         services.AddScoped<IWorkScheduleService, WorkScheduleService>();
         services.AddScoped<IShiftAssignmentService, ShiftAssignmentService>();
@@ -286,6 +291,20 @@ public static class DependencyInjection
         services.Configure<SePayOptions>(
             configuration.GetSection(SePayOptions.SectionName));
         services.AddScoped<ISePayWebhookService, SePayWebhookService>();
+
+        // --- PayOS Payout / Withdrawal ---
+        services.Configure<PayOsOptions>(
+            configuration.GetSection(PayOsOptions.SectionName));
+        services.Configure<WithdrawalLimitsOptions>(
+            configuration.GetSection(WithdrawalLimitsOptions.SectionName));
+        services.AddHttpClient("PayOsPayout", (sp, client) =>
+        {
+            var opts = configuration.GetSection(PayOsOptions.SectionName).Get<PayOsOptions>()
+                       ?? new PayOsOptions();
+            if (!string.IsNullOrWhiteSpace(opts.BaseUrl))
+                client.BaseAddress = new Uri(opts.BaseUrl.TrimEnd('/') + "/");
+        });
+        services.AddScoped<IPayOsPayoutWebhookService, PayOsPayoutWebhookService>();
         services.AddScoped<ICheckoutService, CheckoutService>();
         services.AddScoped<IOrderLifecycleService, OrderLifecycleService>();
         services.AddScoped<IWalletRefundCreditor, WalletRefundCreditorService>();

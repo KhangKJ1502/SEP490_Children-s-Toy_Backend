@@ -56,16 +56,24 @@ public class BankLookupService : IBankLookupService
 
             try
             {
-                banks = JsonSerializer.Deserialize<List<BankLookupItemDto>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                using var doc = JsonDocument.Parse(json);
+
+                // api.banklookup.net always returns: { "code": 200, "data": [...], "msg": "..." }
+                if (doc.RootElement.TryGetProperty("data", out var dataProp)
+                    && dataProp.ValueKind == JsonValueKind.Array)
+                {
+                    banks = JsonSerializer.Deserialize<List<BankLookupItemDto>>(
+                        dataProp.GetRawText(),
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                }
+                else
+                {
+                    _logger.LogError("BankLookup: unexpected response format — 'data' array missing. Raw: {Raw}", json[..Math.Min(json.Length, 300)]);
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to deserialize bank list as direct array. Attempting to parse wrapped format.");
-                using var doc = JsonDocument.Parse(json);
-                if (doc.RootElement.TryGetProperty("data", out JsonElement dataProp))
-                {
-                    banks = JsonSerializer.Deserialize<List<BankLookupItemDto>>(dataProp.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                }
+                _logger.LogError(ex, "BankLookup: failed to parse bank list response. Raw: {Raw}", json[..Math.Min(json.Length, 300)]);
             }
 
             if (banks == null)

@@ -443,7 +443,7 @@ public class WalletService : IWalletService
             Amount = amount,
             QrImageUrl = qrImageUrl,
             ExpiresAt = expiresAt,
-            BankName = _sePayOptions.BankCode,
+            BankName = string.IsNullOrWhiteSpace(_sePayOptions.BankName) ? _sePayOptions.BankCode : _sePayOptions.BankName,
             BankCode = _sePayOptions.BankCode,
             AccountNumber = _sePayOptions.AccountNumber,
             AccountName = _sePayOptions.AccountName
@@ -777,6 +777,8 @@ public class WalletService : IWalletService
             WalletId = wallet.WalletId,
             Currency = wallet.Currency,
             Balance = wallet.Balance,
+            LockedBalance = wallet.LockedBalance,
+            AvailableBalance = wallet.Balance - wallet.LockedBalance,
             Status = wallet.Status,
             HasPin = hasPin ?? wallet.WalletPins.Any(p => p.IsActive),
         };
