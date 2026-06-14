@@ -19,4 +19,8 @@ public interface IWithdrawalRepository
     Task<bool> HasActivePendingAsync(int accountId, CancellationToken ct = default);
 
     Task AddAsync(WithdrawalRequest withdrawal, CancellationToken ct = default);
+
+    Task<List<WithdrawalRequest>> GetAdminWithdrawalsAsync(string? keyword, string? status, DateTime? dateFrom, DateTime? dateTo, int page, int pageSize, CancellationToken ct = default);
+    Task<int> CountAdminWithdrawalsAsync(string? keyword, string? status, DateTime? dateFrom, DateTime? dateTo, CancellationToken ct = default);
+    Task<WithdrawalRequest?> GetWithDetailsByIdAsync(int id, CancellationToken ct = default);
 }

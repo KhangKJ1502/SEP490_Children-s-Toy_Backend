@@ -66,4 +66,70 @@ public class WithdrawalRepository : IWithdrawalRepository
     {
         await _context.WithdrawalRequests.AddAsync(withdrawal, ct);
     }
+
+    public async Task<List<WithdrawalRequest>> GetAdminWithdrawalsAsync(string? keyword, string? status, DateTime? dateFrom, DateTime? dateTo, int page, int pageSize, CancellationToken ct = default)
+    {
+        var query = _context.WithdrawalRequests.Include(w => w.Account).AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            keyword = keyword.Trim().ToLower();
+            query = query.Where(w => w.ReferenceId.ToLower().Contains(keyword) || w.Account.AccountName.ToLower().Contains(keyword));
+        }
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            query = query.Where(w => w.Status == status);
+        }
+
+        if (dateFrom.HasValue)
+        {
+            query = query.Where(w => w.CreatedAt >= dateFrom.Value);
+        }
+
+        if (dateTo.HasValue)
+        {
+            query = query.Where(w => w.CreatedAt <= dateTo.Value);
+        }
+
+        return await query
+            .OrderByDescending(w => w.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+    }
+
+    public Task<int> CountAdminWithdrawalsAsync(string? keyword, string? status, DateTime? dateFrom, DateTime? dateTo, CancellationToken ct = default)
+    {
+        var query = _context.WithdrawalRequests.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            keyword = keyword.Trim().ToLower();
+            query = query.Where(w => w.ReferenceId.ToLower().Contains(keyword) || w.Account.AccountName.ToLower().Contains(keyword));
+        }
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            query = query.Where(w => w.Status == status);
+        }
+
+        if (dateFrom.HasValue)
+        {
+            query = query.Where(w => w.CreatedAt >= dateFrom.Value);
+        }
+
+        if (dateTo.HasValue)
+        {
+            query = query.Where(w => w.CreatedAt <= dateTo.Value);
+        }
+
+        return query.CountAsync(ct);
+    }
+
+    public Task<WithdrawalRequest?> GetWithDetailsByIdAsync(int id, CancellationToken ct = default)
+        => _context.WithdrawalRequests
+            .Include(w => w.Account)
+            .Include(w => w.WithdrawalStatusHistories)
+            .FirstOrDefaultAsync(w => w.WithdrawalId == id, ct);
 }
