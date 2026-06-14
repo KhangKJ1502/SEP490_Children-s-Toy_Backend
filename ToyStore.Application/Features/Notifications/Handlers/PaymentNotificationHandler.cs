@@ -160,3 +160,77 @@ public class WalletRefundHandler : IOutboxEventHandler
         }, ct);
     }
 }
+
+public class WalletWithdrawalSuccessHandler : IOutboxEventHandler
+{
+    public string EventType => NotificationEventTypes.WalletWithdrawalSuccess;
+    private readonly INotificationDispatcher _dispatcher;
+
+    public WalletWithdrawalSuccessHandler(INotificationDispatcher dispatcher) => _dispatcher = dispatcher;
+
+    public async Task HandleAsync(OutboxEventData ev, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(ev.Payload);
+        var root = doc.RootElement;
+
+        var accountId     = root.GetProperty("accountId").GetInt32();
+        var withdrawalId  = root.TryGetProperty("withdrawalId", out var wid) ? wid.GetInt32() : 0;
+        var amount        = root.TryGetProperty("amount", out var a) ? a.GetDecimal() : 0;
+        var bankName      = root.TryGetProperty("bankName", out var bn) ? bn.GetString() ?? "" : "";
+        var accountNumber = root.TryGetProperty("accountNumber", out var an) ? an.GetString() ?? "" : "";
+
+        await _dispatcher.DispatchAsync(new NotificationContext
+        {
+            RecipientAccountId = accountId,
+            RecipientType      = RecipientTypes.Customer,
+            NotificationType   = NotificationTypes.Order,
+            TemplateCode       = NotificationTemplates.WalletWithdrawalSuccess,
+            Placeholders       = new Dictionary<string, string>
+            {
+                ["Amount"]        = $"{amount:N0}",
+                ["BankName"]      = bankName,
+                ["AccountNumber"] = accountNumber,
+            },
+            ReferenceId  = $"{withdrawalId}",
+            SendBell     = true,
+            SendEmail    = true,
+            ActionTarget = "/profile/wallet",
+        }, ct);
+    }
+}
+
+public class WalletWithdrawalFailedHandler : IOutboxEventHandler
+{
+    public string EventType => NotificationEventTypes.WalletWithdrawalFailed;
+    private readonly INotificationDispatcher _dispatcher;
+
+    public WalletWithdrawalFailedHandler(INotificationDispatcher dispatcher) => _dispatcher = dispatcher;
+
+    public async Task HandleAsync(OutboxEventData ev, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(ev.Payload);
+        var root = doc.RootElement;
+
+        var accountId    = root.GetProperty("accountId").GetInt32();
+        var withdrawalId = root.TryGetProperty("withdrawalId", out var wid) ? wid.GetInt32() : 0;
+        var amount       = root.TryGetProperty("amount", out var a) ? a.GetDecimal() : 0;
+        var failReason   = root.TryGetProperty("failReason", out var fr) ? fr.GetString() ?? "System error" : "System error";
+
+        await _dispatcher.DispatchAsync(new NotificationContext
+        {
+            RecipientAccountId = accountId,
+            RecipientType      = RecipientTypes.Customer,
+            NotificationType   = NotificationTypes.Order,
+            TemplateCode       = NotificationTemplates.WalletWithdrawalFailed,
+            Placeholders       = new Dictionary<string, string>
+            {
+                ["Amount"]     = $"{amount:N0}",
+                ["FailReason"] = failReason,
+            },
+            ReferenceId  = $"{withdrawalId}",
+            SendBell     = true,
+            SendEmail    = true,
+            ActionTarget = "/profile/wallet",
+        }, ct);
+    }
+}

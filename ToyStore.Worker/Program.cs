@@ -52,5 +52,9 @@ builder.Services.AddHostedService<CustomerDeliveryAbuseScanJob>();
 builder.Services.AddHostedService<SePayExpiryJob>();
 builder.Services.AddHostedService<GhnShippingRetryJob>();
 
+// Withdrawal workers
+builder.Services.AddHostedService<WithdrawalTimeoutJob>();
+builder.Services.AddHostedService<WithdrawalPayoutPollJob>();
+
 var host = builder.Build();
 host.Run();
