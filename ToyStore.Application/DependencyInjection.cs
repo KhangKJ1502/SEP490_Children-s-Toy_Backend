@@ -28,6 +28,8 @@ public static class DependencyInjection
         services.AddScoped<IOutboxEventHandler, PaymentFailedHandler>();
         services.AddScoped<IOutboxEventHandler, WalletTopupHandler>();
         services.AddScoped<IOutboxEventHandler, WalletRefundHandler>();
+        services.AddScoped<IOutboxEventHandler, WalletWithdrawalSuccessHandler>();
+        services.AddScoped<IOutboxEventHandler, WalletWithdrawalFailedHandler>();
         services.AddScoped<IOutboxEventHandler, PaymentGatewayErrorHandler>();
         services.AddScoped<IOutboxEventHandler, BackgroundJobFailedHandler>();
         services.AddScoped<IOutboxEventHandler, BlogPendingApprovalHandler>();

@@ -8,6 +8,10 @@ public class WalletDto
 
     public decimal Balance { get; set; }
 
+    public decimal LockedBalance { get; set; }
+
+    public decimal AvailableBalance { get; set; }
+
     public string Status { get; set; } = null!;
 
     public bool HasPin { get; set; }

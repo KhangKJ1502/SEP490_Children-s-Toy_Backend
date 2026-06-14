@@ -49,6 +49,7 @@ public interface IUnitOfWork : IDisposable
     ICampaignApprovalLogRepository CampaignApprovalLogs { get; }
     ICampaignScheduleRepository CampaignSchedules { get; }
     ISavedBankAccountRepository SavedBankAccounts { get; }
+    IWithdrawalRepository Withdrawals { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     void Detach<T>(T entity) where T : class;

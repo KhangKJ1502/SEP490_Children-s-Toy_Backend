@@ -777,6 +777,8 @@ public class WalletService : IWalletService
             WalletId = wallet.WalletId,
             Currency = wallet.Currency,
             Balance = wallet.Balance,
+            LockedBalance = wallet.LockedBalance,
+            AvailableBalance = wallet.Balance - wallet.LockedBalance,
             Status = wallet.Status,
             HasPin = hasPin ?? wallet.WalletPins.Any(p => p.IsActive),
         };

@@ -23,6 +23,8 @@ public static class NotificationTemplates
     public const string PaymentFailed        = "PAYMENT_FAILED";
     public const string WalletTopup          = "WALLET_TOPUP";
     public const string WalletRefund         = "WALLET_REFUND";
+    public const string WalletWithdrawalSuccess = "WALLET_WITHDRAWAL_SUCCESS";
+    public const string WalletWithdrawalFailed  = "WALLET_WITHDRAWAL_FAILED";
     public const string RefundApproved       = "REFUND_APPROVED";
     public const string RefundRejected       = "REFUND_REJECTED";
     public const string RefundCompleted      = "REFUND_COMPLETED";
