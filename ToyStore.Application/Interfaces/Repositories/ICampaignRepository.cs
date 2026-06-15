@@ -156,4 +156,10 @@ public interface ICampaignRepository
     /// Danh dau trang thai entity Campaign la Modified trong DbContext (dung voi IUnitOfWork.SaveChangesAsync).
     /// </summary>
     void Update(Campaign campaign);
+
+    /// <summary>
+    /// Xoa mem Campaign (IsDeleted = true). Chi cho phep khi Status la Sent, Cancelled hoac Failed.
+    /// Tra ve false neu khong tim thay hoac trang thai khong hop le.
+    /// </summary>
+    Task<bool> SoftDeleteAsync(int campaignId, CancellationToken cancellationToken = default);
 }

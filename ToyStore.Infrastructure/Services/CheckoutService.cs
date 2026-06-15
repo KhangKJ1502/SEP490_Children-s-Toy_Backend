@@ -32,6 +32,7 @@ public class CheckoutService : ICheckoutService
     private readonly IDomainEventPublisher _eventPublisher;
     private readonly ILogger<CheckoutService> _logger;
     private readonly ITimeProvider _timeProvider;
+    private readonly IOrderLifecycleService _orderLifecycle;
 
     private const string PayMethodCod = "SHIP_COD";
     private const string PayMethodSepay = "SE_PAY";
@@ -63,7 +64,8 @@ public class CheckoutService : ICheckoutService
         IOptions<ShopAddressOptions> shopAddr,
         IDomainEventPublisher eventPublisher,
         ILogger<CheckoutService> logger,
-        ITimeProvider timeProvider)
+        ITimeProvider timeProvider,
+        IOrderLifecycleService orderLifecycle)
     {
         _uow = uow;
         _db = db;
@@ -74,6 +76,7 @@ public class CheckoutService : ICheckoutService
         _eventPublisher = eventPublisher;
         _logger = logger;
         _timeProvider = timeProvider;
+        _orderLifecycle = orderLifecycle;
     }
 
 
@@ -401,24 +404,53 @@ public class CheckoutService : ICheckoutService
         if (payMethodNorm == PayMethodSepay)
         {
             var existingPending = await _db.Orders
+                .Include(o => o.OrderDetails)
+                .Include(o => o.Status)
                 .Where(o => o.AccountId == accountId
                          && o.PaymentMethod == "SE_PAY"
                          && o.PaymentStatus == "PENDING"
                          && o.CancelledAt == null
                          && !o.IsDeleted)
-                .Select(o => new { o.OrderId, o.OrderCode })
                 .FirstOrDefaultAsync(cancellationToken);
 
             if (existingPending is not null)
             {
-                return Result<CheckoutConfirmResponseDto>.Success(new CheckoutConfirmResponseDto
+                var ttl = TimeSpan.FromMinutes(_sePayOpts.PaymentTtlMinutes);
+                var isExpired = existingPending.CreatedAt + ttl < _timeProvider.UtcNow;
+
+                if (isExpired)
                 {
-                    OrderId = existingPending.OrderId,
-                    OrderCode = existingPending.OrderCode,
-                    PaymentMethod = "SE_PAY",
-                    PaymentStatus = "PENDING",
-                    HasExistingPendingOrder = true,
-                });
+                    _logger.LogInformation("ConfirmAsync: Auto-cancelling expired SE_PAY order {OrderId} for account {AccountId}", 
+                        existingPending.OrderId, accountId);
+                    
+                    var cancelResult = await _orderLifecycle.CancelOrderInternalAsync(
+                        existingPending,
+                        "SE_PAY payment timeout — auto-cancelled during new checkout attempt",
+                        cancelledByAccountId: 0, // system
+                        restoreCart: false,
+                        restoreVoucher: true,
+                        cancellationToken: cancellationToken);
+
+                    if (!cancelResult.IsSuccess)
+                    {
+                        _logger.LogWarning("ConfirmAsync: Failed to auto-cancel expired SE_PAY order {OrderId}: {Err}", 
+                            existingPending.OrderId, cancelResult.ErrorMessage);
+                        
+                        return Result<CheckoutConfirmResponseDto>.BusinessError(
+                            $"You have an expired pending order #{existingPending.OrderCode} that could not be automatically cancelled: {cancelResult.ErrorMessage}");
+                    }
+                }
+                else
+                {
+                    return Result<CheckoutConfirmResponseDto>.Success(new CheckoutConfirmResponseDto
+                    {
+                        OrderId = existingPending.OrderId,
+                        OrderCode = existingPending.OrderCode,
+                        PaymentMethod = "SE_PAY",
+                        PaymentStatus = "PENDING",
+                        HasExistingPendingOrder = true,
+                    });
+                }
             }
         }
 
@@ -1007,6 +1039,8 @@ public class CheckoutService : ICheckoutService
         CancellationToken cancellationToken = default)
     {
         var order = await _db.Orders
+            .Include(o => o.OrderDetails)
+            .Include(o => o.Status)
             .Include(o => o.PaymentGatewayTransactions)
             .FirstOrDefaultAsync(o => o.OrderId == orderId && o.AccountId == accountId && !o.IsDeleted, cancellationToken);
 
@@ -1022,6 +1056,26 @@ public class CheckoutService : ICheckoutService
         if (order.CancelledAt.HasValue)
             return Result<RetryPaymentResponseDto>.BusinessError("Order has been cancelled, cannot generate new QR.");
 
+        var now = _timeProvider.UtcNow;
+        var ttl = TimeSpan.FromMinutes(_sePayOpts.PaymentTtlMinutes);
+        if (order.CreatedAt + ttl < now)
+        {
+            if (order.PaymentStatus == "PENDING" && order.CancelledAt == null)
+            {
+                _logger.LogInformation("RetryPaymentAsync: Auto-cancelling expired SE_PAY order {OrderId} for account {AccountId}", 
+                    order.OrderId, accountId);
+
+                await _orderLifecycle.CancelOrderInternalAsync(
+                    order,
+                    "SE_PAY payment timeout — auto-cancelled during retry payment attempt",
+                    cancelledByAccountId: 0, // system
+                    restoreCart: false,
+                    restoreVoucher: true,
+                    cancellationToken: cancellationToken);
+            }
+            return Result<RetryPaymentResponseDto>.BusinessError("Order payment window has expired.");
+        }
+
         if (order.PaymentStatus is "EXPIRED" or "CANCELLED" or "FAILED")
             return Result<RetryPaymentResponseDto>.BusinessError($"Order is in {order.PaymentStatus} status, cannot generate new QR.");
 
@@ -1029,8 +1083,6 @@ public class CheckoutService : ICheckoutService
         if (totalAttempts >= _sePayOpts.MaxPaymentAttempts)
             return Result<RetryPaymentResponseDto>.BusinessError(
                 $"Exceeded {_sePayOpts.MaxPaymentAttempts} payment attempts for this order.");
-
-        var now = _timeProvider.UtcNow;
 
         // Cancel các attempt Pending cũ
         var pendingAttempts = order.PaymentGatewayTransactions

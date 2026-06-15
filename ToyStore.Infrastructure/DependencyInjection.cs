@@ -304,7 +304,6 @@ public static class DependencyInjection
             if (!string.IsNullOrWhiteSpace(opts.BaseUrl))
                 client.BaseAddress = new Uri(opts.BaseUrl.TrimEnd('/') + "/");
         });
-        services.AddScoped<IPayOsPayoutWebhookService, PayOsPayoutWebhookService>();
         services.AddScoped<ICheckoutService, CheckoutService>();
         services.AddScoped<IOrderLifecycleService, OrderLifecycleService>();
         services.AddScoped<IWalletRefundCreditor, WalletRefundCreditorService>();

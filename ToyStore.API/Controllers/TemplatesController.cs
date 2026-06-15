@@ -72,4 +72,18 @@ public class TemplatesController : ControllerBase
         var result = await _templateService.UpdateTemplateAsync(templateId, dto, cancellationToken);
         return result.ToActionResult();
     }
-}
+
+    /// <summary>
+    /// Xoa mem Template (IsDeleted = true). Chi Admin duoc phep thao tac.
+    /// Khong cho phep xoa neu Template dang duoc dung boi Campaign chua hoan thanh hoac Delivery.
+    /// </summary>
+    [HttpDelete("{templateId:int}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> DeleteTemplate(
+        [FromRoute] short templateId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _templateService.DeleteTemplateAsync(templateId, cancellationToken);
+        return result.ToNoContentResult();
+    }
+}

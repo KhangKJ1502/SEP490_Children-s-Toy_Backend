@@ -38,4 +38,10 @@ public interface ITemplateService
         short templateId,
         UpdateTemplateDto dto,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Xoa mem Template (IsDeleted = true).
+    /// Khong cho phep xoa neu Template dang duoc su dung boi Campaign/Delivery chua hoan thanh.
+    /// </summary>
+    Task<Result> DeleteTemplateAsync(short templateId, CancellationToken cancellationToken = default);
 }

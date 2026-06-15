@@ -272,6 +272,24 @@ public class CampaignsController : ControllerBase
         return result.ToActionResult();
     }
 
+    /// <summary>
+    /// Xoa mem Campaign. Chi cho phep khi Status la Sent (da hoan thanh), Cancelled hoac Failed.
+    /// Admin: xoa tat ca. Staff: chi xoa campaign cua chinh minh.
+    /// </summary>
+    [HttpDelete("{campaignId:int}")]
+    public async Task<ActionResult> DeleteCampaign(
+        [FromRoute] int campaignId,
+        CancellationToken cancellationToken = default)
+    {
+        var accountId = GetAccountId();
+        if (accountId is null) return Unauthorized();
+
+        var isAdmin = User.IsInRole("Admin");
+        var result = await _campaignService.DeleteCampaignAsync(
+            campaignId, accountId.Value, isAdmin, cancellationToken);
+        return result.ToNoContentResult();
+    }
+
     // ── Private helpers ────────────────────────────────────────────────────────
 
     private int? GetAccountId()

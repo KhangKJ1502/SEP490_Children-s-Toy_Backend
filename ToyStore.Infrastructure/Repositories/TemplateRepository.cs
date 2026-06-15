@@ -221,4 +221,18 @@ public class TemplateRepository : ITemplateRepository
             .Where(x => x.TemplateCode == templateCode && x.IsActive && !x.IsDeleted)
             .FirstOrDefaultAsync(cancellationToken);
     }
+
+    public async Task<bool> SoftDeleteAsync(short templateId, CancellationToken cancellationToken = default)
+    {
+        var entity = await _context.Templates
+            .Where(x => x.TemplateId == templateId && !x.IsDeleted)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (entity is null) return false;
+
+        entity.IsDeleted = true;
+        entity.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync(cancellationToken);
+        return true;
+    }
 }

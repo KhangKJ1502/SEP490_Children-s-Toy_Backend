@@ -906,4 +906,41 @@ public class CampaignService : ICampaignService
         campaign.ActionType = "ROUTE";
         campaign.ActionTarget = resolved.DefaultActionTarget;
     }
+
+    /// <inheritdoc />
+    public async Task<Result> DeleteCampaignAsync(
+        int campaignId,
+        int actorAccountId,
+        bool actorIsAdmin,
+        CancellationToken cancellationToken = default)
+    {
+        if (campaignId <= 0)
+            return Result.Failure("VALIDATION_ERROR", "Campaign ID must be greater than 0.");
+
+        // Fetch campaign (bao gom ca IsDeleted = true de biet no da bi xoa chua)
+        var campaign = await _unitOfWork.Campaigns.GetByIdAsync(campaignId, cancellationToken);
+        if (campaign is null)
+            return Result.NotFound("Campaign", campaignId);
+
+        // Chi cho phep xoa khi campaign da hoan thanh (Sent), bi huy (Cancelled) hoac that bai (Failed)
+        var deletableStatuses = new[] { "Sent", "Cancelled", "Failed" };
+        if (!deletableStatuses.Contains(campaign.Status))
+            return Result.Failure(
+                ToyStore.Application.Campaigns.CampaignErrorCodes.InvalidStatusTransition,
+                $"Campaign cannot be deleted in status '{campaign.Status}'. Only Sent, Cancelled, or Failed campaigns can be deleted.");
+
+        // Staff chi duoc xoa campaign do chinh ho tao
+        if (!actorIsAdmin && campaign.CreatedByAccountId != actorAccountId)
+            return Result.Failure("FORBIDDEN", "You are not allowed to delete this campaign.");
+
+        var deleted = await _unitOfWork.Campaigns.SoftDeleteAsync(campaignId, cancellationToken);
+        if (!deleted)
+            return Result.Failure("BUSINESS_RULE_VIOLATION", "Campaign could not be deleted. It may have already been deleted.");
+
+        _logger.LogInformation(
+            "Campaign {CampaignId} soft-deleted by Account {ActorId} (isAdmin={IsAdmin})",
+            campaignId, actorAccountId, actorIsAdmin);
+
+        return Result.Success();
+    }
 }

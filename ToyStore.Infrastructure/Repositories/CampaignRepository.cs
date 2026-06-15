@@ -565,6 +565,21 @@ public class CampaignRepository : ICampaignRepository
         _context.Campaigns.Update(campaign);
     }
 
+    public async Task<bool> SoftDeleteAsync(int campaignId, CancellationToken cancellationToken = default)
+    {
+        var allowed = new[] { "Sent", "Cancelled", "Failed" };
+        var campaign = await _context.Campaigns
+            .Where(c => c.CampaignId == campaignId && !c.IsDeleted && allowed.Contains(c.Status))
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (campaign is null) return false;
+
+        campaign.IsDeleted = true;
+        campaign.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
 
     private IQueryable<Campaign> BuildBaseQuery(
         CampaignQueryDto query,
