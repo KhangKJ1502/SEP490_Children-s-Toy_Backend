@@ -110,7 +110,17 @@ public class OrderQueuedHandler : IOutboxEventHandler
 
         var orderId   = root.GetProperty("orderId").GetInt32();
         var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
-        var reason    = root.TryGetProperty("reason", out var r) ? r.GetString() ?? "UNKNOWN" : "UNKNOWN";
+        var rawReason = root.TryGetProperty("reason", out var r) ? r.GetString() ?? "UNKNOWN" : "UNKNOWN";
+
+        var reason = rawReason switch
+        {
+            "NO_STAFF_ON_DUTY" => "no sales staff on duty today",
+            "ALL_STAFF_FULL" => "all sales staff at full capacity",
+            "NO_MERCH_ON_DUTY" => "no merchandise staff on duty today",
+            "ALL_MERCH_FULL" => "all merchandise staff at full capacity",
+            "BOTH_FULL" => "no available shifts to assign",
+            _ => rawReason
+        };
 
         var admins = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
         foreach (var admin in admins)

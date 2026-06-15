@@ -208,4 +208,29 @@ public class TemplateService : ITemplateService
             throw;
         }
     }
-}
+
+    /// <inheritdoc />
+    public async Task<Result> DeleteTemplateAsync(short templateId, CancellationToken cancellationToken = default)
+    {
+        if (templateId <= 0)
+            return Result.Failure("VALIDATION_ERROR", "Template ID must be greater than 0.");
+
+        var existing = await _unitOfWork.Templates.GetByIdAsync(templateId, cancellationToken);
+        if (existing is null)
+            return Result.NotFound("Template", templateId);
+
+        // Khong cho phep xoa neu template dang duoc dung boi campaign chua hoan thanh hoac delivery
+        var isUsed = await _unitOfWork.Templates.IsUsedAsync(existing.TemplateCode, cancellationToken);
+        if (isUsed)
+            return Result.Failure(
+                "BUSINESS_RULE_VIOLATION",
+                "Cannot delete template because it is currently in use by active campaigns or deliveries.");
+
+        var deleted = await _unitOfWork.Templates.SoftDeleteAsync(templateId, cancellationToken);
+        if (!deleted)
+            return Result.Failure("BUSINESS_RULE_VIOLATION", "Template could not be deleted. It may have already been deleted.");
+
+        _logger.LogInformation("Template {TemplateId} (code={TemplateCode}) soft-deleted.", templateId, existing.TemplateCode);
+        return Result.Success();
+    }
+}

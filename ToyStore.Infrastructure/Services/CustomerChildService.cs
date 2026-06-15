@@ -1,19 +1,16 @@
-using System;
 using AutoMapper;
+using FluentValidation;
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.DTOs.CustomerChildren;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
+using ToyStore.Application.Validators.CustomerChildren;
 using ToyStore.Domain.Entities;
 
 namespace ToyStore.Infrastructure.Services;
 
 public class CustomerChildService : ICustomerChildService
 {
-    private const int MaxChildrenPerUser = 4;
-    private const int MaxChildAgeYears = 25;
-    private const int MaxPastYears = 100;
-    private const int MaxChildProfileEdits = 2;
     private const byte CustomerRoleId = 1;
 
     private readonly IUnitOfWork _unitOfWork;
@@ -21,19 +18,25 @@ public class CustomerChildService : ICustomerChildService
     private readonly IMapper _mapper;
     private readonly ILogger<CustomerChildService> _logger;
     private readonly ITimeProvider _timeProvider;
+    private readonly IValidator<CreateChildDto> _createValidator;
+    private readonly IValidator<UpdateChildDto> _updateValidator;
 
     public CustomerChildService(
         IUnitOfWork unitOfWork,
         ICurrentUserService currentUserService,
         IMapper mapper,
         ILogger<CustomerChildService> logger,
-        ITimeProvider timeProvider)
+        ITimeProvider timeProvider,
+        IValidator<CreateChildDto> createValidator,
+        IValidator<UpdateChildDto> updateValidator)
     {
         _unitOfWork = unitOfWork;
         _currentUserService = currentUserService;
         _mapper = mapper;
         _logger = logger;
         _timeProvider = timeProvider;
+        _createValidator = createValidator;
+        _updateValidator = updateValidator;
     }
 
     public async Task<Result<List<CustomerChildDto>>> GetMyChildrenAsync(CancellationToken cancellationToken = default)
@@ -58,28 +61,18 @@ public class CustomerChildService : ICustomerChildService
         if (_currentUserService.RoleId != CustomerRoleId)
             return Result<CustomerChildDto>.Failure("FORBIDDEN", "Only customers can access this resource.");
 
-        if (string.IsNullOrWhiteSpace(dto.FullName))
-            return Result<CustomerChildDto>.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["FullName"] = ["Full name is required."]
-            });
-
-        if (dto.Dob == default)
-            return Result<CustomerChildDto>.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["Dob"] = ["Date of birth must be a valid past date."]
-            });
-
-        if (!IsValidChildDob(dto.Dob, _timeProvider.UtcNow, out var dobError))
-            return Result<CustomerChildDto>.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["Dob"] = [dobError!]
-            });
+        var validationResult = await _createValidator.ValidateAsync(dto, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            return Result<CustomerChildDto>.ValidationFailure(validationResult.Errors
+                .GroupBy(x => x.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ErrorMessage).ToArray()));
+        }
 
         var count = await _unitOfWork.CustomerChildren.CountAsync(x => x.AccountId == accountId && !x.IsDeleted);
 
-        if (count >= MaxChildrenPerUser)
-            return Result<CustomerChildDto>.BusinessError($"You can only have a maximum of {MaxChildrenPerUser} children profiles.");
+        if (count >= CustomerChildValidationRules.MaxChildrenPerUser)
+            return Result<CustomerChildDto>.BusinessError($"You can only have a maximum of {CustomerChildValidationRules.MaxChildrenPerUser} children profiles.");
 
         var child = new CustomerChild
         {
@@ -124,24 +117,20 @@ public class CustomerChildService : ICustomerChildService
         if (childId <= 0)
             return Result<CustomerChildDto>.Failure("VALIDATION_ERROR", "Child ID must be greater than 0.");
 
+        var validationResult = await _updateValidator.ValidateAsync(dto, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            return Result<CustomerChildDto>.ValidationFailure(validationResult.Errors
+                .GroupBy(x => x.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.ErrorMessage).ToArray()));
+        }
+
         var child = await _unitOfWork.CustomerChildren.GetActiveByIdAsync(childId, cancellationToken);
         if (child == null || child.AccountId != accountId)
             return Result<CustomerChildDto>.NotFound("CustomerChild", childId);
 
-        if (dto.FullName != null && string.IsNullOrWhiteSpace(dto.FullName))
-            return Result<CustomerChildDto>.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["FullName"] = ["Full name cannot be empty."]
-            });
-
-        if (dto.Dob.HasValue && !IsValidChildDob(dto.Dob.Value, _timeProvider.UtcNow, out var dobError))
-            return Result<CustomerChildDto>.ValidationFailure(new Dictionary<string, string[]>
-            {
-                ["Dob"] = [dobError!]
-            });
-
-        if (child.EditCount >= MaxChildProfileEdits)
-            return Result<CustomerChildDto>.BusinessError($"You can only edit a child profile up to {MaxChildProfileEdits} times.");
+        if (child.EditCount >= CustomerChildValidationRules.MaxChildProfileEdits)
+            return Result<CustomerChildDto>.BusinessError($"You can only edit a child profile up to {CustomerChildValidationRules.MaxChildProfileEdits} times.");
 
         var hasChanges = false;
 
@@ -234,39 +223,5 @@ public class CustomerChildService : ICustomerChildService
 
         _logger.LogInformation("Child {ChildId} soft-deleted by account {AccountId}.", childId, accountId);
         return Result.Success();
-    }
-
-    private static bool IsValidChildDob(DateTime dob, DateTime nowUtc, out string? errorMessage)
-    {
-        var today = nowUtc.Date;
-        if (dob.Date > today)
-        {
-            errorMessage = "Date of birth must be a valid past date.";
-            return false;
-        }
-
-        var ageYears = CalculateAge(dob.Date, today);
-        if (ageYears > MaxPastYears)
-        {
-            errorMessage = "Date of birth must not be more than 100 years ago.";
-            return false;
-        }
-
-        if (ageYears > MaxChildAgeYears)
-        {
-            errorMessage = "Child age must be 25 or younger.";
-            return false;
-        }
-
-        errorMessage = null;
-        return true;
-    }
-
-    private static int CalculateAge(DateTime dobDate, DateTime today)
-    {
-        var age = today.Year - dobDate.Year;
-        if (dobDate > today.AddYears(-age))
-            age -= 1;
-        return age;
     }
 }

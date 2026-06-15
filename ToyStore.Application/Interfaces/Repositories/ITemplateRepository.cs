@@ -82,4 +82,9 @@ public interface ITemplateRepository
     /// Dung boi INotificationTemplateRenderer de render noi dung thong bao.
     /// </summary>
     Task<Template?> GetActiveByCodeAsync(string templateCode, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Xoa mem Template (IsDeleted = true). Tra ve false neu khong tim thay.
+    /// </summary>
+    Task<bool> SoftDeleteAsync(short templateId, CancellationToken cancellationToken = default);
 }

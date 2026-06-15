@@ -105,4 +105,14 @@ public interface ICampaignService
     Task<Result<CampaignScheduleBoundsDto>> GetCampaignScheduleBoundsAsync(
         int campaignId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Xoa mem Campaign (IsDeleted = true). Chi duoc phep khi Status la "Sent" (da hoan thanh).
+    /// Admin: xoa tat ca; Staff: chi xoa campaign cua minh.
+    /// </summary>
+    Task<Result> DeleteCampaignAsync(
+        int campaignId,
+        int actorAccountId,
+        bool actorIsAdmin,
+        CancellationToken cancellationToken = default);
 }
