@@ -242,6 +242,59 @@ public class WithdrawalService : IWithdrawalService
         };
     }
 
+    public async Task<Result<PaginatedResponse<AdminWithdrawalListDto>>> GetAdminWithdrawalsAsync(
+        AdminWithdrawalFilterDto filter,
+        CancellationToken ct = default)
+    {
+        if (_currentUser.AccountId <= 0)
+            return Result<PaginatedResponse<AdminWithdrawalListDto>>.Unauthorized();
+
+        var page = Math.Max(1, filter.Page);
+        var pageSize = Math.Clamp(filter.PageSize, 1, 100);
+
+        var total = await _uow.Withdrawals.CountAdminWithdrawalsAsync(filter.Keyword, filter.Status, filter.DateFrom, filter.DateTo, ct);
+        var items = await _uow.Withdrawals.GetAdminWithdrawalsAsync(filter.Keyword, filter.Status, filter.DateFrom, filter.DateTo, page, pageSize, ct);
+
+        var response = new PaginatedResponse<AdminWithdrawalListDto>
+        {
+            Items = _mapper.Map<List<AdminWithdrawalListDto>>(items),
+            TotalCount = total,
+            PageNumber = page,
+            PageSize = pageSize,
+        };
+
+        return Result<PaginatedResponse<AdminWithdrawalListDto>>.Success(response);
+    }
+
+    public async Task<Result<AdminWithdrawalDetailDto>> AdminGetWithdrawalByIdAsync(int id, CancellationToken ct = default)
+    {
+        if (_currentUser.AccountId <= 0)
+            return Result<AdminWithdrawalDetailDto>.Unauthorized();
+
+        var withdrawal = await _uow.Withdrawals.GetWithDetailsByIdAsync(id, ct);
+        if (withdrawal is null)
+            return Result<AdminWithdrawalDetailDto>.NotFound("WithdrawalRequest", id);
+
+        if (withdrawal.Status == WithdrawalStatuses.Processing && !string.IsNullOrEmpty(withdrawal.PayosPayoutId))
+        {
+            try
+            {
+                await _syncService.SyncAsync(id, ct);
+                var updated = await _uow.Withdrawals.GetWithDetailsByIdAsync(id, ct);
+                if (updated is not null)
+                {
+                    withdrawal = updated;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to perform on-demand status sync for withdrawal {Id}", id);
+            }
+        }
+
+        return Result<AdminWithdrawalDetailDto>.Success(_mapper.Map<AdminWithdrawalDetailDto>(withdrawal));
+    }
+
     private static WithdrawalDto MapToDto(Domain.Entities.WithdrawalRequest w) => new()
     {
         WithdrawalId = w.WithdrawalId,

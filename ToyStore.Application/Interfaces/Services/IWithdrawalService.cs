@@ -22,4 +22,12 @@ public interface IWithdrawalService
     Task<Result> CancelWithdrawalAsync(
         int withdrawalId,
         CancellationToken ct = default);
+
+    Task<Result<PaginatedResponse<AdminWithdrawalListDto>>> GetAdminWithdrawalsAsync(
+        AdminWithdrawalFilterDto filter,
+        CancellationToken ct = default);
+
+    Task<Result<AdminWithdrawalDetailDto>> AdminGetWithdrawalByIdAsync(
+        int id,
+        CancellationToken ct = default);
 }

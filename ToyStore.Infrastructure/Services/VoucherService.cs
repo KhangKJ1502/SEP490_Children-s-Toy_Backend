@@ -1,14 +1,11 @@
 using AutoMapper;
 using FluentValidation;
 using Microsoft.Extensions.Logging;
-using ToyStore.Application.Common.Models;
+using Microsoft.Extensions.Options;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Vouchers;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
-using ToyStore.Application.Validators.Vouchers;
-using ToyStore.Application.Common.Models;
-using Microsoft.Extensions.Options;
 using ToyStore.Domain.Constants;
 using ToyStore.Domain.Entities;
 namespace ToyStore.Infrastructure.Services;
@@ -37,14 +34,14 @@ public class VoucherService : IVoucherService
         ICurrentUserService currentUserService,
         IOptions<VoucherRiskThresholds> thresholds)
     {
-        _unitOfWork         = unitOfWork;
-        _mapper             = mapper;
-        _logger             = logger;
-        _createValidator    = createValidator;
-        _updateValidator    = updateValidator;
-        _timeProvider       = timeProvider;
+        _unitOfWork = unitOfWork;
+        _mapper = mapper;
+        _logger = logger;
+        _createValidator = createValidator;
+        _updateValidator = updateValidator;
+        _timeProvider = timeProvider;
         _currentUserService = currentUserService;
-        _thresholds         = thresholds.Value;
+        _thresholds = thresholds.Value;
     }
 
     public async Task<Result<PaginatedResponse<VoucherListDto>>> GetVouchersAsync(
@@ -148,7 +145,7 @@ public class VoucherService : IVoucherService
             }
             else if (string.Equals(voucher.DiscountType, "PERCENTAGE", StringComparison.OrdinalIgnoreCase))
             {
-                if (voucher.MaxDiscountCap > _thresholds.MaxDiscountCap || 
+                if (voucher.MaxDiscountCap > _thresholds.MaxDiscountCap ||
                    (voucher.MaxDiscountCap * (voucher.TotalQuantity ?? 1)) > _thresholds.MaxTotalDiscount)
                 {
                     voucher.Status = VoucherStatuses.Pending;
@@ -160,7 +157,7 @@ public class VoucherService : IVoucherService
             }
             else if (string.Equals(voucher.DiscountType, "FIXED", StringComparison.OrdinalIgnoreCase))
             {
-                if (voucher.DiscountValue > _thresholds.MaxDiscountCap || 
+                if (voucher.DiscountValue > _thresholds.MaxDiscountCap ||
                    (voucher.DiscountValue * (voucher.TotalQuantity ?? 1)) > _thresholds.MaxTotalDiscount)
                 {
                     voucher.Status = VoucherStatuses.Pending;
@@ -316,7 +313,7 @@ public class VoucherService : IVoucherService
                 (string.Equals(oldStatus, VoucherStatuses.Active, StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(oldStatus, VoucherStatuses.Scheduled, StringComparison.OrdinalIgnoreCase)))
             {
-                bool hasFinancialChanges = 
+                bool hasFinancialChanges =
                     (normalizedRequest.DiscountType is not null && !string.Equals(normalizedRequest.DiscountType, existingVoucher.DiscountType, StringComparison.OrdinalIgnoreCase)) ||
                     (normalizedRequest.DiscountValue.HasValue && normalizedRequest.DiscountValue.Value != existingVoucher.DiscountValue) ||
                     (normalizedRequest.MaxDiscountCap.HasValue && normalizedRequest.MaxDiscountCap.Value != existingVoucher.MaxDiscountCap) ||
@@ -352,7 +349,7 @@ public class VoucherService : IVoucherService
                         normalizedRequest.Reason = null; // clear admin reason
                     }
                 }
-                
+
                 // Staff cannot update Reason
                 normalizedRequest.Reason = null;
             }
@@ -366,17 +363,17 @@ public class VoucherService : IVoucherService
                         return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Reason is required when rejecting a voucher.");
                     }
                 }
-                
+
                 // Admin Approving clears Reason and calculates dynamic status
                 if (string.Equals(normalizedRequest.Status, VoucherStatuses.Scheduled, StringComparison.OrdinalIgnoreCase))
                 {
                     var targetEndDate = normalizedRequest.EndDate ?? existingVoucher.EndDate;
-                    
+
                     if (targetEndDate <= now)
                     {
                         return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Cannot approve a voucher that has already expired. Please reject it or ask staff to update the dates.");
                     }
-                    
+
                     var targetStartDate = normalizedRequest.StartDate ?? existingVoucher.StartDate;
                     if (targetStartDate <= now)
                     {
@@ -386,7 +383,7 @@ public class VoucherService : IVoucherService
                     {
                         normalizedRequest.Status = VoucherStatuses.Scheduled;
                     }
-                    
+
                     normalizedRequest.Reason = null;
                 }
 
@@ -423,7 +420,7 @@ public class VoucherService : IVoucherService
             if (string.Equals(oldStatus, VoucherStatuses.Inactive, StringComparison.OrdinalIgnoreCase) &&
                 (string.Equals(normalizedRequest.Status, VoucherStatuses.Scheduled, StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(normalizedRequest.Status, VoucherStatuses.Active, StringComparison.OrdinalIgnoreCase) ||
-                 (string.Equals(_currentUserService.RoleName, "Staff", StringComparison.OrdinalIgnoreCase) && 
+                 (string.Equals(_currentUserService.RoleName, "Staff", StringComparison.OrdinalIgnoreCase) &&
                   string.Equals(normalizedRequest.Status, VoucherStatuses.Pending, StringComparison.OrdinalIgnoreCase))))
             {
                 var targetEndDate = normalizedRequest.EndDate ?? existingVoucher.EndDate;
@@ -449,7 +446,7 @@ public class VoucherService : IVoucherService
             _mapper.Map(normalizedRequest, existingVoucher);
 
             // Xử lý field Reason do AutoMapper có thể không set null được nếu property src null.
-            if (normalizedRequest.Reason == null && 
+            if (normalizedRequest.Reason == null &&
                 ((string.Equals(_currentUserService.RoleName, "Staff", StringComparison.OrdinalIgnoreCase) && !string.Equals(normalizedRequest.Status, VoucherStatuses.Inactive, StringComparison.OrdinalIgnoreCase)) ||
                  (string.Equals(_currentUserService.RoleName, "Admin", StringComparison.OrdinalIgnoreCase) && string.Equals(normalizedRequest.Status, VoucherStatuses.Scheduled, StringComparison.OrdinalIgnoreCase))))
             {
