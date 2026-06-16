@@ -168,7 +168,8 @@ public class AccountRepository : IAccountRepository
         string passwordHash,
         bool isActive,
         string? provider,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool hasPassword = true)
     {
         var entity = new Account
         {
@@ -180,6 +181,7 @@ public class AccountRepository : IAccountRepository
             PasswordHash = passwordHash,
             IsActive = isActive,
             IsDeleted = false,
+            HasPassword = hasPassword,
             Provider = provider,
             CreatedAt = DateTime.UtcNow
         };
@@ -226,6 +228,7 @@ public class AccountRepository : IAccountRepository
             .FirstAsync(x => x.AccountId == accountId && !x.IsDeleted, cancellationToken);
 
         entity.PasswordHash = passwordHash;
+        entity.HasPassword = true;
         entity.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);

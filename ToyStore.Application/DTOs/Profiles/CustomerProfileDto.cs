@@ -21,4 +21,6 @@ public class CustomerProfileDto
     public string? ImageUrl { get; set; }
 
     public string? Provider { get; set; }
+
+    public bool HasPassword { get; set; }
 }
