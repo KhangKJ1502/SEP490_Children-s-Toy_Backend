@@ -8,9 +8,9 @@ public class ChangeCustomerPasswordValidator : AbstractValidator<ChangeCustomerP
     public ChangeCustomerPasswordValidator()
     {
         RuleFor(x => x.CurrentPassword)
-            .NotEmpty().WithMessage("Current password is required.")
             .MinimumLength(8).WithMessage("Current password must be at least 8 characters.")
-            .MaximumLength(255).WithMessage("Current password must not exceed 255 characters.");
+            .MaximumLength(255).WithMessage("Current password must not exceed 255 characters.")
+            .When(x => !string.IsNullOrWhiteSpace(x.CurrentPassword));
 
         RuleFor(x => x.NewPassword)
             .NotEmpty().WithMessage("New password is required.")

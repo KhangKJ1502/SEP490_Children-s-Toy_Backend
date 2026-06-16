@@ -224,6 +224,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.PasswordHash)
                 .HasMaxLength(255)
                 .IsUnicode(false);
+            entity.Property(e => e.HasPassword).HasDefaultValue(false);
             entity.Property(e => e.PhoneNumber)
                 .HasMaxLength(15)
                 .IsUnicode(false);

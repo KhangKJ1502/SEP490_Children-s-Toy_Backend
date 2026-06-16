@@ -344,7 +344,8 @@ public class AuthService : IAuthService
                 pendingRegistration.PasswordHash,
                 true,
                 "Email",
-                cancellationToken);
+                cancellationToken,
+                hasPassword: true);
 
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
             await _redisService.DeleteAsync(redisKey);
@@ -412,7 +413,8 @@ public class AuthService : IAuthService
                 HashPassword(dto.Password),
                 true,
                 "Email",
-                cancellationToken);
+                cancellationToken,
+                hasPassword: true);
 
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
             await _redisService.DeleteAsync(redisKey);
@@ -710,7 +712,8 @@ public class AuthService : IAuthService
             passwordHash: HashPassword(randomPassword),
             isActive: true,
             provider: "Google",
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken,
+            hasPassword: false);
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 

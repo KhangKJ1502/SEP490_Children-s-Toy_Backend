@@ -79,6 +79,7 @@ CREATE TABLE [Accounts] (
     [DOB]          DATE NULL,
     [ImageURL]     VARCHAR(500) NULL,
     [PasswordHash] VARCHAR(255) NOT NULL,
+    [HasPassword] BIT NOT NULL DEFAULT 0,
     [IsActive]     BIT NOT NULL DEFAULT 1,
     [IsDeleted]    BIT NOT NULL DEFAULT 0,
     [Provider]     VARCHAR(20) NULL,
@@ -3123,4 +3124,3 @@ CREATE INDEX [IX_WithdrawalStatusHistory_Withdrawal]
 GO
 
 /* ============================================= */
-
