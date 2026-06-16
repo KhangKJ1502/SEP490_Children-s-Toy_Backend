@@ -9,8 +9,6 @@ public partial class SEP490ToyStoreContext
 
     public virtual DbSet<WithdrawalRequest> WithdrawalRequests { get; set; }
 
-    public virtual DbSet<PayosWebhookLog> PayosWebhookLogs { get; set; }
-
     public virtual DbSet<WithdrawalStatusHistory> WithdrawalStatusHistories { get; set; }
 
     private static void ConfigureWithdrawalFlow(ModelBuilder modelBuilder)
@@ -119,44 +117,6 @@ public partial class SEP490ToyStoreContext
             entity.HasOne(d => d.WalletTransaction).WithMany(p => p.WithdrawalRequests)
                 .HasForeignKey(d => d.WalletTransactionId)
                 .HasConstraintName("FK_WithdrawalRequests_WalletTransactions");
-        });
-
-        modelBuilder.Entity<PayosWebhookLog>(entity =>
-        {
-            entity.HasKey(e => e.WebhookLogId).HasName("PK_PayosWebhookLogs");
-
-            entity.ToTable("PayosWebhookLogs");
-
-            entity.HasIndex(e => e.WebhookEventId, "UQ_PayosWebhookLogs_EventId")
-                .IsUnique()
-                .HasFilter("([WebhookEventId] IS NOT NULL)");
-
-            entity.HasIndex(e => new { e.ProcessStatus, e.CreatedAt }, "IX_PayosWebhookLogs_Unprocessed")
-                .HasFilter("([ProcessStatus]='RECEIVED' OR [ProcessStatus]='ERROR')");
-
-            entity.Property(e => e.WebhookLogId).HasColumnName("WebhookLogID");
-            entity.Property(e => e.WithdrawalId).HasColumnName("WithdrawalID");
-            entity.Property(e => e.WebhookEventId)
-                .HasMaxLength(100)
-                .IsUnicode(false);
-            entity.Property(e => e.ReferenceId)
-                .HasMaxLength(100)
-                .IsUnicode(false);
-            entity.Property(e => e.EventType)
-                .HasMaxLength(50)
-                .IsUnicode(false);
-            entity.Property(e => e.IsSignatureValid).HasDefaultValue(false);
-            entity.Property(e => e.ProcessStatus)
-                .HasMaxLength(20)
-                .IsUnicode(false)
-                .HasDefaultValue("RECEIVED");
-            entity.Property(e => e.CreatedAt)
-                .HasPrecision(0)
-                .HasDefaultValueSql("(getdate())");
-
-            entity.HasOne(d => d.Withdrawal).WithMany(p => p.PayosWebhookLogs)
-                .HasForeignKey(d => d.WithdrawalId)
-                .HasConstraintName("FK_PayosWebhookLogs_WithdrawalRequests");
         });
 
         modelBuilder.Entity<WithdrawalStatusHistory>(entity =>

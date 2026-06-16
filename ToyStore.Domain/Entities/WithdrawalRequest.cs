@@ -51,7 +51,5 @@ public partial class WithdrawalRequest
 
     public virtual WalletTransaction? WalletTransaction { get; set; }
 
-    public virtual ICollection<PayosWebhookLog> PayosWebhookLogs { get; set; } = new List<PayosWebhookLog>();
-
     public virtual ICollection<WithdrawalStatusHistory> WithdrawalStatusHistories { get; set; } = new List<WithdrawalStatusHistory>();
 }

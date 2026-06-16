@@ -20,7 +20,6 @@ public static class WithdrawalStatuses
 public static class WithdrawalHistorySources
 {
     public const string User = "USER";
-    public const string Webhook = "WEBHOOK";
     public const string Job = "JOB";
     public const string System = "SYSTEM";
 }

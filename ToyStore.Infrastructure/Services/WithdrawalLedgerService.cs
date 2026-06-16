@@ -186,7 +186,7 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
             withdrawal.CompletedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync(ct);
 
-            await AppendStatusHistoryAsync(withdrawal.WithdrawalId, prevStatus, WithdrawalStatuses.Success, WithdrawalHistorySources.Webhook, null, ct);
+            await AppendStatusHistoryAsync(withdrawal.WithdrawalId, prevStatus, WithdrawalStatuses.Success, WithdrawalHistorySources.Job, null, ct);
             await _uow.CommitTransactionAsync(ct);
 
             _logger.LogInformation("Withdrawal {Id} committed — balance deducted {Amount}", command.WithdrawalId, withdrawal.Amount);

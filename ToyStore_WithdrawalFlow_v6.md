@@ -1,4 +1,4 @@
-﻿**SEP490 ToyStore —** Tài liệu kỹ thuật: Luồng rút tiền (Withdrawal)
+**SEP490 ToyStore —** Tài liệu kỹ thuật: Luồng rút tiền (Withdrawal)
 
 **SEP490 — ToyStore**
 
@@ -114,22 +114,7 @@ Bảng trung tâm: mỗi lệnh rút tiền tương ứng 1 row. Lifecycle đầ
 | **🔒 Constraint:** Constraint CK_WithdrawalRequests_TxnConsistency: WalletTransactionID chỉ được phép có giá trị khi Status = SUCCESS và CompletedAt IS NOT NULL. Tránh ghi nhầm transaction khi chưa xong. |
 | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
-## **2.5. Bảng PayosWebhookLogs**
-
-Lưu toàn bộ webhook nhận từ PayOS để audit và debug. Hỗ trợ idempotency qua WebhookEventId.
-
-|       **Cột**        |     **Kiểu**      |                          **Mô tả**                           |
-| :------------------: | :---------------: | :----------------------------------------------------------: |
-|   **WebhookLogID**   |  BIGINT IDENTITY  |                              PK                              |
-|   **WithdrawalID**   |     INT NULL      | FK → WithdrawalRequests. NULL nếu không tìm được ReferenceId |
-|  **WebhookEventId**  | VARCHAR(100) NULL | ID unique của event từ PayOS. UNIQUE INDEX để chặn duplicate |
-|   **ReferenceId**    | VARCHAR(100) NULL |             data.referenceId từ payload webhook              |
-|    **EventType**     | VARCHAR(50) NULL  |              Loại event. VD: "payout.completed"              |
-| **IsSignatureValid** |        BIT        |            Kết quả verify chữ ký webhook từ PayOS            |
-|    **RawPayload**    |   NVARCHAR(MAX)   |                Toàn bộ JSON webhook nhận được                |
-|  **ProcessStatus**   |    VARCHAR(20)    |            RECEIVED → PROCESSED / IGNORED / ERROR            |
-
-## **2.6. Bảng WithdrawalStatusHistory**
+## **2.5. Bảng WithdrawalStatusHistory**
 
 Audit trail tự động. Trigger TR_WithdrawalRequests_StatusHistory ghi vào bảng này mỗi khi Status trong WithdrawalRequests thay đổi.
 
@@ -139,8 +124,8 @@ Audit trail tự động. Trigger TR_WithdrawalRequests_StatusHistory ghi vào b
 | **WithdrawalID** |        INT         |           FK → WithdrawalRequests           |
 |  **FromStatus**  |  VARCHAR(20) NULL  | Trạng thái trước. NULL cho lần đầu (INSERT) |
 |   **ToStatus**   |    VARCHAR(20)     |               Trạng thái sau                |
-|    **Source**    |    VARCHAR(20)     |    USER / SYSTEM / WEBHOOK / ADMIN / JOB    |
-|  **ChangedBy**   |      INT NULL      |  FK → Accounts. NULL nếu do system/webhook  |
+|    **Source**    |    VARCHAR(20)     |    USER / SYSTEM / ADMIN / JOB    |
+|  **ChangedBy**   |      INT NULL      |  FK → Accounts. NULL nếu do system/job      |
 |     **Note**     | NVARCHAR(500) NULL |           Ghi chú lý do thay đổi            |
 |  **CreatedAt**   |    DATETIME2(0)    |              Thời điểm ghi log              |
 
@@ -257,7 +242,6 @@ Gọi khi webhook PayOS báo FAILED hoặc khi background job phát hiện timeo
 1. Backend gọi SP_Withdrawal_Lock → nhận @WithdrawalID và @ReferenceId.
 1. Backend gọi PayOS Payout API với ReferenceId làm idempotency key.
 1. Backend cập nhật WithdrawalRequests.Status = PROCESSING, lưu PayosPayoutId.
-1. Backend insert PayosWebhookLogs với ProcessStatus = RECEIVED khi có webhook.
 
 ## **4.2. Phase 2: Hoàn tất lệnh rút qua GET Polling (KHÔNG dùng Webhook)**
 
@@ -498,9 +482,7 @@ GET https://api-merchant.payos.vn/v1/payouts?referenceId=WD12345678
 |    **UQ_SavedBankAccounts_OneDefault**    |    SavedBankAccounts    | Chỉ 1 TK mặc định/user (IsDefault=1, IsDeleted=0)  |
 |     **IX_WithdrawalRequests_Account**     |   WithdrawalRequests    | Query lịch sử rút tiền của user theo ngày giảm dần |
 |     **IX_WithdrawalRequests_Pending**     |   WithdrawalRequests    | Background job tìm lệnh PENDING/PROCESSING quá hạn |
-|  **IX_WithdrawalRequests_PayosPayoutId**  |   WithdrawalRequests    |    Tra cứu nhanh khi nhận webhook theo PayOS ID    |
-|      **UQ_PayosWebhookLogs_EventId**      |    PayosWebhookLogs     |     Chặn xử lý duplicate webhook cùng EventId      |
-|    **IX_PayosWebhookLogs_Unprocessed**    |    PayosWebhookLogs     |  Job retry tìm webhook RECEIVED/ERROR chưa xử lý   |
+|  **IX_WithdrawalRequests_PayosPayoutId**  |   WithdrawalRequests    |    Tra cứu nhanh theo PayOS ID                         |
 | **IX_WithdrawalStatusHistory_Withdrawal** | WithdrawalStatusHistory |  Query lịch sử thay đổi trạng thái của 1 lệnh rút  |
 
 ## **5.2. Business Constraints**
@@ -526,21 +508,14 @@ GET https://api-merchant.payos.vn/v1/payouts?referenceId=WD12345678
 
 - ReferenceId = "WD-{accountId}-{timestamp}" là unique theo UNIQUE constraint.
 - SP_Commit và SP_Rollback đều có guard: nếu Status đã ở trạng thái cuối → return thành công ngay mà không làm gì.
-- Webhook được kiểm tra qua UQ_PayosWebhookLogs_EventId: duplicate EventId → IGNORED.
 
-## **6.3. Verify chữ ký webhook**
-
-- Luôn verify x-signature header từ PayOS trước khi xử lý payload.
-- Kết quả lưu vào PayosWebhookLogs.IsSignatureValid.
-- Nếu chữ ký sai: vẫn INSERT log với IsSignatureValid = 0, nhưng không gọi SP nào.
-
-## **6.4. PIN ví**
+## **6.3. PIN ví**
 
 - Trước khi gọi SP_Withdrawal_Lock: backend phải verify PIN ví qua bảng WalletPins.
 - WalletPins.FailedAttempts tối đa 3, TotalFailedAttempts tối đa 6.
 - Khi LockedUntil IS NOT NULL và chưa qua: báo lỗi "Ví bị khóa tạm thời".
 
-## **6.5. Giới hạn rút tiền (khuyến nghị)**
+## **6.4. Giới hạn rút tiền (khuyến nghị)**
 
 - Nên thêm validation ở application layer (không có sẵn trong DB). Lưu các giá trị giới hạn trong appsettings.json section "WithdrawalLimits" để dễ thay đổi mà không cần deploy lại DB:
   - Tối thiểu: 10,000 VND (đã validate trong SP).
@@ -562,7 +537,6 @@ GET https://api-merchant.payos.vn/v1/payouts?referenceId=WD12345678
 - Cấu hình PayOS Payout API key và callback URL.
 - Đăng ký background job timeout cleanup (chạy mỗi 5-10 phút).
 - Test end-to-end với TK ngân hàng test của PayOS sandbox.
-- Monitor bảng PayosWebhookLogs: ProcessStatus = ERROR cần được xử lý.
 - Monitor WithdrawalRequests: PENDING > 30 phút là dấu hiệu bất thường.
 
 ## **7.3. Queries hữu ích**
@@ -582,11 +556,6 @@ GET https://api-merchant.payos.vn/v1/payouts?referenceId=WD12345678
 | SELECT \* FROM WithdrawalRequests WHERE Status IN ('PENDING','PROCESSING') AND CreatedAt < DATEADD(MINUTE, -30, GETDATE()) ORDER BY CreatedAt ASC |
 | :------------------------------------------------------------------------------------------------------------------------------------------------ |
 
-**Webhook lỗi cần retry:**
-
-| SELECT \* FROM PayosWebhookLogs WHERE ProcessStatus IN ('RECEIVED','ERROR') ORDER BY CreatedAt ASC |
-| :------------------------------------------------------------------------------------------------- |
-
 # **8. Phụ lục: Sơ đồ quan hệ (ERD tóm tắt)**
 
 Các bảng liên quan đến luồng rút tiền và quan hệ giữa chúng:
@@ -595,9 +564,8 @@ Các bảng liên quan đến luồng rút tiền và quan hệ giữa chúng:
 | :--------------------: | :---------: | :---------------------------------------------------------------------: |
 |      **Accounts**      |    1 → N    | Wallets, WithdrawalRequests, SavedBankAccounts, WithdrawalStatusHistory |
 |      **Wallets**       |    1 → N    |           WalletTransactions, WithdrawalRequests, WalletPins            |
-| **WithdrawalRequests** |    1 → N    |                WithdrawalStatusHistory, PayosWebhookLogs                |
+| **WithdrawalRequests** |    1 → N    |                WithdrawalStatusHistory                                  |
 | **WithdrawalRequests** |    N → 1    |                  WalletTransactions (chỉ khi SUCCESS)                   |
-|  **PayosWebhookLogs**  |    N → 1    |                      WithdrawalRequests (nullable)                      |
 | **SavedBankAccounts**  |    N → 1    |                                Accounts                                 |
 
 _— Hết tài liệu —_
