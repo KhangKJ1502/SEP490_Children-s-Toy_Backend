@@ -125,7 +125,7 @@ public interface IProductRepository
     /// <summary>
     /// Lay danh sach Product cho bao cao ton kho.
     /// </summary>
-    Task<List<Product>> GetInventoryReportAsync(
+    Task<List<Product>> GetProductQuantityReportAsync(
         string? sortBy = null,
         bool sortDesc = false,
         string? searchTerm = null,

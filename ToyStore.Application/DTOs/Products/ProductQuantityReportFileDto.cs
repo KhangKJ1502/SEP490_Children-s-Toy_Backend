@@ -1,6 +1,6 @@
 namespace ToyStore.Application.DTOs.Products;
 
-public class InventoryReportFileDto
+public class ProductQuantityReportFileDto
 {
     public byte[] Content { get; set; } = Array.Empty<byte>();
 
