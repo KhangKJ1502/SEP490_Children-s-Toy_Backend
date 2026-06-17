@@ -1,6 +1,6 @@
 namespace ToyStore.Application.DTOs.Products;
 
-public class InventoryReportRequestDto
+public class ProductQuantityReportRequestDto
 {
     public string Format { get; set; } = "pdf";
 

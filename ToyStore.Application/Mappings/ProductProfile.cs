@@ -20,14 +20,14 @@ public class ProductProfile : Profile
             .ForMember(dest => dest.DiscountPercent, opt => opt.MapFrom(src => GetDiscountPercent(src)))
             .ForMember(dest => dest.PromotionType, opt => opt.MapFrom(src => GetPromotionType(src)));
 
-        CreateMap<Product, InventoryReportItemDto>()
+        CreateMap<Product, ProductQuantityReportItemDto>()
             .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.CategoryName))
             .ForMember(dest => dest.BrandName, opt => opt.MapFrom(src => src.Brand != null ? src.Brand.BrandName : null))
             .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.IsDeleted ? "Inactive" : "Active"))
             .ForMember(dest => dest.DiscountedPrice, opt => opt.MapFrom(src => GetDiscountedPrice(src)))
             .ForMember(dest => dest.DiscountPercent, opt => opt.MapFrom(src => GetDiscountPercent(src)))
             .ForMember(dest => dest.PromotionType, opt => opt.MapFrom(src => GetPromotionType(src)))
-            .ForMember(dest => dest.InventoryValue, opt => opt.MapFrom(src => src.Price * src.Quantity))
+            .ForMember(dest => dest.ProductValue, opt => opt.MapFrom(src => src.Price * src.Quantity))
             .ForMember(dest => dest.LowStock, opt => opt.MapFrom(src => src.Quantity <= src.StockThreshold))
             .ForMember(dest => dest.AverageRating, opt => opt.MapFrom(src =>
                 src.ReviewProducts
