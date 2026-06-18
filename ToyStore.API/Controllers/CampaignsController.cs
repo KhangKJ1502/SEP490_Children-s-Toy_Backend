@@ -289,9 +289,6 @@ public class CampaignsController : ControllerBase
             campaignId, accountId.Value, isAdmin, cancellationToken);
         return result.ToNoContentResult();
     }
-
-    // ── Private helpers ────────────────────────────────────────────────────────
-
     private int? GetAccountId()
     {
         var claim = User.FindFirst("AccountID")?.Value
