@@ -43,6 +43,7 @@ public static class RefundStatusTransitionValidator
                 ((byte)RefundStatusEnum.RefundRequested, (byte)RefundStatusEnum.RefundApproved) => true,
                 ((byte)RefundStatusEnum.RefundApproved, (byte)RefundStatusEnum.RefundCompleted) => true,
                 ((byte)RefundStatusEnum.RefundRejected, (byte)RefundStatusEnum.RefundApproved) => isAdmin,
+                ((byte)RefundStatusEnum.RefundDamage, (byte)RefundStatusEnum.RefundCompleted) => true,
                 _ => false
             };
         }
@@ -57,7 +58,8 @@ public static class RefundStatusTransitionValidator
             (byte)RefundStatusEnum.RefundReceived => currentStatusId == (byte)RefundStatusEnum.RefundShipping,
             (byte)RefundStatusEnum.RefundInspectionPending => currentStatusId == (byte)RefundStatusEnum.RefundReceived,
             (byte)RefundStatusEnum.RefundCompleted => currentStatusId == (byte)RefundStatusEnum.RefundInspectionPending
-                || currentStatusId == (byte)RefundStatusEnum.RefundApproved,
+                || currentStatusId == (byte)RefundStatusEnum.RefundApproved
+                || currentStatusId == (byte)RefundStatusEnum.RefundDamage,
             (byte)RefundStatusEnum.RefundCancelled => isAdmin,
             _ => false
         };

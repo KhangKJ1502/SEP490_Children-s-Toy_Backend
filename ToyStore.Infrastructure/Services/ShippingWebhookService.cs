@@ -292,9 +292,10 @@ public class ShippingWebhookService : IShippingWebhookService
                 ShippingStatuses.Returning or
                 ShippingStatuses.Delivered or ShippingStatuses.Returned => (byte)RefundStatusEnum.RefundShipping,
                 
-                ShippingStatuses.Cancel or ShippingStatuses.DeliveryFail or 
-                ShippingStatuses.ReturnFail or ShippingStatuses.Lost or 
-                ShippingStatuses.Damage or ShippingStatuses.Exception => (byte)RefundStatusEnum.RefundCancelled,
+                ShippingStatuses.Cancel or ShippingStatuses.ReturnFail or 
+                ShippingStatuses.Exception => (byte)RefundStatusEnum.RefundCancelled,
+
+                ShippingStatuses.Lost or ShippingStatuses.Damage => (byte)RefundStatusEnum.RefundDamage,
                 
                 _ => null
             };
@@ -351,8 +352,9 @@ public class ShippingWebhookService : IShippingWebhookService
                 if (targetRefundStatusId is not null && refund.StatusId != targetRefundStatusId.Value)
                 {
                     if (refund.StatusId != (byte)RefundStatusEnum.RefundCompleted && 
-                        refund.StatusId != (byte)RefundStatusEnum.RefundCancelled)
+                        (refund.StatusId != (byte)RefundStatusEnum.RefundCancelled || targetRefundStatusId.Value == (byte)RefundStatusEnum.RefundDamage))
                     {
+                        var previousRefundStatusId = refund.StatusId;
                         refund.StatusId = targetRefundStatusId.Value;
                         refund.UpdatedAt = now;
 
@@ -360,6 +362,28 @@ public class ShippingWebhookService : IShippingWebhookService
                         {
                             refund.CancelledAt = now;
                             await _unitOfWork.OrderAssignments.ReleaseCapacityAsync(refund.OrderId, cancellationToken);
+                        }
+                        else if (targetRefundStatusId.Value == (byte)RefundStatusEnum.RefundDamage)
+                        {
+                            refund.CancelledAt = null;
+                            refund.AdminNote = "Orders are damaged/lost during shipping (GHN updates Damage/Lost). No quality inspection is required.";
+
+                            if (previousRefundStatusId == (byte)RefundStatusEnum.RefundCancelled)
+                            {
+                                // Reactivate original order assignments and increment shift workloads
+                                var orderAssignments = await _unitOfWork.OrderAssignments.GetAssignmentsByOrderIdAsync(refund.OrderId, cancellationToken);
+                                foreach (var oa in orderAssignments)
+                                {
+                                    oa.IsActive = true;
+
+                                    var capacity = await _unitOfWork.StaffShiftCapacities.GetByScheduleIdForUpdateAsync(oa.ScheduleId, cancellationToken);
+                                    if (capacity is not null)
+                                    {
+                                        capacity.CurrentLoad++;
+                                        capacity.UpdatedAt = now;
+                                    }
+                                }
+                            }
                         }
 
                         refund.RefundStatusHistories.Add(new RefundStatusHistory

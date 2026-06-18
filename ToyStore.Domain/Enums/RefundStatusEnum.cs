@@ -10,5 +10,6 @@ public enum RefundStatusEnum : byte
     RefundReceived = 6,
     RefundInspectionPending = 7,
     RefundCompleted = 8,
-    RefundCancelled = 9
+    RefundCancelled = 9,
+    RefundDamage = 10
 }
