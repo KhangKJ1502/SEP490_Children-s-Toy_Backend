@@ -67,7 +67,7 @@ public interface IProductService
     /// <summary>
     /// Xuat bao cao ton kho san pham.
     /// </summary>
-    Task<Result<InventoryReportFileDto>> ExportInventoryReportAsync(
-        InventoryReportRequestDto request,
+    Task<Result<ProductQuantityReportFileDto>> ExportProductQuantityReportAsync(
+        ProductQuantityReportRequestDto request,
         CancellationToken cancellationToken = default);
 }

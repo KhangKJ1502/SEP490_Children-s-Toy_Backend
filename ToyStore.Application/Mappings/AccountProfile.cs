@@ -26,7 +26,8 @@ public class AccountProfile : Profile
             .ForMember(dest => dest.RoleName, opt => opt.MapFrom(src => src.Role.RoleName));
 
         CreateMap<Account, CustomerProfileDto>()
-            .ForMember(dest => dest.SexName, opt => opt.MapFrom(src => src.Sex != null ? src.Sex.SexName : null));
+            .ForMember(dest => dest.SexName, opt => opt.MapFrom(src => src.Sex != null ? src.Sex.SexName : null))
+            .ForMember(dest => dest.HasPassword, opt => opt.MapFrom(src => src.HasPassword));
 
         CreateMap<CreateAccountDto, Account>();
     }

@@ -156,11 +156,11 @@ public class ProductsController : ControllerBase
 
     [HttpPost("product-quantity-report")]
     [Authorize(Roles = "Admin,Merchandise")]
-    public async Task<ActionResult<InventoryReportFileDto>> ExportInventoryReport(
-        [FromBody] InventoryReportRequestDto request,
+    public async Task<ActionResult<ProductQuantityReportFileDto>> ExportProductQuantityReport(
+        [FromBody] ProductQuantityReportRequestDto request,
         CancellationToken cancellationToken = default)
     {
-        var result = await _productService.ExportInventoryReportAsync(request, cancellationToken);
+        var result = await _productService.ExportProductQuantityReportAsync(request, cancellationToken);
         if (!result.IsSuccess || result.Data == null)
         {
             return result.ToActionResult();
