@@ -430,7 +430,14 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
                 return new ShippingReturnFlowResult { Notifications = notifications };
             }
 
-            var refund = await _refundService.CreateSystemRefundForDeliveryFailAsync(order, reason.RefundReasonId, ct);
+            byte? initialStatusId = null;
+            if (string.Equals(cancelReason, OrderCancelReasons.LostInTransit, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(cancelReason, OrderCancelReasons.DamagedInTransit, StringComparison.OrdinalIgnoreCase))
+            {
+                initialStatusId = (byte)RefundStatusEnum.RefundDamage;
+            }
+
+            var refund = await _refundService.CreateSystemRefundForDeliveryFailAsync(order, reason.RefundReasonId, initialStatusId, ct);
             if (refund is not null)
             {
                 notifications.Add(new PendingShippingNotification(

@@ -27,5 +27,5 @@ public interface IRefundService
     /// System-initiated refund when GHN returns order to warehouse (bypasses customer validations).
     /// </summary>
     Task<OrderRefund?> CreateSystemRefundForDeliveryFailAsync(
-        Order order, byte refundReasonId, CancellationToken cancellationToken = default);
+        Order order, byte refundReasonId, byte? initialStatusId = null, CancellationToken cancellationToken = default);
 }
