@@ -95,10 +95,15 @@ public class ProfileService : IProfileService
             return Result.NotFound("Account", _currentUserService.AccountId);
         }
 
-        var provider = existing.Provider?.Trim().ToLowerInvariant();
-        var isGoogleFirstPasswordChange = provider == "google";
+        if (existing.HasPassword && string.IsNullOrWhiteSpace(dto.CurrentPassword))
+        {
+            return Result.ValidationFailure(new Dictionary<string, string[]>
+            {
+                ["CurrentPassword"] = ["Current password is required."]
+            });
+        }
 
-        if (!isGoogleFirstPasswordChange && !VerifyPassword(dto.CurrentPassword, existing.PasswordHash))
+        if (existing.HasPassword && !VerifyPassword(dto.CurrentPassword, existing.PasswordHash))
         {
             return Result.Failure("INVALID_CREDENTIALS", "Current password is incorrect. Please try again.");
         }
@@ -118,15 +123,6 @@ public class ProfileService : IProfileService
                 _currentUserService.AccountId,
                 HashPassword(dto.NewPassword),
                 cancellationToken);
-
-            // Google first change is considered completed after first successful update.
-            if (isGoogleFirstPasswordChange)
-            {
-                await _unitOfWork.Accounts.UpdateProviderAsync(
-                    _currentUserService.AccountId,
-                    "Email",
-                    cancellationToken);
-            }
 
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
         }
@@ -262,7 +258,15 @@ public class ProfileService : IProfileService
             return Result.NotFound("Account", accountId);
         }
 
-        if (!VerifyPassword(dto.CurrentPassword, existing.PasswordHash))
+        if (existing.HasPassword && string.IsNullOrWhiteSpace(dto.CurrentPassword))
+        {
+            return Result.ValidationFailure(new Dictionary<string, string[]>
+            {
+                ["CurrentPassword"] = ["Current password is required."]
+            });
+        }
+
+        if (existing.HasPassword && !VerifyPassword(dto.CurrentPassword, existing.PasswordHash))
         {
             return Result.ValidationFailure(new Dictionary<string, string[]>
             {

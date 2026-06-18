@@ -79,6 +79,7 @@ CREATE TABLE [Accounts] (
     [DOB]          DATE NULL,
     [ImageURL]     VARCHAR(500) NULL,
     [PasswordHash] VARCHAR(255) NOT NULL,
+    [HasPassword] BIT NOT NULL DEFAULT 0,
     [IsActive]     BIT NOT NULL DEFAULT 1,
     [IsDeleted]    BIT NOT NULL DEFAULT 0,
     [Provider]     VARCHAR(20) NULL,
@@ -3100,36 +3101,6 @@ CREATE INDEX [IX_WithdrawalRequests_ReferenceId]
     ON [dbo].[WithdrawalRequests] ([ReferenceId]);
 GO
 
-CREATE TABLE [dbo].[PayosWebhookLogs] (
-    [WebhookLogID]      BIGINT         IDENTITY(1,1) NOT NULL,
-    [WithdrawalID]      INT            NULL,
-    [WebhookEventId]    VARCHAR(100)   NULL,
-    [ReferenceId]       VARCHAR(100)   NULL,
-    [EventType]         VARCHAR(50)    NULL,
-    [IsSignatureValid]  BIT            NOT NULL DEFAULT 0,
-    [RawPayload]        NVARCHAR(MAX)  NOT NULL,
-    [ProcessStatus]     VARCHAR(20)    NOT NULL DEFAULT 'RECEIVED',
-    [CreatedAt]         DATETIME2(0)   NOT NULL DEFAULT GETDATE(),
-
-    CONSTRAINT [PK_PayosWebhookLogs]
-        PRIMARY KEY ([WebhookLogID]),
-    CONSTRAINT [FK_PayosWebhookLogs_WithdrawalRequests]
-        FOREIGN KEY ([WithdrawalID]) REFERENCES [dbo].[WithdrawalRequests]([WithdrawalID]),
-    CONSTRAINT [CK_PayosWebhookLogs_ProcessStatus]
-        CHECK ([ProcessStatus] IN ('RECEIVED', 'PROCESSED', 'IGNORED', 'ERROR'))
-);
-GO
-
-CREATE UNIQUE INDEX [UQ_PayosWebhookLogs_EventId]
-    ON [dbo].[PayosWebhookLogs] ([WebhookEventId])
-    WHERE [WebhookEventId] IS NOT NULL;
-GO
-
-CREATE INDEX [IX_PayosWebhookLogs_Unprocessed]
-    ON [dbo].[PayosWebhookLogs] ([ProcessStatus], [CreatedAt] ASC)
-    WHERE [ProcessStatus] IN ('RECEIVED', 'ERROR');
-GO
-
 CREATE TABLE [dbo].[WithdrawalStatusHistory] (
     [HistoryID]     INT           IDENTITY(1,1) NOT NULL,
     [WithdrawalID]  INT           NOT NULL,
@@ -3144,7 +3115,7 @@ CREATE TABLE [dbo].[WithdrawalStatusHistory] (
     CONSTRAINT [FK_WithdrawalStatusHistory_WithdrawalRequests]
         FOREIGN KEY ([WithdrawalID]) REFERENCES [dbo].[WithdrawalRequests]([WithdrawalID]),
     CONSTRAINT [CK_WithdrawalStatusHistory_Source]
-        CHECK ([Source] IN ('USER', 'SYSTEM', 'WEBHOOK', 'JOB'))
+        CHECK ([Source] IN ('USER', 'SYSTEM', 'JOB'))
 );
 GO
 
@@ -3153,4 +3124,3 @@ CREATE INDEX [IX_WithdrawalStatusHistory_Withdrawal]
 GO
 
 /* ============================================= */
-

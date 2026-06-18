@@ -11,4 +11,5 @@ public static class RefundStatuses
     public const string InspectionPending = "RefundInspectionPending";
     public const string Completed = "RefundCompleted";
     public const string Cancelled = "RefundCancelled";
+    public const string Damage = "RefundDamage";
 }

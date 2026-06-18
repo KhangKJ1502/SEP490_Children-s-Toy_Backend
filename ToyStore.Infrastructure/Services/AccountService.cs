@@ -159,7 +159,8 @@ public class AccountService : IAccountService
                 HashPassword(dto.Password),
                 true,
                 "Local",
-                cancellationToken);
+                cancellationToken,
+                hasPassword: true);
 
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 

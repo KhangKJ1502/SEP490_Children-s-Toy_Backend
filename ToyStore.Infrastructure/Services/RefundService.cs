@@ -72,6 +72,7 @@ public class RefundService : IRefundService
             "refundinspectionpending" => (byte)RefundStatusEnum.RefundInspectionPending,
             "refundcompleted" or "completed" => (byte)RefundStatusEnum.RefundCompleted,
             "refundcancelled" or "cancelled" => (byte)RefundStatusEnum.RefundCancelled,
+            "refunddamage" or "damage" => (byte)RefundStatusEnum.RefundDamage,
             _ => null
         };
     }
@@ -93,6 +94,7 @@ public class RefundService : IRefundService
             (byte)RefundStatusEnum.RefundInspectionPending => RefundStatuses.InspectionPending,
             (byte)RefundStatusEnum.RefundCompleted => RefundStatuses.Completed,
             (byte)RefundStatusEnum.RefundCancelled => RefundStatuses.Cancelled,
+            (byte)RefundStatusEnum.RefundDamage => RefundStatuses.Damage,
             _ => status
         };
     }
@@ -109,6 +111,7 @@ public class RefundService : IRefundService
             RefundStatuses.Completed => "Completed",
             RefundStatuses.Rejected => "Rejected",
             RefundStatuses.Cancelled => "Cancelled",
+            RefundStatuses.Damage => "Damaged",
             _ => internalStatus
         };
     }
@@ -293,14 +296,14 @@ public class RefundService : IRefundService
     }
 
     public async Task<OrderRefund?> CreateSystemRefundForDeliveryFailAsync(
-        Order order, byte refundReasonId, CancellationToken cancellationToken = default)
+        Order order, byte refundReasonId, byte? initialStatusId = null, CancellationToken cancellationToken = default)
     {
         var existing = await _unitOfWork.Refunds.GetAdminRefundsAsync(
             new AdminRefundFilterDto { OrderId = order.OrderId, PageSize = 10 },
             cancellationToken);
 
         if (existing.Items.Any(r =>
-                r.RefundStatus is RefundStatuses.Requested or RefundStatuses.Approved or RefundStatuses.Completed))
+                r.RefundStatus is RefundStatuses.Requested or RefundStatuses.Approved or RefundStatuses.Completed or RefundStatuses.Damage))
         {
             return null;
         }
@@ -333,11 +336,16 @@ public class RefundService : IRefundService
         var totalAmount = subTotal + shippingFee;
         var now = DateTime.UtcNow;
 
+        var statusId = initialStatusId ?? (byte)RefundStatusEnum.RefundRequested;
+        var defaultReason = statusId == (byte)RefundStatusEnum.RefundDamage
+            ? "Auto-created: GHN damaged/lost package in transit"
+            : "Auto-created: GHN delivery failure return";
+
         var refund = new OrderRefund
         {
             OrderId = refundOrder.OrderId,
             RefundReasonId = refundReasonId,
-            ReasonDetails = "Auto-created: GHN delivery failure return",
+            ReasonDetails = defaultReason,
             RefundSource = RefundSources.System,   // Luồng B: system tạo, không có GHN pickup
             CustomerId = refundOrder.AccountId,
             RequestedBy = null,
@@ -346,16 +354,19 @@ public class RefundService : IRefundService
             SubTotal = subTotal,
             ShippingFee = shippingFee,
             TotalAmount = totalAmount,
-            StatusId = (byte)RefundStatusEnum.RefundRequested,
+            StatusId = statusId,
             IsDeleted = false,
-            CreatedAt = now
+            CreatedAt = now,
+            AdminNote = statusId == (byte)RefundStatusEnum.RefundDamage
+                ? "Orders are damaged/lost during shipping (GHN updates Damage/Lost). No quality inspection is required."
+                : null
         };
 
         refund.RefundStatusHistories.Add(new RefundStatusHistory
         {
-            StatusId = (byte)RefundStatusEnum.RefundRequested,
+            StatusId = statusId,
             ChangedBy = null,
-            Note = "Auto-created: GHN delivery failure return",
+            Note = defaultReason,
             CreatedAt = now
         });
 
@@ -857,7 +868,8 @@ public class RefundService : IRefundService
 
         // 5. Restore Inventory strictly for the items returned - ONLY if they were not lost or damaged!
         bool isLostOrDamaged = string.Equals(order.CancelReason, OrderCancelReasons.LostInTransit, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(order.CancelReason, OrderCancelReasons.DamagedInTransit, StringComparison.OrdinalIgnoreCase);
+            || string.Equals(order.CancelReason, OrderCancelReasons.DamagedInTransit, StringComparison.OrdinalIgnoreCase)
+            || refund.RefundStatusHistories.Any(h => h.StatusId == (byte)RefundStatusEnum.RefundDamage);
 
         if (!isLostOrDamaged)
         {

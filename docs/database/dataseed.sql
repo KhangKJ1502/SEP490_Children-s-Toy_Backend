@@ -253,8 +253,18 @@ VALUES
     (6, 'RefundReceived', N'Merchandise received returned package'),
     (7, 'RefundInspectionPending', N'Package quality inspection in progress'),
     (8, 'RefundCompleted', N'Refund completed and inventory updated'),
-    (9, 'RefundCancelled', N'Customer cancelled refund request');
+    (9, 'RefundCancelled', N'Customer cancelled refund request'),
+    (10, 'RefundDamage', N'Package damaged or lost during shipping');
 SET IDENTITY_INSERT [dbo].[StatusRefunds] OFF;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM [dbo].[StatusRefunds] WHERE StatusID = 10)
+BEGIN
+    SET IDENTITY_INSERT [dbo].[StatusRefunds] ON;
+    INSERT INTO [dbo].[StatusRefunds] (StatusID, StatusName, Description)
+    VALUES (10, 'RefundDamage', N'Package damaged or lost during shipping');
+    SET IDENTITY_INSERT [dbo].[StatusRefunds] OFF;
+END
 GO
 /* ══════════════════════════════════════════════════════════════
    SECTION 8 – PRODUCTS (30 products)

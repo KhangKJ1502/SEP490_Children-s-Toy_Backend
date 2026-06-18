@@ -322,7 +322,7 @@ public class ProductRepository : IProductRepository
         return query.CountAsync(cancellationToken);
     }
 
-    public async Task<List<Product>> GetInventoryReportAsync(
+    public async Task<List<Product>> GetProductQuantityReportAsync(
         string? sortBy = null,
         bool sortDesc = false,
         string? searchTerm = null,

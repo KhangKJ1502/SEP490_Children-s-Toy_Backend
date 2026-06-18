@@ -65,7 +65,8 @@ public interface IAccountRepository
         string passwordHash,
         bool isActive,
         string? provider,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        bool hasPassword = true);
 
     /// <summary>
     /// Cập nhật trạng thái Account.

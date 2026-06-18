@@ -542,30 +542,30 @@ public class ProductService : IProductService
         return Result<ProductLookupsDto>.Success(result);
     }
 
-    public async Task<Result<InventoryReportFileDto>> ExportInventoryReportAsync(
-        InventoryReportRequestDto request,
+    public async Task<Result<ProductQuantityReportFileDto>> ExportProductQuantityReportAsync(
+        ProductQuantityReportRequestDto request,
         CancellationToken cancellationToken = default)
     {
         if (request == null)
         {
-            return Result<InventoryReportFileDto>.Failure("VALIDATION_ERROR", "Report request is required.");
+            return Result<ProductQuantityReportFileDto>.Failure("VALIDATION_ERROR", "Report request is required.");
         }
 
         var format = (request.Format ?? "pdf").Trim().ToLowerInvariant();
         if (format is not ("pdf" or "xlsx" or "csv"))
         {
-            return Result<InventoryReportFileDto>.Failure("VALIDATION_ERROR", "Report format is invalid.");
+            return Result<ProductQuantityReportFileDto>.Failure("VALIDATION_ERROR", "Report format is invalid.");
         }
 
         if (request.DateFrom.HasValue && request.DateTo.HasValue && request.DateFrom.Value > request.DateTo.Value)
         {
-            return Result<InventoryReportFileDto>.Failure("VALIDATION_ERROR", "Date range is invalid.");
+            return Result<ProductQuantityReportFileDto>.Failure("VALIDATION_ERROR", "Date range is invalid.");
         }
 
         var dateField = request.DateField?.Trim().ToLowerInvariant();
         if (!string.IsNullOrWhiteSpace(dateField) && dateField is not ("createdat" or "updatedat"))
         {
-            return Result<InventoryReportFileDto>.Failure("VALIDATION_ERROR", "Date field is invalid.");
+            return Result<ProductQuantityReportFileDto>.Failure("VALIDATION_ERROR", "Date field is invalid.");
         }
 
         var dateFrom = request.DateFrom;
@@ -575,7 +575,7 @@ public class ProductService : IProductService
             dateTo = dateTo.Value.Date.AddDays(1).AddTicks(-1);
         }
 
-        var products = await _unitOfWork.Products.GetInventoryReportAsync(
+        var products = await _unitOfWork.Products.GetProductQuantityReportAsync(
             sortBy: request.SortBy,
             sortDesc: request.SortDesc,
             searchTerm: request.SearchTerm,
@@ -592,8 +592,8 @@ public class ProductService : IProductService
             dateField: dateField,
             cancellationToken: cancellationToken);
 
-        var items = _mapper.Map<List<InventoryReportItemDto>>(products);
-        var summary = BuildInventorySummary(items);
+        var items = _mapper.Map<List<ProductQuantityReportItemDto>>(products);
+        var summary = BuildProductQuantitySummary(items);
         var generatedAt = _timeProvider.VnNow;
         var filterDescriptions = BuildFilterDescriptions(request, dateFrom, dateTo);
 
@@ -602,10 +602,10 @@ public class ProductService : IProductService
             "pdf" => BuildPdfReport(items, summary, generatedAt, filterDescriptions),
             "xlsx" => BuildXlsxReport(items, summary, generatedAt, filterDescriptions),
             "csv" => BuildCsvReport(items),
-            _ => new InventoryReportFileDto()
+            _ => new ProductQuantityReportFileDto()
         };
 
-        return Result<InventoryReportFileDto>.Success(file);
+        return Result<ProductQuantityReportFileDto>.Success(file);
     }
 
     private static bool HasAnyUpdate(UpdateProductDto dto)
@@ -633,20 +633,20 @@ public class ProductService : IProductService
                || dto.AdditionalImageUrls != null;
     }
 
-    private static InventoryReportSummaryDto BuildInventorySummary(IReadOnlyCollection<InventoryReportItemDto> items)
+    private static ProductQuantityReportSummaryDto BuildProductQuantitySummary(IReadOnlyCollection<ProductQuantityReportItemDto> items)
     {
-        return new InventoryReportSummaryDto
+        return new ProductQuantityReportSummaryDto
         {
             TotalProducts = items.Count,
             TotalQuantity = items.Sum(x => x.Quantity),
-            TotalInventoryValue = items.Sum(x => x.InventoryValue),
+            TotalProductValue = items.Sum(x => x.ProductValue),
             LowStockCount = items.Count(x => x.LowStock),
             OutOfStockCount = items.Count(x => x.Quantity == 0)
         };
     }
 
     private static List<string> BuildFilterDescriptions(
-        InventoryReportRequestDto request,
+        ProductQuantityReportRequestDto request,
         DateTime? dateFrom,
         DateTime? dateTo)
     {
@@ -716,7 +716,7 @@ public class ProductService : IProductService
         return filters;
     }
 
-    private static InventoryReportFileDto BuildCsvReport(IReadOnlyCollection<InventoryReportItemDto> items)
+    private static ProductQuantityReportFileDto BuildCsvReport(IReadOnlyCollection<ProductQuantityReportItemDto> items)
     {
         var builder = new StringBuilder();
         var headers = new[]
@@ -761,7 +761,7 @@ public class ProductService : IProductService
                 item.Quantity.ToString(CultureInfo.InvariantCulture),
                 item.StockThreshold.ToString(CultureInfo.InvariantCulture),
                 item.LowStock ? "Yes" : "No",
-                item.InventoryValue.ToString(CultureInfo.InvariantCulture),
+                item.ProductValue.ToString(CultureInfo.InvariantCulture),
                 item.SoldQuantity.ToString(CultureInfo.InvariantCulture),
                 item.ReviewCount.ToString(CultureInfo.InvariantCulture),
                 item.AverageRating?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
@@ -772,7 +772,7 @@ public class ProductService : IProductService
             builder.AppendLine(string.Join(",", row));
         }
 
-        return new InventoryReportFileDto
+        return new ProductQuantityReportFileDto
         {
             Content = Encoding.UTF8.GetBytes(builder.ToString()),
             ContentType = "text/csv",
@@ -780,9 +780,9 @@ public class ProductService : IProductService
         };
     }
 
-    private static InventoryReportFileDto BuildXlsxReport(
-        IReadOnlyCollection<InventoryReportItemDto> items,
-        InventoryReportSummaryDto summary,
+    private static ProductQuantityReportFileDto BuildXlsxReport(
+        IReadOnlyCollection<ProductQuantityReportItemDto> items,
+        ProductQuantityReportSummaryDto summary,
         DateTime generatedAt,
         IReadOnlyCollection<string> filters)
     {
@@ -798,7 +798,7 @@ public class ProductService : IProductService
         summarySheet.Cell("A5").Value = "Total quantity";
         summarySheet.Cell("B5").Value = summary.TotalQuantity;
         summarySheet.Cell("A6").Value = "Total product value";
-        summarySheet.Cell("B6").Value = summary.TotalInventoryValue;
+        summarySheet.Cell("B6").Value = summary.TotalProductValue;
         summarySheet.Cell("A7").Value = "Low stock count";
         summarySheet.Cell("B7").Value = summary.LowStockCount;
         summarySheet.Cell("A8").Value = "Out of stock count";
@@ -865,7 +865,7 @@ public class ProductService : IProductService
             dataSheet.Cell(rowIndex, 11).Value = item.Quantity;
             dataSheet.Cell(rowIndex, 12).Value = item.StockThreshold;
             dataSheet.Cell(rowIndex, 13).Value = item.LowStock ? "Yes" : "No";
-            dataSheet.Cell(rowIndex, 14).Value = item.InventoryValue;
+            dataSheet.Cell(rowIndex, 14).Value = item.ProductValue;
             dataSheet.Cell(rowIndex, 15).Value = item.SoldQuantity;
             dataSheet.Cell(rowIndex, 16).Value = item.ReviewCount;
             dataSheet.Cell(rowIndex, 17).Value = item.AverageRating;
@@ -879,7 +879,7 @@ public class ProductService : IProductService
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
 
-        return new InventoryReportFileDto
+        return new ProductQuantityReportFileDto
         {
             Content = stream.ToArray(),
             ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -887,9 +887,9 @@ public class ProductService : IProductService
         };
     }
 
-    private static InventoryReportFileDto BuildPdfReport(
-        IReadOnlyCollection<InventoryReportItemDto> items,
-        InventoryReportSummaryDto summary,
+    private static ProductQuantityReportFileDto BuildPdfReport(
+        IReadOnlyCollection<ProductQuantityReportItemDto> items,
+        ProductQuantityReportSummaryDto summary,
         DateTime generatedAt,
         IReadOnlyCollection<string> filters)
     {
@@ -916,7 +916,7 @@ public class ProductService : IProductService
             });
         });
 
-        return new InventoryReportFileDto
+        return new ProductQuantityReportFileDto
         {
             Content = document.GeneratePdf(),
             ContentType = "application/pdf",
@@ -946,8 +946,8 @@ public class ProductService : IProductService
 
     private static void BuildPdfContent(
         IContainer container,
-        IReadOnlyCollection<InventoryReportItemDto> items,
-        InventoryReportSummaryDto summary,
+        IReadOnlyCollection<ProductQuantityReportItemDto> items,
+        ProductQuantityReportSummaryDto summary,
         IReadOnlyCollection<string> filters)
     {
         container.Column(column =>
@@ -965,14 +965,14 @@ public class ProductService : IProductService
         });
     }
 
-    private static void BuildPdfSummary(IContainer container, InventoryReportSummaryDto summary)
+    private static void BuildPdfSummary(IContainer container, ProductQuantityReportSummaryDto summary)
     {
         container.Row(row =>
         {
             row.Spacing(10);
             BuildPdfSummaryCard(row.RelativeItem(), "Total products", summary.TotalProducts.ToString(CultureInfo.InvariantCulture));
             BuildPdfSummaryCard(row.RelativeItem(), "Total quantity", summary.TotalQuantity.ToString(CultureInfo.InvariantCulture));
-            BuildPdfSummaryCard(row.RelativeItem(), "Product value", MoneyHelper.FormatVND(summary.TotalInventoryValue));
+            BuildPdfSummaryCard(row.RelativeItem(), "Product value", MoneyHelper.FormatVND(summary.TotalProductValue));
             BuildPdfSummaryCard(row.RelativeItem(), "Low stock", summary.LowStockCount.ToString(CultureInfo.InvariantCulture));
             BuildPdfSummaryCard(row.RelativeItem(), "Out of stock", summary.OutOfStockCount.ToString(CultureInfo.InvariantCulture));
         });
@@ -999,7 +999,7 @@ public class ProductService : IProductService
         });
     }
 
-    private static void BuildPdfTable(IContainer container, IReadOnlyCollection<InventoryReportItemDto> items)
+    private static void BuildPdfTable(IContainer container, IReadOnlyCollection<ProductQuantityReportItemDto> items)
     {
         container.Table(table =>
         {
@@ -1059,7 +1059,7 @@ public class ProductService : IProductService
                 table.Cell().Element(PdfBodyCellStyle).Text(item.Quantity.ToString(CultureInfo.InvariantCulture));
                 table.Cell().Element(PdfBodyCellStyle).Text(item.StockThreshold.ToString(CultureInfo.InvariantCulture));
                 table.Cell().Element(PdfBodyCellStyle).Text(item.LowStock ? "Yes" : "No");
-                table.Cell().Element(PdfBodyCellStyle).Text(MoneyHelper.FormatVND(item.InventoryValue));
+                table.Cell().Element(PdfBodyCellStyle).Text(MoneyHelper.FormatVND(item.ProductValue));
                 table.Cell().Element(PdfBodyCellStyle).Text(item.SoldQuantity.ToString(CultureInfo.InvariantCulture));
                 table.Cell().Element(PdfBodyCellStyle).Text(item.UpdatedAt?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "-");
             }

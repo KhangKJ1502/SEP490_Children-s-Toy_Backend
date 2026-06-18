@@ -1,6 +1,6 @@
 namespace ToyStore.Application.DTOs.Products;
 
-public class InventoryReportItemDto
+public class ProductQuantityReportItemDto
 {
     public int ProductId { get; set; }
 
@@ -28,7 +28,7 @@ public class InventoryReportItemDto
 
     public bool LowStock { get; set; }
 
-    public decimal InventoryValue { get; set; }
+    public decimal ProductValue { get; set; }
 
     public int SoldQuantity { get; set; }
 
