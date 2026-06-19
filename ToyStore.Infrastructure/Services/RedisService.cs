@@ -32,4 +32,10 @@ public class RedisService : IRedisService
     {
         return await _database.KeyExistsAsync(key);
     }
+
+    public async Task<bool> SetIfNotExistsAsync(string key, string value, TimeSpan expiry)
+    {
+        // Redis SET NX EX — atomic, trả về true nếu key chưa tồn tại và đã set thành công
+        return await _database.StringSetAsync(key, value, expiry, When.NotExists);
+    }
 }

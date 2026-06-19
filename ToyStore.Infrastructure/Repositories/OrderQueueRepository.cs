@@ -67,4 +67,15 @@ public class OrderQueueRepository : IOrderQueueRepository
 
         await _context.SaveChangesAsync(cancellationToken);
     }
+
+    public Task<List<OrderQueue>> GetInWindowAsync(DateTime fromUtc, DateTime toUtc, CancellationToken cancellationToken = default)
+    {
+        return _context.OrderQueues
+            .AsNoTracking()
+            .Include(x => x.Order)
+            .Where(x => x.QueuedAt >= fromUtc && x.QueuedAt < toUtc)
+            .OrderBy(x => x.QueuedAt)
+            .ToListAsync(cancellationToken);
+    }
 }
+

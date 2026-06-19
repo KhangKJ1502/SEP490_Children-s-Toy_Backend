@@ -785,14 +785,13 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
         if (existing is not null)
         {
             existing.Reason = reason;
-            existing.QueuedAt = now;
             return;
         }
 
         await _context.OrderQueues.AddAsync(new OrderQueue
         {
-            OrderId = orderId,
-            Reason = reason,
+            OrderId  = orderId,
+            Reason   = reason,
             QueuedAt = now
         }, cancellationToken);
     }

@@ -4,6 +4,7 @@ using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
 
 namespace ToyStore.API.Controllers;
@@ -15,11 +16,13 @@ public class NotificationsController : ControllerBase
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<NotificationsController> _logger;
+    private readonly ITimeProvider _timeProvider;
 
-    public NotificationsController(IUnitOfWork unitOfWork, ILogger<NotificationsController> logger)
+    public NotificationsController(IUnitOfWork unitOfWork, ILogger<NotificationsController> logger, ITimeProvider timeProvider)
     {
         _unitOfWork = unitOfWork;
         _logger     = logger;
+        _timeProvider = timeProvider;
     }
 
     /// <summary>
@@ -116,7 +119,7 @@ public class NotificationsController : ControllerBase
         if (delivery is null || delivery.AccountId != accountId.Value) return NotFound();
 
         delivery.Status    = NotificationStatuses.Archived;
-        delivery.UpdatedAt = DateTime.Now;
+        delivery.UpdatedAt = _timeProvider.UtcNow;
         await _unitOfWork.SaveChangesAsync(ct);
 
         return NoContent();
@@ -154,7 +157,7 @@ public class NotificationsController : ControllerBase
             AccountId    = accountId.Value,
             ActionType   = "Click",
             ActionTarget = delivery.ActionTarget,
-            OccurredAt   = DateTime.Now,
+            OccurredAt   = _timeProvider.UtcNow,
         });
 
         if (delivery.CampaignId.HasValue)

@@ -138,7 +138,7 @@ public class OrderQueuedHandler : IOutboxEventHandler
                 },
                 ReferenceId  = $"{orderId}:{admin.AccountId}",
                 SendBell     = true,
-                SendEmail    = true,
+                SendEmail    = false, // Email được gom và gửi bởi OrderQueuedDigestJob mỗi 10 phút
                 ActionTarget = $"/admin/orders/{orderId}",
             }, ct);
         }

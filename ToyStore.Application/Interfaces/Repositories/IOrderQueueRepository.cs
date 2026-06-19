@@ -15,4 +15,10 @@ public interface IOrderQueueRepository
     Task<OrderQueue> CreateAsync(OrderQueue entry, CancellationToken cancellationToken = default);
 
     Task MarkResolvedAsync(int queueId, int assignedBy, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lấy tất cả OrderQueue được tạo trong khoảng [fromUtc, toUtc] để dùng cho digest email.
+    /// </summary>
+    Task<List<OrderQueue>> GetInWindowAsync(DateTime fromUtc, DateTime toUtc, CancellationToken cancellationToken = default);
 }
+

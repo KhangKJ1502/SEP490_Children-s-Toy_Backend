@@ -471,13 +471,14 @@ public class OrderRepository : IOrderRepository
 
         if (fromDate.HasValue)
         {
-            query = query.Where(o => o.OrderDate >= fromDate.Value);
+            var startUtc = _timeProvider.ToUtc(fromDate.Value.Date);
+            query = query.Where(o => o.OrderDate >= startUtc);
         }
 
         if (toDate.HasValue)
         {
-            var endOfDay = toDate.Value.Date.AddDays(1).AddTicks(-1);
-            query = query.Where(o => o.OrderDate <= endOfDay);
+            var endUtc = _timeProvider.ToUtc(toDate.Value.Date.AddDays(1));
+            query = query.Where(o => o.OrderDate < endUtc);
         }
 
         var hasExplicitStatusFilter = statusId.HasValue || statusIds is { Count: > 0 };
@@ -645,13 +646,14 @@ public class OrderRepository : IOrderRepository
 
         if (fromDate.HasValue)
         {
-            query = query.Where(o => o.OrderDate >= fromDate.Value);
+            var startUtc = _timeProvider.ToUtc(fromDate.Value.Date);
+            query = query.Where(o => o.OrderDate >= startUtc);
         }
 
         if (toDate.HasValue)
         {
-            var endOfDay = toDate.Value.Date.AddDays(1).AddTicks(-1);
-            query = query.Where(o => o.OrderDate <= endOfDay);
+            var endUtc = _timeProvider.ToUtc(toDate.Value.Date.AddDays(1));
+            query = query.Where(o => o.OrderDate < endUtc);
         }
 
         return query;

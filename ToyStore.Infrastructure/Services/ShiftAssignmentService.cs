@@ -197,6 +197,17 @@ public class ShiftAssignmentService : IShiftAssignmentService
 
         foreach (var queueEntry in batch)
         {
+            // BUG FIX: Re-check IsResolved từ DB trước khi xử lý.
+            // Tránh race condition: admin có thể đã assign thủ công (IsResolved=true)
+            // trong khoảng thời gian kể từ lúc GetPendingAsync() load batch này.
+            // Nếu đã resolved → bỏ qua hoàn toàn, không gọi AutoAssign thừa,
+            // không ghi đè ResolvedAt/AssignedBy mà admin đã set.
+            var freshEntry = await _unitOfWork.OrderQueues.GetByIdAsync(queueEntry.QueueId, cancellationToken);
+            if (freshEntry is null || freshEntry.IsResolved)
+            {
+                continue;
+            }
+
             var order = queueEntry.Order;
 
             // Nếu đơn hàng không tồn tại, đã bị xóa, hoặc đã chuyển sang các trạng thái không hoạt động (đã Hủy, đã Hoàn thành,...)
@@ -210,7 +221,7 @@ public class ShiftAssignmentService : IShiftAssignmentService
             }
 
             var assignResult = await _unitOfWork.OrderAssignments.AutoAssignAsync(queueEntry.OrderId, null, cancellationToken);
-            
+
             // Kiểm tra xem đơn hàng đã được phân công đầy đủ cả 2 vai trò chưa
             var activeAssignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(queueEntry.OrderId, cancellationToken);
             var hasStaff = activeAssignments.Any(x => x.RoleId == StaffRoleId);

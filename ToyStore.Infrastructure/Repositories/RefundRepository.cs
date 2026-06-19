@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Refunds;
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Application.Common.Extensions;
@@ -16,11 +17,13 @@ public class RefundRepository : IRefundRepository
 {
     private readonly SEP490ToyStoreContext _context;
     private readonly DbSet<OrderRefund> _dbSet;
+    private readonly ITimeProvider _timeProvider;
 
-    public RefundRepository(SEP490ToyStoreContext context)
+    public RefundRepository(SEP490ToyStoreContext context, ITimeProvider timeProvider)
     {
         _context = context;
         _dbSet = context.Set<OrderRefund>();
+        _timeProvider = timeProvider;
     }
 
     public async Task<List<OrderRefundReason>> GetActiveReasonsAsync(CancellationToken cancellationToken = default)
@@ -43,10 +46,10 @@ public class RefundRepository : IRefundRepository
             var newReason = new OrderRefundReason
             {
                 Content = content,
-                Description = "Refund tự động khi GHN trả hàng về kho do giao thất bại (System-only)",
+                Description = "Refund tự động khi GHN trả hàng về kho do giao thất bại",
                 IsDeleted = false,
                 IsSystem = true,
-                CreatedAt = System.DateTime.Now
+                CreatedAt = _timeProvider.UtcNow
             };
 
             await _context.Set<OrderRefundReason>().AddAsync(newReason, cancellationToken);
@@ -75,10 +78,16 @@ public class RefundRepository : IRefundRepository
             query = query.Where(r => r.OrderId == filter.OrderId.Value);
 
         if (filter.FromDate.HasValue)
-            query = query.Where(r => r.CreatedAt >= filter.FromDate.Value);
+        {
+            var startUtc = _timeProvider.ToUtc(filter.FromDate.Value.Date);
+            query = query.Where(r => r.CreatedAt >= startUtc);
+        }
 
         if (filter.ToDate.HasValue)
-            query = query.Where(r => r.CreatedAt <= filter.ToDate.Value);
+        {
+            var endUtc = _timeProvider.ToUtc(filter.ToDate.Value.Date.AddDays(1));
+            query = query.Where(r => r.CreatedAt < endUtc);
+        }
 
         var totalItems = await query.CountAsync(cancellationToken);
 
@@ -141,10 +150,16 @@ public class RefundRepository : IRefundRepository
             query = query.Where(r => r.RefundReasonId == filter.RefundReasonId.Value);
 
         if (filter.FromDate.HasValue)
-            query = query.Where(r => r.CreatedAt >= filter.FromDate.Value);
+        {
+            var startUtc = _timeProvider.ToUtc(filter.FromDate.Value.Date);
+            query = query.Where(r => r.CreatedAt >= startUtc);
+        }
 
         if (filter.ToDate.HasValue)
-            query = query.Where(r => r.CreatedAt <= filter.ToDate.Value);
+        {
+            var endUtc = _timeProvider.ToUtc(filter.ToDate.Value.Date.AddDays(1));
+            query = query.Where(r => r.CreatedAt < endUtc);
+        }
 
         if (filter.AssignedToMe && filter.AssignedAccountId.HasValue)
         {
