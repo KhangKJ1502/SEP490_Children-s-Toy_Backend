@@ -62,7 +62,7 @@ public class EmailChannel : INotificationChannel
             ActionTarget     = request.ActionTarget,
             IdempotencyKey   = request.IdempotencyKey,
             CampaignId       = request.CampaignId,
-            CreatedAt        = DateTime.Now,
+            CreatedAt        = _timeProvider.VnNow,
         };
 
         try
@@ -254,7 +254,7 @@ public class EmailChannel : INotificationChannel
                     <tr>
                         <td style=""background-color: #f8f9fa; padding: 24px; text-align: center; border-top: 1px solid #cbd5e1;"">
                             <p style=""margin: 0; font-family: 'Segoe UI', Arial, sans-serif; color: #94a3b8; font-size: 12px;"">
-                                &copy; {DateTime.Now.Year} ToyStore. All rights reserved.
+                                &copy; {_timeProvider.VnNow.Year} ToyStore. All rights reserved.
                             </p>
                         </td>
                     </tr>
@@ -266,7 +266,7 @@ public class EmailChannel : INotificationChannel
 </html>";
     }
 
-    private static string BuildHtmlBody(string title, string message, string? actionTarget)
+    private string BuildHtmlBody(string title, string message, string? actionTarget)
     {
         var encodedTitle = System.Net.WebUtility.HtmlEncode(title);
         // Replace newlines with <br> tags so multi-line messages render correctly
@@ -315,7 +315,7 @@ public class EmailChannel : INotificationChannel
           <tr>
             <td style=""background:#f8f9fa;padding:24px 40px;border-top:1px solid #e9ecef;"">
               <p style=""margin:0;color:#aaa;font-size:12px;text-align:center;"">
-                © {DateTime.Now.Year} ToyStore - Premium Kids Toys. All rights reserved.
+                © {_timeProvider.VnNow.Year} ToyStore - Premium Kids Toys. All rights reserved.
               </p>
             </td>
           </tr>
@@ -505,7 +505,7 @@ public class EmailChannel : INotificationChannel
                                                                 </div>
                                                                 <!-- Order Date -->
                                                                 <div style=""font-family:'Onest',Arial,sans-serif; font-size:15px; font-weight:500; color:#6b7280; margin-top:16px;"">
-                                                                    Order Date: {order.OrderDate.ToString("MM/dd/yyyy 'at' HH:mm")}
+                                                                    Order Date: {_timeProvider.ToVnTime(order.OrderDate).ToString("MM/dd/yyyy 'at' HH:mm")}
                                                                 </div>
                                                             </td>
                                                         </tr>

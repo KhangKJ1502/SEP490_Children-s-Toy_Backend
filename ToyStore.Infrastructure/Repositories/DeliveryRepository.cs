@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Constants;
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
 using ToyStore.Infrastructure.Data;
 
@@ -9,10 +10,12 @@ namespace ToyStore.Infrastructure.Repositories;
 public class DeliveryRepository : IDeliveryRepository
 {
     private readonly SEP490ToyStoreContext _db;
+    private readonly ITimeProvider _timeProvider;
 
-    public DeliveryRepository(SEP490ToyStoreContext db)
+    public DeliveryRepository(SEP490ToyStoreContext db, ITimeProvider timeProvider)
     {
         _db = db;
+        _timeProvider = timeProvider;
     }
 
     public async Task<Delivery?> GetByIdAsync(long deliveryId, CancellationToken ct = default)
@@ -65,7 +68,7 @@ public class DeliveryRepository : IDeliveryRepository
         var delivery = await _db.Deliveries.AsNoTracking().FirstOrDefaultAsync(d => d.DeliveryId == deliveryId && d.AccountId == accountId, ct);
         if (delivery == null || delivery.Status != NotificationStatuses.Unread) return;
 
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.UtcNow;
 
         await _db.Deliveries
             .Where(d => d.DeliveryId == deliveryId)
@@ -95,7 +98,7 @@ public class DeliveryRepository : IDeliveryRepository
 
     public async Task MarkAllReadAsync(int accountId, CancellationToken ct = default)
     {
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.UtcNow;
 
         var unreadCampaignDeliveries = await _db.Deliveries
             .AsNoTracking()
@@ -150,7 +153,7 @@ public class DeliveryRepository : IDeliveryRepository
             .Where(s => s.CampaignId == campaignId)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(x => x.TotalClicked, x => x.TotalClicked + 1)
-                .SetProperty(x => x.ComputedAt, DateTime.UtcNow), ct);
+                .SetProperty(x => x.ComputedAt, _timeProvider.UtcNow), ct);
     }
 
     public async Task<bool> HasUserClickedAsync(long deliveryId, int accountId, CancellationToken ct = default)
@@ -192,7 +195,7 @@ public class DeliveryRepository : IDeliveryRepository
 
     public async Task MarkDeletedAsync(long deliveryId, int accountId, CancellationToken ct = default)
     {
-        var now = DateTime.Now;
+        var now = _timeProvider.UtcNow;
         await _db.Deliveries
             .Where(d => d.DeliveryId == deliveryId && d.AccountId == accountId)
             .ExecuteUpdateAsync(s => s
@@ -202,7 +205,7 @@ public class DeliveryRepository : IDeliveryRepository
 
     public async Task MarkAllReadAsDeletedAsync(int accountId, CancellationToken ct = default)
     {
-        var now = DateTime.Now;
+        var now = _timeProvider.UtcNow;
         await _db.Deliveries
             .Where(d => d.AccountId == accountId 
                      && d.Channel == NotificationChannels.WebBell 

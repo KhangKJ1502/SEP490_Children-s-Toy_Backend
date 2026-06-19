@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
 using ToyStore.Infrastructure.Data;
 
@@ -8,10 +9,12 @@ namespace ToyStore.Infrastructure.Repositories;
 public class ReviewRepository : IReviewRepository
 {
     private readonly SEP490ToyStoreContext _context;
+    private readonly ITimeProvider _timeProvider;
 
-    public ReviewRepository(SEP490ToyStoreContext context)
+    public ReviewRepository(SEP490ToyStoreContext context, ITimeProvider timeProvider)
     {
         _context = context;
+        _timeProvider = timeProvider;
     }
 
     // --- Public / Customer ---
@@ -334,12 +337,14 @@ public class ReviewRepository : IReviewRepository
 
         if (fromDate.HasValue)
         {
-            query = query.Where(r => r.CreatedAt >= fromDate.Value);
+            var startUtc = _timeProvider.ToUtc(fromDate.Value.Date);
+            query = query.Where(r => r.CreatedAt >= startUtc);
         }
 
         if (toDate.HasValue)
         {
-            query = query.Where(r => r.CreatedAt <= toDate.Value);
+            var endUtc = _timeProvider.ToUtc(toDate.Value.Date.AddDays(1));
+            query = query.Where(r => r.CreatedAt < endUtc);
         }
 
         if (!string.IsNullOrWhiteSpace(searchTerm))

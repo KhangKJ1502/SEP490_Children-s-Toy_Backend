@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.DTOs.Campaigns;
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
 using ToyStore.Infrastructure.Data;
 
@@ -9,10 +10,12 @@ namespace ToyStore.Infrastructure.Repositories;
 public class CampaignRepository : ICampaignRepository
 {
     private readonly SEP490ToyStoreContext _context;
+    private readonly ITimeProvider _timeProvider;
 
-    public CampaignRepository(SEP490ToyStoreContext context)
+    public CampaignRepository(SEP490ToyStoreContext context, ITimeProvider timeProvider)
     {
         _context = context;
+        _timeProvider = timeProvider;
     }
 
     public async Task<List<Campaign>> GetPagedAsync(
@@ -353,7 +356,7 @@ public class CampaignRepository : ICampaignRepository
         List<CreateCampaignTargetDto> newTargets,
         CancellationToken cancellationToken = default)
     {
-        campaign.UpdatedAt = DateTime.Now;
+        campaign.UpdatedAt = _timeProvider.UtcNow;
         _context.Campaigns.Update(campaign);
 
         // Replace targets: delete old, insert new
@@ -431,7 +434,7 @@ public class CampaignRepository : ICampaignRepository
         if (campaign is null) return;
 
         campaign.Status = "Sending";
-        campaign.UpdatedAt = DateTime.Now;
+        campaign.UpdatedAt = _timeProvider.UtcNow;
         await _context.SaveChangesAsync(cancellationToken);
     }
 
@@ -613,14 +616,14 @@ public class CampaignRepository : ICampaignRepository
 
         if (query.StartDate.HasValue)
         {
-            var from = DateTime.SpecifyKind(query.StartDate.Value.Date, DateTimeKind.Utc);
+            var from = _timeProvider.ToUtc(query.StartDate.Value.Date);
             q = q.Where(x => x.CreatedAt >= from);
         }
 
         if (query.EndDate.HasValue)
         {
-            var to = DateTime.SpecifyKind(query.EndDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
-            q = q.Where(x => x.CreatedAt <= to);
+            var to = _timeProvider.ToUtc(query.EndDate.Value.Date.AddDays(1));
+            q = q.Where(x => x.CreatedAt < to);
         }
 
         return q;

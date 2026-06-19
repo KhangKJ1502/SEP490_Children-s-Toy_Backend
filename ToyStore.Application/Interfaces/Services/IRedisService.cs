@@ -9,4 +9,6 @@ public interface IRedisService
     Task DeleteAsync(string key);
 
     Task<bool> ExistsAsync(string key);
+
+    Task<bool> SetIfNotExistsAsync(string key, string value, TimeSpan expiry);
 }

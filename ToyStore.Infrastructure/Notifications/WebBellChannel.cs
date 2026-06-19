@@ -3,6 +3,7 @@ using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs.Notifications;
 using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
 
 namespace ToyStore.Infrastructure.Notifications;
@@ -17,15 +18,18 @@ public class WebBellChannel : INotificationChannel
     private readonly IUnitOfWork _unitOfWork;
     private readonly INotificationHubService _hub;
     private readonly ILogger<WebBellChannel> _logger;
+    private readonly ITimeProvider _timeProvider;
 
     public WebBellChannel(
         IUnitOfWork unitOfWork,
         INotificationHubService hub,
-        ILogger<WebBellChannel> logger)
+        ILogger<WebBellChannel> logger,
+        ITimeProvider timeProvider)
     {
         _unitOfWork = unitOfWork;
         _hub        = hub;
         _logger     = logger;
+        _timeProvider = timeProvider;
     }
 
     public async Task SendAsync(NotificationDeliveryRequest request, CancellationToken ct = default)
@@ -46,7 +50,7 @@ public class WebBellChannel : INotificationChannel
             ActionTarget     = request.ActionTarget,
             IdempotencyKey   = request.IdempotencyKey,
             CampaignId       = request.CampaignId,
-            CreatedAt        = DateTime.Now,
+            CreatedAt        = _timeProvider.UtcNow,
         };
 
         try
