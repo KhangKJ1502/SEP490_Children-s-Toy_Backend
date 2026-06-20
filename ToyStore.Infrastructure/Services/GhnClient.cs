@@ -139,63 +139,6 @@ public sealed class GhnClient : IGhnClient
         });
     }
 
-    // ── Master data ──────────────────────────────────────────────────────────
-
-    public async Task<Result<List<GhnProvinceDto>>> GetProvincesAsync(
-        CancellationToken cancellationToken = default)
-    {
-        var result = await GetAsync<List<GhnProvinceMdData>>(
-            "master-data/province", "provinces", cancellationToken);
-        if (!result.IsSuccess)
-            return MapFailure<List<GhnProvinceDto>, List<GhnProvinceMdData>>(result);
-
-        var dtos = (result.Data ?? []).Select(p => new GhnProvinceDto
-        {
-            ProvinceId = p.ProvinceId,
-            ProvinceName = p.ProvinceName,
-            ProvinceCode = p.Code
-        }).ToList();
-        return Result<List<GhnProvinceDto>>.Success(dtos);
-    }
-
-    public async Task<Result<List<GhnDistrictDto>>> GetDistrictsAsync(
-        int provinceId,
-        CancellationToken cancellationToken = default)
-    {
-        var result = await GetAsync<List<GhnDistrictMdData>>(
-            $"master-data/district?province_id={provinceId}", "districts", cancellationToken);
-        if (!result.IsSuccess)
-            return MapFailure<List<GhnDistrictDto>, List<GhnDistrictMdData>>(result);
-
-        var dtos = (result.Data ?? []).Select(d => new GhnDistrictDto
-        {
-            DistrictId = d.DistrictId,
-            ProvinceId = d.ProvinceId,
-            DistrictName = d.DistrictName
-        }).ToList();
-        return Result<List<GhnDistrictDto>>.Success(dtos);
-    }
-
-    public async Task<Result<List<GhnWardDto>>> GetWardsAsync(
-        int districtId,
-        CancellationToken cancellationToken = default)
-    {
-        var result = await GetAsync<List<GhnWardMdData>>(
-            $"master-data/ward?district_id={districtId}", "wards", cancellationToken);
-        if (!result.IsSuccess)
-            return MapFailure<List<GhnWardDto>, List<GhnWardMdData>>(result);
-
-        var dtos = (result.Data ?? []).Select(w => new GhnWardDto
-        {
-            WardCode = w.WardCode,
-            DistrictId = w.DistrictId,
-            WardName = w.WardName
-        }).ToList();
-        return Result<List<GhnWardDto>>.Success(dtos);
-    }
-
-
-
     // ── Tao don van chuyen ──────────────────────────────────────────────────
 
     public async Task<Result<ShippingOrderCreateResponseDto>> CreateOrderAsync(
@@ -304,47 +247,6 @@ public sealed class GhnClient : IGhnClient
 
         var payload = new { order_codes = new[] { providerOrderCode } };
         return await PostCommandAsync("v2/switch-status/cancel", payload, "cancel_order", cancellationToken);
-    }
-
-    private async Task<Result<TData>> GetAsync<TData>(
-        string path,
-        string operation,
-        CancellationToken cancellationToken)
-    {
-        var timeoutSeconds = Math.Max(5, _ghnOptions.TimeoutSeconds);
-        try
-        {
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
-
-            using var client = _httpClientFactory.CreateClient(HttpClientName);
-            using var response = await client.GetAsync(path, timeoutCts.Token);
-            var responseText = await response.Content.ReadAsStringAsync(timeoutCts.Token);
-
-            if (!response.IsSuccessStatusCode)
-                return Result<TData>.BusinessError(
-                    $"GHN {operation} failed – HTTP {(int)response.StatusCode}: {Truncate(responseText)}");
-
-            var body = JsonSerializer.Deserialize<GhnApiResponse<TData>>(responseText, JsonOptions);
-            if (body is null)
-                return Result<TData>.Failure("GHN_EMPTY_RESPONSE", $"GHN {operation} returned empty body.");
-            if (body.Code != 200)
-                return Result<TData>.BusinessError($"GHN {operation} business error (code={body.Code}): {body.Message}");
-            if (body.Data is null)
-                return Result<TData>.Failure("GHN_EMPTY_DATA", $"GHN {operation} returned null data.");
-
-            return Result<TData>.Success(body.Data);
-        }
-        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
-        {
-            _logger.LogWarning(ex, "GHN {Operation} timeout", operation);
-            return Result<TData>.Failure("GHN_TIMEOUT", $"GHN {operation} timed out.");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "GHN {Operation} error", operation);
-            return Result<TData>.Failure("GHN_ERROR", $"GHN {operation} error: {ex.Message}");
-        }
     }
 
     private async Task<Result<TData>> PostAsync<TData>(
@@ -570,24 +472,4 @@ public sealed class GhnClient : IGhnClient
         [JsonPropertyName("total_fee")] public decimal TotalFee { get; set; }
     }
 
-    private sealed class GhnProvinceMdData
-    {
-        [JsonPropertyName("ProvinceID")] public int ProvinceId { get; set; }
-        [JsonPropertyName("ProvinceName")] public string ProvinceName { get; set; } = string.Empty;
-        [JsonPropertyName("Code")] public string? Code { get; set; }
-    }
-
-    private sealed class GhnDistrictMdData
-    {
-        [JsonPropertyName("DistrictID")] public int DistrictId { get; set; }
-        [JsonPropertyName("ProvinceID")] public int ProvinceId { get; set; }
-        [JsonPropertyName("DistrictName")] public string DistrictName { get; set; } = string.Empty;
-    }
-
-    private sealed class GhnWardMdData
-    {
-        [JsonPropertyName("WardCode")] public string WardCode { get; set; } = string.Empty;
-        [JsonPropertyName("DistrictID")] public int DistrictId { get; set; }
-        [JsonPropertyName("WardName")] public string WardName { get; set; } = string.Empty;
-    }
 }

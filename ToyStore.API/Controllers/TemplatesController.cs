@@ -64,26 +64,22 @@ public class TemplatesController : ControllerBase
     }
 
     [HttpPut("{templateId:int}")]
-    public async Task<ActionResult<TemplateListDto>> UpdateTemplate(
+    public async Task<ActionResult> SaveTemplate(
         [FromRoute] short templateId,
         [FromBody] UpdateTemplateDto dto,
         CancellationToken cancellationToken = default)
     {
-        var result = await _templateService.UpdateTemplateAsync(templateId, dto, cancellationToken);
-        return result.ToActionResult();
-    }
+        if (dto.IsDeleted && !User.IsInRole("Admin"))
+            return Forbid();
 
-    /// <summary>
-    /// Xoa mem Template (IsDeleted = true). Chi Admin duoc phep thao tac.
-    /// Khong cho phep xoa neu Template dang duoc dung boi Campaign chua hoan thanh hoac Delivery.
-    /// </summary>
-    [HttpDelete("{templateId:int}")]
-    [Authorize(Roles = "Admin")]
-    public async Task<ActionResult> DeleteTemplate(
-        [FromRoute] short templateId,
-        CancellationToken cancellationToken = default)
-    {
-        var result = await _templateService.DeleteTemplateAsync(templateId, cancellationToken);
-        return result.ToNoContentResult();
+        var result = await _templateService.SaveTemplateAsync(templateId, dto, cancellationToken);
+
+        if (!result.IsSuccess)
+            return result.ToActionResult().Result ?? new StatusCodeResult(500);
+
+        if (dto.IsDeleted)
+            return NoContent();
+
+        return Ok(result.Data);
     }
-}
+}

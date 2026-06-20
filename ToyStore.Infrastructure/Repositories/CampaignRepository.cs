@@ -10,21 +10,21 @@ namespace ToyStore.Infrastructure.Repositories;
 public class CampaignRepository : ICampaignRepository
 {
     private readonly SEP490ToyStoreContext _context;
-    private readonly ITimeProvider _timeProvider;
 
-    public CampaignRepository(SEP490ToyStoreContext context, ITimeProvider timeProvider)
+    public CampaignRepository(SEP490ToyStoreContext context)
     {
         _context = context;
-        _timeProvider = timeProvider;
     }
 
     public async Task<List<Campaign>> GetPagedAsync(
         CampaignQueryDto query,
+        DateTime? startDateUtc = null,
+        DateTime? endDateUtc = null,
         bool forAdminList = false,
         int viewerAccountId = 0,
         CancellationToken cancellationToken = default)
     {
-        var baseQuery = BuildBaseQuery(query, forAdminList, viewerAccountId);
+        var baseQuery = BuildBaseQuery(query, startDateUtc, endDateUtc, forAdminList, viewerAccountId);
         baseQuery = ApplySort(baseQuery, query.SortBy, query.SortDesc);
 
         return await baseQuery
@@ -35,11 +35,13 @@ public class CampaignRepository : ICampaignRepository
 
     public Task<int> CountAsync(
         CampaignQueryDto query,
+        DateTime? startDateUtc = null,
+        DateTime? endDateUtc = null,
         bool forAdminList = false,
         int viewerAccountId = 0,
         CancellationToken cancellationToken = default)
     {
-        return BuildBaseQuery(query, forAdminList, viewerAccountId).CountAsync(cancellationToken);
+        return BuildBaseQuery(query, startDateUtc, endDateUtc, forAdminList, viewerAccountId).CountAsync(cancellationToken);
     }
 
     public Task<Campaign?> GetByIdAsync(int campaignId, CancellationToken cancellationToken = default)
@@ -308,6 +310,7 @@ public class CampaignRepository : ICampaignRepository
 
     public async Task<Campaign> CreateAsync(
         CreateCampaignDto dto,
+        DateTime utcNow,
         CancellationToken cancellationToken = default)
     {
         // Tao Campaign o trang thai Draft — khong tu dong tao schedule
@@ -328,7 +331,7 @@ public class CampaignRepository : ICampaignRepository
             ActionTarget = string.IsNullOrWhiteSpace(dto.ActionTarget) ? null : dto.ActionTarget.Trim(),
             CreatedByAccountId = dto.CreatedByAccountId,
             IsDeleted = false,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = utcNow
         };
 
         await _context.Campaigns.AddAsync(campaign, cancellationToken);
@@ -354,9 +357,10 @@ public class CampaignRepository : ICampaignRepository
     public async Task<Campaign> UpdateAsync(
         Campaign campaign,
         List<CreateCampaignTargetDto> newTargets,
+        DateTime utcNow,
         CancellationToken cancellationToken = default)
     {
-        campaign.UpdatedAt = _timeProvider.UtcNow;
+        campaign.UpdatedAt = utcNow;
         _context.Campaigns.Update(campaign);
 
         // Replace targets: delete old, insert new
@@ -389,7 +393,7 @@ public class CampaignRepository : ICampaignRepository
         await _context.CampaignScheduleLogs.AddAsync(log, cancellationToken);
     }
 
-    public async Task<bool> CancelAsync(int campaignId, CancellationToken cancellationToken = default)
+    public async Task<bool> CancelAsync(int campaignId, DateTime utcNow, CancellationToken cancellationToken = default)
     {
         var campaign = await _context.Campaigns
             .Include(x => x.CampaignSchedule)
@@ -399,12 +403,12 @@ public class CampaignRepository : ICampaignRepository
         if (campaign is null) return false;
 
         campaign.Status = "Cancelled";
-        campaign.UpdatedAt = DateTime.UtcNow;
+        campaign.UpdatedAt = utcNow;
 
         if (campaign.CampaignSchedule != null)
         {
             campaign.CampaignSchedule.ExecutionStatus = "Cancelled";
-            campaign.CampaignSchedule.UpdatedAt = DateTime.UtcNow;
+            campaign.CampaignSchedule.UpdatedAt = utcNow;
         }
 
         await _context.SaveChangesAsync(cancellationToken);
@@ -425,7 +429,7 @@ public class CampaignRepository : ICampaignRepository
             .ToListAsync(cancellationToken);
     }
 
-    public async Task MarkSendingAsync(int campaignId, CancellationToken cancellationToken = default)
+    public async Task MarkSendingAsync(int campaignId, DateTime utcNow, CancellationToken cancellationToken = default)
     {
         var campaign = await _context.Campaigns
             .Where(x => x.CampaignId == campaignId)
@@ -434,7 +438,7 @@ public class CampaignRepository : ICampaignRepository
         if (campaign is null) return;
 
         campaign.Status = "Sending";
-        campaign.UpdatedAt = _timeProvider.UtcNow;
+        campaign.UpdatedAt = utcNow;
         await _context.SaveChangesAsync(cancellationToken);
     }
 
@@ -535,19 +539,19 @@ public class CampaignRepository : ICampaignRepository
         {
             await _context.CampaignStats.AddAsync(new CampaignStat
             {
-                CampaignId   = campaignId,
-                TotalSent    = totalSent,
-                TotalRead    = totalRead,
+                CampaignId = campaignId,
+                TotalSent = totalSent,
+                TotalRead = totalRead,
                 TotalClicked = totalClicked,
-                ComputedAt   = now
+                ComputedAt = now
             }, cancellationToken);
         }
         else
         {
-            stat.TotalSent    = totalSent;
-            stat.TotalRead    = totalRead;
+            stat.TotalSent = totalSent;
+            stat.TotalRead = totalRead;
             stat.TotalClicked = totalClicked;
-            stat.ComputedAt   = now;
+            stat.ComputedAt = now;
         }
 
         await _context.SaveChangesAsync(cancellationToken);
@@ -568,7 +572,7 @@ public class CampaignRepository : ICampaignRepository
         _context.Campaigns.Update(campaign);
     }
 
-    public async Task<bool> SoftDeleteAsync(int campaignId, CancellationToken cancellationToken = default)
+    public async Task<bool> SoftDeleteAsync(int campaignId, DateTime utcNow, CancellationToken cancellationToken = default)
     {
         var allowed = new[] { "Sent", "Cancelled", "Failed" };
         var campaign = await _context.Campaigns
@@ -578,7 +582,7 @@ public class CampaignRepository : ICampaignRepository
         if (campaign is null) return false;
 
         campaign.IsDeleted = true;
-        campaign.UpdatedAt = DateTime.UtcNow;
+        campaign.UpdatedAt = utcNow;
         await _context.SaveChangesAsync(cancellationToken);
         return true;
     }
@@ -586,6 +590,8 @@ public class CampaignRepository : ICampaignRepository
 
     private IQueryable<Campaign> BuildBaseQuery(
         CampaignQueryDto query,
+        DateTime? startDateUtc,
+        DateTime? endDateUtc,
         bool forAdminList,
         int viewerAccountId)
     {
@@ -614,16 +620,14 @@ public class CampaignRepository : ICampaignRepository
         if (!string.IsNullOrWhiteSpace(query.SourceType))
             q = q.Where(x => x.SourceType == query.SourceType);
 
-        if (query.StartDate.HasValue)
+        if (startDateUtc.HasValue)
         {
-            var from = _timeProvider.ToUtc(query.StartDate.Value.Date);
-            q = q.Where(x => x.CreatedAt >= from);
+            q = q.Where(x => x.CreatedAt >= startDateUtc.Value);
         }
 
-        if (query.EndDate.HasValue)
+        if (endDateUtc.HasValue)
         {
-            var to = _timeProvider.ToUtc(query.EndDate.Value.Date.AddDays(1));
-            q = q.Where(x => x.CreatedAt < to);
+            q = q.Where(x => x.CreatedAt < endDateUtc.Value);
         }
 
         return q;
