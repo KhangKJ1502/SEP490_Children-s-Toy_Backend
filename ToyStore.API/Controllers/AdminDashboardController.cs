@@ -36,30 +36,12 @@ public class AdminDashboardController : ControllerBase
         return result.ToActionResult();
     }
 
-    [HttpGet("completed-orders")]
-    public async Task<ActionResult<DashboardCompletedOrderStatisticsDto>> GetCompletedOrderStatistics(
-        [FromQuery] DashboardTimeFilterDto filter,
-        CancellationToken cancellationToken)
-    {
-        var result = await _dashboardService.GetCompletedOrderStatisticsAsync(filter, cancellationToken);
-        return result.ToActionResult();
-    }
-
     [HttpGet("growth")]
     public async Task<ActionResult<DashboardGrowthStatisticsDto>> GetGrowthStatistics(
         [FromQuery] DashboardTimeFilterDto filter,
         CancellationToken cancellationToken)
     {
         var result = await _dashboardService.GetGrowthStatisticsAsync(filter, cancellationToken);
-        return result.ToActionResult();
-    }
-
-    [HttpGet("order-rates")]
-    public async Task<ActionResult<DashboardOrderRateStatisticsDto>> GetOrderRateStatistics(
-        [FromQuery] DashboardTimeFilterDto filter,
-        CancellationToken cancellationToken)
-    {
-        var result = await _dashboardService.GetOrderRateStatisticsAsync(filter, cancellationToken);
         return result.ToActionResult();
     }
 

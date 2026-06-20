@@ -13,15 +13,7 @@ public interface IAdminDashboardService
         DashboardTimeFilterDto filter,
         CancellationToken cancellationToken = default);
 
-    Task<Result<DashboardCompletedOrderStatisticsDto>> GetCompletedOrderStatisticsAsync(
-        DashboardTimeFilterDto filter,
-        CancellationToken cancellationToken = default);
-
     Task<Result<DashboardGrowthStatisticsDto>> GetGrowthStatisticsAsync(
-        DashboardTimeFilterDto filter,
-        CancellationToken cancellationToken = default);
-
-    Task<Result<DashboardOrderRateStatisticsDto>> GetOrderRateStatisticsAsync(
         DashboardTimeFilterDto filter,
         CancellationToken cancellationToken = default);
 
