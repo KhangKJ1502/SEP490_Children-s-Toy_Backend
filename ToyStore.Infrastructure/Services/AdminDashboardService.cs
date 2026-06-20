@@ -10,7 +10,6 @@ namespace ToyStore.Infrastructure.Services;
 public class AdminDashboardService : IAdminDashboardService
 {
     private const byte CustomerRoleId = 1;
-    private const string RefundedStatus = "Refunded";
 
     private readonly SEP490ToyStoreContext _context;
     private readonly ITimeProvider _timeProvider;
@@ -166,61 +165,6 @@ public class AdminDashboardService : IAdminDashboardService
         });
     }
 
-    public async Task<Result<DashboardCompletedOrderStatisticsDto>> GetCompletedOrderStatisticsAsync(
-        DashboardTimeFilterDto filter,
-        CancellationToken cancellationToken = default)
-    {
-        var resolved = ResolveRangePair(filter);
-        if (resolved.IsFailure)
-        {
-            return ToRangeFailure<DashboardCompletedOrderStatisticsDto>(resolved);
-        }
-
-        var ranges = resolved.Data!;
-
-        var currentRows = await _context.Orders
-            .AsNoTracking()
-            .Where(o => !o.IsDeleted)
-            .Where(o => o.Status.StatusName == OrderStatuses.Completed)
-            .Where(o => o.CompletedAt != null
-                && o.CompletedAt >= ranges.Current.StartUtc
-                && o.CompletedAt < ranges.Current.EndUtcExclusive)
-            .Select(o => o.CompletedAt!.Value)
-            .ToListAsync(cancellationToken);
-
-        var previousTotal = await _context.Orders
-            .AsNoTracking()
-            .Where(o => !o.IsDeleted)
-            .Where(o => o.Status.StatusName == OrderStatuses.Completed)
-            .Where(o => o.CompletedAt != null
-                && o.CompletedAt >= ranges.Previous.StartUtc
-                && o.CompletedAt < ranges.Previous.EndUtcExclusive)
-            .CountAsync(cancellationToken);
-
-        var buckets = BuildBuckets(ranges.Current);
-        var valueByBucket = CountByBucket(currentRows, ranges.Current, buckets);
-
-        var details = buckets
-            .Select(b => new DashboardCountChartPointDto
-            {
-                Label = b.Label,
-                Date = b.Start,
-                Value = valueByBucket[b.Index]
-            })
-            .ToList();
-
-        var currentTotal = currentRows.Count;
-
-        return Result<DashboardCompletedOrderStatisticsDto>.Success(new DashboardCompletedOrderStatisticsDto
-        {
-            Range = ToRangeDto(ranges.Current),
-            TotalCompletedOrders = currentTotal,
-            PreviousPeriodCompletedOrders = previousTotal,
-            GrowthPercentage = CalculateGrowthPercentage(currentTotal, previousTotal),
-            Details = details
-        });
-    }
-
     public async Task<Result<DashboardGrowthStatisticsDto>> GetGrowthStatisticsAsync(
         DashboardTimeFilterDto filter,
         CancellationToken cancellationToken = default)
@@ -274,44 +218,6 @@ public class AdminDashboardService : IAdminDashboardService
             OrdersCurrent = ordersCurrent,
             OrdersPrevious = ordersPrevious,
             OrdersGrowthPercentage = CalculateGrowthPercentage(ordersCurrent, ordersPrevious)
-        });
-    }
-
-    public async Task<Result<DashboardOrderRateStatisticsDto>> GetOrderRateStatisticsAsync(
-        DashboardTimeFilterDto filter,
-        CancellationToken cancellationToken = default)
-    {
-        var resolved = ResolveRangePair(filter);
-        if (resolved.IsFailure)
-        {
-            return ToRangeFailure<DashboardOrderRateStatisticsDto>(resolved);
-        }
-
-        var range = resolved.Data!.Current;
-
-        var periodOrders = _context.Orders
-            .AsNoTracking()
-            .Where(o => !o.IsDeleted)
-            .Where(o => o.OrderDate >= range.StartUtc && o.OrderDate < range.EndUtcExclusive);
-
-        var totalOrders = await periodOrders.CountAsync(cancellationToken);
-
-        var refundedOrders = await periodOrders
-            .Where(o => o.Status.StatusName == RefundedStatus || o.PaymentStatus == PaymentStatuses.PartiallyRefunded)
-            .CountAsync(cancellationToken);
-
-        var cancelledOrders = await periodOrders
-            .Where(o => o.Status.StatusName == OrderStatuses.Cancelled)
-            .CountAsync(cancellationToken);
-
-        return Result<DashboardOrderRateStatisticsDto>.Success(new DashboardOrderRateStatisticsDto
-        {
-            Range = ToRangeDto(range),
-            TotalOrders = totalOrders,
-            RefundedOrders = refundedOrders,
-            CancelledOrders = cancelledOrders,
-            RefundRatePercentage = CalculatePercentage(refundedOrders, totalOrders),
-            CancellationRatePercentage = CalculatePercentage(cancelledOrders, totalOrders)
         });
     }
 
