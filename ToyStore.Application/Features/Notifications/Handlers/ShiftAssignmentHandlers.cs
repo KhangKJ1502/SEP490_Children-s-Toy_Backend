@@ -48,8 +48,8 @@ public class OrderAutoAssignedHandler : IOutboxEventHandler
 
         var orderId        = root.GetProperty("orderId").GetInt32();
         var orderCode      = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() : null;
-        var staffAccountId = root.TryGetProperty("staffAccountId", out var s) ? s.GetInt32() : 0;
-        var merchAccountId = root.TryGetProperty("merchAccountId", out var m) ? m.GetInt32() : 0;
+        var staffAccountId = root.TryGetProperty("staffAccountId", out var s) && s.ValueKind == JsonValueKind.Number ? s.GetInt32() : 0;
+        var merchAccountId = root.TryGetProperty("merchAccountId", out var m) && m.ValueKind == JsonValueKind.Number ? m.GetInt32() : 0;
 
         var order = await _unitOfWork.Orders.GetByIdAsync(orderId, ct);
         var placeholders = order is not null

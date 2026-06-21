@@ -16,6 +16,7 @@ public interface IRefundRepository
     Task<OrderRefund?> GetByIdAsync(int id, CancellationToken cancellationToken = default);
     Task<OrderRefund?> GetByOrderIdAsync(int orderId, CancellationToken cancellationToken = default);
     Task<OrderRefund?> GetByShippingOrderCodeAsync(string code, CancellationToken cancellationToken = default);
+    Task<OrderRefund?> GetByShippingOrReturnOrderCodeAsync(string code, CancellationToken cancellationToken = default);
     Task<OrderRefund> AddAsync(OrderRefund refund, CancellationToken cancellationToken = default);
     void Update(OrderRefund refund);
 }

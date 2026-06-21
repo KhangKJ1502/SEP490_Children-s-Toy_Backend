@@ -1229,9 +1229,18 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.RefundCode)
                 .HasMaxLength(30)
                 .IsUnicode(false);
+            entity.Property(e => e.RefundType)
+                .HasMaxLength(20)
+                .IsUnicode(false)
+                .HasDefaultValue("ReturnAndRefund");
             entity.Property(e => e.ShippingOrderCode)
                 .HasMaxLength(50)
                 .IsUnicode(false);
+            entity.Property(e => e.ReturnShippingOrderCode)
+                .HasMaxLength(50)
+                .IsUnicode(false);
+            entity.Property(e => e.InspectionNote).HasMaxLength(500);
+            entity.Property(e => e.InspectionPassed);
             entity.Property(e => e.ShippingFee).HasColumnType("decimal(10, 0)");
             entity.Property(e => e.SubTotal).HasColumnType("decimal(12, 0)");
             entity.Property(e => e.TotalAmount).HasColumnType("decimal(12, 0)");

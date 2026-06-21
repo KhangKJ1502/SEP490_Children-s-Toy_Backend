@@ -19,7 +19,11 @@ public class UpdateRefundStatusValidator : AbstractValidator<UpdateRefundStatusD
                 status == RefundStatuses.Received ||
                 status == RefundStatuses.InspectionPending ||
                 status == RefundStatuses.Completed ||
-                status == RefundStatuses.Cancelled)
+                status == RefundStatuses.Cancelled ||
+                status == RefundStatuses.ReturnShipmentCreated ||
+                status == RefundStatuses.ReturningToCustomer ||
+                status == RefundStatuses.ReturnedToCustomer ||
+                status == RefundStatuses.ReturnToCustomerFailed)
             .WithMessage("Status name is invalid.");
 
         RuleFor(x => x.RejectReason)
@@ -30,5 +34,9 @@ public class UpdateRefundStatusValidator : AbstractValidator<UpdateRefundStatusD
         RuleFor(x => x.ShippingOrderCode)
             .Matches(@"^[A-Z0-9]{5,20}$").WithMessage("Shipping Order Code must be uppercase alphanumeric (5 to 20 characters) and contain no spaces or special symbols.")
             .When(x => !string.IsNullOrEmpty(x.ShippingOrderCode));
+
+        RuleFor(x => x.ReturnShippingOrderCode)
+            .Matches(@"^[A-Z0-9]{5,20}$").WithMessage("Return Shipping Order Code must be uppercase alphanumeric (5 to 20 characters) and contain no spaces or special symbols.")
+            .When(x => !string.IsNullOrEmpty(x.ReturnShippingOrderCode));
     }
 }

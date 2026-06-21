@@ -183,6 +183,7 @@ public class OrderRepository : IOrderRepository
                 .ThenInclude(h => h.ChangedByNavigation)
             .Include(o => o.ShippingProviderTransactions.OrderByDescending(t => t.CreatedAt))
             .Include(o => o.OrderRefunds)
+                .ThenInclude(r => r.RefundStatusHistories)
             .FirstOrDefaultAsync(o =>
                 o.OrderId == orderId
                 && o.AccountId == accountId
@@ -578,6 +579,7 @@ public class OrderRepository : IOrderRepository
                 .ThenInclude(d => d.Product)
                     .ThenInclude(p => p.Category)
             .Include(o => o.OrderRefunds)
+                .ThenInclude(r => r.RefundStatusHistories)
             .Where(o => o.AccountId == accountId && !o.IsDeleted);
 
         if (statusNames is { Count: > 0 })

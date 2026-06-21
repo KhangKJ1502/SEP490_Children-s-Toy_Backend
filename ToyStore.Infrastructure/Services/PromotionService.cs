@@ -163,14 +163,6 @@ public class PromotionService : IPromotionService
 
         if (request.ProductPromotions != null && request.ProductPromotions.Any())
         {
-            if (string.Equals(promotion.PromotionType, "DISCOUNT", StringComparison.OrdinalIgnoreCase))
-            {
-                foreach (var pp in request.ProductPromotions)
-                {
-                    pp.SaleQuantity = null;
-                }
-            }
-
             var productIds = request.ProductPromotions.Select(p => p.ProductId).Distinct().ToList();
             var products = await _unitOfWork.Products.GetByIdsAsync(productIds, cancellationToken);
 
@@ -185,11 +177,6 @@ public class PromotionService : IPromotionService
                 if (pp.SalePrice > product.Price)
                 {
                     return Result<PromotionDto>.Failure("VALIDATION_ERROR", $"Sale price for product {product.ProductName} cannot be greater than original price ({product.Price}).");
-                }
-
-                if (pp.SaleQuantity.HasValue && pp.SaleQuantity.Value > product.Quantity)
-                {
-                    return Result<PromotionDto>.Failure("VALIDATION_ERROR", $"Sale quantity for product {product.ProductName} cannot exceed available stock ({product.Quantity}).");
                 }
 
                 var productPromotion = _mapper.Map<ProductPromotion>(pp);
@@ -299,8 +286,7 @@ public class PromotionService : IPromotionService
         {
             var oldStatus = existingPromotion.Status;
             var now = _timeProvider.UtcNow;
-            bool hasTransactions = existingPromotion.ProductPromotions.Any(p => p.SoldQuantity > 0)
-                || existingPromotion.PromotionTimeSlots.Any(ts => ts.PromotionProductSlots.Any(pps => pps.SoldQuantity > 0));
+            bool hasTransactions = existingPromotion.PromotionTimeSlots.Any(ts => ts.PromotionProductSlots.Any(pps => pps.SoldQuantity > 0));
 
             if (string.Equals(oldStatus, "Expired", StringComparison.OrdinalIgnoreCase))
             {
@@ -329,9 +315,9 @@ public class PromotionService : IPromotionService
                     foreach (var incomingPp in request.ProductPromotions)
                     {
                         var existingPp = existingActiveProducts.First(p => p.ProductId == incomingPp.ProductId);
-                        if (incomingPp.SalePrice != existingPp.SalePrice || incomingPp.SaleQuantity != existingPp.SaleQuantity)
+                        if (incomingPp.SalePrice != existingPp.SalePrice)
                         {
-                            return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot modify sale price or sale quantity for products in a promotion that is active or has transactions.");
+                            return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot modify sale price for products in a promotion that is active or has transactions.");
                         }
                     }
                 }
@@ -486,15 +472,6 @@ public class PromotionService : IPromotionService
 
             if (request.ProductPromotions != null)
             {
-                if (string.Equals(existingPromotion.PromotionType, "DISCOUNT", StringComparison.OrdinalIgnoreCase)
-                    || (request.PromotionType != null && string.Equals(request.PromotionType, "DISCOUNT", StringComparison.OrdinalIgnoreCase)))
-                {
-                    foreach (var pp in request.ProductPromotions)
-                    {
-                        pp.SaleQuantity = null;
-                    }
-                }
-
                 var productIds = request.ProductPromotions.Select(p => p.ProductId).Distinct().ToList();
                 var products = await _unitOfWork.Products.GetByIdsAsync(productIds, cancellationToken);
 
@@ -522,11 +499,6 @@ public class PromotionService : IPromotionService
                         return Result<PromotionDto>.Failure("VALIDATION_ERROR", $"Sale price for product {product.ProductName} cannot be greater than original price ({product.Price}).");
                     }
 
-                    if (incomingPp.SaleQuantity.HasValue && incomingPp.SaleQuantity.Value > product.Quantity)
-                    {
-                        return Result<PromotionDto>.Failure("VALIDATION_ERROR", $"Sale quantity for product {product.ProductName} cannot exceed available stock ({product.Quantity}).");
-                    }
-
                     var existingPp = existingPromotion.ProductPromotions
                         .FirstOrDefault(pp => pp.ProductId == incomingPp.ProductId);
 
@@ -534,7 +506,6 @@ public class PromotionService : IPromotionService
                     {
                         existingPp.SalePrice = incomingPp.SalePrice;
                         existingPp.DiscountPercent = incomingPp.DiscountPercent;
-                        existingPp.SaleQuantity = incomingPp.SaleQuantity;
                         existingPp.UpdatedAt = _timeProvider.UtcNow;
                         existingPp.IsDeleted = false;
                     }

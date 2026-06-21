@@ -103,7 +103,7 @@ public class RefundRepository : IRefundRepository
                 OrderStatus = r.Order.Status.StatusName,
                 PaymentStatus = r.Order.PaymentStatus,
                 CustomerName = r.Customer.AccountName,
-                CustomerPhone = r.Customer.PhoneNumber,
+                CustomerPhone = r.Order.ShippingPhone,
                 CustomerEmail = r.Customer.Email,
                 RequestedByName = r.RequestedByNavigation != null ? r.RequestedByNavigation.AccountName : null,
                 RefundReasonContent = r.RefundReason != null ? r.RefundReason.Content : null,
@@ -223,14 +223,18 @@ public class RefundRepository : IRefundRepository
                 OrderStatus = r.Order.Status.StatusName,
                 PaymentStatus = r.Order.PaymentStatus,
                 CustomerName = r.Customer.AccountName,
-                CustomerPhone = r.Customer.PhoneNumber,
+                CustomerPhone = r.Order.ShippingPhone,
                 CustomerEmail = r.Customer.Email,
                 RequestedByName = r.RequestedByNavigation != null ? r.RequestedByNavigation.AccountName : null,
                 RefundReasonContent = r.RefundReason != null ? r.RefundReason.Content : null,
                 ApprovedAmount = r.ApprovedAmount,
                 RefundStatus = r.Status.StatusName,
                 CreatedAt = r.CreatedAt,
-                AssignedToStaffName = r.Order.AssignedToStaff != null ? r.Order.AssignedToStaff.AccountName : null,
+                AssignedToStaffName = _context.Set<OrderAssignment>()
+                    .Where(a => a.OrderId == r.OrderId && a.RoleId == 3 && a.IsActive)
+                    .Select(a => a.Account.AccountName)
+                    .FirstOrDefault()
+                    ?? (r.Order.AssignedToStaff != null ? r.Order.AssignedToStaff.AccountName : null),
                 AssignedToMerchName = _context.Set<OrderAssignment>()
                     .Where(a => a.OrderId == r.OrderId && a.RoleId == 4 && a.IsActive)
                     .Select(a => a.Account.AccountName)
@@ -251,7 +255,9 @@ public class RefundRepository : IRefundRepository
             .Include(r => r.Order).ThenInclude(o => o.AssignedToMerch)
             .Include(r => r.Order).ThenInclude(o => o.ShippingProviderTransactions).ThenInclude(t => t.ShippingStatusHistories)
             .Include(r => r.RefundReason)
-            .Include(r => r.Customer)
+            .Include(r => r.Customer).ThenInclude(c => c.Address).ThenInclude(a => a.Province)
+            .Include(r => r.Customer).ThenInclude(c => c.Address).ThenInclude(a => a.District)
+            .Include(r => r.Customer).ThenInclude(c => c.Address).ThenInclude(a => a.WardCodeNavigation)
             .Include(r => r.RequestedByNavigation)
             .Include(r => r.RefundImages.Where(i => !i.IsDeleted))
             .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.ProductImage)
@@ -267,7 +273,9 @@ public class RefundRepository : IRefundRepository
             .Include(r => r.Order).ThenInclude(o => o.Status)
             .Include(r => r.Order).ThenInclude(o => o.ShippingProviderTransactions).ThenInclude(t => t.ShippingStatusHistories)
             .Include(r => r.RefundReason)
-            .Include(r => r.Customer)
+            .Include(r => r.Customer).ThenInclude(c => c.Address).ThenInclude(a => a.Province)
+            .Include(r => r.Customer).ThenInclude(c => c.Address).ThenInclude(a => a.District)
+            .Include(r => r.Customer).ThenInclude(c => c.Address).ThenInclude(a => a.WardCodeNavigation)
             .Include(r => r.RequestedByNavigation)
             .Include(r => r.RefundImages.Where(i => !i.IsDeleted))
             .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.ProductImage)
@@ -283,13 +291,33 @@ public class RefundRepository : IRefundRepository
             .Include(r => r.Order).ThenInclude(o => o.Status)
             .Include(r => r.Order).ThenInclude(o => o.ShippingProviderTransactions).ThenInclude(t => t.ShippingStatusHistories)
             .Include(r => r.RefundReason)
-            .Include(r => r.Customer)
+            .Include(r => r.Customer).ThenInclude(c => c.Address).ThenInclude(a => a.Province)
+            .Include(r => r.Customer).ThenInclude(c => c.Address).ThenInclude(a => a.District)
+            .Include(r => r.Customer).ThenInclude(c => c.Address).ThenInclude(a => a.WardCodeNavigation)
             .Include(r => r.RequestedByNavigation)
             .Include(r => r.RefundImages.Where(i => !i.IsDeleted))
             .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.ProductImage)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.Status)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.ChangedByNavigation)
             .FirstOrDefaultAsync(r => r.ShippingOrderCode == code && !r.IsDeleted, cancellationToken);
+    }
+
+    public async Task<OrderRefund?> GetByShippingOrReturnOrderCodeAsync(string code, CancellationToken cancellationToken = default)
+    {
+        return await _dbSet
+            .Include(r => r.Status)
+            .Include(r => r.Order).ThenInclude(o => o.Status)
+            .Include(r => r.Order).ThenInclude(o => o.ShippingProviderTransactions).ThenInclude(t => t.ShippingStatusHistories)
+            .Include(r => r.RefundReason)
+            .Include(r => r.Customer).ThenInclude(c => c.Address).ThenInclude(a => a.Province)
+            .Include(r => r.Customer).ThenInclude(c => c.Address).ThenInclude(a => a.District)
+            .Include(r => r.Customer).ThenInclude(c => c.Address).ThenInclude(a => a.WardCodeNavigation)
+            .Include(r => r.RequestedByNavigation)
+            .Include(r => r.RefundImages.Where(i => !i.IsDeleted))
+            .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.ProductImage)
+            .Include(r => r.RefundStatusHistories).ThenInclude(h => h.Status)
+            .Include(r => r.RefundStatusHistories).ThenInclude(h => h.ChangedByNavigation)
+            .FirstOrDefaultAsync(r => (r.ShippingOrderCode == code || r.ReturnShippingOrderCode == code) && !r.IsDeleted, cancellationToken);
     }
 
     public async Task<OrderRefund> AddAsync(OrderRefund refund, CancellationToken cancellationToken = default)

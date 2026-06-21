@@ -15,8 +15,16 @@ public class RefundProfile : Profile
             .ForMember(dest => dest.PaymentStatus, opt => opt.MapFrom(src => src.Order.PaymentStatus))
             .ForMember(dest => dest.RefundReasonContent, opt => opt.MapFrom(src => src.RefundReason != null ? src.RefundReason.Content : null))
             .ForMember(dest => dest.CustomerName, opt => opt.MapFrom(src => src.Customer.AccountName))
-            .ForMember(dest => dest.CustomerPhone, opt => opt.MapFrom(src => src.Customer.PhoneNumber))
+            .ForMember(dest => dest.CustomerPhone, opt => opt.MapFrom(src => src.Order.ShippingPhone))
             .ForMember(dest => dest.CustomerEmail, opt => opt.MapFrom(src => src.Customer.Email))
+            .ForMember(dest => dest.CustomerAddress, opt => opt.MapFrom(src => 
+                src.Customer.Address != null 
+                    ? (src.Customer.Address.AddressLine + 
+                       (src.Customer.Address.WardCodeNavigation != null ? ", " + src.Customer.Address.WardCodeNavigation.WardName : "") + 
+                       (src.Customer.Address.District != null ? ", " + src.Customer.Address.District.DistrictName : "") + 
+                       (src.Customer.Address.Province != null ? ", " + src.Customer.Address.Province.ProvinceName : ""))
+                    : (src.Order.ShippingAddress + ", " + src.Order.ShippingWardName + ", " + src.Order.ShippingDistrictName + ", " + src.Order.ShippingProvinceName)
+            ))
             .ForMember(dest => dest.RequestedByName, opt => opt.MapFrom(src => src.RequestedByNavigation != null ? src.RequestedByNavigation.AccountName : null))
             .ForMember(dest => dest.RefundStatus, opt => opt.MapFrom(src => src.Status != null ? src.Status.StatusName : null))
             .ForMember(dest => dest.RefundSource, opt => opt.MapFrom(src => src.RefundSource ?? "Customer"))
@@ -32,7 +40,7 @@ public class RefundProfile : Profile
             .ForMember(dest => dest.PaymentStatus, opt => opt.MapFrom(src => src.Order.PaymentStatus))
             .ForMember(dest => dest.RefundReasonContent, opt => opt.MapFrom(src => src.RefundReason != null ? src.RefundReason.Content : null))
             .ForMember(dest => dest.CustomerName, opt => opt.MapFrom(src => src.Customer.AccountName))
-            .ForMember(dest => dest.CustomerPhone, opt => opt.MapFrom(src => src.Customer.PhoneNumber))
+            .ForMember(dest => dest.CustomerPhone, opt => opt.MapFrom(src => src.Order.ShippingPhone))
             .ForMember(dest => dest.CustomerEmail, opt => opt.MapFrom(src => src.Customer.Email))
             .ForMember(dest => dest.RequestedByName, opt => opt.MapFrom(src => src.RequestedByNavigation != null ? src.RequestedByNavigation.AccountName : null))
             .ForMember(dest => dest.RefundStatus, opt => opt.MapFrom(src => src.Status != null ? src.Status.StatusName : null))
@@ -51,13 +59,31 @@ public class RefundProfile : Profile
 
     private static System.Collections.Generic.List<ShippingStatusHistory> MapRefundShippingHistory(OrderRefund refund)
     {
-        if (refund == null || string.IsNullOrWhiteSpace(refund.ShippingOrderCode) || refund.Order == null)
+        if (refund == null || refund.Order == null)
             return new System.Collections.Generic.List<ShippingStatusHistory>();
 
-        var tx = refund.Order.ShippingProviderTransactions
-            .FirstOrDefault(t => t.ProviderOrderCode == refund.ShippingOrderCode);
+        var historyList = new System.Collections.Generic.List<ShippingStatusHistory>();
 
-        return tx?.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt).ToList() 
-            ?? new System.Collections.Generic.List<ShippingStatusHistory>();
+        if (!string.IsNullOrWhiteSpace(refund.ShippingOrderCode))
+        {
+            var tx = refund.Order.ShippingProviderTransactions
+                .FirstOrDefault(t => t.ProviderOrderCode == refund.ShippingOrderCode);
+            if (tx != null)
+            {
+                historyList.AddRange(tx.ShippingStatusHistories);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(refund.ReturnShippingOrderCode))
+        {
+            var tx = refund.Order.ShippingProviderTransactions
+                .FirstOrDefault(t => t.ProviderOrderCode == refund.ReturnShippingOrderCode);
+            if (tx != null)
+            {
+                historyList.AddRange(tx.ShippingStatusHistories);
+            }
+        }
+
+        return historyList.OrderByDescending(h => h.ProcessedAt).ToList();
     }
 }

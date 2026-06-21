@@ -8,6 +8,4 @@ public class CreateProductPromotionDto
 
     public decimal? DiscountPercent { get; set; }
 
-    public int? SaleQuantity { get; set; }
-
 }

@@ -5,6 +5,7 @@ using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
 using ToyStore.Domain.Entities;
+using ToyStore.Domain.Enums;
 using ToyStore.Infrastructure.Data;
 
 namespace ToyStore.Infrastructure.Repositories;
@@ -675,7 +676,13 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
             join s in _context.StatusOrders on o.StatusId equals s.StatusId
             where !o.IsDeleted
                   && (o.PaymentStatus == "PAID" || o.PaymentStatus == "COD_PENDING")
-                  && operationalStatuses.Contains(s.StatusName)
+                  && (operationalStatuses.Contains(s.StatusName)
+                      || _context.OrderRefunds.Any(r => r.OrderId == o.OrderId && !r.IsDeleted
+                          && r.StatusId != (byte)RefundStatusEnum.RefundCompleted
+                          && r.StatusId != (byte)RefundStatusEnum.RefundCancelled
+                          && r.StatusId != (byte)RefundStatusEnum.RefundRejected
+                          && r.StatusId != (byte)RefundStatusEnum.RefundReturnedToCustomer
+                          && r.StatusId != (byte)RefundStatusEnum.RefundReturnToCustomerFailed))
                   && (
                       !_context.OrderAssignments.Any(oa => oa.OrderId == o.OrderId && oa.IsActive && oa.RoleId == StaffRoleId)
                       || !_context.OrderAssignments.Any(oa => oa.OrderId == o.OrderId && oa.IsActive && oa.RoleId == MerchRoleId)

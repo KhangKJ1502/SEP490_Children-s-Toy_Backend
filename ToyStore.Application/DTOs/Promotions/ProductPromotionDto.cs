@@ -13,12 +13,6 @@ public class ProductPromotionDto
 
     public decimal? DiscountPercent { get; set; }
 
-    public int? SaleQuantity { get; set; }
-
-    public int SoldQuantity { get; set; }
-
-    public int ReservedQuantity { get; set; }
-
     public int Stock { get; set; }
 
 }

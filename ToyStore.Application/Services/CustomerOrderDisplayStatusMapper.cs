@@ -36,11 +36,37 @@ public static class CustomerOrderDisplayStatusMapper
             ShippingStatuses.ReturnFail,
         };
 
+
+    private static OrderRefund? GetLatestRefund(Order order)
+        => order.OrderRefunds
+            .Where(r => !r.IsDeleted)
+            .OrderByDescending(r => r.CreatedAt)
+            .FirstOrDefault();
+
     public static string ToCustomerDisplayStatus(
         string? internalStatusName,
         string? ghnShippingStatus = null,
-        bool hasActiveRefund = false)
+        bool hasActiveRefund = false,
+        byte? refundStatusId = null)
     {
+        if (refundStatusId.HasValue)
+        {
+            var rStatus = (RefundStatusEnum)refundStatusId.Value;
+            if (rStatus == RefundStatusEnum.RefundReturnShipmentCreated
+                || rStatus == RefundStatusEnum.RefundReturningToCustomer)
+            {
+                return "Returning to you";
+            }
+            if (rStatus == RefundStatusEnum.RefundReturnedToCustomer)
+            {
+                return "Returned (Rejected)";
+            }
+            if (rStatus == RefundStatusEnum.RefundReturnToCustomerFailed)
+            {
+                return "Return to you failed";
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(internalStatusName))
             return internalStatusName ?? string.Empty;
 
@@ -114,15 +140,19 @@ public static class CustomerOrderDisplayStatusMapper
 
     public static bool HasActiveRefund(Order order)
         => order.OrderRefunds.Any(r =>
-            r.StatusId != (byte)RefundStatusEnum.RefundRejected
+            !r.IsDeleted
+            && r.StatusId != (byte)RefundStatusEnum.RefundRejected
             && r.StatusId != (byte)RefundStatusEnum.RefundCancelled
-            && r.Status?.StatusName != RefundStatuses.Rejected
-            && r.Status?.StatusName != RefundStatuses.Cancelled);
+            && r.StatusId != (byte)RefundStatusEnum.RefundReturnedToCustomer
+            && r.StatusId != (byte)RefundStatusEnum.RefundReturnToCustomerFailed);
 
     public static string MapOrderListStatus(Order order)
     {
         var ghnStatus = GetLatestGhnStatus(order);
-        return ToCustomerDisplayStatus(order.Status.StatusName, ghnStatus, HasActiveRefund(order));
+        var hasActiveRefund = HasActiveRefund(order);
+        var latestRefund = GetLatestRefund(order);
+        var refundStatusId = latestRefund?.StatusId;
+        return ToCustomerDisplayStatus(order.Status.StatusName, ghnStatus, hasActiveRefund, refundStatusId);
     }
 
     public static void ApplyCustomerOrderContract(Order order, CustomerOrderListItemDto dto)
@@ -130,7 +160,9 @@ public static class CustomerOrderDisplayStatusMapper
         var ghnStatus = GetLatestGhnStatus(order);
         var internalName = order.Status.StatusName;
         var hasActiveRefund = HasActiveRefund(order);
-        var display = ToCustomerDisplayStatus(internalName, ghnStatus, hasActiveRefund);
+        var latestRefund = GetLatestRefund(order);
+        var refundStatusId = latestRefund?.StatusId;
+        var display = ToCustomerDisplayStatus(internalName, ghnStatus, hasActiveRefund, refundStatusId);
 
         dto.StatusName = display;
         dto.HasActiveRefund = hasActiveRefund;
@@ -143,6 +175,7 @@ public static class CustomerOrderDisplayStatusMapper
         dto.CanComplete = string.Equals(internalName, OrderStatuses.Delivered, StringComparison.OrdinalIgnoreCase);
         dto.IsAwaitingRefund = hasActiveRefund
             && string.Equals(order.PaymentStatus, PaymentStatuses.Paid, StringComparison.OrdinalIgnoreCase);
+        dto.CanRefund = CanRefund(order);
     }
 
     public static void ApplyCustomerOrderContract(Order order, CustomerOrderDetailDto dto)
@@ -150,7 +183,9 @@ public static class CustomerOrderDisplayStatusMapper
         var ghnStatus = GetLatestGhnStatus(order);
         var internalName = order.Status.StatusName;
         var hasActiveRefund = HasActiveRefund(order);
-        var display = ToCustomerDisplayStatus(internalName, ghnStatus, hasActiveRefund);
+        var latestRefund = GetLatestRefund(order);
+        var refundStatusId = latestRefund?.StatusId;
+        var display = ToCustomerDisplayStatus(internalName, ghnStatus, hasActiveRefund, refundStatusId);
 
         dto.StatusName = display;
         dto.HasActiveRefund = hasActiveRefund;
@@ -163,6 +198,7 @@ public static class CustomerOrderDisplayStatusMapper
         dto.CanComplete = string.Equals(internalName, OrderStatuses.Delivered, StringComparison.OrdinalIgnoreCase);
         dto.IsAwaitingRefund = hasActiveRefund
             && string.Equals(order.PaymentStatus, PaymentStatuses.Paid, StringComparison.OrdinalIgnoreCase);
+        dto.CanRefund = CanRefund(order);
     }
 
     private static string? GetLatestGhnStatus(Order order)
@@ -226,7 +262,41 @@ public static class CustomerOrderDisplayStatusMapper
         return DeliveringLikeStatuses.Contains(internalStatusName ?? string.Empty)
            || internalStatusName is OrderStatuses.Returning or OrderStatuses.ReturnCompleted
            || internalStatusName is OrderStatuses.DeliveryFailed or OrderStatuses.WaitingReturn or OrderStatuses.ReturnFailed or OrderStatuses.Lost or OrderStatuses.Damaged
-           || IsGhnReturnInProgress(ghnShippingStatus)
-           || IsGhnReturned(ghnShippingStatus);
+            || IsGhnReturnInProgress(ghnShippingStatus)
+            || IsGhnReturned(ghnShippingStatus);
+    }
+
+    public static bool CanRefund(Order order)
+    {
+        var internalName = order.Status.StatusName;
+        if (!string.Equals(internalName, OrderStatuses.Completed, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (order.CompletedAt == null || (DateTime.UtcNow - order.CompletedAt.Value).TotalDays > 3)
+            return false;
+
+        var existingRefunds = order.OrderRefunds.Where(r => !r.IsDeleted).ToList();
+        foreach (var r in existingRefunds)
+        {
+            if (r.StatusId != (byte)RefundStatusEnum.RefundCancelled && 
+                r.StatusId != (byte)RefundStatusEnum.RefundRejected &&
+                r.StatusId != (byte)RefundStatusEnum.RefundReturnedToCustomer &&
+                r.StatusId != (byte)RefundStatusEnum.RefundReturnToCustomerFailed)
+            {
+                return false;
+            }
+
+            var wentPastRequested = r.RefundStatusHistories.Any(h =>
+                h.StatusId != (byte)RefundStatusEnum.RefundRequested &&
+                h.StatusId != (byte)RefundStatusEnum.RefundCancelled &&
+                h.StatusId != (byte)RefundStatusEnum.RefundRejected);
+
+            if (wentPastRequested)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
