@@ -75,10 +75,10 @@ public class ShippingWebhookService : IShippingWebhookService
             providerOrderCode = providerOrderCode.Trim();
             newStatus = newStatus.Trim();
 
-            var refund = await _unitOfWork.Refunds.GetByShippingOrderCodeAsync(providerOrderCode, cancellationToken);
+            var refund = await _unitOfWork.Refunds.GetByShippingOrReturnOrderCodeAsync(providerOrderCode, cancellationToken);
             if (refund is not null)
             {
-                await HandleRefundWebhookAsync(refund, newStatus, rawPayload, cancellationToken);
+                await HandleRefundWebhookAsync(refund, providerOrderCode, newStatus, rawPayload, cancellationToken);
                 return;
             }
 
@@ -275,33 +275,60 @@ public class ShippingWebhookService : IShippingWebhookService
 
     private async Task HandleRefundWebhookAsync(
         OrderRefund refund,
+        string providerOrderCode,
         string newStatus,
         string rawPayload,
         CancellationToken cancellationToken)
     {
         try
         {
-            byte? targetRefundStatusId = newStatus.ToLowerInvariant() switch
-            {
-                ShippingStatuses.ReadyToPick or ShippingStatuses.Storing => (byte)RefundStatusEnum.RefundPickupCreated,
-                
-                ShippingStatuses.Picking or ShippingStatuses.Picked or 
-                ShippingStatuses.Transporting or ShippingStatuses.Sorting or 
-                ShippingStatuses.Delivering or ShippingStatuses.MoneyCollectDelivering or
-                ShippingStatuses.ReturnTransporting or ShippingStatuses.ReturnSorting or 
-                ShippingStatuses.Returning or
-                ShippingStatuses.Delivered or ShippingStatuses.Returned => (byte)RefundStatusEnum.RefundShipping,
-                
-                ShippingStatuses.Cancel or ShippingStatuses.ReturnFail or 
-                ShippingStatuses.Exception => (byte)RefundStatusEnum.RefundCancelled,
+            bool isReturnToCustomer = string.Equals(providerOrderCode, refund.ReturnShippingOrderCode, StringComparison.OrdinalIgnoreCase);
 
-                ShippingStatuses.Lost or ShippingStatuses.Damage => (byte)RefundStatusEnum.RefundDamage,
-                
-                _ => null
-            };
+            byte? targetRefundStatusId;
+            if (isReturnToCustomer)
+            {
+                targetRefundStatusId = newStatus.ToLowerInvariant() switch
+                {
+                    ShippingStatuses.ReadyToPick or ShippingStatuses.Storing => (byte)RefundStatusEnum.RefundReturnShipmentCreated,
+                    
+                    ShippingStatuses.Picking or ShippingStatuses.Picked or 
+                    ShippingStatuses.Transporting or ShippingStatuses.Sorting or 
+                    ShippingStatuses.Delivering or ShippingStatuses.MoneyCollectDelivering or
+                    ShippingStatuses.ReturnTransporting or ShippingStatuses.ReturnSorting or 
+                    ShippingStatuses.Returning => (byte)RefundStatusEnum.RefundReturningToCustomer,
+                    
+                    ShippingStatuses.Delivered or ShippingStatuses.Returned => (byte)RefundStatusEnum.RefundReturnedToCustomer,
+                    
+                    ShippingStatuses.Cancel or ShippingStatuses.DeliveryFail or ShippingStatuses.ReturnFail or 
+                    ShippingStatuses.Lost or ShippingStatuses.Damage or ShippingStatuses.Exception => (byte)RefundStatusEnum.RefundReturnToCustomerFailed,
+                    
+                    _ => null
+                };
+            }
+            else
+            {
+                targetRefundStatusId = newStatus.ToLowerInvariant() switch
+                {
+                    ShippingStatuses.ReadyToPick or ShippingStatuses.Storing => (byte)RefundStatusEnum.RefundPickupCreated,
+                    
+                    ShippingStatuses.Picking or ShippingStatuses.Picked or 
+                    ShippingStatuses.Transporting or ShippingStatuses.Sorting or 
+                    ShippingStatuses.Delivering or ShippingStatuses.MoneyCollectDelivering or
+                    ShippingStatuses.ReturnTransporting or ShippingStatuses.ReturnSorting or 
+                    ShippingStatuses.Returning or
+                    ShippingStatuses.Delivered or ShippingStatuses.Returned => (byte)RefundStatusEnum.RefundShipping,
+                    
+                    ShippingStatuses.Cancel or ShippingStatuses.ReturnFail or 
+                    ShippingStatuses.Exception => (byte)RefundStatusEnum.RefundCancelled,
+
+                    ShippingStatuses.Lost or ShippingStatuses.Damage => (byte)RefundStatusEnum.RefundDamage,
+                    
+                    _ => null
+                };
+            }
 
             var now = _timeProvider.UtcNow;
-            var tx = await _unitOfWork.Orders.GetShippingTransactionByProviderCodeAsync(refund.ShippingOrderCode ?? "", cancellationToken);
+            var tx = await _unitOfWork.Orders.GetShippingTransactionByProviderCodeAsync(providerOrderCode, cancellationToken);
             var previousStatus = tx?.Status ?? string.Empty;
 
             if (tx is not null && await _unitOfWork.Orders.ExistsShippingStatusHistoryAsync(
@@ -309,7 +336,7 @@ public class ShippingWebhookService : IShippingWebhookService
             {
                 _logger.LogInformation(
                     "Refund shipping webhook duplicate skipped: code={Code}, status={Status}",
-                    refund.ShippingOrderCode, newStatus);
+                    providerOrderCode, newStatus);
                 return;
             }
 
@@ -414,7 +441,7 @@ public class ShippingWebhookService : IShippingWebhookService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing Refund webhook for code {Code}", refund.ShippingOrderCode);
+            _logger.LogError(ex, "Error processing Refund webhook for code {Code}", providerOrderCode);
         }
     }
 }

@@ -292,6 +292,22 @@ public class RefundRepository : IRefundRepository
             .FirstOrDefaultAsync(r => r.ShippingOrderCode == code && !r.IsDeleted, cancellationToken);
     }
 
+    public async Task<OrderRefund?> GetByShippingOrReturnOrderCodeAsync(string code, CancellationToken cancellationToken = default)
+    {
+        return await _dbSet
+            .Include(r => r.Status)
+            .Include(r => r.Order).ThenInclude(o => o.Status)
+            .Include(r => r.Order).ThenInclude(o => o.ShippingProviderTransactions).ThenInclude(t => t.ShippingStatusHistories)
+            .Include(r => r.RefundReason)
+            .Include(r => r.Customer)
+            .Include(r => r.RequestedByNavigation)
+            .Include(r => r.RefundImages.Where(i => !i.IsDeleted))
+            .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.ProductImage)
+            .Include(r => r.RefundStatusHistories).ThenInclude(h => h.Status)
+            .Include(r => r.RefundStatusHistories).ThenInclude(h => h.ChangedByNavigation)
+            .FirstOrDefaultAsync(r => (r.ShippingOrderCode == code || r.ReturnShippingOrderCode == code) && !r.IsDeleted, cancellationToken);
+    }
+
     public async Task<OrderRefund> AddAsync(OrderRefund refund, CancellationToken cancellationToken = default)
     {
         var result = await _dbSet.AddAsync(refund, cancellationToken);

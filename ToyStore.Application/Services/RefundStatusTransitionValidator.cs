@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using ToyStore.Domain.Constants;
 using ToyStore.Domain.Enums;
 
@@ -8,7 +9,9 @@ public static class RefundStatusTransitionValidator
     private static readonly HashSet<byte> FinalStatusIds =
     [
         (byte)RefundStatusEnum.RefundCompleted,
-        (byte)RefundStatusEnum.RefundCancelled
+        (byte)RefundStatusEnum.RefundCancelled,
+        (byte)RefundStatusEnum.RefundReturnedToCustomer,
+        (byte)RefundStatusEnum.RefundReturnToCustomerFailed
     ];
 
     public static bool IsFinal(byte statusId) => FinalStatusIds.Contains(statusId);
@@ -16,6 +19,7 @@ public static class RefundStatusTransitionValidator
     public static bool CanTransition(
         byte currentStatusId,
         byte newStatusId,
+        string refundType,
         bool isSystemReturnRefund,
         bool isAdmin)
     {
@@ -36,6 +40,22 @@ public static class RefundStatusTransitionValidator
             && currentStatusId == (byte)RefundStatusEnum.RefundRejected)
             return isAdmin;
 
+        // 1. Luồng Chỉ hoàn tiền (RefundOnly)
+        if (refundType == RefundTypes.RefundOnly)
+        {
+            return newStatusId switch
+            {
+                (byte)RefundStatusEnum.RefundApproved => currentStatusId == (byte)RefundStatusEnum.RefundRequested
+                    || (currentStatusId == (byte)RefundStatusEnum.RefundRejected && isAdmin),
+                (byte)RefundStatusEnum.RefundRejected => currentStatusId == (byte)RefundStatusEnum.RefundRequested
+                    || currentStatusId == (byte)RefundStatusEnum.RefundApproved,
+                (byte)RefundStatusEnum.RefundCompleted => currentStatusId == (byte)RefundStatusEnum.RefundApproved,
+                (byte)RefundStatusEnum.RefundCancelled => isAdmin,
+                _ => false
+            };
+        }
+
+        // 2. Luồng System Return Refund (giao thất bại - hệ thống tự tạo)
         if (isSystemReturnRefund)
         {
             return (currentStatusId, newStatusId) switch
@@ -48,11 +68,14 @@ public static class RefundStatusTransitionValidator
             };
         }
 
+        // 3. Luồng Trả hàng - Hoàn tiền (ReturnAndRefund)
         return newStatusId switch
         {
             (byte)RefundStatusEnum.RefundApproved => currentStatusId == (byte)RefundStatusEnum.RefundRequested
                 || (currentStatusId == (byte)RefundStatusEnum.RefundRejected && isAdmin),
-            (byte)RefundStatusEnum.RefundRejected => currentStatusId != (byte)RefundStatusEnum.RefundRejected,
+            (byte)RefundStatusEnum.RefundRejected => currentStatusId != (byte)RefundStatusEnum.RefundRejected
+                && currentStatusId != (byte)RefundStatusEnum.RefundInspectionPending
+                && currentStatusId != (byte)RefundStatusEnum.RefundReceived, // Từ chối sau kiểm kho hoặc khi đã nhận hàng phải chuyển sang RefundReturnShipmentCreated
             (byte)RefundStatusEnum.RefundPickupCreated => currentStatusId == (byte)RefundStatusEnum.RefundApproved,
             (byte)RefundStatusEnum.RefundShipping => currentStatusId == (byte)RefundStatusEnum.RefundPickupCreated,
             (byte)RefundStatusEnum.RefundReceived => currentStatusId == (byte)RefundStatusEnum.RefundShipping,
@@ -61,14 +84,23 @@ public static class RefundStatusTransitionValidator
                 || currentStatusId == (byte)RefundStatusEnum.RefundApproved
                 || currentStatusId == (byte)RefundStatusEnum.RefundDamage,
             (byte)RefundStatusEnum.RefundCancelled => isAdmin,
+
+            // Trạng thái vận chuyển trả ngược về cho khách
+            (byte)RefundStatusEnum.RefundReturnShipmentCreated => currentStatusId == (byte)RefundStatusEnum.RefundInspectionPending
+                || currentStatusId == (byte)RefundStatusEnum.RefundReceived
+                || currentStatusId == (byte)RefundStatusEnum.RefundReturnToCustomerFailed,
+            (byte)RefundStatusEnum.RefundReturningToCustomer => currentStatusId == (byte)RefundStatusEnum.RefundReturnShipmentCreated,
+            (byte)RefundStatusEnum.RefundReturnedToCustomer => currentStatusId == (byte)RefundStatusEnum.RefundReturningToCustomer,
+            (byte)RefundStatusEnum.RefundReturnToCustomerFailed => currentStatusId == (byte)RefundStatusEnum.RefundReturningToCustomer,
+
             _ => false
         };
     }
 
-    public static string? GetTransitionError(byte currentStatusId, byte newStatusId, bool isSystemReturnRefund, bool isAdmin)
+    public static string? GetTransitionError(byte currentStatusId, byte newStatusId, string refundType, bool isSystemReturnRefund, bool isAdmin)
     {
-        return CanTransition(currentStatusId, newStatusId, isSystemReturnRefund, isAdmin)
+        return CanTransition(currentStatusId, newStatusId, refundType, isSystemReturnRefund, isAdmin)
             ? null
-            : $"Cannot transition refund from {((RefundStatusEnum)currentStatusId)} to {((RefundStatusEnum)newStatusId)}.";
+            : $"Cannot transition refund from {((RefundStatusEnum)currentStatusId)} to {((RefundStatusEnum)newStatusId)} (Type: {refundType}).";
     }
 }

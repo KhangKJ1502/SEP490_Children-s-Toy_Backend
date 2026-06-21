@@ -12,4 +12,8 @@ public static class RefundStatuses
     public const string Completed = "RefundCompleted";
     public const string Cancelled = "RefundCancelled";
     public const string Damage = "RefundDamage";
+    public const string ReturnShipmentCreated = "RefundReturnShipmentCreated";
+    public const string ReturningToCustomer = "RefundReturningToCustomer";
+    public const string ReturnedToCustomer = "RefundReturnedToCustomer";
+    public const string ReturnToCustomerFailed = "RefundReturnToCustomerFailed";
 }

@@ -21,6 +21,7 @@ public class RefundDto
     public int? ApprovedBy { get; set; }
     public string? ReasonDetails { get; set; }
     public string RefundSource { get; set; } = "Customer";
+    public string RefundType { get; set; } = "ReturnAndRefund";
     public bool IsSystemReturn => string.Equals(RefundSource, "System", StringComparison.OrdinalIgnoreCase);
     public decimal ApprovedAmount { get; set; }
     public string RefundStatus { get; set; } = null!;
@@ -28,6 +29,9 @@ public class RefundDto
     public DateTime? UpdatedAt { get; set; }
     public string? RefundCode { get; set; }
     public string? ShippingOrderCode { get; set; }
+    public string? ReturnShippingOrderCode { get; set; }
+    public string? InspectionNote { get; set; }
+    public bool? InspectionPassed { get; set; }
     public decimal ShippingFee { get; set; }
     public decimal? SubTotal { get; set; }
     public decimal? TotalAmount { get; set; }

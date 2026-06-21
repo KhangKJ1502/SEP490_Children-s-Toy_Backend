@@ -18,6 +18,7 @@ public class CreateRefundValidator : AbstractValidator<CreateRefundDto>
             .MaximumLength(500).WithMessage("ReasonDetails must not exceed 500 characters.");
 
         RuleFor(x => x.Images)
+            .NotEmpty().WithMessage("At least one evidence image is required.")
             .Must(x => x == null || x.Count <= 5).WithMessage("A maximum of 5 evidence photos is allowed.")
             .ForEach(image => image.Must(uri => Uri.IsWellFormedUriString(uri, UriKind.Absolute)).WithMessage("Image URL is not valid."));
     }

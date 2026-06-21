@@ -24,15 +24,26 @@ public partial class OrderRefund
 
     /// <summary>
     /// Nguồn tạo refund: "Customer" (khách tự tạo) hoặc "System" (hệ thống tạo khi GHN returned).
-    /// System refund không sử dụng GHN pickup — chỉ Approve → Complete → hoàn ví.
+    /// System refund không sử dụng GHN pickup — chỉ Approve → Complete.
     /// </summary>
     public string RefundSource { get; set; } = RefundSources.Customer;
+
+    /// <summary>
+    /// Loại hình hoàn tiền: "ReturnAndRefund" hoặc "RefundOnly".
+    /// </summary>
+    public string RefundType { get; set; } = RefundTypes.ReturnAndRefund;
 
     public decimal ApprovedAmount { get; set; }
 
     public string RefundCode { get; set; } = null!;
 
     public string? ShippingOrderCode { get; set; }
+
+    public string? ReturnShippingOrderCode { get; set; }
+
+    public string? InspectionNote { get; set; }
+
+    public bool? InspectionPassed { get; set; }
 
     public decimal ShippingFee { get; set; }
 

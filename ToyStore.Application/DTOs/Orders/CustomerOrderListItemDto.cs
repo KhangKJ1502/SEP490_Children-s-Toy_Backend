@@ -22,6 +22,7 @@ public class CustomerOrderListItemDto
     public bool CanCancel { get; set; }
     public bool CanComplete { get; set; }
     public bool IsAwaitingRefund { get; set; }
+    public bool CanRefund { get; set; }
     public List<CustomerOrderListItemProductDto> Items { get; set; } = new();
 }
 

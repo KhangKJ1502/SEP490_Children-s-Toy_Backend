@@ -137,10 +137,37 @@ public class RefundService : IRefundService
 
         var existingRefunds = await _unitOfWork.Refunds.GetAdminRefundsAsync(new AdminRefundFilterDto { OrderId = dto.OrderId, PageSize = 100 }, cancellationToken);
 
-        if (existingRefunds.Items.Any(r =>
-                r.RefundStatus is not (RefundStatuses.Rejected or RefundStatuses.Cancelled)))
+        var hasBlockedRefund = false;
+        foreach (var rDto in existingRefunds.Items)
         {
-            return Result<RefundDto>.BusinessError("Only 1 active refund request is allowed per order lifecycle.");
+            var rEntity = await _unitOfWork.Refunds.GetByIdAsync(rDto.RefundId, cancellationToken);
+            if (rEntity != null)
+            {
+                if (rEntity.StatusId != (byte)RefundStatusEnum.RefundCancelled && 
+                    rEntity.StatusId != (byte)RefundStatusEnum.RefundRejected &&
+                    rEntity.StatusId != (byte)RefundStatusEnum.RefundReturnedToCustomer &&
+                    rEntity.StatusId != (byte)RefundStatusEnum.RefundReturnToCustomerFailed)
+                {
+                    hasBlockedRefund = true;
+                    break;
+                }
+
+                var wentPastRequested = rEntity.RefundStatusHistories.Any(h =>
+                    h.StatusId != (byte)RefundStatusEnum.RefundRequested &&
+                    h.StatusId != (byte)RefundStatusEnum.RefundCancelled &&
+                    h.StatusId != (byte)RefundStatusEnum.RefundRejected);
+
+                if (wentPastRequested)
+                {
+                    hasBlockedRefund = true;
+                    break;
+                }
+            }
+        }
+
+        if (hasBlockedRefund)
+        {
+            return Result<RefundDto>.BusinessError("Only 1 active refund request is allowed per order lifecycle, and re-submitting is blocked if the previous request went beyond the initial review stage.");
         }
 
         // Process return items (support partial returns)
@@ -212,11 +239,16 @@ public class RefundService : IRefundService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
+            var refundType = string.Equals(dto.RefundType, RefundTypes.RefundOnly, StringComparison.OrdinalIgnoreCase)
+                ? RefundTypes.RefundOnly
+                : RefundTypes.ReturnAndRefund;
+
             var refund = new OrderRefund
             {
                 OrderId = dto.OrderId,
                 RefundReasonId = dto.RefundReasonId,
                 ReasonDetails = dto.ReasonDetails,
+                RefundType = refundType,
                 CustomerId = customerId,
                 RequestedBy = customerId,
                 ApprovedAmount = totalAmount,
@@ -516,7 +548,7 @@ public class RefundService : IRefundService
 
         if (!isAdmin)
         {
-            var hasAssignment = await _unitOfWork.OrderAssignments.HasActiveAssignmentAsync(
+            var hasAssignment = await _unitOfWork.OrderAssignments.HasAssignmentForAccountAsync(
                 refund.OrderId,
                 currentUserId,
                 currentUserRoleId,
@@ -592,10 +624,47 @@ public class RefundService : IRefundService
         if (newStatusId == null)
             return Result<RefundDto>.BusinessError($"Invalid status name '{dto.Status}'.");
 
+        // Automatically map RefundReceived or RefundInspectionPending -> RefundRejected to RefundReturnShipmentCreated for ReturnAndRefund type
+        if (newStatusId.Value == (byte)RefundStatusEnum.RefundRejected 
+            && (refund.StatusId == (byte)RefundStatusEnum.RefundInspectionPending || refund.StatusId == (byte)RefundStatusEnum.RefundReceived)
+            && refund.RefundType == RefundTypes.ReturnAndRefund)
+        {
+            if (string.IsNullOrWhiteSpace(dto.RejectReason))
+            {
+                return Result<RefundDto>.BusinessError("Reject reason is required when rejecting a refund.");
+            }
+
+            newStatusId = (byte)RefundStatusEnum.RefundReturnShipmentCreated;
+            dto.InspectionPassed = false;
+            
+            if (string.IsNullOrWhiteSpace(refund.InspectionNote))
+            {
+                dto.InspectionNote = dto.RejectReason;
+            }
+
+            refund.ReasonDetails = string.IsNullOrEmpty(refund.ReasonDetails)
+                ? $"Reject Reason: {dto.RejectReason}"
+                : $"{refund.ReasonDetails} | Reject Reason: {dto.RejectReason}";
+        }
+
+        // When Merchandise checks returned order and sends to Quality Inspection, set InspectionPassed and InspectionNote
+        if (newStatusId.Value == (byte)RefundStatusEnum.RefundInspectionPending && refund.StatusId == (byte)RefundStatusEnum.RefundReceived)
+        {
+            if (!dto.InspectionPassed.HasValue)
+            {
+                dto.InspectionPassed = true;
+            }
+            if (!string.IsNullOrWhiteSpace(dto.AdminNote) && string.IsNullOrWhiteSpace(dto.InspectionNote))
+            {
+                dto.InspectionNote = dto.AdminNote;
+                dto.AdminNote = null;
+            }
+        }
+
         var isSystemReturnRefund = IsSystemReturnRefund(refund);
 
         var transitionError = RefundStatusTransitionValidator.GetTransitionError(
-            refund.StatusId, newStatusId.Value, isSystemReturnRefund, isAdmin);
+            refund.StatusId, newStatusId.Value, refund.RefundType, isSystemReturnRefund, isAdmin);
         if (transitionError is not null)
             return Result<RefundDto>.BusinessError(transitionError);
 
@@ -664,12 +733,65 @@ public class RefundService : IRefundService
             dto.ShippingOrderCode = ghnResult.Data!.OrderCode;
         }
 
+        // Automatically call GHN API to generate waybill for returning products back to customer if inspection fails
+        if (newStatusId == (byte)RefundStatusEnum.RefundReturnShipmentCreated && string.IsNullOrWhiteSpace(dto.ReturnShippingOrderCode))
+        {
+            var clientOrderCode = $"R2-{refund.RefundCode ?? refund.RefundId.ToString()}";
+
+            var ghnRequest = new ShippingOrderCreateRequestDto
+            {
+                ClientOrderCode = clientOrderCode,
+                FromName = _shopAddress.Name,
+                FromPhone = _shopAddress.Phone,
+                FromAddress = _shopAddress.AddressLine,
+                ToName = order.ShippingName,
+                ToPhone = order.ShippingPhone,
+                ToAddress = order.ShippingAddress,
+                ToDistrictId = order.ShippingDistrictId,
+                ToWardCode = order.ShippingWardCode,
+                ServiceTypeId = 2, // Standard
+                InsuranceValue = 0m,
+                CodAmount = 0m,
+                Weight = 1000,
+                Length = 20,
+                Width = 15,
+                Height = 15,
+                Note = "Giao tra san pham tu choi refund - Shop chiu phi",
+                RequiredNote = "KHONGCHOXEMHANG",
+                Items = refund.RefundDetails.Select(x => new ShippingOrderCreateItemDto
+                {
+                    Name = x.Product?.ProductName ?? "Sản phẩm hoàn trả",
+                    Quantity = x.Quantity,
+                    Price = x.UnitPrice,
+                    Weight = 500,
+                    Code = x.ProductId.ToString()
+                }).ToList()
+            };
+
+            var ghnResult = await _ghnClient.CreateOrderAsync(ghnRequest, cancellationToken);
+            if (!ghnResult.IsSuccess)
+            {
+                return Result<RefundDto>.Failure("GHN_CREATE_FAILED", $"Failed to create GHN return shipment: {ghnResult.ErrorMessage}");
+            }
+
+            dto.ReturnShippingOrderCode = ghnResult.Data!.OrderCode;
+        }
+
         if (!string.IsNullOrWhiteSpace(dto.ShippingOrderCode))
         {
-            var existingRefund = await _unitOfWork.Refunds.GetByShippingOrderCodeAsync(dto.ShippingOrderCode, cancellationToken);
+            var existingRefund = await _unitOfWork.Refunds.GetByShippingOrReturnOrderCodeAsync(dto.ShippingOrderCode, cancellationToken);
             if (existingRefund != null && existingRefund.RefundId != refund.RefundId)
             {
                 return Result<RefundDto>.BusinessError($"Shipping Order Code '{dto.ShippingOrderCode}' is already assigned to another refund request.");
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(dto.ReturnShippingOrderCode))
+        {
+            var existingRefund = await _unitOfWork.Refunds.GetByShippingOrReturnOrderCodeAsync(dto.ReturnShippingOrderCode, cancellationToken);
+            if (existingRefund != null && existingRefund.RefundId != refund.RefundId)
+            {
+                return Result<RefundDto>.BusinessError($"Return Shipping Order Code '{dto.ReturnShippingOrderCode}' is already assigned to another refund request.");
             }
         }
 
@@ -696,6 +818,43 @@ public class RefundService : IRefundService
                         UpdatedAt = DateTime.UtcNow
                     };
                     await _unitOfWork.Orders.AddShippingTransactionAsync(tx, cancellationToken);
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(dto.ReturnShippingOrderCode))
+            {
+                refund.ReturnShippingOrderCode = dto.ReturnShippingOrderCode;
+
+                var existingTx = await _unitOfWork.Orders.GetShippingTransactionByProviderCodeAsync(dto.ReturnShippingOrderCode, cancellationToken);
+                if (existingTx is null)
+                {
+                    var tx = new ShippingProviderTransaction
+                    {
+                        OrderId = refund.OrderId,
+                        Provider = "GHN",
+                        ProviderOrderCode = dto.ReturnShippingOrderCode,
+                        Status = ShippingStatuses.ReadyToPick,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+                    await _unitOfWork.Orders.AddShippingTransactionAsync(tx, cancellationToken);
+                }
+            }
+
+            // Only update quality check fields if transitioning to RefundInspectionPending or RefundReturnShipmentCreated
+            var isQualityCheckTransition = newStatusId == (byte)RefundStatusEnum.RefundInspectionPending
+                                           || newStatusId == (byte)RefundStatusEnum.RefundReturnShipmentCreated;
+
+            if (isQualityCheckTransition)
+            {
+                if (dto.InspectionPassed.HasValue)
+                {
+                    refund.InspectionPassed = dto.InspectionPassed.Value;
+                }
+
+                if (!string.IsNullOrWhiteSpace(dto.InspectionNote))
+                {
+                    refund.InspectionNote = dto.InspectionNote;
                 }
             }
 
@@ -733,6 +892,23 @@ public class RefundService : IRefundService
             }
             else if (newStatusId == (byte)RefundStatusEnum.RefundCompleted)
             {
+                if (refund.RefundType == RefundTypes.ReturnAndRefund)
+                {
+                    if (refund.InspectionPassed == false)
+                    {
+                        return Result<RefundDto>.BusinessError("Cannot complete a return refund that failed quality inspection. Please process return shipment back to the customer instead.");
+                    }
+
+                    if (refund.StatusId == (byte)RefundStatusEnum.RefundInspectionPending)
+                    {
+                        refund.InspectionPassed = true;
+                        if (string.IsNullOrWhiteSpace(refund.InspectionNote) && !string.IsNullOrWhiteSpace(dto.AdminNote))
+                        {
+                            refund.InspectionNote = dto.AdminNote;
+                        }
+                    }
+                }
+
                 refund.CompletedAt = DateTime.UtcNow;
                 await ExecuteCompletedSideEffects(refund, order, cancellationToken);
             }
@@ -743,12 +919,22 @@ public class RefundService : IRefundService
                 StatusId = newStatusId.Value,
                 ChangedBy = staffId,
                 Note = string.IsNullOrEmpty(dto.RejectReason)
-                    ? (string.IsNullOrEmpty(dto.AdminNote) ? $"Status changed to {dto.Status} by staff." : $"Note: {dto.AdminNote}")
+                    ? (!string.IsNullOrEmpty(dto.AdminNote) 
+                        ? $"Note: {dto.AdminNote}" 
+                        : (!string.IsNullOrEmpty(dto.InspectionNote) 
+                            ? $"Quality Inspection Note: {dto.InspectionNote}" 
+                            : $"Status changed to {dto.Status} by staff."))
                     : $"Reject Reason: {dto.RejectReason}",
                 CreatedAt = DateTime.UtcNow
             });
 
-            if (newStatusId == (byte)RefundStatusEnum.RefundCompleted || newStatusId == (byte)RefundStatusEnum.RefundRejected)
+            var shouldReleaseCapacity = newStatusId == (byte)RefundStatusEnum.RefundCompleted || 
+                                         newStatusId == (byte)RefundStatusEnum.RefundRejected ||
+                                         newStatusId == (byte)RefundStatusEnum.RefundReturnedToCustomer ||
+                                         newStatusId == (byte)RefundStatusEnum.RefundReturnToCustomerFailed ||
+                                         newStatusId == (byte)RefundStatusEnum.RefundReturnShipmentCreated;
+
+            if (shouldReleaseCapacity)
             {
                 await _shiftAssignmentService.ReleaseCapacityAsync(refund.OrderId, cancellationToken);
             }

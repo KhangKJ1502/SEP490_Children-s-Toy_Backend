@@ -51,13 +51,31 @@ public class RefundProfile : Profile
 
     private static System.Collections.Generic.List<ShippingStatusHistory> MapRefundShippingHistory(OrderRefund refund)
     {
-        if (refund == null || string.IsNullOrWhiteSpace(refund.ShippingOrderCode) || refund.Order == null)
+        if (refund == null || refund.Order == null)
             return new System.Collections.Generic.List<ShippingStatusHistory>();
 
-        var tx = refund.Order.ShippingProviderTransactions
-            .FirstOrDefault(t => t.ProviderOrderCode == refund.ShippingOrderCode);
+        var historyList = new System.Collections.Generic.List<ShippingStatusHistory>();
 
-        return tx?.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt).ToList() 
-            ?? new System.Collections.Generic.List<ShippingStatusHistory>();
+        if (!string.IsNullOrWhiteSpace(refund.ShippingOrderCode))
+        {
+            var tx = refund.Order.ShippingProviderTransactions
+                .FirstOrDefault(t => t.ProviderOrderCode == refund.ShippingOrderCode);
+            if (tx != null)
+            {
+                historyList.AddRange(tx.ShippingStatusHistories);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(refund.ReturnShippingOrderCode))
+        {
+            var tx = refund.Order.ShippingProviderTransactions
+                .FirstOrDefault(t => t.ProviderOrderCode == refund.ReturnShippingOrderCode);
+            if (tx != null)
+            {
+                historyList.AddRange(tx.ShippingStatusHistories);
+            }
+        }
+
+        return historyList.OrderByDescending(h => h.ProcessedAt).ToList();
     }
 }

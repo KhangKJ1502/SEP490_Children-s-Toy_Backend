@@ -1945,8 +1945,12 @@ CREATE TABLE [OrderRefunds] (
     [ApprovedBy]          INT NULL,
     [WalletTransactionID] INT NULL,
     [RefundCode]          VARCHAR(30) NOT NULL UNIQUE,
+    [RefundType]          NVARCHAR(20) NOT NULL DEFAULT 'ReturnAndRefund',
     [ShippingOrderCode]   VARCHAR(50) NULL,
+    [ReturnShippingOrderCode] VARCHAR(50) NULL,
     [ReasonDetails]       NVARCHAR(500) NULL,
+    [InspectionNote]      NVARCHAR(500) NULL,
+    [InspectionPassed]    BIT NULL,
     [ShippingFee]         DECIMAL(10,0) NOT NULL DEFAULT 0 CHECK ([ShippingFee] >= 0),
     [SubTotal]            DECIMAL(12,0) NULL CHECK ([SubTotal] >= 0),
     [TotalAmount]         DECIMAL(12,0) NULL CHECK ([TotalAmount] >= 0),
@@ -3124,3 +3128,4 @@ CREATE INDEX [IX_WithdrawalStatusHistory_Withdrawal]
 GO
 
 /* ============================================= */
+
