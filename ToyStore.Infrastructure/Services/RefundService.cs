@@ -292,20 +292,11 @@ public class RefundService : IRefundService
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
 
-            // Reactivate original order assignments and increment shift workloads
-            var orderAssignments = await _unitOfWork.OrderAssignments.GetAssignmentsByOrderIdAsync(refund.OrderId, cancellationToken);
-            foreach (var oa in orderAssignments)
-            {
-                oa.IsActive = true;
+            // Release old assignments to ensure clean state
+            await _shiftAssignmentService.ReleaseCapacityAsync(refund.OrderId, cancellationToken);
 
-                var capacity = await _unitOfWork.StaffShiftCapacities.GetByScheduleIdForUpdateAsync(oa.ScheduleId, cancellationToken);
-                if (capacity is not null)
-                {
-                    capacity.CurrentLoad++;
-                    capacity.UpdatedAt = DateTime.UtcNow;
-                }
-            }
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            // Auto-assign to active shift staff/merch
+            await _shiftAssignmentService.AutoAssignOrderAsync(refund.OrderId, cancellationToken);
 
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
@@ -410,20 +401,11 @@ public class RefundService : IRefundService
         await _unitOfWork.Refunds.AddAsync(refund, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        // Reactivate original order assignments and increment shift workloads
-        var orderAssignments = await _unitOfWork.OrderAssignments.GetAssignmentsByOrderIdAsync(refund.OrderId, cancellationToken);
-        foreach (var oa in orderAssignments)
-        {
-            oa.IsActive = true;
+        // Release old assignments to ensure clean state
+        await _shiftAssignmentService.ReleaseCapacityAsync(refund.OrderId, cancellationToken);
 
-            var capacity = await _unitOfWork.StaffShiftCapacities.GetByScheduleIdForUpdateAsync(oa.ScheduleId, cancellationToken);
-            if (capacity is not null)
-            {
-                capacity.CurrentLoad++;
-                capacity.UpdatedAt = DateTime.UtcNow;
-            }
-        }
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        // Auto-assign to active shift staff/merch
+        await _shiftAssignmentService.AutoAssignOrderAsync(refund.OrderId, cancellationToken);
 
         return refund;
     }
@@ -1180,6 +1162,12 @@ public class RefundService : IRefundService
 
             await _unitOfWork.Refunds.AddAsync(refund, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            // Release old assignments to ensure clean state
+            await _shiftAssignmentService.ReleaseCapacityAsync(refund.OrderId, cancellationToken);
+
+            // Auto-assign to active shift staff/merch
+            await _shiftAssignmentService.AutoAssignOrderAsync(refund.OrderId, cancellationToken);
 
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 

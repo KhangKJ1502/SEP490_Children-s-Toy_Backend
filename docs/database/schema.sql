@@ -346,16 +346,12 @@ CREATE TABLE [ProductPromotions] (
     [PromotionID]      INT           NOT NULL,
     [SalePrice]        DECIMAL(12,2) NOT NULL CHECK ([SalePrice] > 0),
     [DiscountPercent]  DECIMAL(5,2)  NULL CHECK ([DiscountPercent] BETWEEN 0 AND 100),
-    [SaleQuantity]     INT           NULL,
-    [SoldQuantity]     INT           NOT NULL DEFAULT 0,
-    [ReservedQuantity] INT           NOT NULL DEFAULT 0,
     [IsDeleted]     BIT NOT NULL DEFAULT 0,
     [CreatedAt]        DATETIME2(0)  NOT NULL DEFAULT GETUTCDATE(),
     [UpdatedAt]        DATETIME2(0)  NULL,
     CONSTRAINT [PK_ProductPromotions]           PRIMARY KEY ([ProductID], [PromotionID]),
     CONSTRAINT [FK_ProductPromotions_Products]   FOREIGN KEY ([ProductID])   REFERENCES [Products]([ProductID]),
-    CONSTRAINT [FK_ProductPromotions_Promotions] FOREIGN KEY ([PromotionID]) REFERENCES [Promotions]([PromotionID]),
-    CONSTRAINT [CK_ProductPromotions_Inventory]  CHECK ([SaleQuantity] IS NULL OR ([SoldQuantity] + [ReservedQuantity] <= [SaleQuantity]))
+    CONSTRAINT [FK_ProductPromotions_Promotions] FOREIGN KEY ([PromotionID]) REFERENCES [Promotions]([PromotionID])
 );
 GO
 

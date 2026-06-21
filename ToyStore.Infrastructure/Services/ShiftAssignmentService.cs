@@ -9,6 +9,7 @@ using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
+using ToyStore.Domain.Enums;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -210,9 +211,33 @@ public class ShiftAssignmentService : IShiftAssignmentService
 
             var order = queueEntry.Order;
 
+            // Check if there is an active refund request for this order.
+            // If so, the queue entry is still operational even if the order status is Completed/Cancelled/Refunded.
+            var hasActiveRefund = false;
+            if (order is not null)
+            {
+                var refund = await _unitOfWork.Refunds.GetByOrderIdAsync(order.OrderId, cancellationToken);
+                if (refund is not null)
+                {
+                    var finalStatusIds = new byte[]
+                    {
+                        (byte)RefundStatusEnum.RefundCompleted,
+                        (byte)RefundStatusEnum.RefundCancelled,
+                        (byte)RefundStatusEnum.RefundRejected,
+                        (byte)RefundStatusEnum.RefundReturnedToCustomer,
+                        (byte)RefundStatusEnum.RefundReturnToCustomerFailed
+                    };
+                    if (!finalStatusIds.Contains(refund.StatusId))
+                    {
+                        hasActiveRefund = true;
+                    }
+                }
+            }
+
             // Nếu đơn hàng không tồn tại, đã bị xóa, hoặc đã chuyển sang các trạng thái không hoạt động (đã Hủy, đã Hoàn thành,...)
+            // và không có refund nào đang hoạt động
             // thì tự động đánh dấu giải quyết (resolve) hàng đợi này để tránh làm kẹt hàng đợi của các đơn hàng khác!
-            if (order is null || order.IsDeleted || order.Status is null || !operationalStatuses.Contains(order.Status.StatusName))
+            if (order is null || order.IsDeleted || order.Status is null || (!operationalStatuses.Contains(order.Status.StatusName) && !hasActiveRefund))
             {
                 queueEntry.IsResolved = true;
                 queueEntry.ResolvedAt = now;

@@ -156,8 +156,8 @@ public class PromotionRepository : IPromotionRepository
                 Status = pp.Promotion.Status,
                 SalePrice = pp.SalePrice,
                 DiscountPercent = pp.DiscountPercent,
-                SaleQuantity = pp.SaleQuantity,
-                SoldQuantity = pp.SoldQuantity
+                SaleQuantity = null,
+                SoldQuantity = null
             })
             .ToListAsync(cancellationToken);
 

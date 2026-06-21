@@ -18,8 +18,6 @@ public class CreateProductPromotionValidator : AbstractValidator<CreateProductPr
             .InclusiveBetween(1, 99).WithMessage("Discount percent must be between 1 and 99.")
             .When(x => x.DiscountPercent.HasValue);
 
-        RuleFor(x => x.SaleQuantity)
-            .GreaterThan(0).WithMessage("Sale quantity must be greater than 0.")
-            .When(x => x.SaleQuantity.HasValue);
+
     }
 }

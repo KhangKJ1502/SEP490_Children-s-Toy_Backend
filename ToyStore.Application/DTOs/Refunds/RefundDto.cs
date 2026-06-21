@@ -38,6 +38,7 @@ public class RefundDto
     public string? AdminNote { get; set; }
     public string? AssignedToStaffName { get; set; }
     public string? AssignedToMerchName { get; set; }
+    public string? CustomerAddress { get; set; }
 
     public List<string> Images { get; set; } = new List<string>();
     public List<RefundDetailDto> Details { get; set; } = new List<RefundDetailDto>();

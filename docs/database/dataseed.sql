@@ -600,73 +600,72 @@ BEGIN
     );
 
     INSERT INTO [dbo].[ProductPromotions]
-        (ProductID, PromotionID, SalePrice, DiscountPercent,
-        SaleQuantity, SoldQuantity, ReservedQuantity, CreatedAt)
+        (ProductID, PromotionID, SalePrice, DiscountPercent, CreatedAt)
     VALUES
         -- Summer Toy Festival
-        ( 1, @pSale, 1099000, 14.88, 30, 0, 0, @nowPP),
-        ( 2, @pSale, 4990000, 16.69, 5, 0, 0, @nowPP),
-        ( 3, @pSale, 1290000, 18.87, 15, 0, 0, @nowPP),
-        ( 4, @pSale, 359000, 14.52, 40, 0, 0, @nowPP),
-        (11, @pSale, 449000, 17.61, 20, 0, 0, @nowPP),
-        (17, @pSale, 699000, 16.79, 15, 0, 0, @nowPP),
-        (20, @pSale, 299000, 16.71, 30, 0, 0, @nowPP),
-        (22, @pSale, 499000, 16.13, 20, 0, 0, @nowPP),
-        (26, @pSale, 799000, 15.34, 15, 0, 0, @nowPP),
+        ( 1, @pSale, 1099000, 14.88, @nowPP),
+        ( 2, @pSale, 4990000, 16.69, @nowPP),
+        ( 3, @pSale, 1290000, 18.87, @nowPP),
+        ( 4, @pSale, 359000, 14.52, @nowPP),
+        (11, @pSale, 449000, 17.61, @nowPP),
+        (17, @pSale, 699000, 16.79, @nowPP),
+        (20, @pSale, 299000, 16.71, @nowPP),
+        (22, @pSale, 499000, 16.13, @nowPP),
+        (26, @pSale, 799000, 15.34, @nowPP),
 
         -- Back To School
-        ( 6, @pBTS, 69000, 18.82, NULL, 0, 0, @nowPP),
-        ( 7, @pBTS, 149000, 18.92, NULL, 0, 0, @nowPP),
-        ( 8, @pBTS, 299000, 20.27, NULL, 0, 0, @nowPP),
-        ( 9, @pBTS, 224000, 20.00, NULL, 0, 0, @nowPP),
-        (10, @pBTS, 399000, 18.57, NULL, 0, 0, @nowPP),
-        (29, @pBTS, 70000, 20.45, NULL, 0, 0, @nowPP),
-        (30, @pBTS, 139000, 20.57, NULL, 0, 0, @nowPP),
+        ( 6, @pBTS, 69000, 18.82, @nowPP),
+        ( 7, @pBTS, 149000, 18.92, @nowPP),
+        ( 8, @pBTS, 299000, 20.27, @nowPP),
+        ( 9, @pBTS, 224000, 20.00, @nowPP),
+        (10, @pBTS, 399000, 18.57, @nowPP),
+        (29, @pBTS, 70000, 20.45, @nowPP),
+        (30, @pBTS, 139000, 20.57, @nowPP),
 
         -- Christmas & New Year (figures & dolls)
-        (20, @pXmas, 269000, 25.07, 25, 0, 0, @nowPP),
-        (21, @pXmas, 369000, 24.69, 20, 0, 0, @nowPP),
-        (22, @pXmas, 449000, 24.54, 15, 0, 0, @nowPP),
-        (23, @pXmas, 669000, 24.83, 10, 0, 0, @nowPP),
-        (24, @pXmas, 299000, 24.30, 30, 0, 0, @nowPP),
-        (25, @pXmas, 214000, 24.91, 40, 0, 0, @nowPP),
+        (20, @pXmas, 269000, 25.07, @nowPP),
+        (21, @pXmas, 369000, 24.69, @nowPP),
+        (22, @pXmas, 449000, 24.54, @nowPP),
+        (23, @pXmas, 669000, 24.83, @nowPP),
+        (24, @pXmas, 299000, 24.30, @nowPP),
+        (25, @pXmas, 214000, 24.91, @nowPP),
 
         -- Lego Builders Week
-        ( 1, @pLego, 1150000, 10.85, 25, 0, 0, @nowPP),
-        ( 2, @pLego, 5390000, 10.02, 8, 0, 0, @nowPP),
-        ( 3, @pLego, 1420000, 10.69, 18, 0, 0, @nowPP),
-        ( 4, @pLego, 378000, 10.00, 50, 0, 0, @nowPP),
-        ( 5, @pLego, 315000, 10.00, 60, 0, 0, @nowPP),
+        ( 1, @pLego, 1150000, 10.85, @nowPP),
+        ( 2, @pLego, 5390000, 10.02, @nowPP),
+        ( 3, @pLego, 1420000, 10.69, @nowPP),
+        ( 4, @pLego, 378000, 10.00, @nowPP),
+        ( 5, @pLego, 315000, 10.00, @nowPP),
 
         -- RC & Racing Expo
-        (26, @pRC, 799000, 15.34, 20, 0, 0, @nowPP),
-        (27, @pRC, 578000, 15.00, 18, 0, 0, @nowPP),
-        (28, @pRC, 1265000, 15.10, 8, 0, 0, @nowPP),
+        (26, @pRC, 799000, 15.34, @nowPP),
+        (27, @pRC, 578000, 15.00, @nowPP),
+        (28, @pRC, 1265000, 15.10, @nowPP),
 
         -- Plush Toy Carnival
-        (17, @pPlush, 672000, 20.00, 20, 0, 0, @nowPP),
-        (18, @pPlush, 520000, 20.00, 25, 0, 0, @nowPP),
-        (19, @pPlush, 336000, 20.00, 35, 0, 0, @nowPP),
+        (17, @pPlush, 672000, 20.00, @nowPP),
+        (18, @pPlush, 520000, 20.00, @nowPP),
+        (19, @pPlush, 336000, 20.00, @nowPP),
 
         -- Black Friday Preview
-        ( 1, @pBF, 999000, 22.56, 30, 0, 0, @nowPP),
-        ( 2, @pBF, 4490000, 25.04, 6, 0, 0, @nowPP),
-        (17, @pBF, 588000, 30.00, 15, 0, 0, @nowPP),
-        (20, @pBF, 251000, 30.08, 40, 0, 0, @nowPP),
-        (26, @pBF, 709000, 25.00, 12, 0, 0, @nowPP),
+        ( 1, @pBF, 999000, 22.56, @nowPP),
+        ( 2, @pBF, 4490000, 25.04, @nowPP),
+        (17, @pBF, 588000, 30.00, @nowPP),
+        (20, @pBF, 251000, 30.08, @nowPP),
+        (26, @pBF, 709000, 25.00, @nowPP),
 
         -- Outdoor Play Month
-        (11, @pOutdoor, 490000, 10.09, 15, 0, 0, @nowPP),
-        (12, @pOutdoor, 799000, 10.22, 12, 0, 0, @nowPP),
-        (13, @pOutdoor, 76000, 10.59, 80, 0, 0, @nowPP),
-        (14, @pOutdoor, 148000, 10.30, 60, 0, 0, @nowPP),
-        (15, @pOutdoor, 103000, 10.43, 50, 0, 0, @nowPP),
-        (16, @pOutdoor, 166000, 10.27, 40, 0, 0, @nowPP),
+        (11, @pOutdoor, 490000, 10.09, @nowPP),
+        (12, @pOutdoor, 799000, 10.22, @nowPP),
+        (13, @pOutdoor, 76000, 10.59, @nowPP),
+        (14, @pOutdoor, 148000, 10.30, @nowPP),
+        (15, @pOutdoor, 103000, 10.43, @nowPP),
+        (16, @pOutdoor, 166000, 10.27, @nowPP),
 
         -- Science & STEM Sale
-        ( 8, @pSTEM, 319000, 14.93, 30, 0, 0, @nowPP),
-        ( 9, @pSTEM, 238000, 15.00, 40, 0, 0, @nowPP),
-        (10, @pSTEM, 416000, 15.10, 25, 0, 0, @nowPP);
+        ( 8, @pSTEM, 319000, 14.93, @nowPP),
+        ( 9, @pSTEM, 238000, 15.00, @nowPP),
+        (10, @pSTEM, 416000, 15.10, @nowPP);
 END
 GO
 
@@ -1360,14 +1359,14 @@ BEGIN
         DECLARE @price3 DECIMAL(12,0) = (SELECT Price FROM Products WHERE ProductID = @p3);
 
         IF @price1 IS NOT NULL
-            INSERT INTO [dbo].[ProductPromotions] (ProductID, PromotionID, SalePrice, DiscountPercent, SaleQuantity, SoldQuantity, ReservedQuantity, IsDeleted, CreatedAt)
-            VALUES (@p1, @promoID, @price1 * 0.85, 15.00, 100, 0, 0, 0, GETUTCDATE());
+            INSERT INTO [dbo].[ProductPromotions] (ProductID, PromotionID, SalePrice, DiscountPercent, IsDeleted, CreatedAt)
+            VALUES (@p1, @promoID, @price1 * 0.85, 15.00, 0, GETUTCDATE());
         IF @price2 IS NOT NULL
-            INSERT INTO [dbo].[ProductPromotions] (ProductID, PromotionID, SalePrice, DiscountPercent, SaleQuantity, SoldQuantity, ReservedQuantity, IsDeleted, CreatedAt)
-            VALUES (@p2, @promoID, @price2 * 0.85, 15.00, 100, 0, 0, 0, GETUTCDATE());
+            INSERT INTO [dbo].[ProductPromotions] (ProductID, PromotionID, SalePrice, DiscountPercent, IsDeleted, CreatedAt)
+            VALUES (@p2, @promoID, @price2 * 0.85, 15.00, 0, GETUTCDATE());
         IF @price3 IS NOT NULL
-            INSERT INTO [dbo].[ProductPromotions] (ProductID, PromotionID, SalePrice, DiscountPercent, SaleQuantity, SoldQuantity, ReservedQuantity, IsDeleted, CreatedAt)
-            VALUES (@p3, @promoID, @price3 * 0.85, 15.00, 100, 0, 0, 0, GETUTCDATE());
+            INSERT INTO [dbo].[ProductPromotions] (ProductID, PromotionID, SalePrice, DiscountPercent, IsDeleted, CreatedAt)
+            VALUES (@p3, @promoID, @price3 * 0.85, 15.00, 0, GETUTCDATE());
     END;
 
     -- -------------------------------------------------------------

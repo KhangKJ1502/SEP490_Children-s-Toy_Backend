@@ -15,8 +15,16 @@ public class RefundProfile : Profile
             .ForMember(dest => dest.PaymentStatus, opt => opt.MapFrom(src => src.Order.PaymentStatus))
             .ForMember(dest => dest.RefundReasonContent, opt => opt.MapFrom(src => src.RefundReason != null ? src.RefundReason.Content : null))
             .ForMember(dest => dest.CustomerName, opt => opt.MapFrom(src => src.Customer.AccountName))
-            .ForMember(dest => dest.CustomerPhone, opt => opt.MapFrom(src => src.Customer.PhoneNumber))
+            .ForMember(dest => dest.CustomerPhone, opt => opt.MapFrom(src => src.Order.ShippingPhone))
             .ForMember(dest => dest.CustomerEmail, opt => opt.MapFrom(src => src.Customer.Email))
+            .ForMember(dest => dest.CustomerAddress, opt => opt.MapFrom(src => 
+                src.Customer.Address != null 
+                    ? (src.Customer.Address.AddressLine + 
+                       (src.Customer.Address.WardCodeNavigation != null ? ", " + src.Customer.Address.WardCodeNavigation.WardName : "") + 
+                       (src.Customer.Address.District != null ? ", " + src.Customer.Address.District.DistrictName : "") + 
+                       (src.Customer.Address.Province != null ? ", " + src.Customer.Address.Province.ProvinceName : ""))
+                    : (src.Order.ShippingAddress + ", " + src.Order.ShippingWardName + ", " + src.Order.ShippingDistrictName + ", " + src.Order.ShippingProvinceName)
+            ))
             .ForMember(dest => dest.RequestedByName, opt => opt.MapFrom(src => src.RequestedByNavigation != null ? src.RequestedByNavigation.AccountName : null))
             .ForMember(dest => dest.RefundStatus, opt => opt.MapFrom(src => src.Status != null ? src.Status.StatusName : null))
             .ForMember(dest => dest.RefundSource, opt => opt.MapFrom(src => src.RefundSource ?? "Customer"))
@@ -32,7 +40,7 @@ public class RefundProfile : Profile
             .ForMember(dest => dest.PaymentStatus, opt => opt.MapFrom(src => src.Order.PaymentStatus))
             .ForMember(dest => dest.RefundReasonContent, opt => opt.MapFrom(src => src.RefundReason != null ? src.RefundReason.Content : null))
             .ForMember(dest => dest.CustomerName, opt => opt.MapFrom(src => src.Customer.AccountName))
-            .ForMember(dest => dest.CustomerPhone, opt => opt.MapFrom(src => src.Customer.PhoneNumber))
+            .ForMember(dest => dest.CustomerPhone, opt => opt.MapFrom(src => src.Order.ShippingPhone))
             .ForMember(dest => dest.CustomerEmail, opt => opt.MapFrom(src => src.Customer.Email))
             .ForMember(dest => dest.RequestedByName, opt => opt.MapFrom(src => src.RequestedByNavigation != null ? src.RequestedByNavigation.AccountName : null))
             .ForMember(dest => dest.RefundStatus, opt => opt.MapFrom(src => src.Status != null ? src.Status.StatusName : null))
