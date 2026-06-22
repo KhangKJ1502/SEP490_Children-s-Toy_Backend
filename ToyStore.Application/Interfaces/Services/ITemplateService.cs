@@ -32,16 +32,12 @@ public interface ITemplateService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Cap nhat Template.
+    /// Cap nhat hoac xoa mem Template.
+    /// Khi dto.IsDeleted = true: soft delete, tra ve Result voi Data = null.
+    /// Khi dto.IsDeleted = false: cap nhat noi dung, tra ve TemplateListDto moi nhat.
     /// </summary>
-    Task<Result<TemplateListDto>> UpdateTemplateAsync(
+    Task<Result<TemplateListDto?>> SaveTemplateAsync(
         short templateId,
         UpdateTemplateDto dto,
         CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Xoa mem Template (IsDeleted = true).
-    /// Khong cho phep xoa neu Template dang duoc su dung boi Campaign/Delivery chua hoan thanh.
-    /// </summary>
-    Task<Result> DeleteTemplateAsync(short templateId, CancellationToken cancellationToken = default);
 }

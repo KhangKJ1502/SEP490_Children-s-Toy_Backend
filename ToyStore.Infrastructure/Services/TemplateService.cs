@@ -136,19 +136,20 @@ public class TemplateService : ITemplateService
         }
     }
 
-    public async Task<Result<TemplateListDto>> UpdateTemplateAsync(
+    public async Task<Result<TemplateListDto?>> SaveTemplateAsync(
         short templateId,
         UpdateTemplateDto dto,
         CancellationToken cancellationToken = default)
     {
         if (templateId <= 0)
-        {
-            return Result<TemplateListDto>.Failure("VALIDATION_ERROR", "Template ID must be greater than 0.");
-        }
+            return Result<TemplateListDto?>.Failure("VALIDATION_ERROR", "Template ID must be greater than 0.");
 
-        if (dto.TemplateCode != null) dto.TemplateCode = dto.TemplateCode.Trim();
-        if (dto.TitleTemplate != null) dto.TitleTemplate = dto.TitleTemplate.Trim();
-        if (dto.MessageTemplate != null) dto.MessageTemplate = dto.MessageTemplate.Trim();
+        if (!dto.IsDeleted)
+        {
+            if (dto.TemplateCode != null) dto.TemplateCode = dto.TemplateCode.Trim();
+            if (dto.TitleTemplate != null) dto.TitleTemplate = dto.TitleTemplate.Trim();
+            if (dto.MessageTemplate != null) dto.MessageTemplate = dto.MessageTemplate.Trim();
+        }
 
         var validationResult = await _updateTemplateValidator.ValidateAsync(dto, cancellationToken);
         if (!validationResult.IsValid)
@@ -157,80 +158,62 @@ public class TemplateService : ITemplateService
                 .GroupBy(x => x.PropertyName)
                 .ToDictionary(g => g.Key, g => g.Select(x => x.ErrorMessage).ToArray());
 
-            return Result<TemplateListDto>.ValidationFailure(errors);
+            return Result<TemplateListDto?>.ValidationFailure(errors);
         }
 
         var existing = await _unitOfWork.Templates.GetByIdAsync(templateId, cancellationToken);
-        if (existing == null)
-        {
-            return Result<TemplateListDto>.NotFound("Template", templateId);
-        }
+        if (existing is null)
+            return Result<TemplateListDto?>.NotFound("Template", templateId);
 
         var isUsed = await _unitOfWork.Templates.IsUsedAsync(existing.TemplateCode, cancellationToken);
         if (isUsed)
         {
-            return Result<TemplateListDto>.Failure(
-                "BUSINESS_RULE_VIOLATION",
-                "Cannot edit template because it is already in use by campaigns or deliveries.");
+            var msg = dto.IsDeleted
+                ? "Cannot delete template because it is currently in use by active campaigns or deliveries."
+                : "Cannot edit template because it is already in use by campaigns or deliveries.";
+            return Result<TemplateListDto?>.Failure("BUSINESS_RULE_VIOLATION", msg);
         }
 
-        var isDuplicate = await _unitOfWork.Templates.ExistsByCodeExceptIdAsync(
-            dto.TemplateCode,
-            templateId,
-            cancellationToken);
-        if (isDuplicate)
+        if (!dto.IsDeleted)
         {
-            return Result<TemplateListDto>.Conflict("Template code already exists.");
+            var isDuplicate = await _unitOfWork.Templates.ExistsByCodeExceptIdAsync(
+                dto.TemplateCode, templateId, cancellationToken);
+            if (isDuplicate)
+                return Result<TemplateListDto?>.Conflict("Template code already exists.");
         }
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            var updated = await _unitOfWork.Templates.UpdateAsync(
+            var saved = await _unitOfWork.Templates.SaveAsync(
                 templateId,
-                dto.TemplateCode,
-                dto.TitleTemplate,
-                dto.MessageTemplate,
-                dto.IsActive,
+                dto.IsDeleted,
+                dto.IsDeleted ? null : dto.TemplateCode,
+                dto.IsDeleted ? null : dto.TitleTemplate,
+                dto.IsDeleted ? null : dto.MessageTemplate,
+                dto.IsDeleted ? null : dto.IsActive,
                 cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-            _logger.LogInformation("Template {TemplateId} updated successfully.", updated.TemplateId);
+            if (saved is null)
+                return Result<TemplateListDto?>.Failure("BUSINESS_RULE_VIOLATION", "Template could not be saved. It may have already been deleted.");
 
-            var dtoResult = _mapper.Map<TemplateListDto>(updated);
-            dtoResult.IsUsed = await _unitOfWork.Templates.IsUsedAsync(updated.TemplateCode, cancellationToken);
-            return Result<TemplateListDto>.Success(dtoResult);
+            if (dto.IsDeleted)
+            {
+                _logger.LogInformation("Template {TemplateId} (code={TemplateCode}) soft-deleted.", templateId, existing.TemplateCode);
+                return Result<TemplateListDto?>.Success(null);
+            }
+
+            _logger.LogInformation("Template {TemplateId} updated successfully.", saved.TemplateId);
+            var dtoResult = _mapper.Map<TemplateListDto>(saved);
+            dtoResult.IsUsed = await _unitOfWork.Templates.IsUsedAsync(saved.TemplateCode, cancellationToken);
+            return Result<TemplateListDto?>.Success(dtoResult);
         }
         catch (Exception ex)
         {
             await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-            _logger.LogError(ex, "Failed to update template {TemplateId}", templateId);
+            _logger.LogError(ex, "Failed to save template {TemplateId}", templateId);
             throw;
         }
-    }
-
-    /// <inheritdoc />
-    public async Task<Result> DeleteTemplateAsync(short templateId, CancellationToken cancellationToken = default)
-    {
-        if (templateId <= 0)
-            return Result.Failure("VALIDATION_ERROR", "Template ID must be greater than 0.");
-
-        var existing = await _unitOfWork.Templates.GetByIdAsync(templateId, cancellationToken);
-        if (existing is null)
-            return Result.NotFound("Template", templateId);
-
-        // Khong cho phep xoa neu template dang duoc dung boi campaign chua hoan thanh hoac delivery
-        var isUsed = await _unitOfWork.Templates.IsUsedAsync(existing.TemplateCode, cancellationToken);
-        if (isUsed)
-            return Result.Failure(
-                "BUSINESS_RULE_VIOLATION",
-                "Cannot delete template because it is currently in use by active campaigns or deliveries.");
-
-        var deleted = await _unitOfWork.Templates.SoftDeleteAsync(templateId, cancellationToken);
-        if (!deleted)
-            return Result.Failure("BUSINESS_RULE_VIOLATION", "Template could not be deleted. It may have already been deleted.");
-
-        _logger.LogInformation("Template {TemplateId} (code={TemplateCode}) soft-deleted.", templateId, existing.TemplateCode);
-        return Result.Success();
     }
 }

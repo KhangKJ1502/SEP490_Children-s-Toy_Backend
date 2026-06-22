@@ -236,7 +236,7 @@ public class OrderQueuedDigestJob : BackgroundService
         }
 
         var adminOrdersUrl = (_configuration["FrontendUrls:Admin"] ?? "http://localhost:3001")
-                             + "/admin/orders?tab=queued";
+                             + "/admin/schedules";
 
         var windowVnStart = _timeProvider.ToVnTime(windowStart);
         var windowVnEnd   = _timeProvider.ToVnTime(windowEnd);

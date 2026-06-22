@@ -192,23 +192,34 @@ public class TemplateRepository : ITemplateRepository
         return entity;
     }
 
-    public async Task<Template> UpdateAsync(
+    public async Task<Template?> SaveAsync(
         short templateId,
-        string templateCode,
-        string titleTemplate,
-        string messageTemplate,
-        bool isActive,
+        bool isDeleted,
+        string? templateCode,
+        string? titleTemplate,
+        string? messageTemplate,
+        bool? isActive,
         CancellationToken cancellationToken = default)
     {
         var entity = await _context.Templates
-            .FirstAsync(x => x.TemplateId == templateId && !x.IsDeleted, cancellationToken);
+            .Where(x => x.TemplateId == templateId && !x.IsDeleted)
+            .FirstOrDefaultAsync(cancellationToken);
 
-        entity.TemplateCode = templateCode;
-        entity.TitleTemplate = titleTemplate;
-        entity.MessageTemplate = messageTemplate;
-        entity.IsActive = isActive;
+        if (entity is null) return null;
+
+        if (isDeleted)
+        {
+            entity.IsDeleted = true;
+        }
+        else
+        {
+            entity.TemplateCode = templateCode!;
+            entity.TitleTemplate = titleTemplate!;
+            entity.MessageTemplate = messageTemplate!;
+            entity.IsActive = isActive!.Value;
+        }
+
         entity.UpdatedAt = DateTime.UtcNow;
-
         await _context.SaveChangesAsync(cancellationToken);
 
         return entity;
@@ -220,19 +231,5 @@ public class TemplateRepository : ITemplateRepository
             .AsNoTracking()
             .Where(x => x.TemplateCode == templateCode && x.IsActive && !x.IsDeleted)
             .FirstOrDefaultAsync(cancellationToken);
-    }
-
-    public async Task<bool> SoftDeleteAsync(short templateId, CancellationToken cancellationToken = default)
-    {
-        var entity = await _context.Templates
-            .Where(x => x.TemplateId == templateId && !x.IsDeleted)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (entity is null) return false;
-
-        entity.IsDeleted = true;
-        entity.UpdatedAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync(cancellationToken);
-        return true;
     }
 }

@@ -13,6 +13,8 @@ public interface ICampaignRepository
     /// </summary>
     Task<List<Campaign>> GetPagedAsync(
         CampaignQueryDto query,
+        DateTime? startDateUtc = null,
+        DateTime? endDateUtc = null,
         bool forAdminList = false,
         int viewerAccountId = 0,
         CancellationToken cancellationToken = default);
@@ -22,6 +24,8 @@ public interface ICampaignRepository
     /// </summary>
     Task<int> CountAsync(
         CampaignQueryDto query,
+        DateTime? startDateUtc = null,
+        DateTime? endDateUtc = null,
         bool forAdminList = false,
         int viewerAccountId = 0,
         CancellationToken cancellationToken = default);
@@ -107,6 +111,7 @@ public interface ICampaignRepository
     /// </summary>
     Task<Campaign> CreateAsync(
         CreateCampaignDto dto,
+        DateTime utcNow,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -116,6 +121,7 @@ public interface ICampaignRepository
     Task<Campaign> UpdateAsync(
         Campaign campaign,
         List<CreateCampaignTargetDto> newTargets,
+        DateTime utcNow,
         CancellationToken cancellationToken = default);
 
     Task AddCampaignScheduleLogAsync(CampaignScheduleLog log, CancellationToken cancellationToken = default);
@@ -123,7 +129,7 @@ public interface ICampaignRepository
     /// <summary>
     /// Huy Campaign (chuyen Status sang Cancelled). Tra ve false neu khong tim thay.
     /// </summary>
-    Task<bool> CancelAsync(int campaignId, CancellationToken cancellationToken = default);
+    Task<bool> CancelAsync(int campaignId, DateTime utcNow, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Lay danh sach cac Campaign Scheduled da den gio gui (ScheduledAt le now).
@@ -134,7 +140,7 @@ public interface ICampaignRepository
     /// <summary>
     /// Cap nhat trang thai Campaign sang Sending.
     /// </summary>
-    Task MarkSendingAsync(int campaignId, CancellationToken cancellationToken = default);
+    Task MarkSendingAsync(int campaignId, DateTime utcNow, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Cap nhat trang thai Campaign sang Sent va upsert CampaignStat.
@@ -161,5 +167,5 @@ public interface ICampaignRepository
     /// Xoa mem Campaign (IsDeleted = true). Chi cho phep khi Status la Sent, Cancelled hoac Failed.
     /// Tra ve false neu khong tim thay hoac trang thai khong hop le.
     /// </summary>
-    Task<bool> SoftDeleteAsync(int campaignId, CancellationToken cancellationToken = default);
+    Task<bool> SoftDeleteAsync(int campaignId, DateTime utcNow, CancellationToken cancellationToken = default);
 }

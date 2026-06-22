@@ -2283,6 +2283,61 @@ FROM [Notification].[Deliveries] d
 WHERE o.StatusID IN (6, 7)
     AND d.Status = 'Unread';
 GO
+
+-- ============================================================
+-- Mega Flash Sale Click Test Campaign [ADDED FOR TESTING]
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM [Notification].[Campaigns] WHERE CampaignName = N'Mega Flash Sale Click Test')
+BEGIN
+    DECLARE @admCampTest INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'admin@toyhouse.vn');
+    DECLARE @pMega INT = (SELECT TOP 1 PromotionID FROM Promotions WHERE PromotionName = N'Mega Flash Sale');
+
+    IF @admCampTest IS NOT NULL AND @pMega IS NOT NULL
+    BEGIN
+        PRINT N'Seeding Mega Flash Sale Click Test Campaign...';
+        
+        INSERT INTO [Notification].[Campaigns]
+            (CampaignName, TemplateCode, SourceType, TargetType, Status,
+            ReferenceType, ReferenceID, ActionType, ActionTarget, TitleOverride, MessageOverride,
+            CreatedByAccountID, IsDeleted, CreatedAt)
+        VALUES
+            (N'Mega Flash Sale Click Test', 'FLASH_SALE_STARTED', 'ADMIN', 'ALL', 'Sent',
+            'SALE', @pMega, 'ROUTE', N'/?flashSale=' + CAST(@pMega AS NVARCHAR(10)),
+            N'Mega Flash Sale is Live!', N'Click here to check out amazing toy deals right now!',
+            @admCampTest, 0, GETUTCDATE());
+
+        DECLARE @newCmpId INT = SCOPE_IDENTITY();
+
+        -- CampaignStats
+        INSERT INTO [Notification].[CampaignStats]
+            (CampaignID, TotalSent, TotalRead, TotalClicked, ComputedAt)
+        VALUES
+            (@newCmpId, 5, 0, 0, GETUTCDATE());
+
+        -- Deliveries for all active customer accounts
+        INSERT INTO [Notification].[Deliveries]
+            (AccountID, CampaignID, TemplateCode, RecipientType, Channel, NotificationType,
+            ActionType, ActionTarget, Title, Message, Payload, Status, IsDeleted, CreatedAt)
+        SELECT
+            AccountID,
+            @newCmpId,
+            'FLASH_SALE_STARTED',
+            'CUSTOMER',
+            'WEB_BELL',
+            'PROMOTION',
+            'ROUTE',
+            N'/?flashSale=' + CAST(@pMega AS NVARCHAR(10)),
+            N'Mega Flash Sale is Live!',
+            N'Click here to check out amazing toy deals right now!',
+            N'{"promotionId":' + CAST(@pMega AS VARCHAR) + N'}',
+            'Unread',
+            0,
+            GETUTCDATE()
+        FROM Accounts
+        WHERE RoleID = 1 AND IsActive = 1 AND IsDeleted = 0;
+    END
+END
+GO
 /* ══════════════════════════════════════════════════════════════
    SECTION 36 – REVIEW MODERATION LOGS  [NEW]
    Logs AI and manual (Staff) moderation results
