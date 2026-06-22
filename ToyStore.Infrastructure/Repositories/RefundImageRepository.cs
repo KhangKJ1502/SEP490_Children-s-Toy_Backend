@@ -11,16 +11,14 @@ namespace ToyStore.Infrastructure.Repositories;
 public class RefundImageRepository : IRefundImageRepository
 {
     private readonly SEP490ToyStoreContext _context;
-    private readonly DbSet<RefundImage> _dbSet;
 
     public RefundImageRepository(SEP490ToyStoreContext context)
     {
         _context = context;
-        _dbSet = context.Set<RefundImage>();
     }
 
     public async Task AddRangeAsync(IEnumerable<RefundImage> images, CancellationToken cancellationToken = default)
     {
-        await _dbSet.AddRangeAsync(images, cancellationToken);
+        await _context.RefundImages.AddRangeAsync(images, cancellationToken);
     }
 }

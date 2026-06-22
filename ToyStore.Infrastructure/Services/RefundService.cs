@@ -426,17 +426,8 @@ public class RefundService : IRefundService
             }
         }
 
-        var adminFilter = new AdminRefundFilterDto
-        {
-            Page = filter.Page,
-            PageSize = filter.PageSize,
-            CustomerId = customerId,
-            RefundStatus = statusFilter,
-            OrderId = filter.OrderId,
-            FromDate = filter.FromDate,
-            ToDate = filter.ToDate
-        };
-        var paginatedResult = await _unitOfWork.Refunds.GetAdminRefundsAsync(adminFilter, cancellationToken);
+        filter.RefundStatus = statusFilter;
+        var paginatedResult = await _unitOfWork.Refunds.GetRefundsAsync(customerId, filter, cancellationToken);
 
         if (paginatedResult.Items != null)
         {
