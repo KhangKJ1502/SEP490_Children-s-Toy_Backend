@@ -70,7 +70,7 @@ public class GhnWebhookService : IGhnWebhookService
         }
 
         var orderCode = payload.OrderCode.Trim();
-        var refund = await _unitOfWork.Refunds.GetByShippingOrderCodeAsync(orderCode, cancellationToken);
+        var refund = await _unitOfWork.Refunds.GetByShippingOrReturnOrderCodeAsync(orderCode, cancellationToken);
         if (refund is not null)
         {
             _logger.LogInformation("GHN Webhook: OrderCode '{Code}' matches refund request. Delegating to IShippingWebhookService.", orderCode);

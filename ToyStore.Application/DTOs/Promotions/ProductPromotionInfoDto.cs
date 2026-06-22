@@ -16,5 +16,5 @@ public class ProductPromotionInfoDto
     public decimal SalePrice { get; set; }
     public decimal? DiscountPercent { get; set; }
     public int? SaleQuantity { get; set; }
-    public int SoldQuantity { get; set; }
+    public int? SoldQuantity { get; set; }
 }

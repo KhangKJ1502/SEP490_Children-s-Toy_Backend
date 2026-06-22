@@ -23,7 +23,6 @@ public static class PriceHelper
                                  || string.Equals(pp.Promotion.Status, "Scheduled", StringComparison.OrdinalIgnoreCase))
                              && pp.Promotion.StartDate <= now
                              && pp.Promotion.EndDate >= now
-                             && (!pp.SaleQuantity.HasValue || pp.SoldQuantity + pp.ReservedQuantity < pp.SaleQuantity.Value)
                              && IsPromotionSlotActive(pp.Promotion, now))
                 .OrderByDescending(pp => pp.Promotion.Priority)
                 .ThenBy(pp => pp.SalePrice)

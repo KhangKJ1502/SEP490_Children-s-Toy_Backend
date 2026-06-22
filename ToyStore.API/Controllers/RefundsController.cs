@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using ToyStore.API.Extensions;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Refunds;
+using ToyStore.Application.DTOs.Products;
 using ToyStore.Application.Interfaces.Services;
 
 namespace ToyStore.API.Controllers;
@@ -16,11 +17,16 @@ public class RefundsController : ControllerBase
 {
     private readonly IRefundService _refundService;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IImageUploadService _imageUploadService;
 
-    public RefundsController(IRefundService refundService, ICurrentUserService currentUserService)
+    public RefundsController(
+        IRefundService refundService, 
+        ICurrentUserService currentUserService,
+        IImageUploadService imageUploadService)
     {
         _refundService = refundService;
         _currentUserService = currentUserService;
+        _imageUploadService = imageUploadService;
     }
 
     [HttpGet("reasons")]
@@ -64,5 +70,26 @@ public class RefundsController : ControllerBase
     {
         var result = await _refundService.CancelRefundAsync(_currentUserService.AccountId, refundId, cancellationToken);
         return result.ToActionResult();
+    }
+
+    [HttpPost("upload-image")]
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult<UploadImageResponseDto>> UploadImage(
+        IFormFile file,
+        CancellationToken cancellationToken = default)
+    {
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest(new { message = "No file was provided." });
+        }
+
+        using var stream = file.OpenReadStream();
+        var result = await _imageUploadService.UploadImageToFolderAsync(stream, file.FileName, "SEP490_Refunds", cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return BadRequest(new { message = result.ErrorMessage });
+        }
+
+        return Ok(new UploadImageResponseDto { Url = result.Data! });
     }
 }

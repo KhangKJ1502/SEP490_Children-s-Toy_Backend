@@ -94,6 +94,7 @@ public class OrderLifecycleService : IOrderLifecycleService
             }
 
             // 3. Prepaid PAID: auto wallet only before Shipped; one credit per order lifetime.
+            bool hasCreatedSystemRefund = false;
             if (string.Equals(order.PaymentStatus, PaymentStatuses.Paid, StringComparison.OrdinalIgnoreCase)
                 && PrepaidPaymentMethods.Contains(order.PaymentMethod))
             {
@@ -103,6 +104,7 @@ public class OrderLifecycleService : IOrderLifecycleService
                         "Cancel {OrderCode}: prepaid PAID at status {StatusId} — no auto wallet; use refund management.",
                         order.OrderCode, order.StatusId);
                     await CreateCancelledOrderSystemRefundAsync(order, cancelledByAccountId, reason, cancellationToken);
+                    hasCreatedSystemRefund = true;
                 }
                 else if (await _unitOfWork.Orders.HasCompletedRefundWalletCreditForOrderAsync(order.OrderId, cancellationToken)
                          || await _unitOfWork.Orders.ExistsWalletTransactionByIdempotencyKeyAsync(
@@ -167,6 +169,11 @@ public class OrderLifecycleService : IOrderLifecycleService
             }, cancellationToken);
 
             await _unitOfWork.OrderAssignments.ReleaseCapacityAsync(order.OrderId, cancellationToken);
+
+            if (hasCreatedSystemRefund)
+            {
+                await _shiftAssignmentService.AutoAssignOrderAsync(order.OrderId, cancellationToken);
+            }
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);

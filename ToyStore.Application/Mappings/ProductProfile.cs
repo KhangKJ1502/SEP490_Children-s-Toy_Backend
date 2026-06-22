@@ -191,7 +191,7 @@ public class ProductProfile : Profile
 
         if (activeFlashSale != null)
         {
-            return (activeFlashSale.SalePrice, activeFlashSale.TimeSlot!.Promotion.PromotionType, activeFlashSale.SoldQuantity, activeFlashSale.SaleQuantity);
+            return (activeFlashSale.SalePrice, activeFlashSale.TimeSlot!.Promotion.PromotionType, activeFlashSale.SoldQuantity + activeFlashSale.ReservedQuantity, activeFlashSale.SaleQuantity);
         }
 
         // 2. Regular Promotion
@@ -203,7 +203,6 @@ public class ProductProfile : Profile
                              || string.Equals(pp.Promotion.Status, "Scheduled", StringComparison.OrdinalIgnoreCase))
                          && pp.Promotion.StartDate <= now
                          && pp.Promotion.EndDate >= now
-                         && (!pp.SaleQuantity.HasValue || pp.SoldQuantity + pp.ReservedQuantity < pp.SaleQuantity.Value)
                          && (pp.Promotion.PromotionTimeSlots == null || pp.Promotion.PromotionTimeSlots.Count == 0 || pp.Promotion.PromotionTimeSlots.Any(slot =>
                                 string.Equals(slot.Status, "Active", StringComparison.OrdinalIgnoreCase)
                                 && slot.StartAt <= now
@@ -214,7 +213,7 @@ public class ProductProfile : Profile
 
         if (bestRegularPromotion != null)
         {
-            return (bestRegularPromotion.SalePrice, bestRegularPromotion.Promotion.PromotionType, bestRegularPromotion.SoldQuantity, bestRegularPromotion.SaleQuantity);
+            return (bestRegularPromotion.SalePrice, bestRegularPromotion.Promotion.PromotionType, null, null);
         }
 
         return null;

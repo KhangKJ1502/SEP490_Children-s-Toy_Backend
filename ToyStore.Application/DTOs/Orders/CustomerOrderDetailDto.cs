@@ -39,6 +39,7 @@ public class CustomerOrderDetailDto
     public bool CanCancel { get; set; }
     public bool CanComplete { get; set; }
     public bool IsAwaitingRefund { get; set; }
+    public bool CanRefund { get; set; }
 
     public string PaymentMethod { get; set; } = string.Empty;
     public string PaymentStatus { get; set; } = string.Empty;

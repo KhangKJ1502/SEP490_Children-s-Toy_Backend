@@ -42,8 +42,6 @@ public class PromotionProfile : Profile
             .ForMember(dest => dest.Stock, opt => opt.MapFrom(src => src.Product != null ? src.Product.Quantity : 0));
 
         CreateMap<CreateProductPromotionDto, ProductPromotion>()
-            .ForMember(dest => dest.SoldQuantity, opt => opt.MapFrom(_ => 0))
-            .ForMember(dest => dest.ReservedQuantity, opt => opt.MapFrom(_ => 0))
             .ForMember(dest => dest.IsDeleted, opt => opt.MapFrom(_ => false))
             .ForMember(dest => dest.PromotionId, opt => opt.Ignore())
             .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())

@@ -28,7 +28,7 @@ VALUES
     (1, 'Customer', N'Customer', '2024-01-05 08:00:00'),
     (2, 'Admin', N'Administrator', '2024-01-05 08:00:00'),
     (3, 'Staff', N'Sales Staff', '2024-01-05 08:00:00'),
-    (4, 'Merchandise', N'Merchandise Staff', '2024-01-05 08:00:00');
+    (4, 'Merchandise', N'Warehouse Staff', '2024-01-05 08:00:00');
 SET IDENTITY_INSERT [dbo].[Roles] OFF;
 GO
 
@@ -215,7 +215,7 @@ VALUES
     (8, 'Cancelled', N'Cancelled'),
     (9, 'Refunded', N'Refunded'),
     (10, 'Returning', N'Return shipment in progress'),
-    (11, 'ReturnCompleted', N'Returned to merchandise, awaiting processing'),
+    (11, 'ReturnCompleted', N'Returned to warehouse, awaiting processing'),
     (12, 'DeliveryFailed', N'Delivery failed, awaiting resolution'),
     (13, 'WaitingReturn', N'Waiting for return shipment'),
     (14, 'ReturnFailed', N'Return shipment failed'),
@@ -249,22 +249,17 @@ VALUES
     (2, 'RefundApproved', N'Request approved, waiting for return shipment creation'),
     (3, 'RefundRejected', N'Request rejected'),
     (4, 'RefundPickupCreated', N'Return shipment created, waiting for pickup'),
-    (5, 'RefundShipping', N'Returned package is on the way to Merchandise'),
-    (6, 'RefundReceived', N'Merchandise received returned package'),
+    (5, 'RefundShipping', N'Returned package is on the way to shop'),
+    (6, 'RefundReceived', N'Shop received returned package'),
     (7, 'RefundInspectionPending', N'Package quality inspection in progress'),
-    (8, 'RefundCompleted', N'Refund completed and inventory updated'),
+    (8, 'RefundCompleted', N'Refund completed and quantity updated'),
     (9, 'RefundCancelled', N'Customer cancelled refund request'),
-    (10, 'RefundDamage', N'Package damaged or lost during shipping');
+    (10, 'RefundDamage', N'Package damaged or lost during shipping'),
+    (11, 'RefundReturnShipmentCreated', N'Return Shipment to Customer Created'),
+    (12, 'RefundReturningToCustomer', N'Order Is Being Returned to Customer'),
+    (13, 'RefundReturnedToCustomer', N'Order Successfully Returned to Customer'),
+    (14, 'RefundReturnToCustomerFailed', N'Failed to Return Order to Customer');
 SET IDENTITY_INSERT [dbo].[StatusRefunds] OFF;
-GO
-
-IF NOT EXISTS (SELECT 1 FROM [dbo].[StatusRefunds] WHERE StatusID = 10)
-BEGIN
-    SET IDENTITY_INSERT [dbo].[StatusRefunds] ON;
-    INSERT INTO [dbo].[StatusRefunds] (StatusID, StatusName, Description)
-    VALUES (10, 'RefundDamage', N'Package damaged or lost during shipping');
-    SET IDENTITY_INSERT [dbo].[StatusRefunds] OFF;
-END
 GO
 /* ══════════════════════════════════════════════════════════════
    SECTION 8 – PRODUCTS (30 products)
@@ -605,73 +600,72 @@ BEGIN
     );
 
     INSERT INTO [dbo].[ProductPromotions]
-        (ProductID, PromotionID, SalePrice, DiscountPercent,
-        SaleQuantity, SoldQuantity, ReservedQuantity, CreatedAt)
+        (ProductID, PromotionID, SalePrice, DiscountPercent, CreatedAt)
     VALUES
         -- Summer Toy Festival
-        ( 1, @pSale, 1099000, 14.88, 30, 0, 0, @nowPP),
-        ( 2, @pSale, 4990000, 16.69, 5, 0, 0, @nowPP),
-        ( 3, @pSale, 1290000, 18.87, 15, 0, 0, @nowPP),
-        ( 4, @pSale, 359000, 14.52, 40, 0, 0, @nowPP),
-        (11, @pSale, 449000, 17.61, 20, 0, 0, @nowPP),
-        (17, @pSale, 699000, 16.79, 15, 0, 0, @nowPP),
-        (20, @pSale, 299000, 16.71, 30, 0, 0, @nowPP),
-        (22, @pSale, 499000, 16.13, 20, 0, 0, @nowPP),
-        (26, @pSale, 799000, 15.34, 15, 0, 0, @nowPP),
+        ( 1, @pSale, 1099000, 14.88, @nowPP),
+        ( 2, @pSale, 4990000, 16.69, @nowPP),
+        ( 3, @pSale, 1290000, 18.87, @nowPP),
+        ( 4, @pSale, 359000, 14.52, @nowPP),
+        (11, @pSale, 449000, 17.61, @nowPP),
+        (17, @pSale, 699000, 16.79, @nowPP),
+        (20, @pSale, 299000, 16.71, @nowPP),
+        (22, @pSale, 499000, 16.13, @nowPP),
+        (26, @pSale, 799000, 15.34, @nowPP),
 
         -- Back To School
-        ( 6, @pBTS, 69000, 18.82, NULL, 0, 0, @nowPP),
-        ( 7, @pBTS, 149000, 18.92, NULL, 0, 0, @nowPP),
-        ( 8, @pBTS, 299000, 20.27, NULL, 0, 0, @nowPP),
-        ( 9, @pBTS, 224000, 20.00, NULL, 0, 0, @nowPP),
-        (10, @pBTS, 399000, 18.57, NULL, 0, 0, @nowPP),
-        (29, @pBTS, 70000, 20.45, NULL, 0, 0, @nowPP),
-        (30, @pBTS, 139000, 20.57, NULL, 0, 0, @nowPP),
+        ( 6, @pBTS, 69000, 18.82, @nowPP),
+        ( 7, @pBTS, 149000, 18.92, @nowPP),
+        ( 8, @pBTS, 299000, 20.27, @nowPP),
+        ( 9, @pBTS, 224000, 20.00, @nowPP),
+        (10, @pBTS, 399000, 18.57, @nowPP),
+        (29, @pBTS, 70000, 20.45, @nowPP),
+        (30, @pBTS, 139000, 20.57, @nowPP),
 
         -- Christmas & New Year (figures & dolls)
-        (20, @pXmas, 269000, 25.07, 25, 0, 0, @nowPP),
-        (21, @pXmas, 369000, 24.69, 20, 0, 0, @nowPP),
-        (22, @pXmas, 449000, 24.54, 15, 0, 0, @nowPP),
-        (23, @pXmas, 669000, 24.83, 10, 0, 0, @nowPP),
-        (24, @pXmas, 299000, 24.30, 30, 0, 0, @nowPP),
-        (25, @pXmas, 214000, 24.91, 40, 0, 0, @nowPP),
+        (20, @pXmas, 269000, 25.07, @nowPP),
+        (21, @pXmas, 369000, 24.69, @nowPP),
+        (22, @pXmas, 449000, 24.54, @nowPP),
+        (23, @pXmas, 669000, 24.83, @nowPP),
+        (24, @pXmas, 299000, 24.30, @nowPP),
+        (25, @pXmas, 214000, 24.91, @nowPP),
 
         -- Lego Builders Week
-        ( 1, @pLego, 1150000, 10.85, 25, 0, 0, @nowPP),
-        ( 2, @pLego, 5390000, 10.02, 8, 0, 0, @nowPP),
-        ( 3, @pLego, 1420000, 10.69, 18, 0, 0, @nowPP),
-        ( 4, @pLego, 378000, 10.00, 50, 0, 0, @nowPP),
-        ( 5, @pLego, 315000, 10.00, 60, 0, 0, @nowPP),
+        ( 1, @pLego, 1150000, 10.85, @nowPP),
+        ( 2, @pLego, 5390000, 10.02, @nowPP),
+        ( 3, @pLego, 1420000, 10.69, @nowPP),
+        ( 4, @pLego, 378000, 10.00, @nowPP),
+        ( 5, @pLego, 315000, 10.00, @nowPP),
 
         -- RC & Racing Expo
-        (26, @pRC, 799000, 15.34, 20, 0, 0, @nowPP),
-        (27, @pRC, 578000, 15.00, 18, 0, 0, @nowPP),
-        (28, @pRC, 1265000, 15.10, 8, 0, 0, @nowPP),
+        (26, @pRC, 799000, 15.34, @nowPP),
+        (27, @pRC, 578000, 15.00, @nowPP),
+        (28, @pRC, 1265000, 15.10, @nowPP),
 
         -- Plush Toy Carnival
-        (17, @pPlush, 672000, 20.00, 20, 0, 0, @nowPP),
-        (18, @pPlush, 520000, 20.00, 25, 0, 0, @nowPP),
-        (19, @pPlush, 336000, 20.00, 35, 0, 0, @nowPP),
+        (17, @pPlush, 672000, 20.00, @nowPP),
+        (18, @pPlush, 520000, 20.00, @nowPP),
+        (19, @pPlush, 336000, 20.00, @nowPP),
 
         -- Black Friday Preview
-        ( 1, @pBF, 999000, 22.56, 30, 0, 0, @nowPP),
-        ( 2, @pBF, 4490000, 25.04, 6, 0, 0, @nowPP),
-        (17, @pBF, 588000, 30.00, 15, 0, 0, @nowPP),
-        (20, @pBF, 251000, 30.08, 40, 0, 0, @nowPP),
-        (26, @pBF, 709000, 25.00, 12, 0, 0, @nowPP),
+        ( 1, @pBF, 999000, 22.56, @nowPP),
+        ( 2, @pBF, 4490000, 25.04, @nowPP),
+        (17, @pBF, 588000, 30.00, @nowPP),
+        (20, @pBF, 251000, 30.08, @nowPP),
+        (26, @pBF, 709000, 25.00, @nowPP),
 
         -- Outdoor Play Month
-        (11, @pOutdoor, 490000, 10.09, 15, 0, 0, @nowPP),
-        (12, @pOutdoor, 799000, 10.22, 12, 0, 0, @nowPP),
-        (13, @pOutdoor, 76000, 10.59, 80, 0, 0, @nowPP),
-        (14, @pOutdoor, 148000, 10.30, 60, 0, 0, @nowPP),
-        (15, @pOutdoor, 103000, 10.43, 50, 0, 0, @nowPP),
-        (16, @pOutdoor, 166000, 10.27, 40, 0, 0, @nowPP),
+        (11, @pOutdoor, 490000, 10.09, @nowPP),
+        (12, @pOutdoor, 799000, 10.22, @nowPP),
+        (13, @pOutdoor, 76000, 10.59, @nowPP),
+        (14, @pOutdoor, 148000, 10.30, @nowPP),
+        (15, @pOutdoor, 103000, 10.43, @nowPP),
+        (16, @pOutdoor, 166000, 10.27, @nowPP),
 
         -- Science & STEM Sale
-        ( 8, @pSTEM, 319000, 14.93, 30, 0, 0, @nowPP),
-        ( 9, @pSTEM, 238000, 15.00, 40, 0, 0, @nowPP),
-        (10, @pSTEM, 416000, 15.10, 25, 0, 0, @nowPP);
+        ( 8, @pSTEM, 319000, 14.93, @nowPP),
+        ( 9, @pSTEM, 238000, 15.00, @nowPP),
+        (10, @pSTEM, 416000, 15.10, @nowPP);
 END
 GO
 
@@ -1365,14 +1359,14 @@ BEGIN
         DECLARE @price3 DECIMAL(12,0) = (SELECT Price FROM Products WHERE ProductID = @p3);
 
         IF @price1 IS NOT NULL
-            INSERT INTO [dbo].[ProductPromotions] (ProductID, PromotionID, SalePrice, DiscountPercent, SaleQuantity, SoldQuantity, ReservedQuantity, IsDeleted, CreatedAt)
-            VALUES (@p1, @promoID, @price1 * 0.85, 15.00, 100, 0, 0, 0, GETUTCDATE());
+            INSERT INTO [dbo].[ProductPromotions] (ProductID, PromotionID, SalePrice, DiscountPercent, IsDeleted, CreatedAt)
+            VALUES (@p1, @promoID, @price1 * 0.85, 15.00, 0, GETUTCDATE());
         IF @price2 IS NOT NULL
-            INSERT INTO [dbo].[ProductPromotions] (ProductID, PromotionID, SalePrice, DiscountPercent, SaleQuantity, SoldQuantity, ReservedQuantity, IsDeleted, CreatedAt)
-            VALUES (@p2, @promoID, @price2 * 0.85, 15.00, 100, 0, 0, 0, GETUTCDATE());
+            INSERT INTO [dbo].[ProductPromotions] (ProductID, PromotionID, SalePrice, DiscountPercent, IsDeleted, CreatedAt)
+            VALUES (@p2, @promoID, @price2 * 0.85, 15.00, 0, GETUTCDATE());
         IF @price3 IS NOT NULL
-            INSERT INTO [dbo].[ProductPromotions] (ProductID, PromotionID, SalePrice, DiscountPercent, SaleQuantity, SoldQuantity, ReservedQuantity, IsDeleted, CreatedAt)
-            VALUES (@p3, @promoID, @price3 * 0.85, 15.00, 100, 0, 0, 0, GETUTCDATE());
+            INSERT INTO [dbo].[ProductPromotions] (ProductID, PromotionID, SalePrice, DiscountPercent, IsDeleted, CreatedAt)
+            VALUES (@p3, @promoID, @price3 * 0.85, 15.00, 0, GETUTCDATE());
     END;
 
     -- -------------------------------------------------------------
@@ -1485,7 +1479,7 @@ BEGIN
     ),
         (
             N'Delivery failed / unable to deliver',
-            N'Automatic refund when GHN returns the package to Merchandise due to failed delivery (System-only)',
+            N'Automatic refund when GHN returns the package to warehouse due to failed delivery (System-only)',
             0, 1, GETDATE()
     );
 END
@@ -2015,108 +2009,159 @@ GO
 /* ══════════════════════════════════════════════════════════════
    SECTION 35 – NOTIFICATION TEMPLATES, CAMPAIGNS, DELIVERIES
 ══════════════════════════════════════════════════════════════ */
-PRINT N'[35] Notification Templates, Campaigns, Deliveries...';
 BEGIN TRY
     BEGIN TRAN;
+
     DECLARE @Tpl TABLE (
-    TemplateCode VARCHAR(50) NOT NULL PRIMARY KEY,
-    UsageScope VARCHAR(10) NOT NULL,
-    TitleTemplate NVARCHAR(255) NOT NULL,
-    MessageTemplate NVARCHAR(500) NOT NULL
+        TemplateCode    VARCHAR(50)   NOT NULL PRIMARY KEY,
+        UsageScope      VARCHAR(10)   NOT NULL,
+        TitleTemplate   NVARCHAR(255) NOT NULL,
+        MessageTemplate NVARCHAR(500) NOT NULL
     );
-    INSERT INTO @Tpl
-VALUES
-    -- Orders (Customer)
-    ('ORDER_PLACED', 'SYSTEM', N'Order Placed Successfully', N'Order {{OrderCode}} ({{TotalAmount}} VND) has been recorded.'),
-    ('ORDER_CONFIRMED', 'SYSTEM', N'Order {{OrderCode}} Confirmed', N'The shop has confirmed and is preparing your items.'),
-    ('ORDER_PACKING', 'SYSTEM', N'Order {{OrderCode}} Is Being Packed', N'Your order {{OrderCode}} is currently being carefully packed by our staff.'),
-    ('ORDER_SHIPPING', 'SYSTEM', N'Your Order Is On Its Way', N'Order {{OrderCode}} has been handed off to shipper {{ShipperName}}. Please keep your phone nearby.'),
-    ('ORDER_DELIVERED', 'SYSTEM', N'Order Delivered Successfully', N'Order {{OrderCode}} has been delivered. Don''t forget to leave a review!'),
-    ('ORDER_CANCELLED', 'SYSTEM', N'Order Cancelled', N'Order {{OrderCode}} has been cancelled. Reason: {{CancelReason}}.'),
-    ('ORDER_DELIVERY_FAILED', 'SYSTEM', N'Delivery Failed', N'Delivery for order {{OrderCode}} was unsuccessful. Please contact customer support.'),
-    ('ORDER_ASSIGNED', 'SYSTEM', N'Order Assigned: {{OrderCode}}', N'Order {{OrderCode}} from {{CustomerName}} has been assigned to you. Total: {{TotalAmount}}. Please process it during your current shift.'),
 
-    -- Payment & Wallet
-    ('PAYMENT_SUCCESS', 'SYSTEM', N'Payment Successful', N'You have paid {{Amount}} VND for order {{OrderCode}}.'),
-    ('PAYMENT_FAILED', 'SYSTEM', N'Payment Failed', N'Payment for order {{OrderCode}} was unsuccessful.'),
-    ('WALLET_TOPUP', 'SYSTEM', N'Wallet Top-Up Successful', N'Your wallet has been topped up with {{Amount}}. Balance: {{Balance}}.'),
-    ('WALLET_REFUND', 'SYSTEM', N'Refund to Wallet', N'{{Amount}} VND from order {{OrderCode}} has been refunded to your wallet.'),
-    ('REFUND_APPROVED', 'SYSTEM', N'Refund Request Approved', N'Your refund request for order {{OrderCode}} has been approved. {{Amount}} VND will be credited to your wallet.'),
-    ('REFUND_REJECTED', 'SYSTEM', N'Refund Request Rejected', N'Your refund request for order {{OrderCode}} has been rejected. Please contact customer support if you need assistance.'),
-    ('REFUND_COMPLETED', 'SYSTEM', N'Refund Completed', N'{{Amount}} VND from order {{OrderCode}} has been successfully refunded to your wallet.'),
+    /* ─── SYSTEM GROUP: automatic, cannot be disabled/deleted ─── */
 
-    -- Products & Inventory
-    ('PRODUCT_AVAILABLE_AGAIN', 'SYSTEM', N'{{ProductName}} Is Available Again', N'{{ProductName}} is available for purchase again at {{Price}}. Get yours before it’s gone!'),
-    ('WISHLIST_PRICE_DROP', 'SYSTEM', N'Price Drop on {{ProductName}}', N'{{ProductName}} in your wishlist is now on sale for only {{Price}}.'),
+    -- Orders — customer & staff
+    INSERT INTO @Tpl VALUES
+    ('ORDER_PLACED',          'SYSTEM', N'Order placed successfully',
+     N'Your order {{OrderCode}} ({{TotalAmount}} VND) has been received.'),
+    ('ORDER_CONFIRMED',       'SYSTEM', N'Order confirmed: {{OrderCode}}',
+     N'Your order {{OrderCode}} has been confirmed and is being prepared.'),
+    ('ORDER_PACKING',         'SYSTEM', N'Order {{OrderCode}} is being packed',
+     N'Your order {{OrderCode}} is being packed by our team.'),
+    ('ORDER_SHIPPING',        'SYSTEM', N'Order {{OrderCode}} is on the way',
+     N'Order {{OrderCode}} has been handed to courier {{ShipperName}}. Please keep your phone available.'),
+    ('ORDER_DELIVERED', 'SYSTEM', N'Delivery successful',
+     N'Order {{OrderCode}} has been delivered successfully. We would love to hear your feedback.'),
+    ('ORDER_CANCELLED',       'SYSTEM', N'Order {{OrderCode}} cancelled',
+     N'Your order {{OrderCode}} was cancelled. Reason: {{CancelReason}}.'),
+    ('ORDER_DELIVERY_FAILED', 'SYSTEM', N'Delivery unsuccessful',
+     N'The courier could not reach you. Another delivery attempt will be made. Please keep your phone nearby.'),
+    ('ORDER_RETURN_REFUND_PENDING', 'SYSTEM', N'Returned to shop',
+     N'Order {{OrderCode}} has returned to our shop. We are processing your refund.'),
+    ('ORDER_CANCELLED_DELIVERY_FAIL', 'SYSTEM', N'Order cancelled',
+     N'Order {{OrderCode}} was cancelled due to failed delivery.'),
+    ('ORDER_ASSIGNED',        'SYSTEM', N'Order Assigned: {{OrderCode}}',
+     N'Order {{OrderCode}} from {{CustomerName}} has been assigned to you. Total: {{TotalAmount}} VND. Please process it during your current shift.');
 
-    -- Reviews & Blog
-    ('REVIEW_STAFF_REPLIED', 'SYSTEM', N'Reply to Your Review on {{ProductName}}', N'A staff member just replied to your review.'),
-    ('BLOG_COMMENT_REPLIED', 'SYSTEM', N'Reply to Your Comment on {{BlogTitle}}', N'Your comment on the post {{BlogTitle}} has received a new reply.'),
+    -- Payments & wallet
+    INSERT INTO @Tpl VALUES
+    ('PAYMENT_SUCCESS',  'SYSTEM', N'Payment successful',
+     N'You paid {{Amount}} VND for order {{OrderCode}}.'),
+    ('PAYMENT_FAILED',   'SYSTEM', N'Payment failed',
+     N'Payment of {{Amount}} VND for order {{OrderCode}} failed.'),
+    ('WALLET_TOPUP',     'SYSTEM', N'Wallet top-up successful',
+     N'{{Amount}} VND was added to your wallet. Current balance: {{Balance}} VND.'),
+    ('WALLET_REFUND',    'SYSTEM', N'Refund to wallet',
+     N'{{Amount}} VND was refunded to your wallet for order {{OrderCode}}.'),
+    ('WALLET_WITHDRAWAL_SUCCESS', 'SYSTEM', N'Withdrawal successful',
+     N'{{Amount}} VND has been transferred to {{BankName}} - {{AccountNumber}} successfully.'),
+    ('WALLET_WITHDRAWAL_FAILED',  'SYSTEM', N'Withdrawal failed',
+     N'Withdrawal of {{Amount}} VND failed. Reason: {{FailReason}}. Your wallet balance was not changed.'),
+    ('REFUND_APPROVED',  'SYSTEM', N'Refund approved',
+     N'Your refund request for order {{OrderCode}} was approved. {{Amount}} VND will be returned to your wallet.'),
+    ('REFUND_REJECTED',  'SYSTEM', N'Refund rejected',
+     N'Your refund request for order {{OrderCode}} was rejected. Contact support if you need help.'),
+    ('REFUND_COMPLETED', 'SYSTEM', N'Refund completed',
+     N'{{Amount}} VND from order {{OrderCode}} has been refunded to your wallet.');
+
+    -- Products & Stock
+    INSERT INTO @Tpl VALUES
+    ('PRODUCT_BACK_IN_STOCK', 'SYSTEM', N'Product back in stock: {{ProductName}}',
+     N'The product {{ProductName}} you are interested in is back in stock at {{Price}} VND. Get it now before it runs out!'),
+    ('WISHLIST_PRICE_DROP',   'SYSTEM', N'Price drop on {{ProductName}}',
+     N'{{ProductName}} in your wishlist is now on sale for only {{Price}} VND.');
+
+    -- Reviews & Blogs
+    INSERT INTO @Tpl VALUES
+    ('REVIEW_STAFF_REPLIED', 'SYSTEM', N'Reply to review on {{ProductName}}',
+     N'A customer service representative has replied to your review of {{ProductName}}.'),
+    ('BLOG_COMMENT_REPLIED', 'SYSTEM', N'Blog comment reply: {{BlogTitle}}',
+     N'Someone replied to your comment on {{BlogTitle}}.');
 
     -- Staff Notifications
-    ('STAFF_NEW_ORDER', 'SYSTEM', N'New Order: {{OrderCode}}', N'Order {{OrderCode}} ({{TotalAmount}} VND) needs to be processed.'),
-    ('STAFF_CANCEL_REQUEST', 'SYSTEM', N'Cancellation Request for Order {{OrderCode}}', N'Customer {{CustomerName}} has submitted a cancellation request for order {{OrderCode}}. Reason: {{Reason}}.'),
-    ('STAFF_REFUND_REQUEST', 'SYSTEM', N'Refund Request for Order {{OrderCode}}', N'Customer {{CustomerName}} has requested a refund for order {{OrderCode}}.'),
-    ('STAFF_REVIEW_MODERATION', 'SYSTEM', N'New Review Pending Moderation', N'A new {{Rating}}-star review for {{ProductName}} is awaiting your moderation.'),
-    ('STAFF_LOW_RATING', 'SYSTEM', N'Low Rating Alert', N'{{ProductName}} has just received a {{Rating}}-star review. Please check and take action.'),
-    ('STAFF_SHIFT_STARTED', 'SYSTEM', N'Shift {{ShiftName}} Has Started', N'Your shift {{ShiftName}} has started. Have a productive shift!'),
+    INSERT INTO @Tpl VALUES
+    ('STAFF_NEW_ORDER',         'SYSTEM', N'New order received: {{OrderCode}}',
+     N'The system registered a new order {{OrderCode}} worth {{TotalAmount}} VND. Please process it.'),
+    ('STAFF_CANCEL_REQUEST',    'SYSTEM', N'Cancellation request for {{OrderCode}}',
+     N'Customer {{CustomerName}} has requested to cancel order {{OrderCode}}. Reason: {{Reason}}.'),
+    ('STAFF_REFUND_REQUEST',    'SYSTEM', N'Refund request for {{OrderCode}}',
+     N'Customer {{CustomerName}} requested a refund for order {{OrderCode}}.'),
+    ('STAFF_REVIEW_MODERATION', 'SYSTEM', N'Approve new review',
+     N'There is a new {{Rating}}-star review for product {{ProductName}} that requires moderation.'),
+    ('STAFF_LOW_RATING',        'SYSTEM', N'Low rating warning',
+     N'Product {{ProductName}} just received a {{Rating}}-star review. Please check and resolve.'),
+    ('STAFF_SHIFT_STARTED',     'SYSTEM', N'Shift {{ShiftName}} started',
+     N'Your work shift {{ShiftName}} has started. Have a great shift!');
 
     -- Merchandise Notifications
-    ('MERCH_READY_TO_PACK', 'SYSTEM', N'Order Ready for Packing', N'Order {{OrderCode}} is ready to be packed.'),
-    ('MERCH_PICKED_UP', 'SYSTEM', N'Parcel Picked Up by Shipper', N'The shipper has successfully picked up the parcel for order {{OrderCode}}.'),
-    ('MERCH_RETURNED', 'SYSTEM', N'Return Received at Merchandise', N'Order {{OrderCode}} has been returned to the Merchandise.'),
-    ('MERCH_LOW_QUANTITY', 'SYSTEM', N'Low Product Quantity', N'{{ProductName}} has only {{Quantity}} units remaining.'),
-    ('MERCH_UNAVAILABLE', 'SYSTEM', N'Product Unavailable', N'{{ProductName}} is no longer available in the Merchandise.'),
+    INSERT INTO @Tpl VALUES
+    ('MERCH_READY_TO_PACK', 'SYSTEM', N'Order ready for packing',
+     N'Order {{OrderCode}} is ready to be packed.'),
+    ('MERCH_PICKED_UP',     'SYSTEM', N'Package picked up by courier',
+     N'The courier has successfully picked up the package for order {{OrderCode}}.'),
+    ('MERCH_RETURNED',      'SYSTEM', N'Package returned to shop',
+     N'Order {{OrderCode}} has been returned to the shop.'),
+    ('MERCH_LOW_STOCK',     'SYSTEM', N'Low stock warning',
+     N'Product {{ProductName}} has only {{Quantity}} units left. Restocking is needed.'),
+    ('MERCH_OUT_OF_STOCK',  'SYSTEM', N'Out of stock warning',
+     N'Product {{ProductName}} is completely out of stock.');
 
     -- Admin Notifications
-    ('ADMIN_PAYMENT_ERROR', 'SYSTEM', N'Payment Gateway Error', N'Payment gateway {{GatewayName}} reported an error: {{ErrorMessage}}.'),
-    ('ADMIN_JOB_FAILED', 'SYSTEM', N'Background Job Failed', N'Background Job {{JobName}} has failed. Please check the logs.'),
-    ('ADMIN_OUTBOX_STUCK', 'SYSTEM', N'Outbox Event Stuck', N'Outbox event {{EventType}} ({{EventId}}) has reached the retry limit. Please check the logs.'),
-    ('ADMIN_SHIPPING_ERROR', 'SYSTEM', N'Shipping Sync Error', N'Error syncing shipping status for order {{OrderCode}}: {{ErrorMessage}}.'),
-    ('ADMIN_DAMAGE_LOST', 'SYSTEM', N'Damaged or Lost Shipment', N'Order {{OrderCode}} has been reported as damaged or lost during delivery.'),
-    ('ADMIN_BLOG_PENDING', 'SYSTEM', N'Blog Post Pending Approval: {{BlogTitle}}', N'The post {{BlogTitle}} has been submitted and is awaiting your approval.'),
-    ('ADMIN_ORDER_QUEUED', 'SYSTEM', N'Order {{OrderCode}} Awaiting Assignment', N'Order {{OrderCode}} has not been assigned due to: {{Reason}}. Please handle manually.'),
-    ('ADMIN_SHIFT_ENDED_PENDING', 'SYSTEM', N'Shift {{ShiftName}} Ended with Pending Orders', N'Shift {{ShiftName}} (Staff #{{AccountId}}) has ended with {{CurrentLoad}} orders still in progress.'),
+    INSERT INTO @Tpl VALUES
+    ('ADMIN_PAYMENT_ERROR',    'SYSTEM', N'Payment gateway error',
+     N'Payment gateway {{GatewayName}} reported error: {{ErrorMessage}}.'),
+    ('ADMIN_JOB_FAILED',       'SYSTEM', N'Background job failed',
+     N'Background Job {{JobName}} failed. Please check the logs.'),
+    ('ADMIN_OUTBOX_STUCK',     'SYSTEM', N'Outbox event stuck',
+     N'Outbox event {{EventType}} ({{EventId}}) has reached retry limits. Please check logs.'),
+    ('ADMIN_SHIPPING_ERROR',   'SYSTEM', N'Shipping sync error',
+     N'Error synchronizing shipping status for order {{OrderCode}}: {{ErrorMessage}}.'),
+    ('ADMIN_DAMAGE_LOST',      'SYSTEM', N'Items damaged/lost',
+     N'Order {{OrderCode}} reported as damaged or lost during delivery.'),
+    ('ADMIN_RETURN_FAIL',      'SYSTEM', N'GHN return failed',
+     N'Order {{OrderCode}} (GHN: {{ProviderOrderCode}}) reported return_fail. Please process manually.'),
+    ('ADMIN_BLOG_PENDING',     'SYSTEM', N'Blog pending approval: {{BlogTitle}}',
+     N'Blog post {{BlogTitle}} was submitted and is waiting for your approval.'),
+    ('ADMIN_ORDER_QUEUED',     'SYSTEM', N'Order {{OrderCode}} pending assignment',
+     N'Order {{OrderCode}} is pending assignment due to: {{Reason}}.'),
+    ('ADMIN_SHIFT_ENDED_PENDING', 'SYSTEM', N'Shift ended with pending orders',
+     N'Shift {{ShiftName}} (staff #{{AccountId}}) ended with {{CurrentLoad}} orders still pending.'),
+    ('ADMIN_SHIFT_FULL',       'SYSTEM', N'Shift capacity reached',
+     N'One or both roles in shift {{ShiftName}} reached order capacity on {{WorkDate}}. Please manage manually.');
 
-    -- Admin / Marketing
-    ('FLASH_SALE_STARTED', 'ADMIN', N'⚡ {{PromotionName}} Has Started!', N'Flash sale runs from {{StartDate}} to {{EndDate}}. Shop now!'),
-    ('VOUCHER_NEW', 'ADMIN', N'🎁 You''ve Received Voucher {{VoucherCode}}', N'Code {{VoucherCode}} gives {{DiscountValue}} off ({{DiscountType}}). Expires: {{ExpiryDate}}!'),
-    ('VOUCHER_EXPIRING', 'ADMIN', N'⏰ Voucher {{VoucherCode}} Is Expiring Soon!', N'Don''t miss out on code {{VoucherCode}} ({{DiscountValue}} off). It expires on {{ExpiryDate}}. Use it now!'),
-    ('BIRTHDAY_CUSTOMER', 'SYSTEM', N'🎂 Happy Birthday, {{CustomerName}}!', N'ToyHouse has a special gift just for you!'),
-    ('BIRTHDAY_CHILD', 'SYSTEM', N'🎂 Happy Birthday, {{ChildName}}!', N'ToyStore wishes {{ChildName}} health and joy. Pick out their favorite toy today!'),
+    /* ─── ADMIN GROUP: marketing, togglable ─────────────────────── */
+    INSERT INTO @Tpl VALUES
+    ('FLASH_SALE_STARTED', 'ADMIN', N'{{PromotionName}} Started!',
+     N'The flash sale {{PromotionName}} has officially started from {{StartDate}} to {{EndDate}}. Grab the deals now!'),
+    ('VOUCHER_NEW',        'ADMIN', N'Voucher for you: {{VoucherCode}}',
+     N'You received a voucher {{VoucherCode}} for a discount of {{DiscountValue}} ({{DiscountType}}). Apply it before it expires on {{ExpiryDate}}!'),
+    ('VOUCHER_EXPIRING',   'ADMIN', N'Voucher {{VoucherCode}} is expiring soon!',
+     N'Don''t miss out on voucher {{VoucherCode}} (Discount of {{DiscountValue}}). It expires on {{ExpiryDate}}. Use it now!'),
+    ('BIRTHDAY_CUSTOMER',  'ADMIN', N'Happy Birthday, {{CustomerName}}!',
+     N'Happy birthday to you! ToyStore has sent you a special gift. Please check your Voucher wallet!'),
+    ('BIRTHDAY_CHILD',     'ADMIN', N'Happy Birthday, {{ChildName}}!',
+     N'Happy birthday to {{ChildName}}! ToyStore wishes them healthy growth and joy. Parents, pick a favorite toy for them!');
 
-    ('BLOG_CAMPAIGN_NEW_POST', 'ADMIN', N'📝 New Post: {{BlogTitle}}', N'A new blog post "{{BlogTitle}}" has just been published. Read it now and share your thoughts!'),
-    ('BLOG_CAMPAIGN_FEATURED', 'ADMIN', N'⭐ Featured This Week: {{BlogTitle}}', N'"{{BlogTitle}}" has been selected as our featured post this week. Don''t miss it!'),
-    ('BLOG_CAMPAIGN_WEEKLY_DIGEST', 'ADMIN', N'📰 ToyHouse Weekly Digest', N'This week''s highlights are now available. Tap to explore!'),
-    ('BLOG_CAMPAIGN_TOPIC_ALERT', 'ADMIN', N'🔔 New Posts in "{{CategoryName}}"', N'There are new posts in the "{{CategoryName}}" category you follow. Check them out!');
-
-    -- Insert only templates that do not already exist
-    INSERT INTO [Notification].[Templates]
-    ([TemplateCode],[UsageScope],[TitleTemplate],[MessageTemplate],[IsActive],[IsDeleted],[CreatedAt])
-SELECT t.TemplateCode, t.UsageScope, t.TitleTemplate, t.MessageTemplate, 1, 0, GETDATE()
-FROM @Tpl t
-WHERE NOT EXISTS (
-        SELECT 1
-FROM [Notification].[Templates] db
-WHERE db.TemplateCode = t.TemplateCode
-    );
-
-    -- Re-activate any templates that were soft-deactivated and Update Message if they exist
-    UPDATE db
-    SET 
-        db.IsActive = 1, 
-        db.IsDeleted = 0,
-        db.TitleTemplate = t.TitleTemplate,
-        db.MessageTemplate = t.MessageTemplate,
-        db.UpdatedAt = GETDATE()
-    FROM [Notification].[Templates] db
-    JOIN @Tpl t ON t.TemplateCode = db.TemplateCode;
+    /* ─── MERGE idempotent insertion & update ─────────────────────── */
+    MERGE [Notification].[Templates] AS target
+    USING @Tpl AS source
+    ON (target.TemplateCode = source.TemplateCode)
+    WHEN MATCHED AND (target.IsDeleted = 0) THEN
+        UPDATE SET 
+            target.UsageScope = source.UsageScope,
+            target.TitleTemplate = source.TitleTemplate,
+            target.MessageTemplate = source.MessageTemplate,
+            target.UpdatedAt = GETUTCDATE()
+    WHEN NOT MATCHED THEN
+        INSERT (TemplateCode, UsageScope, TitleTemplate, MessageTemplate, IsActive, IsDeleted, CreatedAt)
+        VALUES (source.TemplateCode, source.UsageScope, source.TitleTemplate, source.MessageTemplate, 1, 0, GETUTCDATE());
 
     COMMIT TRAN;
-    PRINT N'✅ Notification templates: OK';
+    PRINT N'✅ Notification templates fully unified and translated to English.';
 END TRY
 BEGIN CATCH
-    ROLLBACK TRAN;
+    IF @@TRANCOUNT > 0 ROLLBACK TRAN;
     PRINT N'❌ Error: ' + ERROR_MESSAGE();
     THROW;
 END CATCH
@@ -2214,8 +2259,8 @@ SELECT
     'ORDER_DELIVERED',
     'CUSTOMER',
     'ORDER',
-    N'Review Your Products and Earn Reward Points!',
-    N'Order ' + o.OrderCode + N' has been successfully delivered. Leave a review now to earn 50 coins!',
+    N'Review Your Products',
+    N'Order ' + o.OrderCode + N' has been successfully delivered.',
     '{"orderId":' + CAST(o.OrderID AS VARCHAR) + ',"orderCode":"' + o.OrderCode + '"}',
     'Unread',
     'DLV-RV-' + o.OrderCode,
