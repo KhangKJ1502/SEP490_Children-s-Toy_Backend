@@ -16,13 +16,11 @@ namespace ToyStore.Infrastructure.Repositories;
 public class RefundRepository : IRefundRepository
 {
     private readonly SEP490ToyStoreContext _context;
-    private readonly DbSet<OrderRefund> _dbSet;
     private readonly ITimeProvider _timeProvider;
 
     public RefundRepository(SEP490ToyStoreContext context, ITimeProvider timeProvider)
     {
         _context = context;
-        _dbSet = context.Set<OrderRefund>();
         _timeProvider = timeProvider;
     }
 
@@ -60,19 +58,29 @@ public class RefundRepository : IRefundRepository
         return reason;
     }
 
-    public async Task<PaginatedResponse<RefundListDto>> GetRefundsAsync(RefundFilterDto filter, CancellationToken cancellationToken = default)
+    public async Task<PaginatedResponse<RefundListDto>> GetRefundsAsync(int customerId, RefundFilterDto filter, CancellationToken cancellationToken = default)
     {
-        var query = _dbSet
+        var query = _context.OrderRefunds
             .Include(r => r.Status)
             .Include(r => r.Order).ThenInclude(o => o.Status)
             .Include(r => r.RefundReason)
             .Include(r => r.Customer)
             .Include(r => r.RequestedByNavigation)
-            .Where(r => !r.IsDeleted)
+            .Where(r => !r.IsDeleted && r.CustomerId == customerId)
             .AsNoTracking();
 
         if (!string.IsNullOrEmpty(filter.RefundStatus))
-            query = query.Where(r => r.Status.StatusName == filter.RefundStatus);
+        {
+            var statuses = filter.RefundStatus.Split(',').Select(s => s.Trim()).ToList();
+            if (statuses.Count > 1)
+            {
+                query = query.Where(r => statuses.Contains(r.Status.StatusName));
+            }
+            else
+            {
+                query = query.Where(r => r.Status.StatusName == filter.RefundStatus);
+            }
+        }
 
         if (filter.OrderId.HasValue)
             query = query.Where(r => r.OrderId == filter.OrderId.Value);
@@ -118,7 +126,7 @@ public class RefundRepository : IRefundRepository
 
     public async Task<PaginatedResponse<RefundListDto>> GetAdminRefundsAsync(AdminRefundFilterDto filter, CancellationToken cancellationToken = default)
     {
-        var query = _dbSet
+        var query = _context.OrderRefunds
             .Include(r => r.Status)
             .Include(r => r.Order).ThenInclude(o => o.Status)
             .Include(r => r.RefundReason)
@@ -248,7 +256,7 @@ public class RefundRepository : IRefundRepository
 
     public async Task<OrderRefund?> GetByIdAsync(int id, CancellationToken cancellationToken = default)
     {
-        return await _dbSet
+        return await _context.OrderRefunds
             .Include(r => r.Status)
             .Include(r => r.Order).ThenInclude(o => o.Status)
             .Include(r => r.Order).ThenInclude(o => o.AssignedToStaff)
@@ -268,7 +276,7 @@ public class RefundRepository : IRefundRepository
 
     public async Task<OrderRefund?> GetByOrderIdAsync(int orderId, CancellationToken cancellationToken = default)
     {
-        return await _dbSet
+        return await _context.OrderRefunds
             .Include(r => r.Status)
             .Include(r => r.Order).ThenInclude(o => o.Status)
             .Include(r => r.Order).ThenInclude(o => o.ShippingProviderTransactions).ThenInclude(t => t.ShippingStatusHistories)
@@ -286,7 +294,7 @@ public class RefundRepository : IRefundRepository
 
     public async Task<OrderRefund?> GetByShippingOrderCodeAsync(string code, CancellationToken cancellationToken = default)
     {
-        return await _dbSet
+        return await _context.OrderRefunds
             .Include(r => r.Status)
             .Include(r => r.Order).ThenInclude(o => o.Status)
             .Include(r => r.Order).ThenInclude(o => o.ShippingProviderTransactions).ThenInclude(t => t.ShippingStatusHistories)
@@ -304,7 +312,7 @@ public class RefundRepository : IRefundRepository
 
     public async Task<OrderRefund?> GetByShippingOrReturnOrderCodeAsync(string code, CancellationToken cancellationToken = default)
     {
-        return await _dbSet
+        return await _context.OrderRefunds
             .Include(r => r.Status)
             .Include(r => r.Order).ThenInclude(o => o.Status)
             .Include(r => r.Order).ThenInclude(o => o.ShippingProviderTransactions).ThenInclude(t => t.ShippingStatusHistories)
@@ -322,12 +330,12 @@ public class RefundRepository : IRefundRepository
 
     public async Task<OrderRefund> AddAsync(OrderRefund refund, CancellationToken cancellationToken = default)
     {
-        var result = await _dbSet.AddAsync(refund, cancellationToken);
+        var result = await _context.OrderRefunds.AddAsync(refund, cancellationToken);
         return result.Entity;
     }
 
     public void Update(OrderRefund refund)
     {
-        _dbSet.Update(refund);
+        _context.OrderRefunds.Update(refund);
     }
 }
