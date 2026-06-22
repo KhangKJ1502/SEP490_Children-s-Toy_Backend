@@ -189,6 +189,8 @@ public class ProfileService : IProfileService
         var normalizedAccountName = dto.AccountName != null
             ? NormalizeNullable(dto.AccountName)
             : existing.AccountName;
+        var nextDob = dto.Dob ?? existing.Dob;
+        var nextSexId = dto.SexId ?? existing.SexId;
 
         if (dto.PhoneNumber != null && normalizedPhoneNumber != null)
         {
@@ -215,8 +217,8 @@ public class ProfileService : IProfileService
                 normalizedAccountName,
                 normalizedImageUrl,
                 normalizedPhoneNumber,
-                dto.Dob,
-                dto.SexId,
+                nextDob,
+                nextSexId,
                 cancellationToken);
 
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
