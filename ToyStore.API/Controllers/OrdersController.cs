@@ -132,11 +132,6 @@ public class OrdersController : ControllerBase
 public class CancelOrderCustomerRequestDto
 {
     public string? Reason { get; set; }
-
-    /// <summary>
-    /// true  = khôi phục giỏ hàng sau khi hủy (dùng cho luồng Payment QR).
-    /// false = KHÔNG khôi phục giỏ hàng (dùng cho Order Detail / Order History). Mặc định.
-    /// </summary>
     public bool RestoreCart { get; set; } = false;
 }
 
