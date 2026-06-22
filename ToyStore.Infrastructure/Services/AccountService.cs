@@ -234,6 +234,7 @@ public class AccountService : IAccountService
                 dto.AccountName,
                 existing.ImageUrl,
                 dto.PhoneNumber,
+                existing.Dob,
                 existing.SexId,
                 cancellationToken);
 

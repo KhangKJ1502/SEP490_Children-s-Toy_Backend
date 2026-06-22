@@ -8,5 +8,7 @@ public class UpdateProfileDto
 
     public string? PhoneNumber { get; set; }
 
+    public DateTime? Dob { get; set; }
+
     public byte? SexId { get; set; }
 }

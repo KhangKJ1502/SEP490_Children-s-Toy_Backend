@@ -23,7 +23,8 @@ public class AccountProfile : Profile
             .ForMember(dest => dest.RoleName, opt => opt.MapFrom(src => src.Role.RoleName));
 
         CreateMap<Account, ProfileDto>()
-            .ForMember(dest => dest.RoleName, opt => opt.MapFrom(src => src.Role.RoleName));
+            .ForMember(dest => dest.RoleName, opt => opt.MapFrom(src => src.Role.RoleName))
+            .ForMember(dest => dest.SexName, opt => opt.MapFrom(src => src.Sex != null ? src.Sex.SexName : null));
 
         CreateMap<Account, CustomerProfileDto>()
             .ForMember(dest => dest.SexName, opt => opt.MapFrom(src => src.Sex != null ? src.Sex.SexName : null))

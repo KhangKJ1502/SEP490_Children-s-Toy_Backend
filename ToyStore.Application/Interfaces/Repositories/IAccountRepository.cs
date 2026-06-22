@@ -97,13 +97,14 @@ public interface IAccountRepository
     Task<Account?> GetByIdForProfileAsync(int accountId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Cap nhat thong tin Profile (ImageUrl, PhoneNumber).
+    /// Cap nhat thong tin Profile (ImageUrl, PhoneNumber, DOB, Sex).
     /// </summary>
     Task<Account> UpdateProfileAsync(
         int accountId,
         string? accountName,
         string? imageUrl,
         string? phoneNumber,
+        DateTime? dob,
         byte? sexId,
         CancellationToken cancellationToken = default);
 
