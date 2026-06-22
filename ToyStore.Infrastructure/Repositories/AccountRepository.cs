@@ -259,7 +259,6 @@ public class AccountRepository : IAccountRepository
         string? accountName,
         string? imageUrl,
         string? phoneNumber,
-        DateTime? dob,
         byte? sexId,
         CancellationToken cancellationToken = default)
     {
@@ -271,7 +270,6 @@ public class AccountRepository : IAccountRepository
         entity.AccountName = accountName ?? entity.AccountName;
         entity.ImageUrl = imageUrl;
         entity.PhoneNumber = phoneNumber;
-        entity.Dob = dob;
         entity.SexId = sexId;
         entity.UpdatedAt = DateTime.UtcNow;
 

@@ -215,7 +215,6 @@ public class ProfileService : IProfileService
                 normalizedAccountName,
                 normalizedImageUrl,
                 normalizedPhoneNumber,
-                dto.Dob,
                 dto.SexId,
                 cancellationToken);
 

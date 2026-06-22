@@ -104,7 +104,6 @@ public interface IAccountRepository
         string? accountName,
         string? imageUrl,
         string? phoneNumber,
-        DateTime? dob,
         byte? sexId,
         CancellationToken cancellationToken = default);
 
