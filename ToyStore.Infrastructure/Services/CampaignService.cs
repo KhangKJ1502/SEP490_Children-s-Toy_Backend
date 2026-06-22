@@ -17,10 +17,8 @@ public class CampaignService : ICampaignService
 {
     private static readonly HashSet<string> ValidStatuses =
         ["Draft", "PendingApproval", "Approved", "Rejected", "Scheduled", "Sending", "Sent", "Cancelled", "Failed"];
-
     private static readonly HashSet<string> ValidSourceTypes = ["ADMIN", "SYSTEM"];
     private static readonly HashSet<string> ValidSortFields = ["createdat", "name", "status"];
-    // Draft: moi tao, Rejected: bi tu choi co the chinh sua va submit lai
     private static readonly HashSet<string> EditableStatuses = ["Draft", "Rejected"];
 
     private readonly IUnitOfWork _unitOfWork;
@@ -102,10 +100,17 @@ public class CampaignService : ICampaignService
             return Result<PaginatedResponse<CampaignListDto>>.Failure(
                 "VALIDATION_ERROR", "StartDate must be less than or equal to EndDate.");
 
+        DateTime? startDateUtc = query.StartDate.HasValue
+            ? _timeProvider.ToUtc(query.StartDate.Value.Date)
+            : null;
+        DateTime? endDateUtc = query.EndDate.HasValue
+            ? _timeProvider.ToUtc(query.EndDate.Value.Date.AddDays(1))
+            : null;
+
         var items = await _unitOfWork.Campaigns.GetPagedAsync(
-            query, viewerIsAdmin, viewerAccountId, cancellationToken);
+            query, startDateUtc, endDateUtc, viewerIsAdmin, viewerAccountId, cancellationToken);
         var totalCount = await _unitOfWork.Campaigns.CountAsync(
-            query, viewerIsAdmin, viewerAccountId, cancellationToken);
+            query, startDateUtc, endDateUtc, viewerIsAdmin, viewerAccountId, cancellationToken);
         var mapped = _mapper.Map<List<CampaignListDto>>(items);
         var response = new PaginatedResponse<CampaignListDto>(mapped, totalCount, query.PageNumber, query.PageSize);
 
@@ -239,7 +244,7 @@ public class CampaignService : ICampaignService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            var created = await _unitOfWork.Campaigns.CreateAsync(dto, cancellationToken);
+            var created = await _unitOfWork.Campaigns.CreateAsync(dto, _timeProvider.UtcNow, cancellationToken);
 
             await ApplyActionTargetFromResolverAsync(created, cancellationToken);
             _unitOfWork.Campaigns.Update(created);
@@ -328,7 +333,7 @@ public class CampaignService : ICampaignService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            var updated = await _unitOfWork.Campaigns.UpdateAsync(existing, dto.Targets, cancellationToken);
+            var updated = await _unitOfWork.Campaigns.UpdateAsync(existing, dto.Targets, _timeProvider.UtcNow, cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
             _logger.LogInformation(
@@ -933,7 +938,7 @@ public class CampaignService : ICampaignService
         if (!actorIsAdmin && campaign.CreatedByAccountId != actorAccountId)
             return Result.Failure("FORBIDDEN", "You are not allowed to delete this campaign.");
 
-        var deleted = await _unitOfWork.Campaigns.SoftDeleteAsync(campaignId, cancellationToken);
+        var deleted = await _unitOfWork.Campaigns.SoftDeleteAsync(campaignId, _timeProvider.UtcNow, cancellationToken);
         if (!deleted)
             return Result.Failure("BUSINESS_RULE_VIOLATION", "Campaign could not be deleted. It may have already been deleted.");
 

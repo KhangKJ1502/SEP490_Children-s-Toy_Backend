@@ -74,7 +74,7 @@ public class AccountsController : ControllerBase
     /// Tạo mới account Staff hoặc Merchandiser.
     /// </summary>
     [HttpPost]
-    // [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<AccountDto>> CreateAccount(
         [FromBody] CreateAccountDto dto,
         CancellationToken cancellationToken = default)
@@ -84,6 +84,7 @@ public class AccountsController : ControllerBase
     }
 
     [HttpPut("{accountId:int}")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<AccountDto>> UpdateAccountInfo(
         [FromRoute] int accountId,
         [FromBody] UpdateAccountInfoDto dto,

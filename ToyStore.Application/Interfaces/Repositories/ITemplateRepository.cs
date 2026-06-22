@@ -67,14 +67,16 @@ public interface ITemplateRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Cap nhat Template.
+    /// Cap nhat hoac xoa mem Template.
+    /// Tra ve null neu khong tim thay.
     /// </summary>
-    Task<Template> UpdateAsync(
+    Task<Template?> SaveAsync(
         short templateId,
-        string templateCode,
-        string titleTemplate,
-        string messageTemplate,
-        bool isActive,
+        bool isDeleted,
+        string? templateCode,
+        string? titleTemplate,
+        string? messageTemplate,
+        bool? isActive,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -82,9 +84,4 @@ public interface ITemplateRepository
     /// Dung boi INotificationTemplateRenderer de render noi dung thong bao.
     /// </summary>
     Task<Template?> GetActiveByCodeAsync(string templateCode, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Xoa mem Template (IsDeleted = true). Tra ve false neu khong tim thay.
-    /// </summary>
-    Task<bool> SoftDeleteAsync(short templateId, CancellationToken cancellationToken = default);
 }

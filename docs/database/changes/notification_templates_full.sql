@@ -1,11 +1,11 @@
 /* ══════════════════════════════════════════════════════════════
-   NOTIFICATION TEMPLATES — Full idempotent seed
-   Chạy script này để đảm bảo toàn bộ TemplateCode cần thiết
-   đã tồn tại trong [Notification].[Templates].
+   NOTIFICATION TEMPLATES — Full idempotent seed & update
+   Run this script to ensure all required TemplateCodes are 
+   properly populated and updated to English in [Notification].[Templates].
 
-   An toàn để chạy lại nhiều lần — dùng NOT EXISTS guard.
-   Chạy script này TRƯỚC khi khởi động ứng dụng sau refactor.
-══════════════════════════════════════════════════════════════ */
+   Safe to re-run multiple times (uses MERGE statement).
+   Run this script BEFORE launching the application.
+   ══════════════════════════════════════════════════════════════ */
 BEGIN TRY
     BEGIN TRAN;
 
@@ -16,9 +16,9 @@ BEGIN TRY
         MessageTemplate NVARCHAR(500) NOT NULL
     );
 
-    /* ─── NHÓM SYSTEM: tự động, không tắt/xóa ─────────────────── */
+    /* ─── SYSTEM GROUP: automatic, cannot be disabled/deleted ─── */
 
-    -- Orders — customer
+    -- Orders — customer & staff
     INSERT INTO @Tpl VALUES
     ('ORDER_PLACED',          'SYSTEM', N'Order placed successfully',
      N'Your order {{OrderCode}} ({{TotalAmount}} VND) has been received.'),
@@ -28,12 +28,16 @@ BEGIN TRY
      N'Your order {{OrderCode}} is being packed by our team.'),
     ('ORDER_SHIPPING',        'SYSTEM', N'Order {{OrderCode}} is on the way',
      N'Order {{OrderCode}} has been handed to courier {{ShipperName}}. Please keep your phone available.'),
-    ('ORDER_DELIVERED',       'SYSTEM', N'Delivery successful',
-     N'Order {{OrderCode}} was delivered successfully. Leave a review to unlock rewards!'),
+    ('ORDER_DELIVERED', 'SYSTEM', N'Delivery successful',
+     N'Order {{OrderCode}} has been delivered successfully. We would love to hear your feedback.'),
     ('ORDER_CANCELLED',       'SYSTEM', N'Order {{OrderCode}} cancelled',
      N'Your order {{OrderCode}} was cancelled. Reason: {{CancelReason}}.'),
-    ('ORDER_DELIVERY_FAILED', 'SYSTEM', N'Delivery failed',
-     N'Delivery for order {{OrderCode}} failed: {{FailReason}}. Please contact support.'),
+    ('ORDER_DELIVERY_FAILED', 'SYSTEM', N'Delivery unsuccessful',
+     N'The courier could not reach you. Another delivery attempt will be made. Please keep your phone nearby.'),
+    ('ORDER_RETURN_REFUND_PENDING', 'SYSTEM', N'Returned to shop',
+     N'Order {{OrderCode}} has returned to our shop. We are processing your refund.'),
+    ('ORDER_CANCELLED_DELIVERY_FAIL', 'SYSTEM', N'Order cancelled',
+     N'Order {{OrderCode}} was cancelled due to failed delivery.'),
     ('ORDER_ASSIGNED',        'SYSTEM', N'Order Assigned: {{OrderCode}}',
      N'Order {{OrderCode}} from {{CustomerName}} has been assigned to you. Total: {{TotalAmount}} VND. Please process it during your current shift.');
 
@@ -47,6 +51,10 @@ BEGIN TRY
      N'{{Amount}} VND was added to your wallet. Current balance: {{Balance}} VND.'),
     ('WALLET_REFUND',    'SYSTEM', N'Refund to wallet',
      N'{{Amount}} VND was refunded to your wallet for order {{OrderCode}}.'),
+    ('WALLET_WITHDRAWAL_SUCCESS', 'SYSTEM', N'Withdrawal successful',
+     N'{{Amount}} VND has been transferred to {{BankName}} - {{AccountNumber}} successfully.'),
+    ('WALLET_WITHDRAWAL_FAILED',  'SYSTEM', N'Withdrawal failed',
+     N'Withdrawal of {{Amount}} VND failed. Reason: {{FailReason}}. Your wallet balance was not changed.'),
     ('REFUND_APPROVED',  'SYSTEM', N'Refund approved',
      N'Your refund request for order {{OrderCode}} was approved. {{Amount}} VND will be returned to your wallet.'),
     ('REFUND_REJECTED',  'SYSTEM', N'Refund rejected',
@@ -54,99 +62,104 @@ BEGIN TRY
     ('REFUND_COMPLETED', 'SYSTEM', N'Refund completed',
      N'{{Amount}} VND from order {{OrderCode}} has been refunded to your wallet.');
 
-    -- Sản phẩm & Tồn kho
+    -- Products & Stock
     INSERT INTO @Tpl VALUES
-    ('PRODUCT_BACK_IN_STOCK', 'SYSTEM', N'Sản phẩm {{ProductName}} đã có hàng',
-     N'Sản phẩm {{ProductName}} bạn quan tâm đã có hàng trở lại với giá {{Price}} đ. Mua ngay kẻo hết!'),
-    ('WISHLIST_PRICE_DROP',   'SYSTEM', N'Giảm giá sản phẩm {{ProductName}}',
-     N'Sản phẩm {{ProductName}} trong wishlist của bạn đang giảm giá chỉ còn {{Price}} đ.');
+    ('PRODUCT_BACK_IN_STOCK', 'SYSTEM', N'Product back in stock: {{ProductName}}',
+     N'The product {{ProductName}} you are interested in is back in stock at {{Price}} VND. Get it now before it runs out!'),
+    ('WISHLIST_PRICE_DROP',   'SYSTEM', N'Price drop on {{ProductName}}',
+     N'{{ProductName}} in your wishlist is now on sale for only {{Price}} VND.');
 
-    -- Review & Blog
+    -- Reviews & Blogs
     INSERT INTO @Tpl VALUES
-    ('REVIEW_STAFF_REPLIED', 'SYSTEM', N'Phản hồi đánh giá sản phẩm {{ProductName}}',
-     N'Nhân viên CSKH vừa trả lời đánh giá của bạn cho sản phẩm {{ProductName}}.'),
+    ('REVIEW_STAFF_REPLIED', 'SYSTEM', N'Reply to review on {{ProductName}}',
+     N'A customer service representative has replied to your review of {{ProductName}}.'),
     ('BLOG_COMMENT_REPLIED', 'SYSTEM', N'Blog comment reply: {{BlogTitle}}',
      N'Someone replied to your comment on {{BlogTitle}}.');
 
-    -- Thông báo cho Staff
+    -- Staff Notifications
     INSERT INTO @Tpl VALUES
-    ('STAFF_NEW_ORDER',         'SYSTEM', N'Có đơn hàng mới: {{OrderCode}}',
-     N'Hệ thống vừa ghi nhận đơn hàng mới {{OrderCode}} trị giá {{TotalAmount}} đ. Vui lòng xử lý.'),
-    ('STAFF_CANCEL_REQUEST',    'SYSTEM', N'Yêu cầu hủy đơn {{OrderCode}}',
-     N'Khách hàng {{CustomerName}} vừa gửi yêu cầu hủy đơn hàng {{OrderCode}}. Lý do: {{Reason}}.'),
-    ('STAFF_REFUND_REQUEST',    'SYSTEM', N'Yêu cầu hoàn tiền {{OrderCode}}',
-     N'Khách hàng {{CustomerName}} yêu cầu hoàn tiền cho đơn hàng {{OrderCode}}.'),
-    ('STAFF_REVIEW_MODERATION', 'SYSTEM', N'Duyệt đánh giá mới',
-     N'Có đánh giá {{Rating}} sao mới cho sản phẩm {{ProductName}} cần bạn kiểm duyệt.'),
-    ('STAFF_LOW_RATING',        'SYSTEM', N'Cảnh báo đánh giá thấp',
-     N'Sản phẩm {{ProductName}} vừa nhận một đánh giá {{Rating}} sao. Vui lòng kiểm tra và xử lý.'),
-    ('STAFF_SHIFT_STARTED',     'SYSTEM', N'Ca làm việc {{ShiftName}} đã bắt đầu',
-     N'Ca làm việc {{ShiftName}} của bạn đã bắt đầu. Chúc bạn làm việc hiệu quả!');
+    ('STAFF_NEW_ORDER',         'SYSTEM', N'New order received: {{OrderCode}}',
+     N'The system registered a new order {{OrderCode}} worth {{TotalAmount}} VND. Please process it.'),
+    ('STAFF_CANCEL_REQUEST',    'SYSTEM', N'Cancellation request for {{OrderCode}}',
+     N'Customer {{CustomerName}} has requested to cancel order {{OrderCode}}. Reason: {{Reason}}.'),
+    ('STAFF_REFUND_REQUEST',    'SYSTEM', N'Refund request for {{OrderCode}}',
+     N'Customer {{CustomerName}} requested a refund for order {{OrderCode}}.'),
+    ('STAFF_REVIEW_MODERATION', 'SYSTEM', N'Approve new review',
+     N'There is a new {{Rating}}-star review for product {{ProductName}} that requires moderation.'),
+    ('STAFF_LOW_RATING',        'SYSTEM', N'Low rating warning',
+     N'Product {{ProductName}} just received a {{Rating}}-star review. Please check and resolve.'),
+    ('STAFF_SHIFT_STARTED',     'SYSTEM', N'Shift {{ShiftName}} started',
+     N'Your work shift {{ShiftName}} has started. Have a great shift!');
 
-    -- Thông báo cho Merchandise
+    -- Merchandise Notifications
     INSERT INTO @Tpl VALUES
-    ('MERCH_READY_TO_PACK', 'SYSTEM', N'Có đơn hàng chờ đóng gói',
-     N'Đơn hàng {{OrderCode}} đã sẵn sàng để đóng gói.'),
-    ('MERCH_PICKED_UP',     'SYSTEM', N'Bưu tá đã lấy hàng',
-     N'Bưu tá đã lấy thành công kiện hàng của đơn {{OrderCode}}.'),
-    ('MERCH_RETURNED',      'SYSTEM', N'Hàng hoàn về kho',
-     N'Đơn hàng {{OrderCode}} đã bị hoàn trả về kho.'),
-    ('MERCH_LOW_STOCK',     'SYSTEM', N'Cảnh báo sắp hết hàng',
-     N'Sản phẩm {{ProductName}} trong kho chỉ còn {{Quantity}} chiếc. Cần nhập thêm.'),
-    ('MERCH_OUT_OF_STOCK',  'SYSTEM', N'Cảnh báo hết hàng',
-     N'Sản phẩm {{ProductName}} đã hoàn toàn hết hàng trong kho.');
+    ('MERCH_READY_TO_PACK', 'SYSTEM', N'Order ready for packing',
+     N'Order {{OrderCode}} is ready to be packed.'),
+    ('MERCH_PICKED_UP',     'SYSTEM', N'Package picked up by courier',
+     N'The courier has successfully picked up the package for order {{OrderCode}}.'),
+    ('MERCH_RETURNED',      'SYSTEM', N'Package returned to shop',
+     N'Order {{OrderCode}} has been returned to the shop.'),
+    ('MERCH_LOW_STOCK',     'SYSTEM', N'Low stock warning',
+     N'Product {{ProductName}} has only {{Quantity}} units left. Restocking is needed.'),
+    ('MERCH_OUT_OF_STOCK',  'SYSTEM', N'Out of stock warning',
+     N'Product {{ProductName}} is completely out of stock.');
 
-    -- Thông báo cho Admin
+    -- Admin Notifications
     INSERT INTO @Tpl VALUES
-    ('ADMIN_PAYMENT_ERROR',    'SYSTEM', N'Lỗi cổng thanh toán',
-     N'Cổng thanh toán {{GatewayName}} báo lỗi: {{ErrorMessage}}.'),
-    ('ADMIN_JOB_FAILED',       'SYSTEM', N'Lỗi Background Job',
-     N'Background Job {{JobName}} chạy thất bại. Vui lòng kiểm tra log.'),
-    ('ADMIN_OUTBOX_STUCK',     'SYSTEM', N'Lỗi Outbox Event bị kẹt',
-     N'Outbox event {{EventType}} ({{EventId}}) đã đạt giới hạn retry. Vui lòng kiểm tra log.'),
-    ('ADMIN_SHIPPING_ERROR',   'SYSTEM', N'Lỗi đồng bộ vận chuyển',
-     N'Lỗi đồng bộ trạng thái vận chuyển cho đơn {{OrderCode}}: {{ErrorMessage}}.'),
-    ('ADMIN_DAMAGE_LOST',      'SYSTEM', N'Hàng hóa thất lạc/hư hỏng',
-     N'Ghi nhận đơn hàng {{OrderCode}} bị hư hỏng hoặc thất lạc trong quá trình vận chuyển.'),
+    ('ADMIN_PAYMENT_ERROR',    'SYSTEM', N'Payment gateway error',
+     N'Payment gateway {{GatewayName}} reported error: {{ErrorMessage}}.'),
+    ('ADMIN_JOB_FAILED',       'SYSTEM', N'Background job failed',
+     N'Background Job {{JobName}} failed. Please check the logs.'),
+    ('ADMIN_OUTBOX_STUCK',     'SYSTEM', N'Outbox event stuck',
+     N'Outbox event {{EventType}} ({{EventId}}) has reached retry limits. Please check logs.'),
+    ('ADMIN_SHIPPING_ERROR',   'SYSTEM', N'Shipping sync error',
+     N'Error synchronizing shipping status for order {{OrderCode}}: {{ErrorMessage}}.'),
+    ('ADMIN_DAMAGE_LOST',      'SYSTEM', N'Items damaged/lost',
+     N'Order {{OrderCode}} reported as damaged or lost during delivery.'),
+    ('ADMIN_RETURN_FAIL',      'SYSTEM', N'GHN return failed',
+     N'Order {{OrderCode}} (GHN: {{ProviderOrderCode}}) reported return_fail. Please process manually.'),
     ('ADMIN_BLOG_PENDING',     'SYSTEM', N'Blog pending approval: {{BlogTitle}}',
      N'Blog post {{BlogTitle}} was submitted and is waiting for your approval.'),
-    ('ADMIN_ORDER_QUEUED',     'SYSTEM', N'Đơn hàng {{OrderCode}} đang chờ phân công',
-     N'Đơn hàng {{OrderCode}} chưa được phân công do {{Reason}}. Vui lòng xử lý thủ công.'),
-    ('ADMIN_SHIFT_ENDED_PENDING', 'SYSTEM', N'Ca {{ShiftName}} kết thúc còn đơn chờ',
-     N'Ca làm việc {{ShiftName}} (nhân viên #{{AccountId}}) đã kết thúc với {{CurrentLoad}} đơn hàng đang xử lý dở.'),
-    ('ADMIN_SHIFT_FULL',       'SYSTEM', N'Ca {{ShiftName}} đã đầy đơn ngày {{WorkDate}}',
-     N'Một hoặc hai vai trò trong ca {{ShiftName}} đã đạt giới hạn số đơn xử lý đồng thời. Ngày {{WorkDate}}. Vui lòng xử lý thủ công (tăng MaxLoad hoặc phân đơn lại).');
+    ('ADMIN_ORDER_QUEUED',     'SYSTEM', N'Order {{OrderCode}} pending assignment',
+     N'Order {{OrderCode}} is pending assignment due to: {{Reason}}.'),
+    ('ADMIN_SHIFT_ENDED_PENDING', 'SYSTEM', N'Shift ended with pending orders',
+     N'Shift {{ShiftName}} (staff #{{AccountId}}) ended with {{CurrentLoad}} orders still pending.'),
+    ('ADMIN_SHIFT_FULL',       'SYSTEM', N'Shift capacity reached',
+     N'One or both roles in shift {{ShiftName}} reached order capacity on {{WorkDate}}. Please manage manually.');
 
-    /* ─── NHÓM ADMIN: marketing, bật/tắt được ──────────────────── */
+    /* ─── ADMIN GROUP: marketing, togglable ─────────────────────── */
     INSERT INTO @Tpl VALUES
-    ('FLASH_SALE_STARTED', 'ADMIN', N'⚡ {{PromotionName}} Bắt Đầu!',
-     N'Chương trình siêu sale {{PromotionName}} đã chính thức mở bán từ {{StartDate}} đến {{EndDate}}. Chớp deal ngay!'),
-    ('VOUCHER_NEW',        'ADMIN', N'🎁 Tặng bạn Voucher {{VoucherCode}}',
-     N'Bạn vừa nhận được mã {{VoucherCode}} giảm {{DiscountValue}} ({{DiscountType}}). Áp dụng ngay trước khi hết hạn vào {{ExpiryDate}}!'),
-    ('VOUCHER_EXPIRING',   'ADMIN', N'⏰ Voucher {{VoucherCode}} sắp hết hạn!',
-     N'Đừng bỏ lỡ mã {{VoucherCode}} (Giảm {{DiscountValue}}). Sẽ hết hạn vào ngày {{ExpiryDate}}. Xài ngay!'),
-    ('BIRTHDAY_CUSTOMER',  'ADMIN', N'🎂 Chúc mừng sinh nhật {{CustomerName}}!',
-     N'Chúc mừng sinh nhật bạn! ToyStore xin gửi tặng bạn một món quà đặc biệt. Vui lòng kiểm tra mục Voucher nhé!'),
-    ('BIRTHDAY_CHILD',     'ADMIN', N'🎂 Chúc mừng sinh nhật bé {{ChildName}}!',
-     N'Chúc mừng sinh nhật bé {{ChildName}}! ToyStore chúc bé mau ăn chóng lớn và luôn vui vẻ. Ba mẹ hãy chọn cho bé món đồ chơi yêu thích nhé!');
+    ('FLASH_SALE_STARTED', 'ADMIN', N'{{PromotionName}} Started!',
+     N'The flash sale {{PromotionName}} has officially started from {{StartDate}} to {{EndDate}}. Grab the deals now!'),
+    ('VOUCHER_NEW',        'ADMIN', N'Voucher for you: {{VoucherCode}}',
+     N'You received a voucher {{VoucherCode}} for a discount of {{DiscountValue}} ({{DiscountType}}). Apply it before it expires on {{ExpiryDate}}!'),
+    ('VOUCHER_EXPIRING',   'ADMIN', N'Voucher {{VoucherCode}} is expiring soon!',
+     N'Don''t miss out on voucher {{VoucherCode}} (Discount of {{DiscountValue}}). It expires on {{ExpiryDate}}. Use it now!'),
+    ('BIRTHDAY_CUSTOMER',  'ADMIN', N'Happy Birthday, {{CustomerName}}!',
+     N'Happy birthday to you! ToyStore has sent you a special gift. Please check your Voucher wallet!'),
+    ('BIRTHDAY_CHILD',     'ADMIN', N'Happy Birthday, {{ChildName}}!',
+     N'Happy birthday to {{ChildName}}! ToyStore wishes them healthy growth and joy. Parents, pick a favorite toy for them!');
 
-    /* ─── INSERT idempotent vào bảng thật ───────────────────────── */
-    INSERT INTO [Notification].[Templates]
-        ([TemplateCode], [UsageScope], [TitleTemplate], [MessageTemplate], [IsActive], [IsDeleted], [CreatedAt])
-    SELECT t.TemplateCode, t.UsageScope, t.TitleTemplate, t.MessageTemplate, 1, 0, GETDATE()
-    FROM   @Tpl t
-    WHERE  NOT EXISTS (
-        SELECT 1 FROM [Notification].[Templates] db
-        WHERE  db.TemplateCode = t.TemplateCode
-    );
+    /* ─── MERGE idempotent insertion & update ─────────────────────── */
+    MERGE [Notification].[Templates] AS target
+    USING @Tpl AS source
+    ON (target.TemplateCode = source.TemplateCode)
+    WHEN MATCHED AND (target.IsDeleted = 0) THEN
+        UPDATE SET 
+            target.UsageScope = source.UsageScope,
+            target.TitleTemplate = source.TitleTemplate,
+            target.MessageTemplate = source.MessageTemplate,
+            target.UpdatedAt = GETUTCDATE()
+    WHEN NOT MATCHED THEN
+        INSERT (TemplateCode, UsageScope, TitleTemplate, MessageTemplate, IsActive, IsDeleted, CreatedAt)
+        VALUES (source.TemplateCode, source.UsageScope, source.TitleTemplate, source.MessageTemplate, 1, 0, GETUTCDATE());
 
     COMMIT TRAN;
-    PRINT N'✅ notification_templates_full.sql: INSERT OK — '
-        + CAST(@@ROWCOUNT AS VARCHAR) + N' template mới được thêm.';
+    PRINT N'✅ Notification templates fully unified and translated to English.';
 END TRY
 BEGIN CATCH
-    ROLLBACK TRAN;
-    PRINT N'❌ Lỗi: ' + ERROR_MESSAGE();
+    IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+    PRINT N'❌ Error: ' + ERROR_MESSAGE();
     THROW;
 END CATCH
 GO

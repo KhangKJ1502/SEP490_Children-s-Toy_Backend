@@ -13,17 +13,11 @@ public record NotificationContext
     public required int RecipientAccountId { get; init; }
     public required string RecipientType { get; init; }
     public required string NotificationType { get; init; }
-    // TemplateCode phải tồn tại trong bảng [Notification].[Templates] (FK).
-    // Null chỉ chấp nhận cho campaign không có template (TitleOverride/MessageOverride).
     public string? TemplateCode { get; init; }
 
-    // Dữ liệu để render template — khớp key với placeholder trong TitleTemplate/MessageTemplate
     public IReadOnlyDictionary<string, string>? Placeholders { get; init; }
 
-    // Dùng để tạo IdempotencyKey = "{TemplateCode}:{AccountId}:{ReferenceId}:{Channel}"
     public string? ReferenceId { get; init; }
-
-    // Pre-rendered (campaign path tự render rồi truyền vào; dispatcher dùng luôn nếu != null)
     public string? Title { get; init; }
     public string? Message { get; init; }
 
