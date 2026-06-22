@@ -135,7 +135,7 @@ public class CampaignNotificationService : ICampaignNotificationService
     {
         var (title, message) = ResolveContent(campaign, vars);
         var accountIds = await ResolveTargetAccountsAsync(campaign, ct);
-        var notifType  = ResolveNotificationType(campaign.TemplateCode);
+        var notifType  = ResolveNotificationType(campaign);
 
         var sent = 0;
         foreach (var accountId in accountIds)
@@ -349,11 +349,26 @@ public class CampaignNotificationService : ICampaignNotificationService
             .Distinct()
             .ToList();
 
-    private static string ResolveNotificationType(string? templateCode)
+    private static string ResolveNotificationType(Campaign campaign)
     {
-        if (templateCode is null) return NotificationTypes.Promotion;
+        if (!string.IsNullOrWhiteSpace(campaign.ReferenceType))
+        {
+            var refType = campaign.ReferenceType.Trim().ToUpperInvariant();
+            switch (refType)
+            {
+                case "BLOG":
+                    return NotificationTypes.Blog;
+                case "PRODUCT":
+                    return NotificationTypes.Stock;
+                case "VOUCHER":
+                case "SALE":
+                    return NotificationTypes.Promotion;
+            }
+        }
 
-        return templateCode switch
+        if (campaign.TemplateCode is null) return NotificationTypes.Promotion;
+
+        return campaign.TemplateCode switch
         {
             var t when t.StartsWith("ORDER")  => NotificationTypes.Order,
             var t when t.StartsWith("WALLET") => NotificationTypes.Order,
