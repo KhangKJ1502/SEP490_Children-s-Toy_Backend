@@ -72,11 +72,26 @@ public class BlogServiceRejectAuthorizationTests
         Assert.Contains(repository.Logs, x => x.TargetType == "Comment" && x.Action == "Rejected");
     }
 
+    [Fact]
+    public async Task Staff_CanRejectCustomerBlogReviewReply()
+    {
+        var reply = CreateReply("Customer");
+        var repository = new BlogRepositoryStub(reply: reply);
+        var service = CreateService("Staff", repository);
+
+        var result = await service.UpdateBlogReplyStatusAsync(
+            reply.ReplyBlogId,
+            new UpdateBlogReviewStatusDto { ModerationStatus = "Rejected", BanReasonId = RejectReasonId });
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Rejected", reply.ModerationStatus);
+        Assert.Contains(repository.Logs, x => x.TargetType == "Reply" && x.Action == "Rejected");
+    }
+
     [Theory]
-    [InlineData("Customer")]
     [InlineData("Staff")]
     [InlineData("Admin")]
-    public async Task Staff_CannotRejectAnyBlogReviewReply(string replyAuthorRole)
+    public async Task Staff_CannotRejectAdminOrStaffBlogReviewReply(string replyAuthorRole)
     {
         var reply = CreateReply(replyAuthorRole);
         var repository = new BlogRepositoryStub(reply: reply);
@@ -88,7 +103,7 @@ public class BlogServiceRejectAuthorizationTests
 
         Assert.True(result.IsFailure);
         Assert.Equal("FORBIDDEN", result.ErrorCode);
-        Assert.Equal("You do not have permission to reject blog review replies.", result.ErrorMessage);
+        Assert.Equal("You do not have permission to reject this blog review reply.", result.ErrorMessage);
         Assert.Equal("ManualReview", reply.ModerationStatus);
         Assert.Empty(repository.Logs);
     }
