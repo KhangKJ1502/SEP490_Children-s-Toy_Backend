@@ -97,6 +97,8 @@ public interface IBlogService
 
     Task<Result<BlogReviewReplyDto>> CreateBlogReviewReplyAsync(int reviewBlogId, CreateBlogReviewReplyDto dto, CancellationToken cancellationToken = default);
 
+    Task<Result<BlogReviewReplyDto>> CreateStaffBlogReviewReplyAsync(int reviewBlogId, CreateBlogReviewReplyDto dto, CancellationToken cancellationToken = default);
+
     Task<Result<bool>> RemoveBlogReviewAsync(int reviewBlogId, CancellationToken cancellationToken = default);
 
     Task<Result<PaginatedResponse<BlogReviewDto>>> GetBlogReviewsForManagementAsync(

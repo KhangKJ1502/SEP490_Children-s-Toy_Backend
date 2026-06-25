@@ -128,7 +128,58 @@ public class BlogServiceRejectAuthorizationTests
         Assert.Empty(repository.Logs);
     }
 
-    private static BlogService CreateService(string roleName, BlogRepositoryStub repository)
+    [Theory]
+    [InlineData("Admin")]
+    [InlineData("Staff")]
+    public async Task StaffBlogReviewReply_DoesNotCallAiModeration_AndCreatesApprovedReply(string roleName)
+    {
+        var review = CreateReview("Customer");
+        review.ModerationStatus = "Approved";
+        var repository = new BlogRepositoryStub(review: review);
+        var moderationGateway = new TrackingBlogCommentModerationGateway();
+        var service = CreateService(roleName, repository, moderationGateway);
+
+        var result = await service.CreateStaffBlogReviewReplyAsync(
+            review.ReviewBlogId,
+            new CreateBlogReviewReplyDto { Comment = "Thanks for your feedback." });
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(repository.CreatedReply);
+        Assert.Equal("Approved", repository.CreatedReply.ModerationStatus);
+        Assert.Equal("Thanks for your feedback.", repository.CreatedReply.Comment);
+        Assert.Equal(0, moderationGateway.ModerateReplyCallCount);
+        Assert.Equal(0, moderationGateway.ModerateCommentCallCount);
+        Assert.Equal(0, repository.CommentPermissionCheckCount);
+        Assert.Equal(0, repository.RateLimitCheckCount);
+    }
+
+    [Fact]
+    public async Task CustomerBlogReviewReply_StillCallsAiModeration_AndCreatesPendingReply()
+    {
+        var review = CreateReview("Customer");
+        review.ModerationStatus = "Approved";
+        var repository = new BlogRepositoryStub(review: review);
+        var moderationGateway = new TrackingBlogCommentModerationGateway();
+        var service = CreateService("Customer", repository, moderationGateway);
+
+        var result = await service.CreateBlogReviewReplyAsync(
+            review.ReviewBlogId,
+            new CreateBlogReviewReplyDto { Comment = "I have a customer follow-up." });
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(repository.CreatedReply);
+        Assert.Equal("Pending", repository.CreatedReply.ModerationStatus);
+        Assert.Equal(1, moderationGateway.ModerateReplyCallCount);
+        Assert.Equal(repository.CreatedReply.ReplyBlogId, moderationGateway.LastModeratedReplyId);
+        Assert.Equal(0, moderationGateway.ModerateCommentCallCount);
+        Assert.Equal(1, repository.CommentPermissionCheckCount);
+        Assert.Equal(1, repository.RateLimitCheckCount);
+    }
+
+    private static BlogService CreateService(
+        string roleName,
+        BlogRepositoryStub repository,
+        IBlogCommentModerationGateway? moderationGateway = null)
     {
         var unitOfWork = ProxyFactory.Create<IUnitOfWork>(new Dictionary<string, Func<object?[]?, object?>>
         {
@@ -150,7 +201,7 @@ public class BlogServiceRejectAuthorizationTests
             new UpdateBlogReviewPermissionValidator(),
             NullLogger<BlogService>.Instance,
             new FixedTimeProvider(),
-            new NoopBlogCommentModerationGateway());
+            moderationGateway ?? new TrackingBlogCommentModerationGateway());
     }
 
     private static ReviewBlog CreateReview(string authorRole)
@@ -207,8 +258,19 @@ public class BlogServiceRejectAuthorizationTests
             Proxy = ProxyFactory.Create<IBlogRepository>(new Dictionary<string, Func<object?[]?, object?>>
             {
                 ["GetReviewByIdAsync"] = _ => Task.FromResult(review),
-                ["GetReplyByIdAsync"] = _ => Task.FromResult(reply),
+                ["GetReplyByIdAsync"] = _ => Task.FromResult(reply ?? CreatedReply),
                 ["GetBlogCommentBanReasonsAsync"] = _ => Task.FromResult(_banReasons),
+                ["CreateReplyAsync"] = args =>
+                {
+                    CreatedReply = (ReviewBlogReply)args![0]!;
+                    if (CreatedReply.ReplyBlogId == 0)
+                    {
+                        CreatedReply.ReplyBlogId = 500;
+                    }
+                    CreatedReply.Account ??= CreateAccount(CreatedReply.AccountId, "Customer");
+                    CreatedReply.ReviewBlog ??= review ?? CreateReview("Customer");
+                    return Task.FromResult(CreatedReply);
+                },
                 ["UpdateReviewAsync"] = args =>
                 {
                     UpdatedReview = (ReviewBlog)args![0]!;
@@ -226,15 +288,27 @@ public class BlogServiceRejectAuthorizationTests
                 },
                 ["GetLatestRejectedCommentLogAsync"] = _ => Task.FromResult<BlogCommentModerationLog?>(LatestRejectedLog()),
                 ["GetLatestRejectedReplyLogAsync"] = _ => Task.FromResult<BlogCommentModerationLog?>(LatestRejectedLog()),
-                ["CheckAndRefreshCommentLockAsync"] = _ => Task.FromResult((false, (DateTime?)null)),
+                ["CheckAndRefreshCommentLockAsync"] = _ =>
+                {
+                    CommentPermissionCheckCount++;
+                    return Task.FromResult((false, (DateTime?)null));
+                },
                 ["GetCommentPermissionStateAsync"] = _ => Task.FromResult<BlogCommentViolationCount?>(_violationState),
-                ["UpdateCommentPermissionStateAsync"] = _ => Task.CompletedTask
+                ["UpdateCommentPermissionStateAsync"] = _ => Task.CompletedTask,
+                ["IncrementRateAndCheckCommentLimitAsync"] = _ =>
+                {
+                    RateLimitCheckCount++;
+                    return Task.FromResult(false);
+                }
             });
         }
 
         public IBlogRepository Proxy { get; }
+        public ReviewBlogReply? CreatedReply { get; private set; }
         public ReviewBlog? UpdatedReview { get; private set; }
         public ReviewBlogReply? UpdatedReply { get; private set; }
+        public int CommentPermissionCheckCount { get; private set; }
+        public int RateLimitCheckCount { get; private set; }
         public List<BlogCommentModerationLog> Logs { get; } = [];
 
         private BlogCommentModerationLog LatestRejectedLog()
@@ -252,7 +326,7 @@ public class BlogServiceRejectAuthorizationTests
         public StubCurrentUserService(string roleName)
         {
             RoleName = roleName;
-            RoleId = roleName == "Admin" ? (byte)2 : (byte)3;
+            RoleId = roleName == "Admin" ? (byte)2 : roleName == "Staff" ? (byte)3 : (byte)4;
         }
 
         public int AccountId => 999;
@@ -278,10 +352,24 @@ public class BlogServiceRejectAuthorizationTests
         }
     }
 
-    private sealed class NoopBlogCommentModerationGateway : IBlogCommentModerationGateway
+    private sealed class TrackingBlogCommentModerationGateway : IBlogCommentModerationGateway
     {
-        public Task<bool> ModerateCommentAsync(int reviewBlogId, CancellationToken cancellationToken = default) => Task.FromResult(true);
-        public Task<bool> ModerateReplyAsync(int replyBlogId, CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public int ModerateCommentCallCount { get; private set; }
+        public int ModerateReplyCallCount { get; private set; }
+        public int? LastModeratedReplyId { get; private set; }
+
+        public Task<bool> ModerateCommentAsync(int reviewBlogId, CancellationToken cancellationToken = default)
+        {
+            ModerateCommentCallCount++;
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> ModerateReplyAsync(int replyBlogId, CancellationToken cancellationToken = default)
+        {
+            ModerateReplyCallCount++;
+            LastModeratedReplyId = replyBlogId;
+            return Task.FromResult(true);
+        }
     }
 
     private sealed class FixedTimeProvider : ITimeProvider

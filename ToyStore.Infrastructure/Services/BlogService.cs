@@ -607,40 +607,16 @@ public class BlogService : IBlogService
             return Result<BlogReviewReplyDto>.Unauthorized();
         }
 
-        var review = await _unitOfWork.Blogs.GetReviewByIdAsync(reviewBlogId, cancellationToken);
-        if (review == null)
-        {
-            return Result<BlogReviewReplyDto>.NotFound("Review", reviewBlogId);
-        }
-
-        if (review.IsDeleted || review.IsHidden)
-        {
-            return Result<BlogReviewReplyDto>.BusinessError("Cannot reply to hidden review.");
-        }
-
-        if (!string.Equals(review.ModerationStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase))
-        {
-            return Result<BlogReviewReplyDto>.BusinessError("Only approved review can be replied.");
-        }
-
         var comment = dto.Comment?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(comment) || comment.Length > MaxReviewCommentLength)
         {
             return Result<BlogReviewReplyDto>.Failure("VALIDATION_ERROR", "Comment is required and must be at most 500 characters.");
         }
 
-        if (dto.ParentReplyId.HasValue)
+        var validation = await ValidateBlogReviewReplyTargetAsync(reviewBlogId, dto.ParentReplyId, cancellationToken);
+        if (!validation.IsSuccess)
         {
-            var parentReply = await _unitOfWork.Blogs.GetReplyByIdAsync(dto.ParentReplyId.Value, cancellationToken);
-            if (parentReply == null || parentReply.ReviewBlogId != reviewBlogId)
-            {
-                return Result<BlogReviewReplyDto>.Failure("VALIDATION_ERROR", "Parent reply is invalid.");
-            }
-
-            if (!string.Equals(parentReply.ModerationStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase))
-            {
-                return Result<BlogReviewReplyDto>.BusinessError("Only approved reply can be replied.");
-            }
+            return validation;
         }
 
         var permission = await ValidateCommentPermissionAsync(_currentUserService.AccountId, cancellationToken);
@@ -670,6 +646,56 @@ public class BlogService : IBlogService
         {
             _logger.LogWarning("AI moderation did not accept blog reply {ReplyBlogId}", created.ReplyBlogId);
         }
+        _unitOfWork.Detach(created);
+        var loaded = await _unitOfWork.Blogs.GetReplyByIdAsync(created.ReplyBlogId, cancellationToken);
+        if (loaded == null)
+        {
+            return Result<BlogReviewReplyDto>.NotFound("Reply", created.ReplyBlogId);
+        }
+
+        return Result<BlogReviewReplyDto>.Success(await MapReplyAsync(loaded, cancellationToken));
+    }
+
+    public async Task<Result<BlogReviewReplyDto>> CreateStaffBlogReviewReplyAsync(int reviewBlogId, CreateBlogReviewReplyDto dto, CancellationToken cancellationToken = default)
+    {
+        if (_currentUserService.AccountId <= 0)
+        {
+            return Result<BlogReviewReplyDto>.Unauthorized();
+        }
+
+        if (!IsPrivilegedUser())
+        {
+            return Result<BlogReviewReplyDto>.Forbidden("Only Admin or Staff can reply to blog reviews from this endpoint.");
+        }
+
+        var comment = dto.Comment?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(comment) || comment.Length > MaxReviewCommentLength)
+        {
+            return Result<BlogReviewReplyDto>.Failure("VALIDATION_ERROR", "Comment is required and must be at most 500 characters.");
+        }
+
+        var validation = await ValidateBlogReviewReplyTargetAsync(reviewBlogId, dto.ParentReplyId, cancellationToken);
+        if (!validation.IsSuccess)
+        {
+            return validation;
+        }
+
+        var entity = new ReviewBlogReply
+        {
+            ReviewBlogId = reviewBlogId,
+            AccountId = _currentUserService.AccountId,
+            ParentReplyId = dto.ParentReplyId,
+            ReplyToAccountId = dto.ReplyToAccountId,
+            Comment = comment,
+            ModerationStatus = ModerationApproved,
+            RetryCount = 0,
+            LastRetryAt = null,
+            ManualReviewDeadline = null,
+            IsDeleted = false,
+            CreatedAt = _timeProvider.UtcNow
+        };
+
+        var created = await _unitOfWork.Blogs.CreateReplyAsync(entity, cancellationToken);
         _unitOfWork.Detach(created);
         var loaded = await _unitOfWork.Blogs.GetReplyByIdAsync(created.ReplyBlogId, cancellationToken);
         if (loaded == null)
@@ -1871,6 +1897,46 @@ public class BlogService : IBlogService
         return !isDeleted
             && !isHidden
             && string.Equals(moderationStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<Result<BlogReviewReplyDto>> ValidateBlogReviewReplyTargetAsync(
+        int reviewBlogId,
+        int? parentReplyId,
+        CancellationToken cancellationToken)
+    {
+        var review = await _unitOfWork.Blogs.GetReviewByIdAsync(reviewBlogId, cancellationToken);
+        if (review == null)
+        {
+            return Result<BlogReviewReplyDto>.NotFound("Review", reviewBlogId);
+        }
+
+        if (review.IsDeleted || review.IsHidden)
+        {
+            return Result<BlogReviewReplyDto>.BusinessError("Cannot reply to hidden review.");
+        }
+
+        if (!string.Equals(review.ModerationStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<BlogReviewReplyDto>.BusinessError("Only approved review can be replied.");
+        }
+
+        if (!parentReplyId.HasValue)
+        {
+            return Result<BlogReviewReplyDto>.Success(new BlogReviewReplyDto());
+        }
+
+        var parentReply = await _unitOfWork.Blogs.GetReplyByIdAsync(parentReplyId.Value, cancellationToken);
+        if (parentReply == null || parentReply.ReviewBlogId != reviewBlogId)
+        {
+            return Result<BlogReviewReplyDto>.Failure("VALIDATION_ERROR", "Parent reply is invalid.");
+        }
+
+        if (!string.Equals(parentReply.ModerationStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<BlogReviewReplyDto>.BusinessError("Only approved reply can be replied.");
+        }
+
+        return Result<BlogReviewReplyDto>.Success(new BlogReviewReplyDto());
     }
 
     private async Task<Result<bool>> ValidateCommentPermissionAsync(int accountId, CancellationToken cancellationToken)
