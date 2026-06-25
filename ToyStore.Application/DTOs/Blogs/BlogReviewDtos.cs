@@ -7,6 +7,7 @@ public class BlogReviewDto
     public string BlogTitle { get; set; } = string.Empty;
     public int AccountId { get; set; }
     public string AccountName { get; set; } = string.Empty;
+    public string AccountRoleName { get; set; } = string.Empty;
     public string? AccountImageUrl { get; set; }
     public string Comment { get; set; } = string.Empty;
     public string Status { get; set; } = "Visible";
@@ -30,6 +31,7 @@ public class BlogReviewReplyDto
     public int ReviewBlogId { get; set; }
     public int AccountId { get; set; }
     public string AccountName { get; set; } = string.Empty;
+    public string AccountRoleName { get; set; } = string.Empty;
     public string? AccountImageUrl { get; set; }
     public int? ParentReplyId { get; set; }
     public int? ReplyToAccountId { get; set; }

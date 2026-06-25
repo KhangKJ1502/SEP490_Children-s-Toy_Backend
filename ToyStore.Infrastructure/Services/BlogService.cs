@@ -35,6 +35,9 @@ public class BlogService : IBlogService
     private const int CommentBanDurationDays = 7;
     private const string ApprovePublishNowDecision = "ApprovePublishNow";
     private const string ApproveKeepScheduleDecision = "ApproveKeepSchedule";
+    private const string AdminRoleName = "Admin";
+    private const string StaffRoleName = "Staff";
+    private const string CustomerRoleName = "Customer";
 
     private static readonly HashSet<string> AllowedSubmitStatus = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -786,7 +789,13 @@ public class BlogService : IBlogService
             return Result<BlogReviewDto>.Failure("VALIDATION_ERROR", "ModerationStatus must be ManualReview, Approved, or Rejected.");
         }
 
-        if (string.Equals(nextStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase) && !dto.BanReasonId.HasValue)
+        var isRejecting = string.Equals(nextStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase);
+        if (isRejecting && IsStaffUser() && !IsCustomerAccount(review.Account))
+        {
+            return Result<BlogReviewDto>.Forbidden("You do not have permission to reject this blog review.");
+        }
+
+        if (isRejecting && !dto.BanReasonId.HasValue)
         {
             return Result<BlogReviewDto>.Failure("VALIDATION_ERROR", "BanReasonId is required when ModerationStatus is Rejected.");
         }
@@ -824,7 +833,7 @@ public class BlogService : IBlogService
             CreatedAt = now
         }, cancellationToken);
 
-        if (!wasRejected && string.Equals(nextStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase))
+        if (!wasRejected && isRejecting)
         {
             await ApplyCommentViolationAsync(review.AccountId, now, cancellationToken);
         }
@@ -859,7 +868,13 @@ public class BlogService : IBlogService
             return Result<BlogReviewReplyDto>.Failure("VALIDATION_ERROR", "ModerationStatus must be ManualReview, Approved, or Rejected.");
         }
 
-        if (string.Equals(nextStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase) && !dto.BanReasonId.HasValue)
+        var isRejecting = string.Equals(nextStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase);
+        if (isRejecting && !IsAdminUser())
+        {
+            return Result<BlogReviewReplyDto>.Forbidden("You do not have permission to reject blog review replies.");
+        }
+
+        if (isRejecting && !dto.BanReasonId.HasValue)
         {
             return Result<BlogReviewReplyDto>.Failure("VALIDATION_ERROR", "BanReasonId is required when ModerationStatus is Rejected.");
         }
@@ -896,7 +911,7 @@ public class BlogService : IBlogService
             CreatedAt = now
         }, cancellationToken);
 
-        if (!wasRejected && string.Equals(nextStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase))
+        if (!wasRejected && isRejecting)
         {
             await ApplyCommentViolationAsync(reply.AccountId, now, cancellationToken);
         }
@@ -1393,9 +1408,22 @@ public class BlogService : IBlogService
 
     private bool IsPrivilegedUser()
     {
-        var roleName = _currentUserService.RoleName;
-        return string.Equals(roleName, "Admin", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(roleName, "Staff", StringComparison.OrdinalIgnoreCase);
+        return IsAdminUser() || IsStaffUser();
+    }
+
+    private bool IsAdminUser()
+    {
+        return string.Equals(_currentUserService.RoleName, AdminRoleName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsStaffUser()
+    {
+        return string.Equals(_currentUserService.RoleName, StaffRoleName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsCustomerAccount(Account? account)
+    {
+        return string.Equals(account?.Role?.RoleName, CustomerRoleName, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool? ParseHiddenStatus(string? status)
@@ -1475,6 +1503,7 @@ public class BlogService : IBlogService
             BlogTitle = review.BlogPost?.BlogTitle ?? string.Empty,
             AccountId = review.AccountId,
             AccountName = review.Account?.AccountName ?? string.Empty,
+            AccountRoleName = review.Account?.Role?.RoleName ?? string.Empty,
             AccountImageUrl = review.Account?.ImageUrl,
             Comment = review.Comment ?? string.Empty,
             Status = review.IsDeleted ? "Hidden" : "Visible",
@@ -1507,6 +1536,7 @@ public class BlogService : IBlogService
             ReviewBlogId = reply.ReviewBlogId,
             AccountId = reply.AccountId,
             AccountName = reply.Account?.AccountName ?? string.Empty,
+            AccountRoleName = reply.Account?.Role?.RoleName ?? string.Empty,
             AccountImageUrl = reply.Account?.ImageUrl,
             ParentReplyId = reply.ParentReplyId,
             ReplyToAccountId = reply.ReplyToAccountId,
