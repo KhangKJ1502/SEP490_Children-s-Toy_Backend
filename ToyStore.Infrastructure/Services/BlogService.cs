@@ -869,9 +869,9 @@ public class BlogService : IBlogService
         }
 
         var isRejecting = string.Equals(nextStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase);
-        if (isRejecting && !IsAdminUser())
+        if (isRejecting && IsStaffUser() && !IsCustomerAccount(reply.Account))
         {
-            return Result<BlogReviewReplyDto>.Forbidden("You do not have permission to reject blog review replies.");
+            return Result<BlogReviewReplyDto>.Forbidden("You do not have permission to reject this blog review reply.");
         }
 
         if (isRejecting && !dto.BanReasonId.HasValue)
