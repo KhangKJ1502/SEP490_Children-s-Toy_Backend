@@ -1,6 +1,7 @@
 /* =================================================================
-   DataSeed FULL v5.3 – SEP490_ToyStore
+   DataSeed FULL v5.4 – SEP490_ToyStore
    Updated for Schema v3.2
+   All business datetimes stored as UTC. English content only.
 ================================================================= */
 
 USE [SEP490_ToyStore];
@@ -11,13 +12,34 @@ SET QUOTED_IDENTIFIER ON;
 GO
 
 PRINT N'================================================================';
-PRINT N'  DataSeed v5.3 (Schema v3.2 Compatible) – Starting...';
+PRINT N'  DataSeed v5.4 (Schema v3.2) – UTC timeline seed – Starting...';
 PRINT N'================================================================';
+
+/* ══════════════════════════════════════════════════════════════
+   SECTION 0 – UTC TIME ANCHOR (persists across batches)
+   VN wall-clock → UTC: CAST((date+time AT TIME ZONE 'SE Asia Standard Time')
+                           AT TIME ZONE 'UTC' AS DATETIME2(0))
+══════════════════════════════════════════════════════════════ */
+IF OBJECT_ID('tempdb..#SeedTime') IS NOT NULL DROP TABLE #SeedTime;
+CREATE TABLE #SeedTime
+(
+    UtcNow DATETIME2(0) NOT NULL,
+    UtcToday DATE NOT NULL
+);
+INSERT INTO #SeedTime
+    (UtcNow, UtcToday)
+VALUES
+    (GETUTCDATE(), CAST(GETUTCDATE() AS DATE));
+GO
 
 /* ══════════════════════════════════════════════════════════════
    SECTION 1 – ROLES
 ══════════════════════════════════════════════════════════════ */
 PRINT N'[1] Roles...';
+DECLARE @UtcNow1 DATETIME2(0) = (SELECT UtcNow
+FROM #SeedTime);
+DECLARE @LookupCreated1 DATETIME2(0) = DATEADD(MONTH, -6, @UtcNow1);
+
 SET IDENTITY_INSERT [dbo].[Roles] ON;
 IF NOT EXISTS (SELECT 1
 FROM [dbo].[Roles]
@@ -25,10 +47,10 @@ WHERE RoleID = 1)
     INSERT INTO [dbo].[Roles]
     (RoleID, RoleName, Description, CreatedAt)
 VALUES
-    (1, 'Customer', N'Customer', '2024-01-05 08:00:00'),
-    (2, 'Admin', N'Administrator', '2024-01-05 08:00:00'),
-    (3, 'Staff', N'Sales Staff', '2024-01-05 08:00:00'),
-    (4, 'Merchandise', N'Warehouse Staff', '2024-01-05 08:00:00');
+    (1, 'Customer', N'Customer', @LookupCreated1),
+    (2, 'Admin', N'Administrator', @LookupCreated1),
+    (3, 'Staff', N'Sales Staff', @LookupCreated1),
+    (4, 'Merchandise', N'Warehouse Staff', @LookupCreated1);
 SET IDENTITY_INSERT [dbo].[Roles] OFF;
 GO
 
@@ -36,6 +58,9 @@ GO
    SECTION 2 – SEXES
 ══════════════════════════════════════════════════════════════ */
 PRINT N'[2] Sexes...';
+DECLARE @LookupCreated2 DATETIME2(0) = DATEADD(MONTH, -6, (SELECT UtcNow
+FROM #SeedTime));
+
 SET IDENTITY_INSERT [dbo].[Sexes] ON;
 IF NOT EXISTS (SELECT 1
 FROM [dbo].[Sexes]
@@ -43,9 +68,9 @@ WHERE SexID = 1)
     INSERT INTO [dbo].[Sexes]
     (SexID, SexName, CreatedAt)
 VALUES
-    (1, N'Male', '2024-01-05 08:00:00'),
-    (2, N'Female', '2024-01-05 08:00:00'),
-    (3, N'Other', '2024-01-05 08:00:00');
+    (1, N'Male', @LookupCreated2),
+    (2, N'Female', @LookupCreated2),
+    (3, N'Other', @LookupCreated2);
 SET IDENTITY_INSERT [dbo].[Sexes] OFF;
 GO
 
@@ -53,38 +78,48 @@ GO
    SECTION 3 – ACCOUNTS
 ══════════════════════════════════════════════════════════════ */
 PRINT N'[3] Accounts – Staff & Admin...';
+DECLARE @UtcNow3 DATETIME2(0) = (SELECT UtcNow
+FROM #SeedTime);
+DECLARE @StaffCreated DATETIME2(0) = DATEADD(MONTH, -6, @UtcNow3);
+DECLARE @StaffCreated2 DATETIME2(0) = DATEADD(MONTH, -5, @UtcNow3);
+
 IF NOT EXISTS (SELECT 1
 FROM [dbo].[Accounts]
 WHERE Email = 'admin@toyhouse.vn')
     INSERT INTO [dbo].[Accounts]
     (RoleID, SexID, EmployeeCode, AccountName, PhoneNumber, Email, DOB, ImageURL, PasswordHash, IsActive, CreatedAt)
 VALUES
-    (2, 1, 'AD001', N'Michael Admin', '0901000001', 'admin@toyhouse.vn', '1990-03-15', 'https://res.cloudinary.com/datfyxi3f/image/upload/v1780546687/4f2018e8-791f-416c-9bf8-345926edeccd_ytjkb1.jpg', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, '2024-01-05 08:00:00'),
-    (3, 2, 'ST001', N'Sarah Miller', '0901000002', 'nhung.st@toyhouse.vn', '1995-07-22', 'https://res.cloudinary.com/datfyxi3f/image/upload/v1780546686/9534bc17-de93-49bd-833f-7ae947019fd8_nkgjz9.jpg', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, '2024-01-05 08:00:00'),
-    (3, 1, 'ST002', N'David Johnson', '0901000003', 'dung.st@toyhouse.vn', '1993-11-08', 'https://res.cloudinary.com/datfyxi3f/image/upload/v1780546686/cce0bdb4-1054-4391-9b11-708fb552ad2b_c2mgro.jpg', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, '2024-01-10 08:00:00'),
-    (3, 2, 'ST003', N'Emily Davis', '0901000004', 'thao.st@toyhouse.vn', '1997-04-30', 'https://res.cloudinary.com/datfyxi3f/image/upload/v1780546686/26e757ce-03e1-4598-bcfb-bf90d7250672Nu_zecjul.jpg', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, '2024-01-10 08:00:00'),
-    (4, 1, 'MC001', N'Robert Wilson', '0901000005', 'bao.kho@toyhouse.vn', '1992-09-18', 'https://res.cloudinary.com/datfyxi3f/image/upload/v1780546686/0ec897fc-0714-4c8c-96f1-4a8b02f4bf12_ncoay0.jpg', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, '2024-01-05 08:00:00'),
-    (4, 2, 'MC002', N'Laura Brown', '0901000006', 'lan.kho@toyhouse.vn', '1994-06-25', 'https://res.cloudinary.com/datfyxi3f/image/upload/v1780548037/2ec7bb2c-7ae9-41b7-9c51-bc69fccdf731_lafvlw.jpg', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, '2024-01-10 08:00:00');
+    (2, 1, 'AD001', N'James Admin', '0901000001', 'admin@toyhouse.vn', '1990-03-15', 'https://res.cloudinary.com/datfyxi3f/image/upload/v1780546687/4f2018e8-791f-416c-9bf8-345926edeccd_ytjkb1.jpg', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, @StaffCreated),
+    (3, 2, 'ST001', N'Nhung Tran', '0901000002', 'nhung.st@toyhouse.vn', '1995-07-22', 'https://res.cloudinary.com/datfyxi3f/image/upload/v1780546686/9534bc17-de93-49bd-833f-7ae947019fd8_nkgjz9.jpg', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, @StaffCreated),
+    (3, 1, 'ST002', N'Dung Le', '0901000003', 'dung.st@toyhouse.vn', '1993-11-08', 'https://res.cloudinary.com/datfyxi3f/image/upload/v1780546686/cce0bdb4-1054-4391-9b11-708fb552ad2b_c2mgro.jpg', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, @StaffCreated2),
+    (3, 2, 'ST003', N'Thao Nguyen', '0901000004', 'thao.st@toyhouse.vn', '1997-04-30', 'https://res.cloudinary.com/datfyxi3f/image/upload/v1780546686/26e757ce-03e1-4598-bcfb-bf90d7250672Nu_zecjul.jpg', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, @StaffCreated2),
+    (4, 1, 'MC001', N'Bao Nguyen', '0901000005', 'bao.kho@toyhouse.vn', '1992-09-18', 'https://res.cloudinary.com/datfyxi3f/image/upload/v1780546686/0ec897fc-0714-4c8c-96f1-4a8b02f4bf12_ncoay0.jpg', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, @StaffCreated),
+    (4, 2, 'MC002', N'Lan Hoang', '0901000006', 'lan.kho@toyhouse.vn', '1994-06-25', 'https://res.cloudinary.com/datfyxi3f/image/upload/v1780548037/2ec7bb2c-7ae9-41b7-9c51-bc69fccdf731_lafvlw.jpg', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, @StaffCreated2);
 GO
 
 PRINT N'[3] Accounts – Customers (5 users)...';
+DECLARE @UtcNow3b DATETIME2(0) = (SELECT UtcNow
+FROM #SeedTime);
+
 IF NOT EXISTS (SELECT 1
 FROM [dbo].[Accounts]
 WHERE Email = 'lananh.pham@gmail.com')
     INSERT INTO [dbo].[Accounts]
     (RoleID, SexID, AccountName, PhoneNumber, Email, DOB, ImageURL, PasswordHash, IsActive, CreatedAt)
 VALUES
-    (1, 2, N'Anna Pham', '0912001001', 'lananh.pham@gmail.com', '1988-03-12', 'https://i.pravatar.cc/300?img=35', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, '2024-03-12 10:15:00'),
-    (1, 1, N'Henry Nguyen', '0912001002', 'hung.nguyen88@gmail.com', '1988-06-20', 'https://i.pravatar.cc/300?img=68', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, '2024-04-02 14:30:00'),
-    (1, 2, N'Chloe Vu', '0912001003', 'bauchau.vu@gmail.com', '1992-01-15', 'https://i.pravatar.cc/300?img=38', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, '2024-04-20 09:00:00'),
-    (1, 1, N'Marcus Do', '0912001004', 'mtuando@outlook.com', '1985-08-10', 'https://i.pravatar.cc/300?img=60', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, '2024-05-08 16:45:00'),
-    (1, 2, N'Hannah Hoang', '0912001005', 'thuha.hoang@gmail.com', '1990-12-05', 'https://i.pravatar.cc/300?img=45', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, '2024-06-01 11:20:00');
+    (1, 2, N'Lan Anh Pham', '0912001001', 'lananh.pham@gmail.com', '1988-03-12', 'https://i.pravatar.cc/300?img=35', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, DATEADD(MONTH, -4, @UtcNow3b)),
+    (1, 1, N'Hung Nguyen', '0912001002', 'hung.nguyen88@gmail.com', '1988-06-20', 'https://i.pravatar.cc/300?img=68', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, DATEADD(MONTH, -3, @UtcNow3b)),
+    (1, 2, N'Bau Chau Vu', '0912001003', 'bauchau.vu@gmail.com', '1992-01-15', 'https://i.pravatar.cc/300?img=38', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, DATEADD(MONTH, -3, @UtcNow3b)),
+    (1, 1, N'Minh Tuan Do', '0912001004', 'mtuando@outlook.com', '1985-08-10', 'https://i.pravatar.cc/300?img=60', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, DATEADD(MONTH, -2, @UtcNow3b)),
+    (1, 2, N'Thu Ha Hoang', '0912001005', 'thuha.hoang@gmail.com', '1990-12-05', 'https://i.pravatar.cc/300?img=45', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, DATEADD(MONTH, -2, @UtcNow3b));
 GO
 
 /* ══════════════════════════════════════════════════════════════
    SECTION 5 – LOOKUP TABLES
 ══════════════════════════════════════════════════════════════ */
 PRINT N'[5] Lookup tables...';
+DECLARE @LookupCreated5 DATETIME2(0) = DATEADD(MONTH, -6, (SELECT UtcNow
+FROM #SeedTime));
 
 SET IDENTITY_INSERT [dbo].[SuperCategories] ON;
 IF NOT EXISTS (SELECT 1
@@ -93,12 +128,12 @@ WHERE SuperCategoryID = 1)
     INSERT INTO [dbo].[SuperCategories]
     (SuperCategoryID, SuperCategoryName, CreatedAt)
 VALUES
-    (1, N'Building Toys', '2024-01-05 08:00:00'),
-    (2, N'Educational Toys', '2024-01-05 08:00:00'),
-    (3, N'Outdoor Activities', '2024-01-05 08:00:00'),
-    (4, N'Dolls & Plush Toys', '2024-01-05 08:00:00'),
-    (5, N'Figures & Models', '2024-01-05 08:00:00'),
-    (6, N'Remote Control Toys', '2024-01-05 08:00:00');
+    (1, N'Building Toys', @LookupCreated5),
+    (2, N'Educational Toys', @LookupCreated5),
+    (3, N'Outdoor Activities', @LookupCreated5),
+    (4, N'Dolls & Plush Toys', @LookupCreated5),
+    (5, N'Figures & Models', @LookupCreated5),
+    (6, N'Remote Control Toys', @LookupCreated5);
 SET IDENTITY_INSERT [dbo].[SuperCategories] OFF;
 
 SET IDENTITY_INSERT [dbo].[Categories] ON;
@@ -108,19 +143,19 @@ WHERE CategoryID = 1)
     INSERT INTO [dbo].[Categories]
     (CategoryID, SuperCategoryID, CategoryName, CreatedAt)
 VALUES
-    ( 1, 1, N'Lego', '2024-01-05 08:00:00'),
-    ( 2, 1, N'Building Blocks', '2024-01-05 08:00:00'),
-    ( 3, 2, N'Flash Cards', '2024-01-05 08:00:00'),
-    ( 4, 2, N'Science Toys', '2024-01-05 08:00:00'),
-    ( 5, 3, N'Ride-On Toys', '2024-01-05 08:00:00'),
-    ( 6, 3, N'Balls', '2024-01-05 08:00:00'),
-    ( 7, 3, N'Kites', '2024-01-05 08:00:00'),
-    ( 8, 4, N'Teddy Bears & Plush', '2024-01-05 08:00:00'),
-    ( 9, 4, N'Fashion Dolls', '2024-01-05 08:00:00'),
-    (10, 5, N'Superheroes', '2024-01-05 08:00:00'),
-    (11, 5, N'Dinosaurs', '2024-01-05 08:00:00'),
-    (12, 6, N'RC Cars', '2024-01-05 08:00:00'),
-    (13, 6, N'RC Airplanes', '2024-01-05 08:00:00');
+    ( 1, 1, N'Lego', @LookupCreated5),
+    ( 2, 1, N'Building Blocks', @LookupCreated5),
+    ( 3, 2, N'Flash Cards', @LookupCreated5),
+    ( 4, 2, N'Science Toys', @LookupCreated5),
+    ( 5, 3, N'Ride-On Toys', @LookupCreated5),
+    ( 6, 3, N'Balls', @LookupCreated5),
+    ( 7, 3, N'Kites', @LookupCreated5),
+    ( 8, 4, N'Teddy Bears & Plush', @LookupCreated5),
+    ( 9, 4, N'Fashion Dolls', @LookupCreated5),
+    (10, 5, N'Superheroes', @LookupCreated5),
+    (11, 5, N'Dinosaurs', @LookupCreated5),
+    (12, 6, N'RC Cars', @LookupCreated5),
+    (13, 6, N'RC Airplanes', @LookupCreated5);
 SET IDENTITY_INSERT [dbo].[Categories] OFF;
 
 SET IDENTITY_INSERT [dbo].[Materials] ON;
@@ -130,11 +165,11 @@ WHERE MaterialID = 1)
     INSERT INTO [dbo].[Materials]
     (MaterialID, MaterialName, CreatedAt)
 VALUES
-    (1, N'Premium ABS Plastic', '2024-01-05 08:00:00'),
-    (2, N'Natural MDF Wood', '2024-01-05 08:00:00'),
-    (3, N'Cotton & Velvet Fabric', '2024-01-05 08:00:00'),
-    (4, N'Aluminum Alloy', '2024-01-05 08:00:00'),
-    (5, N'Natural Rubber', '2024-01-05 08:00:00');
+    (1, N'Premium ABS Plastic', @LookupCreated5),
+    (2, N'Natural MDF Wood', @LookupCreated5),
+    (3, N'Cotton & Velvet Fabric', @LookupCreated5),
+    (4, N'Aluminum Alloy', @LookupCreated5),
+    (5, N'Natural Rubber', @LookupCreated5);
 SET IDENTITY_INSERT [dbo].[Materials] OFF;
 
 SET IDENTITY_INSERT [dbo].[Ages] ON;
@@ -144,11 +179,11 @@ WHERE AgeID = 1)
     INSERT INTO [dbo].[Ages]
     (AgeID, AgeRange, CreatedAt)
 VALUES
-    (1, N'0-1', '2024-01-05 08:00:00'),
-    (2, N'1-3', '2024-01-05 08:00:00'),
-    (3, N'3-6', '2024-01-05 08:00:00'),
-    (4, N'6-12', '2024-01-05 08:00:00'),
-    (5, N'12+', '2024-01-05 08:00:00');
+    (1, N'0-1', @LookupCreated5),
+    (2, N'1-3', @LookupCreated5),
+    (3, N'3-6', @LookupCreated5),
+    (4, N'6-12', @LookupCreated5),
+    (5, N'12+', @LookupCreated5);
 SET IDENTITY_INSERT [dbo].[Ages] OFF;
 
 SET IDENTITY_INSERT [dbo].[Origins] ON;
@@ -158,11 +193,11 @@ WHERE OriginID = 1)
     INSERT INTO [dbo].[Origins]
     (OriginID, OriginName, CreatedAt)
 VALUES
-    (1, N'Vietnam', '2024-01-05 08:00:00'),
-    (2, N'China', '2024-01-05 08:00:00'),
-    (3, N'United States', '2024-01-05 08:00:00'),
-    (4, N'Japan', '2024-01-05 08:00:00'),
-    (5, N'Denmark', '2024-01-05 08:00:00');
+    (1, N'Vietnam', @LookupCreated5),
+    (2, N'China', @LookupCreated5),
+    (3, N'United States', @LookupCreated5),
+    (4, N'Japan', @LookupCreated5),
+    (5, N'Denmark', @LookupCreated5);
 SET IDENTITY_INSERT [dbo].[Origins] OFF;
 
 SET IDENTITY_INSERT [dbo].[Brands] ON;
@@ -172,14 +207,14 @@ WHERE BrandID = 1)
     INSERT INTO [dbo].[Brands]
     (BrandID, BrandName, CreatedAt)
 VALUES
-    (1, N'Lego', '2024-01-05 08:00:00'),
-    (2, N'Fisher-Price', '2024-01-05 08:00:00'),
-    (3, N'Hot Wheels', '2024-01-05 08:00:00'),
-    (4, N'Polo', '2024-01-05 08:00:00'),
-    (5, N'MyKingdom', '2024-01-05 08:00:00'),
-    (6, N'Bandai', '2024-01-05 08:00:00'),
-    (7, N'Hasbro', '2024-01-05 08:00:00'),
-    (8, N'Mattel', '2024-01-05 08:00:00');
+    (1, N'Lego', @LookupCreated5),
+    (2, N'Fisher-Price', @LookupCreated5),
+    (3, N'Hot Wheels', @LookupCreated5),
+    (4, N'Polo', @LookupCreated5),
+    (5, N'MyKingdom', @LookupCreated5),
+    (6, N'Bandai', @LookupCreated5),
+    (7, N'Hasbro', @LookupCreated5),
+    (8, N'Mattel', @LookupCreated5);
 SET IDENTITY_INSERT [dbo].[Brands] OFF;
 
 SET IDENTITY_INSERT [dbo].[PriceRanges] ON;
@@ -189,13 +224,13 @@ WHERE PriceRangeID = 1)
     INSERT INTO [dbo].[PriceRanges]
     (PriceRangeID, PriceRangeMin, PriceRangeMax, CreatedAt)
 VALUES
-    (1, 0, 199000, '2024-01-05 08:00:00'),
-    (2, 200000, 499000, '2024-01-05 08:00:00'),
-    (3, 500000, 999000, '2024-01-05 08:00:00'),
-    (4, 1000000, 1999000, '2024-01-05 08:00:00'),
-    (5, 2000000, 4999000, '2024-01-05 08:00:00'),
-    (6, 5000000, 9999000, '2024-01-05 08:00:00'),
-    (7, 10000000, 999999000, '2024-01-05 08:00:00');
+    (1, 0, 199000, @LookupCreated5),
+    (2, 200000, 499000, @LookupCreated5),
+    (3, 500000, 999000, @LookupCreated5),
+    (4, 1000000, 1999000, @LookupCreated5),
+    (5, 2000000, 4999000, @LookupCreated5),
+    (6, 5000000, 9999000, @LookupCreated5),
+    (7, 10000000, 999999000, @LookupCreated5);
 SET IDENTITY_INSERT [dbo].[PriceRanges] OFF;
 
 SET IDENTITY_INSERT [dbo].[StatusOrders] ON;
@@ -230,11 +265,11 @@ WHERE ReactionTypeID = 1)
     INSERT INTO [dbo].[ReactionTypes]
     (ReactionTypeID, Code, DisplayName, CreatedAt)
 VALUES
-    (1, 'like', N'Like', '2024-01-05 08:00:00'),
-    (2, 'love', N'Love', '2024-01-05 08:00:00'),
-    (3, 'haha', N'Haha', '2024-01-05 08:00:00'),
-    (4, 'wow', N'Wow', '2024-01-05 08:00:00'),
-    (5, 'sad', N'Sad', '2024-01-05 08:00:00');
+    (1, 'like', N'Like', @LookupCreated5),
+    (2, 'love', N'Love', @LookupCreated5),
+    (3, 'haha', N'Haha', @LookupCreated5),
+    (4, 'wow', N'Wow', @LookupCreated5),
+    (5, 'sad', N'Sad', @LookupCreated5);
 SET IDENTITY_INSERT [dbo].[ReactionTypes] OFF;
 GO
 
@@ -265,6 +300,12 @@ GO
    SECTION 8 – PRODUCTS (30 products)
 ══════════════════════════════════════════════════════════════ */
 PRINT N'[8] Products...';
+DECLARE @UtcNow8 DATETIME2(0) = (SELECT UtcNow
+FROM #SeedTime);
+DECLARE @UtcToday8 DATE = (SELECT UtcToday
+FROM #SeedTime);
+DECLARE @ProductBase DATETIME2(0) = DATEADD(MONTH, -5, @UtcNow8);
+
 SET IDENTITY_INSERT [dbo].[Products] ON;
 
 IF NOT EXISTS (SELECT 1
@@ -273,38 +314,54 @@ WHERE ProductID = 1)
     INSERT INTO [dbo].[Products]
     (ProductID,ProductName,Price,Quantity,ProductStatus,CategoryID,BrandID,PriceRangeID,StockThreshold,CreatedAt)
 VALUES
-    ( 1, N'Lego City Central Police Station - 668 Pieces', 1290000, 45, 'Active', 1, 1, 4, 10, '2024-02-01 08:00:00'),
-    ( 2, N'Lego Technic Bugatti Chiron Supercar - 3599 Pieces', 5990000, 8, 'Active', 1, 1, 6, 3, '2024-02-03 08:00:00'),
-    ( 3, N'Lego Friends Resort House - 699 Pieces', 1590000, 22, 'Active', 1, 1, 4, 5, '2024-02-05 08:00:00'),
-    ( 4, N'Wooden Transportation Puzzle Blocks - 36 Pieces', 420000, 180, 'Active', 2, 5, 2, 20, '2024-02-08 08:00:00'),
-    ( 5, N'Wooden Alphabet Blocks - 52 Pieces', 350000, 200, 'Active', 2, 5, 2, 30, '2024-02-10 08:00:00'),
-    ( 6, N'4D Smart Flash Cards - Wild Animals (120 Cards)', 145000, 600, 'Active', 3, 2, 1, 50, '2024-02-12 08:00:00'),
-    ( 7, N'Math Flash Cards - Numbers 1-100', 185000, 450, 'Active', 3, 5, 1, 50, '2024-02-14 08:00:00'),
-    ( 8, N'ScienceMax Microscope 40x-400x', 375000, 75, 'Active', 4, 3, 2, 8, '2024-03-01 08:00:00'),
-    ( 9, N'Erupting Volcano Experiment Kit', 280000, 120, 'Active', 4, 5, 2, 15, '2024-03-03 08:00:00'),
-    (10, N'Kids Telescope Set 50x/100x', 490000, 55, 'Active', 4, 2, 2, 8, '2024-03-05 08:00:00'),
-    (11, N'Donald Duck Ride-On Toy with Lights and Music', 545000, 38, 'Active', 5, 2, 3, 5, '2024-03-10 08:00:00'),
-    (12, N'Disney Princess Tricycle with Push Handle', 890000, 18, 'Active', 5, 8, 3, 3, '2024-03-12 08:00:00'),
-    (13, N'Boho Pattern Rubber Ball - Size 5', 85000, 320, 'Active', 6, 2, 1, 30, '2024-03-15 08:00:00'),
-    (14, N'FIFA Pro Vulcanized Soccer Ball - Size 4', 165000, 250, 'Active', 6, 3, 1, 25, '2024-03-17 08:00:00'),
-    (15, N'Large Eagle Kite 1.4 m with 30 m String', 115000, 140, 'Active', 7, 2, 1, 15, '2024-03-20 08:00:00'),
-    (16, N'3D Dragon Kite with Carbon Frame', 185000, 90, 'Active', 7, 2, 1, 10, '2024-03-22 08:00:00'),
-    (17, N'Green Rex Dinosaur Plush Toy - 80 cm', 840000, 28, 'Active', 8, 5, 3, 4, '2024-04-01 08:00:00'),
-    (18, N'Panda Plush Toy - 60 cm (Lying)', 650000, 35, 'Active', 8, 5, 3, 5, '2024-04-03 08:00:00'),
-    (19, N'Pastel Long-Eared Bunny Plush Toy - 45 cm', 420000, 60, 'Active', 8, 5, 2, 8, '2024-04-05 08:00:00'),
-    (20, N'Barbie Dreamtopia Mermaid Doll with 3 Outfits', 359000, 110, 'Active', 9, 8, 2, 12, '2024-04-08 08:00:00'),
-    (21, N'Barbie Fashionista Set - 6 Outfits', 490000, 75, 'Active', 9, 8, 2, 8, '2024-04-10 08:00:00'),
-    (22, N'Gao Red Ranger Action Figure - 24 Points', 595000, 22, 'Active', 10, 6, 3, 4, '2024-04-12 08:00:00'),
-    (23, N'Kamen Rider Zero-One SHFiguarts Figure', 890000, 15, 'Active', 10, 6, 3, 3, '2024-04-14 08:00:00'),
-    (24, N'T-Rex Dinosaur Figure - 1:10 Scale', 395000, 88, 'Active', 11, 3, 2, 10, '2024-04-16 08:00:00'),
-    (25, N'Jurassic World Mini Dinosaur Set - 6 Pack', 285000, 150, 'Active', 11, 7, 2, 15, '2024-04-18 08:00:00'),
-    (26, N'RC Off-Road Car Traxxas TRX-Mini 4x4', 945000, 55, 'Active', 12, 3, 3, 6, '2024-05-01 08:00:00'),
-    (27, N'RC Drift Car - 2.4GHz', 680000, 40, 'Active', 12, 3, 3, 6, '2024-05-03 08:00:00'),
-    (28, N'Mini Gyro RC Helicopter - 2.4GHz', 1490000, 12, 'Active', 13, 6, 4, 2, '2024-05-10 08:00:00'),
-    (29, N'Play-Doh 24-Color Non-Toxic Modeling Clay', 88000, 980, 'Active', 2, 7, 1, 80, '2024-05-15 08:00:00'),
-    (30, N'10-Inch LCD Writing Tablet with Stylus', 175000, 380, 'Active', 3, 2, 1, 40, '2024-05-20 08:00:00');
+    ( 1, N'Lego City Central Police Station - 668 Pieces', 1290000, 45, 'Active', 1, 1, 4, 10, DATEADD(DAY, 0, @ProductBase)),
+    ( 2, N'Lego Technic Bugatti Chiron Supercar - 3599 Pieces', 5990000, 8, 'Active', 1, 1, 6, 3, DATEADD(DAY, 2, @ProductBase)),
+    ( 3, N'Lego Friends Resort House - 699 Pieces', 1590000, 22, 'Active', 1, 1, 4, 5, DATEADD(DAY, 4, @ProductBase)),
+    ( 4, N'Wooden Transportation Puzzle Blocks - 36 Pieces', 420000, 180, 'Active', 2, 5, 2, 20, DATEADD(DAY, 7, @ProductBase)),
+    ( 5, N'Wooden Alphabet Blocks - 52 Pieces', 350000, 200, 'Active', 2, 5, 2, 30, DATEADD(DAY, 9, @ProductBase)),
+    ( 6, N'4D Smart Flash Cards - Wild Animals (120 Cards)', 145000, 600, 'Active', 3, 2, 1, 50, DATEADD(DAY, 11, @ProductBase)),
+    ( 7, N'Math Flash Cards - Numbers 1-100', 185000, 450, 'Active', 3, 5, 1, 50, DATEADD(DAY, 13, @ProductBase)),
+    ( 8, N'ScienceMax Microscope 40x-400x', 375000, 75, 'Active', 4, 3, 2, 8, DATEADD(DAY, 28, @ProductBase)),
+    ( 9, N'Erupting Volcano Experiment Kit', 280000, 120, 'Active', 4, 5, 2, 15, DATEADD(DAY, 30, @ProductBase)),
+    (10, N'Kids Telescope Set 50x/100x', 490000, 55, 'Active', 4, 2, 2, 8, DATEADD(DAY, 32, @ProductBase)),
+    (11, N'Donald Duck Ride-On Toy with Lights and Music', 545000, 38, 'Active', 5, 2, 3, 5, DATEADD(DAY, 37, @ProductBase)),
+    (12, N'Disney Princess Tricycle with Push Handle', 890000, 18, 'Active', 5, 8, 3, 3, DATEADD(DAY, 39, @ProductBase)),
+    (13, N'Boho Pattern Rubber Ball - Size 5', 85000, 320, 'Active', 6, 2, 1, 30, DATEADD(DAY, 42, @ProductBase)),
+    (14, N'FIFA Pro Vulcanized Soccer Ball - Size 4', 165000, 250, 'Active', 6, 3, 1, 25, DATEADD(DAY, 44, @ProductBase)),
+    (15, N'Large Eagle Kite 1.4 m with 30 m String', 115000, 140, 'Active', 7, 2, 1, 15, DATEADD(DAY, 47, @ProductBase)),
+    (16, N'3D Dragon Kite with Carbon Frame', 185000, 90, 'Active', 7, 2, 1, 10, DATEADD(DAY, 49, @ProductBase)),
+    (17, N'Green T-Rex Dinosaur Plush Toy - 80 cm', 840000, 28, 'Active', 8, 5, 3, 4, DATEADD(DAY, 58, @ProductBase)),
+    (18, N'Panda Plush Toy - 60 cm (Lying)', 650000, 35, 'Active', 8, 5, 3, 5, DATEADD(DAY, 60, @ProductBase)),
+    (19, N'Pastel Long-Eared Bunny Plush Toy - 45 cm', 420000, 60, 'Active', 8, 5, 2, 8, DATEADD(DAY, 62, @ProductBase)),
+    (20, N'Barbie Dreamtopia Mermaid Doll with 3 Outfits', 359000, 110, 'Active', 9, 8, 2, 12, DATEADD(DAY, 65, @ProductBase)),
+    (21, N'Barbie Fashionista Set - 6 Outfits', 490000, 75, 'Active', 9, 8, 2, 8, DATEADD(DAY, 67, @ProductBase)),
+    (22, N'Gao Red Ranger Action Figure - 24 Points', 595000, 22, 'Active', 10, 6, 3, 4, DATEADD(DAY, 69, @ProductBase)),
+    (23, N'Kamen Rider Zero-One SHFiguarts Figure', 890000, 15, 'Active', 10, 6, 3, 3, DATEADD(DAY, 71, @ProductBase)),
+    (24, N'T-Rex Dinosaur Figure - 1:10 Scale', 395000, 88, 'Active', 11, 3, 2, 10, DATEADD(DAY, 73, @ProductBase)),
+    (25, N'Jurassic World Mini Dinosaur Set - 6 Pack', 285000, 150, 'Active', 11, 7, 2, 15, DATEADD(DAY, 75, @ProductBase)),
+    (26, N'RC Off-Road Car Traxxas TRX-Mini 4x4', 945000, 55, 'Active', 12, 3, 3, 6, DATEADD(DAY, 88, @ProductBase)),
+    (27, N'RC Drift Car - 2.4GHz', 680000, 40, 'Active', 12, 3, 3, 6, DATEADD(DAY, 90, @ProductBase)),
+    (28, N'Mini Gyro RC Helicopter - 2.4GHz', 1490000, 12, 'Active', 13, 6, 4, 2, DATEADD(DAY, 97, @ProductBase)),
+    (29, N'Play-Doh 24-Color Non-Toxic Modeling Clay', 88000, 980, 'Active', 2, 7, 1, 80, DATEADD(DAY, 102, @ProductBase)),
+    (30, N'10-Inch LCD Writing Tablet with Stylus', 175000, 380, 'Active', 3, 2, 1, 40, DATEADD(DAY, 107, @ProductBase)),
+    (31, N'Lego Friends 2026 Beach House - 850 Pieces', 1890000, 0, 'ComingSoon', 1, 1, 4, 5, @UtcNow8),
+    (32, N'Bandai Ultraman New Gen Figure - Limited Edition', 1250000, 0, 'ComingSoon', 10, 6, 4, 3, @UtcNow8),
+    (33, N'Fisher-Price Smart Walker Pro', 890000, 0, 'ComingSoon', 5, 2, 3, 5, @UtcNow8);
 
 SET IDENTITY_INSERT [dbo].[Products] OFF;
+
+-- LaunchDate UTC for ComingSoon products (08:00 UTC launch window)
+UPDATE [dbo].[Products]
+SET LaunchDate = DATEADD(HOUR, 8, CAST(DATEADD(DAY, 14, @UtcToday8) AS DATETIME2(0)))
+WHERE ProductID = 31 AND LaunchDate IS NULL;
+
+UPDATE [dbo].[Products]
+SET LaunchDate = DATEADD(HOUR, 8, CAST(DATEADD(DAY, 30, @UtcToday8) AS DATETIME2(0)))
+WHERE ProductID = 32 AND LaunchDate IS NULL;
+
+UPDATE [dbo].[Products]
+SET LaunchDate = DATEADD(HOUR, 8, CAST(DATEADD(DAY, 45, @UtcToday8) AS DATETIME2(0)))
+WHERE ProductID = 33 AND LaunchDate IS NULL;
 GO
 
 /* ══════════════════════════════════════════════════════════════
@@ -375,7 +432,12 @@ VALUES
 
     -- Clay / drawing board (29-30)
     (29, N'Hasbro Play-Doh set with 24 colors, each jar 85 g. Non-toxic and gluten-free.', 3, 3, 3, 3, 2040, 35, 24, 8),
-    (30, N'10-inch LCD writing and drawing tablet with instant erase. CR2025 battery supports 50,000 uses.', 1, 2, 3, 2, 210, 28, 18, 1);
+    (30, N'10-inch LCD writing and drawing tablet with instant erase. CR2025 battery supports 50,000 uses.', 1, 2, 3, 2, 210, 28, 18, 1),
+
+    -- ComingSoon products (31-33)
+    (31, N'Lego Friends 2026 Beach House with 850 pieces, rooftop terrace, and surf shop. Launching soon.', 1, 4, 2, 5, 1200, 55, 40, 12),
+    (32, N'Bandai Ultraman New Gen limited edition figure with LED chest light. Pre-order opening soon.', 5, 5, 1, 4, 200, 18, 10, 20),
+    (33, N'Fisher-Price Smart Walker Pro with adjustable height and interactive learning panel.', 1, 2, 3, 3, 3500, 55, 45, 50);
 GO
 
 /* ══════════════════════════════════════════════════════════════
@@ -389,17 +451,19 @@ WHERE ProductID = 1 AND IsMain = 1)
 BEGIN
     DECLARE @i INT = 1;
 
-    WHILE @i <= 30
+    WHILE @i <= 33
     BEGIN
         DECLARE @seed VARCHAR(30) = 'toy' + CAST(@i AS VARCHAR);
+        DECLARE @ImgCreated DATETIME2(0) = (SELECT UtcNow
+        FROM #SeedTime);
 
         INSERT INTO [dbo].[ProductImages]
             (ProductID, ImageUrl, IsMain, CreatedAt)
         VALUES
-            (@i, 'https://picsum.photos/seed/' + @seed + '-a/400/400', 1, GETDATE()),
-            (@i, 'https://picsum.photos/seed/' + @seed + '-b/400/400', 0, GETDATE()),
-            (@i, 'https://picsum.photos/seed/' + @seed + '-c/400/400', 0, GETDATE()),
-            (@i, 'https://picsum.photos/seed/' + @seed + '-d/400/400', 0, GETDATE());
+            (@i, 'https://picsum.photos/seed/' + @seed + '-a/400/400', 1, @ImgCreated),
+            (@i, 'https://picsum.photos/seed/' + @seed + '-b/400/400', 0, @ImgCreated),
+            (@i, 'https://picsum.photos/seed/' + @seed + '-c/400/400', 0, @ImgCreated),
+            (@i, 'https://picsum.photos/seed/' + @seed + '-d/400/400', 0, @ImgCreated);
 
         SET @i = @i + 1;
     END
@@ -410,68 +474,76 @@ GO
 ══════════════════════════════════════════════════════════════ */
 PRINT N'[13] Promotions...';
 
-DECLARE @admID INT = (
-    SELECT TOP 1
+DECLARE @admID INT = (SELECT TOP 1
     AccountID
 FROM Accounts
-WHERE Email = 'admin@toyhouse.vn'
-);
-DECLARE @nowPromo DATETIME2(0) = GETDATE();
+WHERE Email = 'admin@toyhouse.vn');
+DECLARE @UtcNow DATETIME2(0) = (SELECT UtcNow
+FROM #SeedTime);
+DECLARE @UtcToday DATE = (SELECT UtcToday
+FROM #SeedTime);
 
 IF NOT EXISTS (SELECT 1
 FROM [dbo].[Promotions]
 WHERE PromotionName = N'Summer Toy Festival 2026')
     INSERT INTO [dbo].[Promotions]
-    (CreatedBy, PromotionName, PromotionType, Description,
-    StartDate, EndDate, Status, Priority, CreatedAt)
+    (CreatedBy, PromotionName, PromotionType, Description, StartDate, EndDate, Status, Priority, CreatedAt)
 VALUES
     (@admID, N'Summer Toy Festival 2026', 'DISCOUNT',
         N'Massive summer discounts on selected toy collections.',
-        @nowPromo, DATEADD(YEAR, 1, @nowPromo), 'Active', 10, @nowPromo),
+        DATEADD(DAY, -23, @UtcToday), DATEADD(DAY, 68, @UtcToday), 'Active', 10, @UtcNow),
 
     (@admID, N'Back To School 2026', 'DISCOUNT',
         N'Special discounts on educational toys and learning cards.',
-        @nowPromo, DATEADD(YEAR, 1, @nowPromo), 'Active', 8, @nowPromo),
-
-    (@admID, N'Mega Flash Sale', 'FLASH_SALE',
-        N'Limited-time flash sale with discounts up to 50%.',
-        @nowPromo, DATEADD(YEAR, 1, @nowPromo), 'Active', 20, @nowPromo),
-
-    (@admID, N'Family Day Flash Sale', 'FLASH_SALE',
-        N'Special offers celebrating Family Day.',
-        @nowPromo, DATEADD(YEAR, 1, @nowPromo), 'Active', 15, @nowPromo),
-
-    (@admID, N'Christmas & New Year 2026', 'DISCOUNT',
-        N'Holiday season discounts up to 40% on figures and dolls.',
-        @nowPromo, DATEADD(YEAR, 1, @nowPromo), 'Active', 12, @nowPromo),
+        DATEADD(DAY, 21, @UtcToday), DATEADD(DAY, 83, @UtcToday), 'Scheduled', 8, @UtcNow),
 
     (@admID, N'Lego Builders Week', 'DISCOUNT',
         N'Exclusive discounts on all Lego sets and building blocks.',
-        @nowPromo, DATEADD(YEAR, 1, @nowPromo), 'Active', 14, @nowPromo),
+        DATEADD(DAY, 7, @UtcToday), DATEADD(DAY, 14, @UtcToday), 'Scheduled', 14, @UtcNow),
 
-    (@admID, N'RC & Racing Expo', 'DISCOUNT',
-        N'Save on remote-control cars, drift models, and helicopters.',
-        @nowPromo, DATEADD(YEAR, 1, @nowPromo), 'Active', 11, @nowPromo),
+    (@admID, N'Mega Flash Sale', 'FLASH_SALE',
+        N'Limited-time flash sale with discounts up to 50%.',
+        DATEADD(DAY, -7, @UtcToday), DATEADD(DAY, 90, @UtcToday), 'Active', 20, @UtcNow),
 
-    (@admID, N'Plush Toy Carnival', 'DISCOUNT',
-        N'Soft toy specials on teddy bears, pandas, and bunny plushies.',
-        @nowPromo, DATEADD(YEAR, 1, @nowPromo), 'Active', 9, @nowPromo),
+    (@admID, N'Family Day Flash Sale', 'FLASH_SALE',
+        N'Special offers celebrating Family Day.',
+        @UtcToday, DATEADD(DAY, 60, @UtcToday), 'Active', 15, @UtcNow),
 
     (@admID, N'Weekend Flash Blitz', 'FLASH_SALE',
         N'48-hour weekend blitz – deep cuts on bestsellers while stocks last.',
-        @nowPromo, DATEADD(YEAR, 1, @nowPromo), 'Active', 18, @nowPromo),
+        DATEADD(DAY, -3, @UtcToday), DATEADD(DAY, 60, @UtcToday), 'Active', 18, @UtcNow),
+
+    (@admID, N'Halloween Spooktacular', 'DISCOUNT',
+        N'Spooky season deals on figures, dolls, and dress-up toys.',
+        DATEADD(DAY, 99, @UtcToday), DATEADD(DAY, 129, @UtcToday), 'Scheduled', 12, @UtcNow),
 
     (@admID, N'Black Friday Preview', 'DISCOUNT',
         N'Early Black Friday deals across Lego, Barbie, and action figures.',
-        @nowPromo, DATEADD(YEAR, 1, @nowPromo), 'Active', 16, @nowPromo),
+        DATEADD(DAY, 130, @UtcToday), DATEADD(DAY, 159, @UtcToday), 'Scheduled', 16, @UtcNow),
+
+    (@admID, N'Christmas & New Year 2026', 'DISCOUNT',
+        N'Holiday season discounts up to 40% on figures and dolls.',
+        DATEADD(DAY, 160, @UtcToday), DATEADD(DAY, 190, @UtcToday), 'Scheduled', 12, @UtcNow),
+
+    (@admID, N'Spring Clearance 2026', 'DISCOUNT',
+        N'End-of-season clearance on outdoor and STEM toys.',
+        DATEADD(DAY, -90, @UtcToday), DATEADD(DAY, -60, @UtcToday), 'Expired', 5, DATEADD(DAY, -90, @UtcNow)),
+
+    (@admID, N'RC Expo (Archived)', 'DISCOUNT',
+        N'Former RC & racing promotion – manually deactivated.',
+        DATEADD(DAY, -120, @UtcToday), DATEADD(DAY, -90, @UtcToday), 'Inactive', 4, DATEADD(DAY, -120, @UtcNow)),
+
+    (@admID, N'Plush Toy Carnival', 'DISCOUNT',
+        N'Soft toy specials on teddy bears, pandas, and bunny plushies.',
+        DATEADD(DAY, -14, @UtcToday), DATEADD(DAY, 45, @UtcToday), 'Active', 9, @UtcNow),
 
     (@admID, N'Outdoor Play Month', 'DISCOUNT',
         N'Discounts on ride-on toys, balls, and kites for active kids.',
-        @nowPromo, DATEADD(YEAR, 1, @nowPromo), 'Active', 7, @nowPromo),
+        DATEADD(DAY, -10, @UtcToday), DATEADD(DAY, 50, @UtcToday), 'Active', 7, @UtcNow),
 
     (@admID, N'Science & STEM Sale', 'DISCOUNT',
         N'Microscopes, telescopes, and experiment kits at reduced prices.',
-        @nowPromo, DATEADD(YEAR, 1, @nowPromo), 'Active', 6, @nowPromo);
+        DATEADD(DAY, -10, @UtcToday), DATEADD(DAY, 50, @UtcToday), 'Active', 6, @UtcNow);
 GO
 
 /* ══════════════════════════════════════════════════════════════
@@ -482,47 +554,69 @@ PRINT N'[14] PromotionTimeSlots...';
 IF NOT EXISTS (SELECT 1
 FROM [dbo].[PromotionTimeSlots])
 BEGIN
-    DECLARE @nowSlot DATETIME2(0) = GETUTCDATE();
+    DECLARE @UtcNow14 DATETIME2(0) = (SELECT UtcNow
+    FROM #SeedTime);
+    DECLARE @UtcToday14 DATE = (SELECT UtcToday
+    FROM #SeedTime);
 
-    DECLARE @pFlash1 INT = (
-        SELECT TOP 1
+    DECLARE @VnLunchStart DATETIME2(0) = DATEADD(HOUR, 11, CAST(@UtcToday14 AS DATETIME2(0)));
+    DECLARE @VnLunchEnd   DATETIME2(0) = DATEADD(HOUR, 14, CAST(@UtcToday14 AS DATETIME2(0)));
+    DECLARE @VnEvenStart  DATETIME2(0) = DATEADD(HOUR, 19, CAST(@UtcToday14 AS DATETIME2(0)));
+    DECLARE @VnEvenEnd    DATETIME2(0) = DATEADD(HOUR, 22, CAST(@UtcToday14 AS DATETIME2(0)));
+    DECLARE @VnWkndStart  DATETIME2(0) = DATEADD(HOUR, 10, CAST(DATEADD(DAY, 1, @UtcToday14) AS DATETIME2(0)));
+    DECLARE @VnWkndEnd    DATETIME2(0) = DATEADD(HOUR, 13, CAST(DATEADD(DAY, 1, @UtcToday14) AS DATETIME2(0)));
+    DECLARE @VnYestStart  DATETIME2(0) = DATEADD(HOUR, 11, CAST(DATEADD(DAY, -1, @UtcToday14) AS DATETIME2(0)));
+    DECLARE @VnYestEnd    DATETIME2(0) = DATEADD(HOUR, 14, CAST(DATEADD(DAY, -1, @UtcToday14) AS DATETIME2(0)));
+
+    DECLARE @LunchStartUtc DATETIME2(0) = CAST((@VnLunchStart AT TIME ZONE 'SE Asia Standard Time') AT TIME ZONE 'UTC' AS DATETIME2(0));
+    DECLARE @LunchEndUtc   DATETIME2(0) = CAST((@VnLunchEnd   AT TIME ZONE 'SE Asia Standard Time') AT TIME ZONE 'UTC' AS DATETIME2(0));
+    DECLARE @EvenStartUtc  DATETIME2(0) = CAST((@VnEvenStart  AT TIME ZONE 'SE Asia Standard Time') AT TIME ZONE 'UTC' AS DATETIME2(0));
+    DECLARE @EvenEndUtc    DATETIME2(0) = CAST((@VnEvenEnd    AT TIME ZONE 'SE Asia Standard Time') AT TIME ZONE 'UTC' AS DATETIME2(0));
+    DECLARE @WkndStartUtc  DATETIME2(0) = CAST((@VnWkndStart  AT TIME ZONE 'SE Asia Standard Time') AT TIME ZONE 'UTC' AS DATETIME2(0));
+    DECLARE @WkndEndUtc    DATETIME2(0) = CAST((@VnWkndEnd    AT TIME ZONE 'SE Asia Standard Time') AT TIME ZONE 'UTC' AS DATETIME2(0));
+    DECLARE @YestStartUtc  DATETIME2(0) = CAST((@VnYestStart  AT TIME ZONE 'SE Asia Standard Time') AT TIME ZONE 'UTC' AS DATETIME2(0));
+    DECLARE @YestEndUtc    DATETIME2(0) = CAST((@VnYestEnd    AT TIME ZONE 'SE Asia Standard Time') AT TIME ZONE 'UTC' AS DATETIME2(0));
+
+    DECLARE @LiveStartUtc DATETIME2(0) = @UtcNow14;
+    DECLARE @LiveEndUtc   DATETIME2(0) = DATEADD(HOUR, 3, @UtcNow14);
+
+    DECLARE @LunchStatus VARCHAR(20) = CASE
+        WHEN @UtcNow14 >= @LunchStartUtc AND @UtcNow14 < @LunchEndUtc THEN 'Active'
+        WHEN @UtcNow14 >= @LunchEndUtc THEN 'Expired'
+        ELSE 'Scheduled' END;
+
+    DECLARE @pFlash1 INT = (SELECT TOP 1
         PromotionID
     FROM Promotions
-    WHERE PromotionName = N'Mega Flash Sale'
-    );
-
-    DECLARE @pFlash2 INT = (
-        SELECT TOP 1
+    WHERE PromotionName = N'Mega Flash Sale');
+    DECLARE @pFlash2 INT = (SELECT TOP 1
         PromotionID
     FROM Promotions
-    WHERE PromotionName = N'Family Day Flash Sale'
-    );
-
-    DECLARE @pFlash3 INT = (
-        SELECT TOP 1
+    WHERE PromotionName = N'Family Day Flash Sale');
+    DECLARE @pFlash3 INT = (SELECT TOP 1
         PromotionID
     FROM Promotions
-    WHERE PromotionName = N'Weekend Flash Blitz'
-    );
+    WHERE PromotionName = N'Weekend Flash Blitz');
 
     INSERT INTO [dbo].[PromotionTimeSlots]
         (PromotionID, StartAt, EndAt, Status, CreatedAt)
     VALUES
-        -- Mega Flash Sale (4 slots)
-        (@pFlash1, @nowSlot, DATEADD(HOUR, 3, @nowSlot), 'Active', @nowSlot),
-        (@pFlash1, DATEADD(HOUR, 5, @nowSlot), DATEADD(HOUR, 8, @nowSlot), 'Scheduled', @nowSlot),
-        (@pFlash1, DATEADD(DAY, 1, @nowSlot), DATEADD(DAY, 1, DATEADD(HOUR, 3, @nowSlot)), 'Scheduled', @nowSlot),
-        (@pFlash1, DATEADD(DAY, 1, DATEADD(HOUR, 5, @nowSlot)), DATEADD(DAY, 1, DATEADD(HOUR, 8, @nowSlot)), 'Scheduled', @nowSlot),
+        -- Mega Flash Sale: only campaign with a "live now" demo slot + full slot lifecycle
+        (@pFlash1, @LiveStartUtc, @LiveEndUtc, 'Active', @UtcNow14),
+        (@pFlash1, @LunchStartUtc, @LunchEndUtc, @LunchStatus, @UtcNow14),
+        (@pFlash1, @EvenStartUtc, @EvenEndUtc, 'Scheduled', @UtcNow14),
+        (@pFlash1, @WkndStartUtc, @WkndEndUtc, 'Scheduled', @UtcNow14),
+        (@pFlash1, @YestStartUtc, @YestEndUtc, 'Expired', @UtcNow14),
 
-        -- Family Day Flash Sale (3 slots)
-        (@pFlash2, DATEADD(HOUR, 1, @nowSlot), DATEADD(HOUR, 4, @nowSlot), 'Active', @nowSlot),
-        (@pFlash2, DATEADD(DAY, 1, DATEADD(HOUR, 1, @nowSlot)), DATEADD(DAY, 1, DATEADD(HOUR, 4, @nowSlot)), 'Scheduled', @nowSlot),
-        (@pFlash2, DATEADD(DAY, 2, @nowSlot), DATEADD(DAY, 2, DATEADD(HOUR, 3, @nowSlot)), 'Scheduled', @nowSlot),
+        -- Family Day Flash Sale: VN lunch + evening only (no overlapping live slot)
+        (@pFlash2, @LunchStartUtc, @LunchEndUtc, @LunchStatus, @UtcNow14),
+        (@pFlash2, @EvenStartUtc, @EvenEndUtc, 'Scheduled', @UtcNow14),
+        (@pFlash2, @WkndStartUtc, @WkndEndUtc, 'Scheduled', @UtcNow14),
 
-        -- Weekend Flash Blitz (3 slots)
-        (@pFlash3, @nowSlot, DATEADD(HOUR, 2, @nowSlot), 'Active', @nowSlot),
-        (@pFlash3, DATEADD(HOUR, 6, @nowSlot), DATEADD(HOUR, 9, @nowSlot), 'Scheduled', @nowSlot),
-        (@pFlash3, DATEADD(DAY, 1, @nowSlot), DATEADD(DAY, 1, DATEADD(HOUR, 2, @nowSlot)), 'Scheduled', @nowSlot);
+        -- Weekend Flash Blitz: weekend-focused slots only
+        (@pFlash3, @WkndStartUtc, @WkndEndUtc, 'Scheduled', @UtcNow14),
+        (@pFlash3, DATEADD(DAY, 1, @WkndStartUtc), DATEADD(DAY, 1, @WkndEndUtc), 'Scheduled', @UtcNow14),
+        (@pFlash3, @YestStartUtc, @YestEndUtc, 'Expired', @UtcNow14);
 END
 GO
 
@@ -568,7 +662,7 @@ BEGIN
         SELECT TOP 1
         PromotionID
     FROM Promotions
-    WHERE PromotionName = N'RC & Racing Expo'
+    WHERE PromotionName = N'Outdoor Play Month'
     );
 
     DECLARE @pPlush INT = (
@@ -637,7 +731,7 @@ BEGIN
         ( 4, @pLego, 378000, 10.00, @nowPP),
         ( 5, @pLego, 315000, 10.00, @nowPP),
 
-        -- RC & Racing Expo
+        -- Outdoor Play Month (RC toys)
         (26, @pRC, 799000, 15.34, @nowPP),
         (27, @pRC, 578000, 15.00, @nowPP),
         (28, @pRC, 1265000, 15.10, @nowPP),
@@ -700,91 +794,111 @@ BEGIN
     WHERE PromotionName = N'Weekend Flash Blitz'
     );
 
-    DECLARE @s1 INT = (SELECT TOP 1
-        TimeSlotID
-    FROM PromotionTimeSlots
-    WHERE PromotionID = @pFlash1Id
-    ORDER BY StartAt ASC);
-    DECLARE @s2 INT = (SELECT
-        TimeSlotID
-    FROM PromotionTimeSlots
-    WHERE PromotionID = @pFlash1Id
-    ORDER BY StartAt ASC OFFSET 1 ROWS FETCH NEXT 1 ROWS ONLY);
-    DECLARE @s3 INT = (SELECT
-        TimeSlotID
-    FROM PromotionTimeSlots
-    WHERE PromotionID = @pFlash1Id
-    ORDER BY StartAt ASC OFFSET 2 ROWS FETCH NEXT 1 ROWS ONLY);
-    DECLARE @s4 INT = (SELECT
-        TimeSlotID
-    FROM PromotionTimeSlots
-    WHERE PromotionID = @pFlash1Id
-    ORDER BY StartAt ASC OFFSET 3 ROWS FETCH NEXT 1 ROWS ONLY);
+    DECLARE @todayUtc DATE = CAST(@nowPPS AS DATE);
 
-    DECLARE @f1 INT = (SELECT TOP 1
+    -- Pick slots by role, not OFFSET (StartAt order != business meaning)
+    DECLARE @sLive INT = (
+        SELECT TOP 1
         TimeSlotID
     FROM PromotionTimeSlots
-    WHERE PromotionID = @pFlash2Id
+    WHERE PromotionID = @pFlash1Id AND Status = 'Active'
+    ORDER BY StartAt DESC);
+    DECLARE @sLunch INT = (
+        SELECT TOP 1
+        TimeSlotID
+    FROM PromotionTimeSlots
+    WHERE PromotionID = @pFlash1Id
+        AND CAST(StartAt AS DATE) = @todayUtc
+        AND TimeSlotID <> ISNULL(@sLive, -1)
     ORDER BY StartAt ASC);
-    DECLARE @f2 INT = (SELECT
+    DECLARE @sEven INT = (
+        SELECT TOP 1
         TimeSlotID
     FROM PromotionTimeSlots
-    WHERE PromotionID = @pFlash2Id
-    ORDER BY StartAt ASC OFFSET 1 ROWS FETCH NEXT 1 ROWS ONLY);
-    DECLARE @f3 INT = (SELECT
+    WHERE PromotionID = @pFlash1Id AND Status = 'Scheduled'
+        AND CAST(StartAt AS DATE) = @todayUtc
+    ORDER BY StartAt ASC);
+    DECLARE @sWknd INT = (
+        SELECT TOP 1
         TimeSlotID
     FROM PromotionTimeSlots
-    WHERE PromotionID = @pFlash2Id
-    ORDER BY StartAt ASC OFFSET 2 ROWS FETCH NEXT 1 ROWS ONLY);
+    WHERE PromotionID = @pFlash1Id AND Status = 'Scheduled'
+        AND CAST(StartAt AS DATE) > @todayUtc
+    ORDER BY StartAt ASC);
 
-    DECLARE @w1 INT = (SELECT TOP 1
+    DECLARE @fLunch INT = (
+        SELECT TOP 1
         TimeSlotID
     FROM PromotionTimeSlots
-    WHERE PromotionID = @pFlash3Id
+    WHERE PromotionID = @pFlash2Id AND CAST(StartAt AS DATE) = @todayUtc
     ORDER BY StartAt ASC);
-    DECLARE @w2 INT = (SELECT
+    DECLARE @fEven INT = (
+        SELECT TOP 1
         TimeSlotID
     FROM PromotionTimeSlots
-    WHERE PromotionID = @pFlash3Id
-    ORDER BY StartAt ASC OFFSET 1 ROWS FETCH NEXT 1 ROWS ONLY);
-    DECLARE @w3 INT = (SELECT
+    WHERE PromotionID = @pFlash2Id AND Status = 'Scheduled'
+        AND CAST(StartAt AS DATE) = @todayUtc
+    ORDER BY StartAt ASC);
+    DECLARE @fWknd INT = (
+        SELECT TOP 1
         TimeSlotID
     FROM PromotionTimeSlots
-    WHERE PromotionID = @pFlash3Id
-    ORDER BY StartAt ASC OFFSET 2 ROWS FETCH NEXT 1 ROWS ONLY);
+    WHERE PromotionID = @pFlash2Id AND Status = 'Scheduled'
+        AND CAST(StartAt AS DATE) > @todayUtc
+    ORDER BY StartAt ASC);
+
+    DECLARE @wWknd1 INT = (
+        SELECT TOP 1
+        TimeSlotID
+    FROM PromotionTimeSlots
+    WHERE PromotionID = @pFlash3Id AND Status = 'Scheduled'
+    ORDER BY StartAt ASC);
+    DECLARE @wWknd2 INT = (
+        SELECT TimeSlotID
+    FROM (
+            SELECT TimeSlotID, ROW_NUMBER() OVER (ORDER BY StartAt ASC) AS rn
+        FROM PromotionTimeSlots
+        WHERE PromotionID = @pFlash3Id AND Status = 'Scheduled'
+        ) ranked
+    WHERE rn = 2);
+    DECLARE @wExpired INT = (
+        SELECT TOP 1
+        TimeSlotID
+    FROM PromotionTimeSlots
+    WHERE PromotionID = @pFlash3Id AND Status = 'Expired'
+    ORDER BY StartAt DESC);
 
     INSERT INTO [dbo].[PromotionProductSlots]
         (TimeSlotID, ProductID, SalePrice, DiscountPercent,
         SaleQuantity, SoldQuantity, ReservedQuantity, CreatedAt)
     VALUES
-        -- Mega Flash Sale
-        (@s1, 24, 197000, 50.13, 10, 0, 0, @nowPPS),
-        (@s1, 13, 39000, 54.12, 50, 0, 0, @nowPPS),
-        (@s1, 29, 44000, 50.00, 80, 0, 0, @nowPPS),
-        (@s2, 17, 420000, 50.00, 12, 0, 0, @nowPPS),
-        (@s2, 18, 325000, 50.00, 15, 0, 0, @nowPPS),
-        (@s3, 1, 645000, 50.00, 20, 0, 0, @nowPPS),
-        (@s3, 20, 179000, 50.14, 30, 0, 0, @nowPPS),
-        (@s3, 25, 142000, 50.18, 40, 0, 0, @nowPPS),
-        (@s4, 2, 2995000, 50.00, 5, 0, 0, @nowPPS),
-        (@s4, 29, 44000, 50.00, 100, 0, 0, @nowPPS),
-        (@s4, 28, 745000, 50.00, 6, 0, 0, @nowPPS),
+        -- Mega Flash Sale (live slot = products customers see now)
+        (@sLive, 24, 197000, 50.13, 10, 3, 0, @nowPPS),
+        (@sLive, 13, 39000, 54.12, 50, 12, 0, @nowPPS),
+        (@sLive, 29, 44000, 50.00, 80, 25, 0, @nowPPS),
+        (@sLunch, 17, 420000, 50.00, 12, 12, 0, @nowPPS),
+        (@sLunch, 18, 325000, 50.00, 15, 15, 0, @nowPPS),
+        (@sEven, 1, 645000, 50.00, 20, 0, 0, @nowPPS),
+        (@sEven, 20, 179000, 50.14, 30, 0, 0, @nowPPS),
+        (@sEven, 25, 142000, 50.18, 40, 0, 0, @nowPPS),
+        (@sWknd, 2, 2995000, 50.00, 5, 0, 0, @nowPPS),
+        (@sWknd, 28, 745000, 50.00, 6, 0, 0, @nowPPS),
 
         -- Family Day Flash Sale
-        (@f1, 11, 272000, 50.09, 15, 0, 0, @nowPPS),
-        (@f1, 19, 210000, 50.00, 25, 0, 0, @nowPPS),
-        (@f2, 6, 72500, 50.00, 60, 0, 0, @nowPPS),
-        (@f2, 7, 92500, 50.00, 45, 0, 0, @nowPPS),
-        (@f3, 21, 245000, 50.00, 20, 0, 0, @nowPPS),
-        (@f3, 22, 297000, 50.08, 12, 0, 0, @nowPPS),
+        (@fLunch, 11, 272000, 50.09, 15, 0, 0, @nowPPS),
+        (@fLunch, 19, 210000, 50.00, 25, 0, 0, @nowPPS),
+        (@fEven, 6, 72500, 50.00, 60, 0, 0, @nowPPS),
+        (@fEven, 7, 92500, 50.00, 45, 0, 0, @nowPPS),
+        (@fWknd, 21, 245000, 50.00, 20, 0, 0, @nowPPS),
+        (@fWknd, 22, 297000, 50.08, 12, 0, 0, @nowPPS),
 
-        -- Weekend Flash Blitz
-        (@w1, 4, 210000, 50.00, 30, 0, 0, @nowPPS),
-        (@w1, 14, 82000, 50.30, 40, 0, 0, @nowPPS),
-        (@w2, 26, 472000, 50.05, 10, 0, 0, @nowPPS),
-        (@w2, 27, 340000, 50.00, 12, 0, 0, @nowPPS),
-        (@w3, 23, 445000, 50.00, 8, 0, 0, @nowPPS),
-        (@w3, 3, 795000, 50.00, 10, 0, 0, @nowPPS);
+        -- Weekend Flash Blitz (expired slot shows sell-through)
+        (@wExpired, 23, 445000, 50.00, 8, 8, 0, @nowPPS),
+        (@wExpired, 3, 795000, 50.00, 10, 7, 0, @nowPPS),
+        (@wWknd1, 4, 210000, 50.00, 30, 0, 0, @nowPPS),
+        (@wWknd1, 14, 82000, 50.30, 40, 0, 0, @nowPPS),
+        (@wWknd2, 26, 472000, 50.05, 10, 0, 0, @nowPPS),
+        (@wWknd2, 27, 340000, 50.00, 12, 0, 0, @nowPPS);
 END
 GO
 
@@ -797,8 +911,16 @@ IF NOT EXISTS (SELECT 1
 FROM [dbo].[Vouchers]
 WHERE VoucherCode = 'FREESHIP50')
 BEGIN
-    DECLARE @nowVoucher DATETIME2(0) = GETDATE();
-    DECLARE @creatorID INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'admin@toyhouse.vn');
+    DECLARE @UtcNowV DATETIME2(0) = (SELECT UtcNow
+    FROM #SeedTime);
+    DECLARE @UtcTodayV DATE = (SELECT UtcToday
+    FROM #SeedTime);
+    DECLARE @VActiveStart DATETIME2(0) = DATEADD(DAY, -23, CAST(@UtcTodayV AS DATETIME2(0)));
+    DECLARE @VActiveEnd DATETIME2(0) = DATEADD(DAY, 98, CAST(@UtcTodayV AS DATETIME2(0)));
+    DECLARE @creatorID INT = (SELECT TOP 1
+        AccountID
+    FROM Accounts
+    WHERE Email = 'admin@toyhouse.vn');
 
     INSERT INTO [dbo].[Vouchers]
         (CreatedBy, VoucherCode, VoucherName, VoucherDescription,
@@ -820,11 +942,11 @@ BEGIN
             1000,
             0,
             1,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            @VActiveStart,
+            @VActiveEnd,
             'Active',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -840,11 +962,11 @@ BEGIN
             500,
             0,
             1,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            @VActiveStart,
+            @VActiveEnd,
             'Active',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -860,11 +982,11 @@ BEGIN
             100,
             0,
             1,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            @VActiveStart,
+            @VActiveEnd,
             'Active',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -880,11 +1002,11 @@ BEGIN
             1000,
             0,
             1,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            @VActiveStart,
+            @VActiveEnd,
             'Active',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -900,11 +1022,11 @@ BEGIN
             500,
             12,
             1,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            @VActiveStart,
+            @VActiveEnd,
             'Active',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -920,11 +1042,11 @@ BEGIN
             2000,
             45,
             2,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            @VActiveStart,
+            @VActiveEnd,
             'Active',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -940,11 +1062,11 @@ BEGIN
             800,
             8,
             1,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            @VActiveStart,
+            @VActiveEnd,
             'Active',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -960,11 +1082,11 @@ BEGIN
             NULL,
             0,
             3,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            @VActiveStart,
+            @VActiveEnd,
             'Active',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -980,11 +1102,11 @@ BEGIN
             NULL,
             0,
             3,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            @VActiveStart,
+            @VActiveEnd,
             'Active',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -1000,11 +1122,11 @@ BEGIN
             50,
             5,
             1,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            @VActiveStart,
+            @VActiveEnd,
             'Active',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -1020,11 +1142,11 @@ BEGIN
             1500,
             22,
             1,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            DATEADD(DAY, -7, CAST(@UtcTodayV AS DATETIME2(0))),
+            DATEADD(DAY, 53, CAST(@UtcTodayV AS DATETIME2(0))),
             'Active',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -1040,11 +1162,11 @@ BEGIN
             300,
             18,
             2,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            @VActiveStart,
+            @VActiveEnd,
             'Active',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -1060,11 +1182,11 @@ BEGIN
             600,
             31,
             1,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            @VActiveStart,
+            @VActiveEnd,
             'Active',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -1080,11 +1202,11 @@ BEGIN
             800,
             0,
             2,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            @VActiveStart,
+            @VActiveEnd,
             'Active',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -1100,11 +1222,11 @@ BEGIN
             400,
             0,
             1,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            @VActiveStart,
+            @VActiveEnd,
             'Active',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -1118,13 +1240,13 @@ BEGIN
             'ORDER_TOTAL',
             180000,
             2000,
-            56,
-            1,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
-            'Active',
             0,
-            @nowVoucher
+            1,
+            DATEADD(DAY, 21, CAST(@UtcTodayV AS DATETIME2(0))),
+            DATEADD(DAY, 51, CAST(@UtcTodayV AS DATETIME2(0))),
+            'Scheduled',
+            0,
+            @UtcNowV
     ),
 
         (
@@ -1140,11 +1262,11 @@ BEGIN
             30,
             2,
             1,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            @VActiveStart,
+            @VActiveEnd,
             'Active',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -1160,11 +1282,11 @@ BEGIN
             NULL,
             0,
             5,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            @VActiveStart,
+            @VActiveEnd,
             'Active',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -1180,11 +1302,11 @@ BEGIN
             5000,
             120,
             1,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            @VActiveStart,
+            @VActiveEnd,
             'Active',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -1200,11 +1322,11 @@ BEGIN
             NULL,
             0,
             1,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            @VActiveStart,
+            @VActiveEnd,
             'Active',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -1220,11 +1342,11 @@ BEGIN
             200,
             0,
             1,
-            @nowVoucher,
-            DATEADD(YEAR, 1, @nowVoucher),
+            DATEADD(DAY, 14, CAST(@UtcTodayV AS DATETIME2(0))),
+            DATEADD(DAY, 44, CAST(@UtcTodayV AS DATETIME2(0))),
             'Pending',
             0,
-            @nowVoucher
+            @UtcNowV
     ),
 
         (
@@ -1240,39 +1362,119 @@ BEGIN
             100,
             100,
             1,
-            DATEADD(MONTH, -2, @nowVoucher),
-            DATEADD(MONTH, -1, @nowVoucher),
+            DATEADD(DAY, -90, CAST(@UtcTodayV AS DATETIME2(0))),
+            DATEADD(DAY, -60, CAST(@UtcTodayV AS DATETIME2(0))),
             'Inactive',
             0,
-            DATEADD(MONTH, -2, @nowVoucher)
+            DATEADD(DAY, -90, @UtcNowV)
+    ),
+
+        (
+            @creatorID,
+            'EXPIRING48H',
+            N'Expiring Soon 48H',
+            N'Last chance – 10% off before this voucher expires in 48 hours',
+            'PERCENTAGE',
+            10,
+            80000,
+            'ORDER_TOTAL',
+            100000,
+            500,
+            0,
+            1,
+            @UtcNowV,
+            DATEADD(DAY, 2, @UtcNowV),
+            'Active',
+            0,
+            @UtcNowV
+    ),
+
+        (
+            @creatorID,
+            'UPCOMING20',
+            N'Upcoming 20% Teaser',
+            N'20% off launching next week – save the code for later',
+            'PERCENTAGE',
+            20,
+            200000,
+            'ORDER_TOTAL',
+            250000,
+            300,
+            0,
+            1,
+            DATEADD(DAY, 7, CAST(@UtcTodayV AS DATETIME2(0))),
+            DATEADD(DAY, 14, CAST(@UtcTodayV AS DATETIME2(0))),
+            'Scheduled',
+            0,
+            @UtcNowV
+    ),
+
+        (
+            @creatorID,
+            'SPRING12',
+            N'Spring 12% Off',
+            N'Expired spring voucher kept for history',
+            'PERCENTAGE',
+            12,
+            100000,
+            'ORDER_TOTAL',
+            100000,
+            100,
+            100,
+            1,
+            DATEADD(DAY, -60, CAST(@UtcTodayV AS DATETIME2(0))),
+            DATEADD(DAY, -30, CAST(@UtcTodayV AS DATETIME2(0))),
+            'Expired',
+            0,
+            DATEADD(DAY, -60, @UtcNowV)
+    ),
+
+        (
+            @creatorID,
+            'REJECTED50K',
+            N'Rejected Staff Proposal 50K',
+            N'Admin rejected this voucher proposal',
+            'FIXED',
+            50000,
+            NULL,
+            'ORDER_TOTAL',
+            300000,
+            100,
+            0,
+            1,
+            DATEADD(DAY, 30, CAST(@UtcTodayV AS DATETIME2(0))),
+            DATEADD(DAY, 60, CAST(@UtcTodayV AS DATETIME2(0))),
+            'Rejected',
+            0,
+            @UtcNowV
     );
 END
 GO
 
 /* ══════════════════════════════════════════════════════════════
    SECTION 17.1 – DYNAMIC DAILY SEEDING (VOUCHERS, PROMOTIONS, FLASH SALES)
-   Generates 1-2 active vouchers, promotions, and flash sales for each day
-   from today/June 4, 2026 up to September 30, 2026.
+   From @UtcToday through +6 months. Flash slot hours stored as UTC (VN -7h).
 ══════════════════════════════════════════════════════════════ */
 PRINT N'[17.1] Dynamic Daily Seeding...';
 
-DECLARE @startDate DATE = CAST(GETDATE() AS DATE);
-IF @startDate > '2026-09-30'
-    SET @startDate = '2026-06-04';
-DECLARE @endDate DATE = '2026-09-30';
+DECLARE @UtcNow171 DATETIME2(0) = (SELECT UtcNow
+FROM #SeedTime);
+DECLARE @startDate DATE = (SELECT UtcToday
+FROM #SeedTime);
+DECLARE @endDate DATE = DATEADD(MONTH, 6, @startDate);
 
 DECLARE @currentDate DATE = @startDate;
 DECLARE @dayNum INT = 1;
 
-DECLARE @creatorID INT = (
-    SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'admin@toyhouse.vn'
-);
+DECLARE @creatorID INT = (SELECT TOP 1
+    AccountID
+FROM Accounts
+WHERE Email = 'admin@toyhouse.vn');
 
 WHILE @currentDate <= @endDate
 BEGIN
     DECLARE @dateStr VARCHAR(10) = CONVERT(VARCHAR(10), @currentDate, 120);
     DECLARE @dtStart DATETIME2(0) = CAST(@currentDate AS DATETIME2(0));
-    -- End date is 2 days later, so it overlaps and ensures 2 active vouchers/promos on any day
     DECLARE @dtEnd DATETIME2(0) = DATEADD(SECOND, -1, DATEADD(DAY, 2, CAST(@currentDate AS DATETIME2(0))));
 
     -- -------------------------------------------------------------
@@ -1321,16 +1523,18 @@ BEGIN
         SET @vMinAmt = 400000;
     END;
 
-    IF NOT EXISTS (SELECT 1 FROM [dbo].[Vouchers] WHERE VoucherCode = @vCode)
+    IF NOT EXISTS (SELECT 1
+    FROM [dbo].[Vouchers]
+    WHERE VoucherCode = @vCode)
     BEGIN
         INSERT INTO [dbo].[Vouchers]
             (CreatedBy, VoucherCode, VoucherName, VoucherDescription,
-             DiscountType, DiscountValue, MaxDiscountCap, DiscountTarget, MinOrderAmount,
-             TotalQuantity, UsedQuantity, MaxUsagePerUser, StartDate, EndDate, Status, IsDeleted, CreatedAt)
+            DiscountType, DiscountValue, MaxDiscountCap, DiscountTarget, MinOrderAmount,
+            TotalQuantity, UsedQuantity, MaxUsagePerUser, StartDate, EndDate, Status, IsDeleted, CreatedAt)
         VALUES
             (@creatorID, @vCode, @vName, @vDesc,
-             @vType, @vVal, @vCap, @vTarget, @vMinAmt,
-             1000, 0, 1, @dtStart, @dtEnd, 'Active', 0, GETDATE());
+                @vType, @vVal, @vCap, @vTarget, @vMinAmt,
+                1000, 0, 1, @dtStart, @dtEnd, 'Active', 0, @UtcNow171);
     END;
 
     -- -------------------------------------------------------------
@@ -1339,13 +1543,15 @@ BEGIN
     DECLARE @promoName NVARCHAR(200) = N'Daily Discount Promotion ' + CAST(@currentDate AS NVARCHAR);
     DECLARE @promoID INT;
 
-    IF NOT EXISTS (SELECT 1 FROM [dbo].[Promotions] WHERE PromotionName = @promoName)
+    IF NOT EXISTS (SELECT 1
+    FROM [dbo].[Promotions]
+    WHERE PromotionName = @promoName)
     BEGIN
         INSERT INTO [dbo].[Promotions]
             (CreatedBy, PromotionName, PromotionType, Description, StartDate, EndDate, Status, Priority, IsDeleted, CreatedAt)
         VALUES
-            (@creatorID, @promoName, 'DISCOUNT', N'Special daily discount catalog.', @dtStart, @dtEnd, 'Active', 10, 0, GETDATE());
-        
+            (@creatorID, @promoName, 'DISCOUNT', N'Special daily discount catalog.', @dtStart, @dtEnd, 'Active', 10, 0, @UtcNow171);
+
         SET @promoID = SCOPE_IDENTITY();
 
         -- Link to 3 products (systematically rotating product IDs)
@@ -1354,85 +1560,153 @@ BEGIN
         DECLARE @p3 INT = ((@dayNum + 13) % 30) + 1;
 
         -- Get product prices
-        DECLARE @price1 DECIMAL(12,0) = (SELECT Price FROM Products WHERE ProductID = @p1);
-        DECLARE @price2 DECIMAL(12,0) = (SELECT Price FROM Products WHERE ProductID = @p2);
-        DECLARE @price3 DECIMAL(12,0) = (SELECT Price FROM Products WHERE ProductID = @p3);
+        DECLARE @price1 DECIMAL(12,0) = (SELECT Price
+        FROM Products
+        WHERE ProductID = @p1);
+        DECLARE @price2 DECIMAL(12,0) = (SELECT Price
+        FROM Products
+        WHERE ProductID = @p2);
+        DECLARE @price3 DECIMAL(12,0) = (SELECT Price
+        FROM Products
+        WHERE ProductID = @p3);
 
         IF @price1 IS NOT NULL
-            INSERT INTO [dbo].[ProductPromotions] (ProductID, PromotionID, SalePrice, DiscountPercent, IsDeleted, CreatedAt)
-            VALUES (@p1, @promoID, @price1 * 0.85, 15.00, 0, GETUTCDATE());
+            INSERT INTO [dbo].[ProductPromotions]
+            (ProductID, PromotionID, SalePrice, DiscountPercent, IsDeleted, CreatedAt)
+        VALUES
+            (@p1, @promoID, @price1 * 0.85, 15.00, 0, GETUTCDATE());
         IF @price2 IS NOT NULL
-            INSERT INTO [dbo].[ProductPromotions] (ProductID, PromotionID, SalePrice, DiscountPercent, IsDeleted, CreatedAt)
-            VALUES (@p2, @promoID, @price2 * 0.85, 15.00, 0, GETUTCDATE());
+            INSERT INTO [dbo].[ProductPromotions]
+            (ProductID, PromotionID, SalePrice, DiscountPercent, IsDeleted, CreatedAt)
+        VALUES
+            (@p2, @promoID, @price2 * 0.85, 15.00, 0, GETUTCDATE());
         IF @price3 IS NOT NULL
-            INSERT INTO [dbo].[ProductPromotions] (ProductID, PromotionID, SalePrice, DiscountPercent, IsDeleted, CreatedAt)
-            VALUES (@p3, @promoID, @price3 * 0.85, 15.00, 0, GETUTCDATE());
+            INSERT INTO [dbo].[ProductPromotions]
+            (ProductID, PromotionID, SalePrice, DiscountPercent, IsDeleted, CreatedAt)
+        VALUES
+            (@p3, @promoID, @price3 * 0.85, 15.00, 0, GETUTCDATE());
     END;
 
     -- -------------------------------------------------------------
-    -- 3. DYNAMIC FLASH SALES (1 promotion per day with 2 slots)
+    -- 3. DYNAMIC FLASH SALES (1 promotion per day, lunch + evening VN slots)
+    -- Promotion/slot Status derived from @UtcNow171 (matches PromotionStatusJob)
     -- -------------------------------------------------------------
-    DECLARE @flashPromoName NVARCHAR(200) = N'Daily Flash Sale ' + CAST(@currentDate AS NVARCHAR);
+    DECLARE @dayOffset INT = DATEDIFF(DAY, @startDate, @currentDate);
+    DECLARE @flashPromoName NVARCHAR(200) = CASE
+        WHEN @dayOffset BETWEEN 21 AND 83  THEN N'Daily Flash – Back To School Warmup ' + @dateStr
+        WHEN @dayOffset BETWEEN 99 AND 129 THEN N'Daily Flash – Halloween Spooktacular ' + @dateStr
+        WHEN @dayOffset BETWEEN 130 AND 159 THEN N'Daily Flash – Black Friday Preview ' + @dateStr
+        WHEN @dayOffset BETWEEN 160 AND 190 THEN N'Daily Flash – Christmas Deals ' + @dateStr
+        ELSE N'Daily Flash – Summer Toy Festival ' + @dateStr
+    END;
     DECLARE @flashPromoID INT;
 
-    IF NOT EXISTS (SELECT 1 FROM [dbo].[Promotions] WHERE PromotionName = @flashPromoName)
+    DECLARE @flashPromoStatus VARCHAR(20) = CASE
+        WHEN @dtEnd < @UtcNow171 THEN 'Expired'
+        WHEN @dtStart > @UtcNow171 THEN 'Scheduled'
+        ELSE 'Active' END;
+
+    IF NOT EXISTS (SELECT 1
+    FROM [dbo].[Promotions]
+    WHERE PromotionName = @flashPromoName)
     BEGIN
         INSERT INTO [dbo].[Promotions]
             (CreatedBy, PromotionName, PromotionType, Description, StartDate, EndDate, Status, Priority, IsDeleted, CreatedAt)
         VALUES
-            (@creatorID, @flashPromoName, 'FLASH_SALE', N'Limited time daily flash sale.', @dtStart, @dtEnd, 'Active', 20, 0, GETDATE());
+            (@creatorID, @flashPromoName, 'FLASH_SALE', N'Limited time daily flash sale.', @dtStart, @dtEnd, @flashPromoStatus, 20, 0, @UtcNow171);
 
         SET @flashPromoID = SCOPE_IDENTITY();
 
-        -- Create Slot 1: 09:00:00 to 13:00:00 (Active status)
-        -- Create Slot 2: 15:00:00 to 21:00:00 (Scheduled status)
-        -- Note: StartAt and EndAt are stored in UTC. We will use DATETIME2(0) values.
-        DECLARE @slot1Start DATETIME2(0) = DATEADD(HOUR, 9, @dtStart);
-        DECLARE @slot1End DATETIME2(0) = DATEADD(HOUR, 13, @dtStart);
-        DECLARE @slot2Start DATETIME2(0) = DATEADD(HOUR, 15, @dtStart);
-        DECLARE @slot2End DATETIME2(0) = DATEADD(HOUR, 21, @dtStart);
+        DECLARE @VnSlot1Start DATETIME2(0) = DATEADD(HOUR, 11, CAST(@currentDate AS DATETIME2(0)));
+        DECLARE @VnSlot1End   DATETIME2(0) = DATEADD(HOUR, 14, CAST(@currentDate AS DATETIME2(0)));
+        DECLARE @VnSlot2Start DATETIME2(0) = DATEADD(HOUR, 19, CAST(@currentDate AS DATETIME2(0)));
+        DECLARE @VnSlot2End   DATETIME2(0) = DATEADD(HOUR, 22, CAST(@currentDate AS DATETIME2(0)));
 
-        INSERT INTO [dbo].[PromotionTimeSlots] (PromotionID, StartAt, EndAt, Status, IsDeleted, CreatedAt)
-        VALUES 
-            (@flashPromoID, @slot1Start, @slot1End, 'Active', 0, GETUTCDATE()),
-            (@flashPromoID, @slot2Start, @slot2End, 'Scheduled', 0, GETUTCDATE());
+        DECLARE @slot1Start DATETIME2(0) = CAST((@VnSlot1Start AT TIME ZONE 'SE Asia Standard Time') AT TIME ZONE 'UTC' AS DATETIME2(0));
+        DECLARE @slot1End   DATETIME2(0) = CAST((@VnSlot1End   AT TIME ZONE 'SE Asia Standard Time') AT TIME ZONE 'UTC' AS DATETIME2(0));
+        DECLARE @slot2Start DATETIME2(0) = CAST((@VnSlot2Start AT TIME ZONE 'SE Asia Standard Time') AT TIME ZONE 'UTC' AS DATETIME2(0));
+        DECLARE @slot2End   DATETIME2(0) = CAST((@VnSlot2End   AT TIME ZONE 'SE Asia Standard Time') AT TIME ZONE 'UTC' AS DATETIME2(0));
+
+        DECLARE @slot1Status VARCHAR(20) = CASE
+            WHEN @flashPromoStatus = 'Scheduled' THEN 'Scheduled'
+            WHEN @flashPromoStatus = 'Expired' THEN 'Expired'
+            WHEN @UtcNow171 >= @slot1Start AND @UtcNow171 < @slot1End THEN 'Active'
+            WHEN @UtcNow171 >= @slot1End THEN 'Expired'
+            ELSE 'Scheduled' END;
+
+        DECLARE @slot2Status VARCHAR(20) = CASE
+            WHEN @flashPromoStatus = 'Scheduled' THEN 'Scheduled'
+            WHEN @flashPromoStatus = 'Expired' THEN 'Expired'
+            WHEN @UtcNow171 >= @slot2Start AND @UtcNow171 < @slot2End THEN 'Active'
+            WHEN @UtcNow171 >= @slot2End THEN 'Expired'
+            ELSE 'Scheduled' END;
+
+        INSERT INTO [dbo].[PromotionTimeSlots]
+            (PromotionID, StartAt, EndAt, Status, IsDeleted, CreatedAt)
+        VALUES
+            (@flashPromoID, @slot1Start, @slot1End, @slot1Status, 0, @UtcNow171),
+            (@flashPromoID, @slot2Start, @slot2End, @slot2Status, 0, @UtcNow171);
 
         DECLARE @slot1ID INT;
         DECLARE @slot2ID INT;
-        
-        SET @slot1ID = (SELECT TimeSlotID FROM PromotionTimeSlots WHERE PromotionID = @flashPromoID AND StartAt = @slot1Start);
-        SET @slot2ID = (SELECT TimeSlotID FROM PromotionTimeSlots WHERE PromotionID = @flashPromoID AND StartAt = @slot2Start);
+
+        SET @slot1ID = (SELECT TimeSlotID
+        FROM PromotionTimeSlots
+        WHERE PromotionID = @flashPromoID AND StartAt = @slot1Start);
+        SET @slot2ID = (SELECT TimeSlotID
+        FROM PromotionTimeSlots
+        WHERE PromotionID = @flashPromoID AND StartAt = @slot2Start);
+
+        -- SoldQuantity: partial sell-through on expired slots for realism
+        DECLARE @sold1 INT = CASE WHEN @slot1Status = 'Expired' THEN 8 + (@dayNum % 7) ELSE 0 END;
+        DECLARE @sold2 INT = CASE WHEN @slot2Status = 'Expired' THEN 5 + (@dayNum % 5) ELSE 0 END;
 
         -- Attach products to Slot 1
         DECLARE @fp1 INT = ((@dayNum + 3) % 30) + 1;
         DECLARE @fp2 INT = ((@dayNum + 11) % 30) + 1;
-        DECLARE @fprice1 DECIMAL(12,0) = (SELECT Price FROM Products WHERE ProductID = @fp1);
-        DECLARE @fprice2 DECIMAL(12,0) = (SELECT Price FROM Products WHERE ProductID = @fp2);
+        DECLARE @fprice1 DECIMAL(12,0) = (SELECT Price
+        FROM Products
+        WHERE ProductID = @fp1);
+        DECLARE @fprice2 DECIMAL(12,0) = (SELECT Price
+        FROM Products
+        WHERE ProductID = @fp2);
 
         IF @slot1ID IS NOT NULL
         BEGIN
             IF @fprice1 IS NOT NULL
-                INSERT INTO [dbo].[PromotionProductSlots] (TimeSlotID, ProductID, SalePrice, DiscountPercent, SaleQuantity, SoldQuantity, ReservedQuantity, IsDeleted, CreatedAt)
-                VALUES (@slot1ID, @fp1, @fprice1 * 0.50, 50.00, 20, 0, 0, 0, GETUTCDATE());
+                INSERT INTO [dbo].[PromotionProductSlots]
+                (TimeSlotID, ProductID, SalePrice, DiscountPercent, SaleQuantity, SoldQuantity, ReservedQuantity, IsDeleted, CreatedAt)
+            VALUES
+                (@slot1ID, @fp1, @fprice1 * 0.50, 50.00, 20, @sold1, 0, 0, @UtcNow171);
             IF @fprice2 IS NOT NULL
-                INSERT INTO [dbo].[PromotionProductSlots] (TimeSlotID, ProductID, SalePrice, DiscountPercent, SaleQuantity, SoldQuantity, ReservedQuantity, IsDeleted, CreatedAt)
-                VALUES (@slot1ID, @fp2, @fprice2 * 0.50, 50.00, 20, 0, 0, 0, GETUTCDATE());
+                INSERT INTO [dbo].[PromotionProductSlots]
+                (TimeSlotID, ProductID, SalePrice, DiscountPercent, SaleQuantity, SoldQuantity, ReservedQuantity, IsDeleted, CreatedAt)
+            VALUES
+                (@slot1ID, @fp2, @fprice2 * 0.50, 50.00, 20, @sold1, 0, 0, @UtcNow171);
         END;
 
         -- Attach products to Slot 2
         DECLARE @fp3 INT = ((@dayNum + 17) % 30) + 1;
         DECLARE @fp4 INT = ((@dayNum + 23) % 30) + 1;
-        DECLARE @fprice3 DECIMAL(12,0) = (SELECT Price FROM Products WHERE ProductID = @fp3);
-        DECLARE @fprice4 DECIMAL(12,0) = (SELECT Price FROM Products WHERE ProductID = @fp4);
+        DECLARE @fprice3 DECIMAL(12,0) = (SELECT Price
+        FROM Products
+        WHERE ProductID = @fp3);
+        DECLARE @fprice4 DECIMAL(12,0) = (SELECT Price
+        FROM Products
+        WHERE ProductID = @fp4);
 
         IF @slot2ID IS NOT NULL
         BEGIN
             IF @fprice3 IS NOT NULL
-                INSERT INTO [dbo].[PromotionProductSlots] (TimeSlotID, ProductID, SalePrice, DiscountPercent, SaleQuantity, SoldQuantity, ReservedQuantity, IsDeleted, CreatedAt)
-                VALUES (@slot2ID, @fp3, @fprice3 * 0.50, 50.00, 20, 0, 0, 0, GETUTCDATE());
+                INSERT INTO [dbo].[PromotionProductSlots]
+                (TimeSlotID, ProductID, SalePrice, DiscountPercent, SaleQuantity, SoldQuantity, ReservedQuantity, IsDeleted, CreatedAt)
+            VALUES
+                (@slot2ID, @fp3, @fprice3 * 0.50, 50.00, 20, @sold2, 0, 0, @UtcNow171);
             IF @fprice4 IS NOT NULL
-                INSERT INTO [dbo].[PromotionProductSlots] (TimeSlotID, ProductID, SalePrice, DiscountPercent, SaleQuantity, SoldQuantity, ReservedQuantity, IsDeleted, CreatedAt)
-                VALUES (@slot2ID, @fp4, @fprice4 * 0.50, 50.00, 20, 0, 0, 0, GETUTCDATE());
+                INSERT INTO [dbo].[PromotionProductSlots]
+                (TimeSlotID, ProductID, SalePrice, DiscountPercent, SaleQuantity, SoldQuantity, ReservedQuantity, IsDeleted, CreatedAt)
+            VALUES
+                (@slot2ID, @fp4, @fprice4 * 0.50, 50.00, 20, @sold2, 0, 0, @UtcNow171);
         END;
     END;
 
@@ -1445,6 +1719,8 @@ GO
    SECTION 27 – ORDER REFUND REASONS
 ══════════════════════════════════════════════════════════════ */
 PRINT N'[27] OrderRefundReasons...';
+DECLARE @UtcNow27 DATETIME2(0) = (SELECT UtcNow
+FROM #SeedTime);
 
 IF NOT EXISTS (SELECT 1
 FROM [dbo].[OrderRefundReasons])
@@ -1452,98 +1728,133 @@ BEGIN
     INSERT INTO [dbo].[OrderRefundReasons]
         (Content, Description, IsDeleted, IsSystem, CreatedAt)
     VALUES
-        (
-            N'Product defective from manufacturer',
-            N'The delivered product has technical defects',
-            0, 0, '2024-01-05 08:00:00'
-    ),
-        (
-            N'Wrong product delivered',
-            N'The shop sent the wrong color, size, or model',
-            0, 0, '2024-01-05 08:00:00'
-    ),
-        (
-            N'Product not as described',
-            N'The actual product does not match the images or description',
-            0, 0, '2024-01-05 08:00:00'
-    ),
-        (
-            N'Product damaged during shipping',
-            N'The package was dented or broken during delivery',
-            0, 0, '2024-01-05 08:00:00'
-    ),
-        (
-            N'Missing accessories',
-            N'The package does not include all accessories as described',
-            0, 0, '2024-01-05 08:00:00'
-    ),
-        (
-            N'Delivery failed / unable to deliver',
-            N'Automatic refund when GHN returns the package to warehouse due to failed delivery (System-only)',
-            0, 1, GETDATE()
-    );
+        (N'Product defective from manufacturer', N'The delivered product has technical defects', 0, 0, @UtcNow27),
+        (N'Wrong product delivered', N'The shop sent the wrong color, size, or model', 0, 0, @UtcNow27),
+        (N'Product not as described', N'The actual product does not match the images or description', 0, 0, @UtcNow27),
+        (N'Product damaged during shipping', N'The package was dented or broken during delivery', 0, 0, @UtcNow27),
+        (N'Missing accessories', N'The package does not include all accessories as described', 0, 0, @UtcNow27),
+        (N'Delivery failed / unable to deliver', N'Automatic refund when GHN returns the package to warehouse due to failed delivery (System-only)', 0, 1, @UtcNow27);
 END
 GO
 
-
-GO
 /* ══════════════════════════════════════════════════════════════
-   SECTION 28 – DELIVERED ORDERS (for ReviewProducts seeding)
-   5 customers × 2 orders each = 10 delivered orders
-   Each order has 2 products from the catalog
+   SECTION 28 – ORDERS (UTC timeline, English addresses)
+   10 historical delivered/completed + 4 worker-test orders
 ══════════════════════════════════════════════════════════════ */
-PRINT N'[28] Delivered Orders & OrderDetails...';
+PRINT N'[28] Orders & OrderDetails...';
 
-IF NOT EXISTS (SELECT 1 FROM [dbo].[Orders])
+IF NOT EXISTS (SELECT 1
+FROM [dbo].[Orders])
 BEGIN
-    DECLARE @cust1 INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'lananh.pham@gmail.com');
-    DECLARE @cust2 INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'hung.nguyen88@gmail.com');
-    DECLARE @cust3 INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'bauchau.vu@gmail.com');
-    DECLARE @cust4 INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'mtuando@outlook.com');
-    DECLARE @cust5 INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'thuha.hoang@gmail.com');
+    DECLARE @UtcNow28 DATETIME2(0) = (SELECT UtcNow
+    FROM #SeedTime);
+    DECLARE @cust1 INT = (SELECT TOP 1
+        AccountID
+    FROM Accounts
+    WHERE Email = 'lananh.pham@gmail.com');
+    DECLARE @cust2 INT = (SELECT TOP 1
+        AccountID
+    FROM Accounts
+    WHERE Email = 'hung.nguyen88@gmail.com');
+    DECLARE @cust3 INT = (SELECT TOP 1
+        AccountID
+    FROM Accounts
+    WHERE Email = 'bauchau.vu@gmail.com');
+    DECLARE @cust4 INT = (SELECT TOP 1
+        AccountID
+    FROM Accounts
+    WHERE Email = 'mtuando@outlook.com');
+    DECLARE @cust5 INT = (SELECT TOP 1
+        AccountID
+    FROM Accounts
+    WHERE Email = 'thuha.hoang@gmail.com');
 
-    -- StatusID 6 = Delivered, StatusID 7 = Completed
     SET IDENTITY_INSERT [dbo].[Orders] ON;
     INSERT INTO [dbo].[Orders]
         (OrderID, AccountID, StatusID, OrderCode,
-         ShippingName, ShippingPhone, ShippingAddress,
-         ShippingWardCode, ShippingWardName, ShippingDistrictId, ShippingDistrictName, ShippingProvinceId, ShippingProvinceName,
-         OrderDate, ConfirmedAt, ShippedAt, DeliveredAt,
-         PaymentMethod, PaymentStatus, PaidAt,
-         SubTotal, VoucherDiscountAmount, EstimatedShippingFee, TotalAmount, IsDeleted, CreatedAt)
+        ShippingName, ShippingPhone, ShippingAddress,
+        ShippingWardCode, ShippingWardName, ShippingDistrictId, ShippingDistrictName, ShippingProvinceId, ShippingProvinceName,
+        OrderDate, ConfirmedAt, ShippedAt, DeliveredAt, CompletedAt,
+        PaymentMethod, PaymentStatus, PaidAt,
+        SubTotal, VoucherDiscountAmount, EstimatedShippingFee, TotalAmount, IsDeleted, CreatedAt)
     VALUES
-        (1, @cust1, 6,'ORD20260115090000101',N'Anna Pham','0912001001',N'12 Nguyễn Huệ','20101',N'Phường Bến Nghé',1442,N'Quận 1',202,N'Hồ Chí Minh','2026-01-15 09:00:00','2026-01-15 11:00:00','2026-01-16 08:00:00','2026-01-17 14:00:00','SHIP_COD','PAID','2026-01-17 14:00:00',1710000,0,30000,1740000,0,'2026-01-15 09:00:00'),
-        (2, @cust1, 7,'ORD20260310100000234',N'Anna Pham','0912001001',N'12 Nguyễn Huệ','20101',N'Phường Bến Nghé',1442,N'Quận 1',202,N'Hồ Chí Minh','2026-03-10 10:00:00','2026-03-10 12:00:00','2026-03-11 09:00:00','2026-03-12 15:00:00','SHIP_COD','PAID','2026-03-12 15:00:00',735000,0,30000,765000,0,'2026-03-10 10:00:00'),
-        (3, @cust2, 6,'ORD20260120083000312',N'Henry Nguyen','0912001002',N'45 Lê Lợi','20301',N'Phường 1',1444,N'Quận 3',202,N'Hồ Chí Minh','2026-01-20 08:30:00','2026-01-20 10:30:00','2026-01-21 09:00:00','2026-01-22 13:00:00','SHIP_COD','PAID','2026-01-22 13:00:00',6395000,0,30000,6425000,0,'2026-01-20 08:30:00'),
-        (4, @cust2, 7,'ORD20260214110000445',N'Henry Nguyen','0912001002',N'45 Lê Lợi','20301',N'Phường 1',1444,N'Quận 3',202,N'Hồ Chí Minh','2026-02-14 11:00:00','2026-02-14 13:00:00','2026-02-15 09:00:00','2026-02-16 14:30:00','SHIP_COD','PAID','2026-02-16 14:30:00',630000,0,30000,660000,0,'2026-02-14 11:00:00'),
-        (5, @cust3, 6,'ORD20260201090000523',N'Chloe Vu','0912001003',N'88 Trần Hưng Đạo','20501',N'Phường 1',1447,N'Quận 5',202,N'Hồ Chí Minh','2026-02-01 09:00:00','2026-02-01 11:00:00','2026-02-02 08:30:00','2026-02-03 14:00:00','SHIP_COD','PAID','2026-02-03 14:00:00',1640000,0,30000,1670000,0,'2026-02-01 09:00:00'),
-        (6, @cust3, 7,'ORD20260320140000167',N'Chloe Vu','0912001003',N'88 Trần Hưng Đạo','20501',N'Phường 1',1447,N'Quận 5',202,N'Hồ Chí Minh','2026-03-20 14:00:00','2026-03-20 16:00:00','2026-03-21 09:00:00','2026-03-22 14:00:00','SHIP_COD','PAID','2026-03-22 14:00:00',1080000,0,30000,1110000,0,'2026-03-20 14:00:00'),
-        (7, @cust4, 6,'ORD20260210100000289',N'Marcus Do','0912001004',N'99 Điện Biên Phủ','21601',N'Phường 1',1462,N'Quận Bình Thạnh',202,N'Hồ Chí Minh','2026-02-10 10:00:00','2026-02-10 12:00:00','2026-02-11 09:00:00','2026-02-12 15:00:00','SHIP_COD','PAID','2026-02-12 15:00:00',870000,0,30000,900000,0,'2026-02-10 10:00:00'),
-        (8, @cust4, 7,'ORD20260405093000034',N'Marcus Do','0912001004',N'99 Điện Biên Phủ','21601',N'Phường 1',1462,N'Quận Bình Thạnh',202,N'Hồ Chí Minh','2026-04-05 09:30:00','2026-04-05 11:30:00','2026-04-06 09:00:00','2026-04-07 14:00:00','SHIP_COD','PAID','2026-04-07 14:00:00',980000,0,30000,1010000,0,'2026-04-05 09:30:00'),
-        (9, @cust5, 6,'ORD20260301080000751',N'Hannah Hoang','0912001005',N'22 Hoàng Văn Thụ','21701',N'Phường 1',1457,N'Quận Phú Nhuận',202,N'Hồ Chí Minh','2026-03-01 08:00:00','2026-03-01 10:00:00','2026-03-02 09:00:00','2026-03-03 14:00:00','SHIP_COD','PAID','2026-03-03 14:00:00',1290000,0,30000,1320000,0,'2026-03-01 08:00:00'),
-        (10,@cust5, 7,'ORD20260415100000418',N'Hannah Hoang','0912001005',N'22 Hoàng Văn Thụ','21701',N'Phường 1',1457,N'Quận Phú Nhuận',202,N'Hồ Chí Minh','2026-04-15 10:00:00','2026-04-15 12:00:00','2026-04-16 09:00:00','2026-04-17 15:00:00','SHIP_COD','PAID','2026-04-17 15:00:00',420000,0,30000,450000,0,'2026-04-15 10:00:00');
+        (1, @cust1, 6, 'ORD-SEED-001', N'Lan Anh Pham', '0912001001', N'12 Nguyen Hue St', '20101', N'Ben Nghe Ward', 1442, N'District 1', 202, N'Ho Chi Minh City',
+            DATEADD(DAY, -75, @UtcNow28), DATEADD(DAY, -75, DATEADD(HOUR, 2, @UtcNow28)), DATEADD(DAY, -74, @UtcNow28), DATEADD(DAY, -73, @UtcNow28), NULL,
+            'SHIP_COD', 'PAID', DATEADD(DAY, -73, @UtcNow28), 1710000, 0, 30000, 1740000, 0, DATEADD(DAY, -75, @UtcNow28)),
+        (2, @cust1, 7, 'ORD-SEED-002', N'Lan Anh Pham', '0912001001', N'12 Nguyen Hue St', '20101', N'Ben Nghe Ward', 1442, N'District 1', 202, N'Ho Chi Minh City',
+            DATEADD(DAY, -45, @UtcNow28), DATEADD(DAY, -45, DATEADD(HOUR, 2, @UtcNow28)), DATEADD(DAY, -44, @UtcNow28), DATEADD(DAY, -43, @UtcNow28), DATEADD(DAY, -40, @UtcNow28),
+            'SHIP_COD', 'PAID', DATEADD(DAY, -43, @UtcNow28), 735000, 0, 30000, 765000, 0, DATEADD(DAY, -45, @UtcNow28)),
+        (3, @cust2, 6, 'ORD-SEED-003', N'Hung Nguyen', '0912001002', N'45 Le Loi St', '20301', N'Ward 1', 1444, N'District 3', 202, N'Ho Chi Minh City',
+            DATEADD(DAY, -60, @UtcNow28), DATEADD(DAY, -60, DATEADD(HOUR, 2, @UtcNow28)), DATEADD(DAY, -59, @UtcNow28), DATEADD(DAY, -58, @UtcNow28), NULL,
+            'SHIP_COD', 'PAID', DATEADD(DAY, -58, @UtcNow28), 6395000, 0, 30000, 6425000, 0, DATEADD(DAY, -60, @UtcNow28)),
+        (4, @cust2, 7, 'ORD-SEED-004', N'Hung Nguyen', '0912001002', N'45 Le Loi St', '20301', N'Ward 1', 1444, N'District 3', 202, N'Ho Chi Minh City',
+            DATEADD(DAY, -30, @UtcNow28), DATEADD(DAY, -30, DATEADD(HOUR, 2, @UtcNow28)), DATEADD(DAY, -29, @UtcNow28), DATEADD(DAY, -28, @UtcNow28), DATEADD(DAY, -25, @UtcNow28),
+            'SHIP_COD', 'PAID', DATEADD(DAY, -28, @UtcNow28), 630000, 0, 30000, 660000, 0, DATEADD(DAY, -30, @UtcNow28)),
+        (5, @cust3, 6, 'ORD-SEED-005', N'Bau Chau Vu', '0912001003', N'88 Tran Hung Dao St', '20501', N'Ward 1', 1447, N'District 5', 202, N'Ho Chi Minh City',
+            DATEADD(DAY, -55, @UtcNow28), DATEADD(DAY, -55, DATEADD(HOUR, 2, @UtcNow28)), DATEADD(DAY, -54, @UtcNow28), DATEADD(DAY, -53, @UtcNow28), NULL,
+            'SHIP_COD', 'PAID', DATEADD(DAY, -53, @UtcNow28), 1640000, 0, 30000, 1670000, 0, DATEADD(DAY, -55, @UtcNow28)),
+        (6, @cust3, 7, 'ORD-SEED-006', N'Bau Chau Vu', '0912001003', N'88 Tran Hung Dao St', '20501', N'Ward 1', 1447, N'District 5', 202, N'Ho Chi Minh City',
+            DATEADD(DAY, -35, @UtcNow28), DATEADD(DAY, -35, DATEADD(HOUR, 2, @UtcNow28)), DATEADD(DAY, -34, @UtcNow28), DATEADD(DAY, -33, @UtcNow28), DATEADD(DAY, -30, @UtcNow28),
+            'SHIP_COD', 'PAID', DATEADD(DAY, -33, @UtcNow28), 1080000, 0, 30000, 1110000, 0, DATEADD(DAY, -35, @UtcNow28)),
+        (7, @cust4, 6, 'ORD-SEED-007', N'Minh Tuan Do', '0912001004', N'99 Dien Bien Phu St', '21601', N'Ward 1', 1462, N'Binh Thanh District', 202, N'Ho Chi Minh City',
+            DATEADD(DAY, -50, @UtcNow28), DATEADD(DAY, -50, DATEADD(HOUR, 2, @UtcNow28)), DATEADD(DAY, -49, @UtcNow28), DATEADD(DAY, -48, @UtcNow28), NULL,
+            'SHIP_COD', 'PAID', DATEADD(DAY, -48, @UtcNow28), 870000, 0, 30000, 900000, 0, DATEADD(DAY, -50, @UtcNow28)),
+        (8, @cust4, 7, 'ORD-SEED-008', N'Minh Tuan Do', '0912001004', N'99 Dien Bien Phu St', '21601', N'Ward 1', 1462, N'Binh Thanh District', 202, N'Ho Chi Minh City',
+            DATEADD(DAY, -20, @UtcNow28), DATEADD(DAY, -20, DATEADD(HOUR, 2, @UtcNow28)), DATEADD(DAY, -19, @UtcNow28), DATEADD(DAY, -18, @UtcNow28), DATEADD(DAY, -15, @UtcNow28),
+            'SHIP_COD', 'PAID', DATEADD(DAY, -18, @UtcNow28), 980000, 0, 30000, 1010000, 0, DATEADD(DAY, -20, @UtcNow28)),
+        (9, @cust5, 6, 'ORD-SEED-009', N'Thu Ha Hoang', '0912001005', N'22 Hoang Van Thu St', '21701', N'Ward 1', 1457, N'Phu Nhuan District', 202, N'Ho Chi Minh City',
+            DATEADD(DAY, -40, @UtcNow28), DATEADD(DAY, -40, DATEADD(HOUR, 2, @UtcNow28)), DATEADD(DAY, -39, @UtcNow28), DATEADD(DAY, -38, @UtcNow28), NULL,
+            'SHIP_COD', 'PAID', DATEADD(DAY, -38, @UtcNow28), 1290000, 0, 30000, 1320000, 0, DATEADD(DAY, -40, @UtcNow28)),
+        (10, @cust5, 7, 'ORD-SEED-010', N'Thu Ha Hoang', '0912001005', N'22 Hoang Van Thu St', '21701', N'Ward 1', 1457, N'Phu Nhuan District', 202, N'Ho Chi Minh City',
+            DATEADD(DAY, -10, @UtcNow28), DATEADD(DAY, -10, DATEADD(HOUR, 2, @UtcNow28)), DATEADD(DAY, -9, @UtcNow28), DATEADD(DAY, -8, @UtcNow28), DATEADD(DAY, -5, @UtcNow28),
+            'SHIP_COD', 'PAID', DATEADD(DAY, -8, @UtcNow28), 420000, 0, 30000, 450000, 0, DATEADD(DAY, -10, @UtcNow28)),
+        (11, @cust1, 1, 'ORD-SEED-011', N'Lan Anh Pham', '0912001001', N'12 Nguyen Hue St', '20101', N'Ben Nghe Ward', 1442, N'District 1', 202, N'Ho Chi Minh City',
+            DATEADD(MINUTE, -15, @UtcNow28), NULL, NULL, NULL, NULL,
+            'SE_PAY', 'PENDING', NULL, 359000, 0, 30000, 389000, 0, DATEADD(MINUTE, -15, @UtcNow28)),
+        (12, @cust2, 1, 'ORD-SEED-012', N'Hung Nguyen', '0912001002', N'45 Le Loi St', '20301', N'Ward 1', 1444, N'District 3', 202, N'Ho Chi Minh City',
+            DATEADD(MINUTE, -45, @UtcNow28), NULL, NULL, NULL, NULL,
+            'SE_PAY', 'PENDING', NULL, 490000, 0, 30000, 520000, 0, DATEADD(MINUTE, -45, @UtcNow28)),
+        (13, @cust3, 1, 'ORD-SEED-013', N'Bau Chau Vu', '0912001003', N'88 Tran Hung Dao St', '20501', N'Ward 1', 1447, N'District 5', 202, N'Ho Chi Minh City',
+            DATEADD(HOUR, -25, @UtcNow28), NULL, NULL, NULL, NULL,
+            'SHIP_COD', 'PENDING', NULL, 280000, 0, 30000, 310000, 0, DATEADD(HOUR, -25, @UtcNow28)),
+        (14, @cust4, 6, 'ORD-SEED-014', N'Minh Tuan Do', '0912001004', N'99 Dien Bien Phu St', '21601', N'Ward 1', 1462, N'Binh Thanh District', 202, N'Ho Chi Minh City',
+            DATEADD(DAY, -6, @UtcNow28), DATEADD(DAY, -6, DATEADD(HOUR, 2, @UtcNow28)), DATEADD(DAY, -5, @UtcNow28), DATEADD(DAY, -4, @UtcNow28), NULL,
+            'SHIP_COD', 'PAID', DATEADD(DAY, -4, @UtcNow28), 595000, 0, 30000, 625000, 0, DATEADD(DAY, -6, @UtcNow28));
     SET IDENTITY_INSERT [dbo].[Orders] OFF;
 
-    -- OrderDetails: each order has 2 products
     INSERT INTO [dbo].[OrderDetails]
         (OrderID, ProductID, ProductName, ProductImage, Quantity, UnitPrice, DiscountAmount, CreatedAt)
     SELECT o.OrderID, p.ProductID, p.ProductName,
         'https://picsum.photos/seed/prod-' + CAST(p.ProductID AS VARCHAR) + '/300/300',
         1, p.Price, 0, o.CreatedAt
     FROM (VALUES
-        (1,1),(1,3),
-        (2,6),(2,7),
-        (3,2),(3,1),
-        (4,4),(4,9),
-        (5,3),(5,10),
-        (6,8),(6,1),
-        (7,5),(7,9),
-        (8,10),(8,6),
-        (9,1),(9,7),
-        (10,4),(10,5)
+            (1, 1),
+            (1, 3),
+            (2, 6),
+            (2, 7),
+            (3, 2),
+            (3, 1),
+            (4, 4),
+            (4, 9),
+            (5, 3),
+            (5, 10),
+            (6, 8),
+            (6, 1),
+            (7, 5),
+            (7, 9),
+            (8, 10),
+            (8, 6),
+            (9, 1),
+            (9, 7),
+            (10, 4),
+            (10, 5),
+            (11, 20),
+            (12, 10),
+            (13, 9),
+            (14, 22)
     ) AS v(OID, PID)
-    JOIN Orders o ON o.OrderID = v.OID
-    JOIN Products p ON p.ProductID = v.PID;
+        JOIN Orders o ON o.OrderID = v.OID
+        JOIN Products p ON p.ProductID = v.PID;
 END
 GO
 
@@ -1555,10 +1866,17 @@ GO
 ══════════════════════════════════════════════════════════════ */
 PRINT N'[28.1] Dynamic Product Reviews...';
 
-IF NOT EXISTS (SELECT 1 FROM [dbo].[ReviewProducts])
+IF NOT EXISTS (SELECT 1
+FROM [dbo].[ReviewProducts])
 BEGIN
-    DECLARE @revStaff1 INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'nhung.st@toyhouse.vn');
-    DECLARE @revAdmin  INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'admin@toyhouse.vn');
+    DECLARE @revStaff1 INT = (SELECT TOP 1
+        AccountID
+    FROM Accounts
+    WHERE Email = 'nhung.st@toyhouse.vn');
+    DECLARE @revAdmin  INT = (SELECT TOP 1
+        AccountID
+    FROM Accounts
+    WHERE Email = 'admin@toyhouse.vn');
 
     -- Insert reviews: one per (customer, product, order)
     -- Comment templates keyed on (OrderID % 5)
@@ -1581,8 +1899,9 @@ BEGIN
         0, 0,
         DATEADD(DAY, 2, o.DeliveredAt)
     FROM [dbo].[Orders] o
-    JOIN [dbo].[OrderDetails] od ON od.OrderID = o.OrderID
-    WHERE o.StatusID IN (6, 7);   -- Delivered or Completed
+        JOIN [dbo].[OrderDetails] od ON od.OrderID = o.OrderID
+    WHERE o.StatusID IN (6, 7);
+    -- Delivered or Completed
 
     -- ReviewProductImages: attach 1 image per review (50% of reviews)
     INSERT INTO [dbo].[ReviewProductImages]
@@ -1594,7 +1913,8 @@ BEGIN
         0,
         DATEADD(MINUTE, 5, rp.CreatedAt)
     FROM [dbo].[ReviewProducts] rp
-    WHERE rp.ReviewID % 2 = 1;  -- odd IDs only → ~50%
+    WHERE rp.ReviewID % 2 = 1;
+    -- odd IDs only → ~50%
 
     -- StaffReviewProductReplies: staff replies to ~half the reviews
     INSERT INTO [dbo].[StaffReviewProductReplies]
@@ -1606,7 +1926,8 @@ BEGIN
         0,
         DATEADD(HOUR, 3, rp.CreatedAt)
     FROM [dbo].[ReviewProducts] rp
-    WHERE rp.ReviewID % 2 = 0;  -- even IDs → ~50%
+    WHERE rp.ReviewID % 2 = 0;
+    -- even IDs → ~50%
 
     -- ReviewProductReactions: admin likes each review
     INSERT INTO [dbo].[ReviewProductReactions]
@@ -1614,7 +1935,7 @@ BEGIN
     SELECT
         rp.ReviewID,
         @revAdmin,
-        1,  -- ReactionTypeID 1 = Like/Helpful
+        1, -- ReactionTypeID 1 = Like/Helpful
         0,
         DATEADD(HOUR, 1, rp.CreatedAt)
     FROM [dbo].[ReviewProducts] rp;
@@ -1622,7 +1943,7 @@ BEGIN
     -- ReviewModerationLogs: AI auto-approved all reviews
     INSERT INTO [dbo].[ReviewModerationLogs]
         (TargetType, ReviewID, ImageID, ModeratorType, ModeratedBy,
-         Action, AIModelVersion, ModerationResult, Reason, CreatedAt)
+        Action, AIModelVersion, ModerationResult, Reason, CreatedAt)
     SELECT
         'Text',
         rp.ReviewID,
@@ -1639,7 +1960,7 @@ BEGIN
     -- ReviewModerationLogs for images
     INSERT INTO [dbo].[ReviewModerationLogs]
         (TargetType, ReviewID, ImageID, ModeratorType, ModeratedBy,
-         Action, AIModelVersion, ModerationResult, Reason, CreatedAt)
+        Action, AIModelVersion, ModerationResult, Reason, CreatedAt)
     SELECT
         'Image',
         rpi.ReviewProductID,
@@ -1659,38 +1980,49 @@ GO
    SECTION 28.2 – ORDER REFUNDS & DETAILS [NEW]
 ══════════════════════════════════════════════════════════════ */
 PRINT N'[28.2-NEW] Order Refunds & Details...';
-IF NOT EXISTS (SELECT 1 FROM [dbo].[OrderRefunds])
+IF NOT EXISTS (SELECT 1
+FROM [dbo].[OrderRefunds])
 BEGIN
     DECLARE @refCust3 INT = (
-        SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'bauchau.vu@gmail.com'
+        SELECT TOP 1
+        AccountID
+    FROM Accounts
+    WHERE Email = 'bauchau.vu@gmail.com'
     );
 
     DECLARE @refR1 INT = (
-        SELECT TOP 1 RefundReasonID FROM OrderRefundReasons WHERE Content = N'Product defective from manufacturer'
+        SELECT TOP 1
+        RefundReasonID
+    FROM OrderRefundReasons
+    WHERE Content = N'Product defective from manufacturer'
     );
 
-    DECLARE @ord3 INT = (
-        SELECT TOP 1 OrderID FROM Orders WHERE OrderCode = 'ORD20260201090000523'
-    );
+    DECLARE @ord5 INT = (SELECT TOP 1
+        OrderID
+    FROM Orders
+    WHERE OrderCode = 'ORD-SEED-005');
 
-    IF @ord3 IS NOT NULL
+    IF @ord5 IS NOT NULL
     BEGIN
+        DECLARE @UtcNow282 DATETIME2(0) = (SELECT UtcNow
+        FROM #SeedTime);
+
         INSERT INTO [dbo].[OrderRefunds]
             (OrderID, RefundReasonID, CustomerID, RequestedBy,
-             RefundCode, SubTotal, TotalAmount, ApprovedAmount,
-             StatusID, CreatedAt)
+            RefundCode, SubTotal, TotalAmount, ApprovedAmount,
+            StatusID, CreatedAt)
         VALUES
             (
-                @ord3,
+                @ord5,
                 @refR1,
                 @refCust3,
                 @refCust3,
-                'REF-20260604-47FD81D6',
+                'REF-SEED-005',
                 490000,
                 490000,
                 490000,
                 1,
-                '2026-03-07 09:00:00'
+                DATEADD(DAY, -50, @UtcNow282)
             );
 
         INSERT INTO [dbo].[RefundDetails]
@@ -1701,7 +2033,7 @@ BEGIN
             1,
             490000,
             490000,
-            '2026-03-07 09:00:00'
+            DATEADD(DAY, -50, @UtcNow282)
         FROM OrderRefunds;
 
         INSERT INTO [dbo].[RefundImages]
@@ -1709,7 +2041,7 @@ BEGIN
         SELECT
             RefundID,
             'https://picsum.photos/seed/refund-' + CAST(RefundID AS VARCHAR) + '-a/400/400',
-            GETDATE()
+            DATEADD(DAY, -50, @UtcNow282)
         FROM OrderRefunds;
     END
 END
@@ -1721,6 +2053,9 @@ GO
          trg_BlogPost_InitStats on INSERT BlogPosts – no manual seed needed
 ══════════════════════════════════════════════════════════════ */
 PRINT N'[31] Blog...';
+DECLARE @UtcNow31 DATETIME2(0) = (SELECT UtcNow
+FROM #SeedTime);
+DECLARE @BlogLookupCreated DATETIME2(0) = DATEADD(MONTH, -6, @UtcNow31);
 
 SET IDENTITY_INSERT [dbo].[BlogCategories] ON;
 
@@ -1730,80 +2065,103 @@ WHERE BlogCategoryID = 1)
     INSERT INTO [dbo].[BlogCategories]
     (BlogCategoryID, BlogCategoriesName, CreatedAt)
 VALUES
-    (1, N'News & Promotions', '2024-01-10 08:00:00'),
-    (2, N'Parenting Knowledge', '2024-01-10 08:00:00'),
-    (3, N'Product Reviews', '2024-01-10 08:00:00'),
-    (4, N'Play & Creativity', '2024-01-10 08:00:00'),
-    (5, N'Toy Safety', '2024-01-10 08:00:00');
+    (1, N'News & Promotions', @BlogLookupCreated),
+    (2, N'Parenting Knowledge', @BlogLookupCreated),
+    (3, N'Product Reviews', @BlogLookupCreated),
+    (4, N'Play & Creativity', @BlogLookupCreated),
+    (5, N'Toy Safety', @BlogLookupCreated);
 
 SET IDENTITY_INSERT [dbo].[BlogCategories] OFF;
 GO
 
-DECLARE @bst1 INT=(SELECT TOP 1
+DECLARE @UtcNow31b DATETIME2(0) = (SELECT UtcNow
+FROM #SeedTime);
+DECLARE @bst1 INT = (SELECT TOP 1
     AccountID
 FROM Accounts
-WHERE Email='nhung.st@toyhouse.vn');
-DECLARE @bst2 INT=(SELECT TOP 1
+WHERE Email = 'nhung.st@toyhouse.vn');
+DECLARE @bst2 INT = (SELECT TOP 1
     AccountID
 FROM Accounts
-WHERE Email='dung.st@toyhouse.vn');
-DECLARE @badm INT=(SELECT TOP 1
+WHERE Email = 'dung.st@toyhouse.vn');
+DECLARE @badm INT = (SELECT TOP 1
     AccountID
 FROM Accounts
-WHERE Email='admin@toyhouse.vn');
+WHERE Email = 'admin@toyhouse.vn');
 
 IF NOT EXISTS (SELECT 1
 FROM [dbo].[BlogPosts])
     INSERT INTO [dbo].[BlogPosts]
-    (AccountID,ApprovedBy,BlogCategoryID,BlogTitle,BlogContent,BlogThumbnail,Status,IsFeatured,BlogAt,CreatedAt)
+    (AccountID, ApprovedBy, BlogCategoryID, BlogTitle, BlogContent, BlogThumbnail, Status, IsFeatured, BlogAt, CreatedAt)
 VALUES
     (@bst1, @badm, 1, N'Summer Sale – Up To 50% Off Official Toys',
-        N'The Summer Sale 2026 event starts now! Lego, Bandai, and Fisher-Price are discounted up to 50%.',
-        'https://picsum.photos/seed/blog-sale-he/600/400', 'Published', 1, '2026-03-28 09:00:00', '2026-03-28 09:00:00'),
+        N'The Summer Toy Festival 2026 is live! Lego, Bandai, and Fisher-Price are discounted up to 50%.',
+        'https://picsum.photos/seed/blog-sale-he/600/400', 'Published', 1, DATEADD(DAY, -14, @UtcNow31b), DATEADD(DAY, -14, @UtcNow31b)),
     (@bst1, @badm, 2, N'7 Golden Rules for Choosing Safe Toys for Children Under 3',
         N'Ages 0–3 are a critical development period. Look for BPA-free materials, rounded edges, and non-toxic water-based paint.',
-        'https://picsum.photos/seed/blog-safety/600/400', 'Published', 0, '2026-02-10 10:00:00', '2026-02-10 10:00:00'),
+        'https://picsum.photos/seed/blog-safety/600/400', 'Published', 0, DATEADD(DAY, -45, @UtcNow31b), DATEADD(DAY, -45, @UtcNow31b)),
     (@bst2, @badm, 3, N'Hands-On Review: Lego City Police Station After 3 Months',
         N'This 668-piece set holds up well after 3 months. Bricks stay firm and do not break. A 7-year-old can assemble about 80% independently.',
-        'https://picsum.photos/seed/blog-review-lego/600/400', 'Published', 1, '2026-03-05 14:00:00', '2026-03-05 14:00:00'),
+        'https://picsum.photos/seed/blog-review-lego/600/400', 'Published', 1, DATEADD(DAY, -20, @UtcNow31b), DATEADD(DAY, -20, @UtcNow31b)),
     (@bst2, @badm, 4, N'Top 10 Active Toys That Build Physical Skills for Ages 3–6',
         N'Active play supports both health and cognitive growth. Here are the 10 most popular movement toys for preschoolers.',
-        'https://picsum.photos/seed/blog-activity/600/400', 'Published', 1, '2026-04-01 10:00:00', '2026-04-01 10:00:00'),
+        'https://picsum.photos/seed/blog-activity/600/400', 'Published', 1, DATEADD(DAY, -10, @UtcNow31b), DATEADD(DAY, -10, @UtcNow31b)),
     (@bst1, @badm, 1, N'48-Hour Flash Sale – Mega Deals Starting Now',
         N'Only 48 hours! Flash Sale with up to 50% off hundreds of products. Limited stock available!',
-        'https://picsum.photos/seed/blog-flash55/600/400', 'Published', 0, GETDATE(), GETDATE());
+        'https://picsum.photos/seed/blog-flash55/600/400', 'Published', 0, DATEADD(DAY, -1, @UtcNow31b), DATEADD(DAY, -1, @UtcNow31b)),
+    (@bst2, @badm, 2, N'Back To School Buying Guide 2026',
+        N'Everything parents need to know before the new school year – flash cards, science kits, and learning toys.',
+        'https://picsum.photos/seed/blog-bts/600/400', 'Scheduled', 1, DATEADD(DAY, 18, @UtcNow31b), @UtcNow31b),
+    (@bst1, @badm, 1, N'Halloween Toy Preview 2026',
+        N'Spooky figures, dress-up sets, and limited-edition collectibles arriving this October.',
+        'https://picsum.photos/seed/blog-halloween/600/400', 'Scheduled', 0, DATEADD(DAY, 99, @UtcNow31b), @UtcNow31b),
+    (@bst1, NULL, 1, N'Member Week Draft – Work in Progress',
+        N'Draft content for the upcoming member appreciation week campaign.',
+        'https://picsum.photos/seed/blog-draft/600/400', 'Draft', 0, NULL, @UtcNow31b),
+    (@bst2, NULL, 1, N'Flash Sale Recap – Pending Review',
+        N'Weekly recap of flash sale highlights and bestsellers – awaiting admin approval.',
+        'https://picsum.photos/seed/blog-pending/600/400', 'Pending', 0, DATEADD(DAY, 3, @UtcNow31b), @UtcNow31b);
 GO
 
 IF NOT EXISTS (SELECT 1
 FROM [dbo].[ReviewBlogs])
 BEGIN
-    ;WITH
-        BlogRanked
-        AS
-        (
-            SELECT BlogPostID, ROW_NUMBER() OVER (ORDER BY BlogPostID) AS Pos
-            FROM [dbo].[BlogPosts]
-        )
+    DECLARE @UtcNow31c DATETIME2(0) = (SELECT UtcNow
+    FROM #SeedTime);
+
     INSERT INTO [dbo].[ReviewBlogs]
         (BlogPostID, AccountID, Comment, CreatedAt)
-    SELECT br.BlogPostID, a.AccountID, v.Comment, v.CreatedAt
-    FROM (VALUES
-            (1, 'lananh.pham@gmail.com', N'I bought the Lego City set during this sale — 15% off was a great deal! My kid loves it.', '2026-03-29 10:00:00'),
-            (1, 'hung.nguyen88@gmail.com', N'Big sale! Just ordered the RC Traxxas and saved a lot.', '2026-03-30 08:00:00'),
-            (1, 'bauchau.vu@gmail.com', N'Can I combine the VIP300K voucher with the summer sale?', '2026-03-30 09:30:00'),
-            (1, 'mtuando@outlook.com', N'Super fast delivery — ordered in the morning and received by evening. Carefully packed, 5 stars!', '2026-03-31 14:00:00'),
-            (1, 'thuha.hoang@gmail.com', N'Bought Barbie Dreamtopia for my daughter — she absolutely loves it. Thanks ToyHouse!', '2026-04-01 09:00:00'),
-            (2, 'lananh.pham@gmail.com', N'Very helpful article! I used to buy toys purely on instinct.', '2026-02-11 10:00:00'),
-            (2, 'thuha.hoang@gmail.com', N'Thanks for sharing! I forwarded this to my parent group.', '2026-02-12 11:00:00'),
-            (3, 'hung.nguyen88@gmail.com', N'Detailed review! I am considering this set for my 8-year-old.', '2026-03-06 11:00:00'),
-            (3, 'mtuando@outlook.com', N'I bought it too and agree it is worth it. My 7-year-old assembled about 70% alone.', '2026-03-08 10:00:00'),
-            (4, 'lananh.pham@gmail.com', N'We got the Donald Duck ride-on for our 2-year-old — she climbed on and started pedaling right away!', '2026-04-02 09:00:00'),
-            (4, 'bauchau.vu@gmail.com', N'Great article! Looking for a birthday gift for my 4-year-old boy.', '2026-04-04 11:00:00'),
-            (5, 'hung.nguyen88@gmail.com', N'Set a reminder for the flash sale — cannot miss this one!', '2026-04-21 10:00:00'),
-            (5, 'mtuando@outlook.com', N'50% off for real? Bandai figures at half price is an amazing deal!', '2026-04-22 08:00:00')
-    ) AS v(BpPos, Email, Comment, CreatedAt)
-        JOIN BlogRanked br ON br.Pos = v.BpPos
-        JOIN Accounts a ON a.Email = v.Email;
+    SELECT bp.BlogPostID, a.AccountID, v.Comment, DATEADD(HOUR, v.HourOffset, bp.BlogAt)
+    FROM [dbo].[BlogPosts] bp
+    CROSS JOIN (VALUES
+            ('lananh.pham@gmail.com', N'I bought the Lego City set during this sale — 15% off was a great deal!', 26),
+            ('hung.nguyen88@gmail.com', N'Big sale! Just ordered the RC Traxxas and saved a lot.', 48),
+            ('bauchau.vu@gmail.com', N'Can I combine the VIP300K voucher with the summer sale?', 50)
+    ) AS v(Email, Comment, HourOffset)
+        JOIN Accounts a ON a.Email = v.Email
+    WHERE bp.BlogTitle = N'Summer Sale – Up To 50% Off Official Toys';
+
+    INSERT INTO [dbo].[ReviewBlogs]
+        (BlogPostID, AccountID, Comment, CreatedAt)
+    SELECT bp.BlogPostID, a.AccountID, v.Comment, DATEADD(HOUR, v.HourOffset, bp.BlogAt)
+    FROM [dbo].[BlogPosts] bp
+    CROSS JOIN (VALUES
+            ('lananh.pham@gmail.com', N'Very helpful article! I used to buy toys purely on instinct.', 26),
+            ('thuha.hoang@gmail.com', N'Thanks for sharing! I forwarded this to my parent group.', 50)
+    ) AS v(Email, Comment, HourOffset)
+        JOIN Accounts a ON a.Email = v.Email
+    WHERE bp.BlogTitle = N'7 Golden Rules for Choosing Safe Toys for Children Under 3';
+
+    INSERT INTO [dbo].[ReviewBlogs]
+        (BlogPostID, AccountID, Comment, CreatedAt)
+    SELECT bp.BlogPostID, a.AccountID, v.Comment, DATEADD(HOUR, v.HourOffset, bp.BlogAt)
+    FROM [dbo].[BlogPosts] bp
+    CROSS JOIN (VALUES
+            ('hung.nguyen88@gmail.com', N'We have had this set for three months — my son still plays with it daily.', 12),
+            ('mtuando@outlook.com', N'Great review! How is the durability after heavy use?', 36)
+    ) AS v(Email, Comment, HourOffset)
+        JOIN Accounts a ON a.Email = v.Email
+    WHERE bp.BlogTitle = N'Hands-On Review: Lego City Police Station After 3 Months';
 
     DECLARE @staffRep INT=(SELECT TOP 1
         AccountID
@@ -1831,7 +2189,7 @@ BEGIN
 
     INSERT INTO [dbo].[BlogPostReactions]
         (BlogPostID,AccountID,ReactionTypeID,CreatedAt)
-    SELECT b.BlogPostID, a.AccountID, v.ReactionTypeID, GETDATE()
+    SELECT b.BlogPostID, a.AccountID, v.ReactionTypeID, DATEADD(MINUTE, 30, b.BlogAt)
     FROM BlogPosts b
     CROSS JOIN (VALUES
             ('lananh.pham@gmail.com', 1),
@@ -1856,17 +2214,25 @@ GO
 ══════════════════════════════════════════════════════════════ */
 PRINT N'[31.1] Dynamic Blogs and Comments Seeding...';
 
-DECLARE @bStartDate DATE = CAST(GETDATE() AS DATE);
-IF @bStartDate > '2026-09-30'
-    SET @bStartDate = '2026-06-04';
-DECLARE @bEndDate DATE = '2026-09-30';
+DECLARE @bStartDate DATE = (SELECT UtcToday
+FROM #SeedTime);
+DECLARE @bEndDate DATE = DATEADD(MONTH, 6, @bStartDate);
 
 DECLARE @bCurrentDate DATE = @bStartDate;
 DECLARE @blogNum INT = 1;
 
-DECLARE @staff1 INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'nhung.st@toyhouse.vn');
-DECLARE @staff2 INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'dung.st@toyhouse.vn');
-DECLARE @adminId INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'admin@toyhouse.vn');
+DECLARE @staff1 INT = (SELECT TOP 1
+    AccountID
+FROM Accounts
+WHERE Email = 'nhung.st@toyhouse.vn');
+DECLARE @staff2 INT = (SELECT TOP 1
+    AccountID
+FROM Accounts
+WHERE Email = 'dung.st@toyhouse.vn');
+DECLARE @adminId INT = (SELECT TOP 1
+    AccountID
+FROM Accounts
+WHERE Email = 'admin@toyhouse.vn');
 
 -- Get the customer accounts into a table variable for easy indexing
 DECLARE @Customers TABLE (
@@ -1874,10 +2240,14 @@ DECLARE @Customers TABLE (
     AccID INT NOT NULL,
     Email VARCHAR(100) NOT NULL
 );
-INSERT INTO @Customers (AccID, Email)
-SELECT AccountID, Email FROM Accounts WHERE Email IN (
+INSERT INTO @Customers
+    (AccID, Email)
+SELECT AccountID, Email
+FROM Accounts
+WHERE Email IN (
     'lananh.pham@gmail.com', 'hung.nguyen88@gmail.com', 'bauchau.vu@gmail.com', 'mtuando@outlook.com', 'thuha.hoang@gmail.com'
-) ORDER BY Email;
+)
+ORDER BY Email;
 
 WHILE @bCurrentDate <= @bEndDate
 BEGIN
@@ -1917,7 +2287,9 @@ BEGIN
             SET @content = N'Safety is always our priority. Keep small parts away from children under 3, verify battery compartments are securely screwed shut, and always buy from certified non-toxic brands.';
         END;
 
-        IF NOT EXISTS (SELECT 1 FROM [dbo].[BlogPosts] WHERE BlogTitle = @title)
+        IF NOT EXISTS (SELECT 1
+        FROM [dbo].[BlogPosts]
+        WHERE BlogTitle = @title)
         BEGIN
             INSERT INTO [dbo].[BlogPosts]
                 (AccountID, ApprovedBy, BlogCategoryID, BlogTitle, BlogContent, BlogThumbnail, Status, IsFeatured, BlogAt, CreatedAt)
@@ -1927,13 +2299,16 @@ BEGIN
             DECLARE @newPostID INT = SCOPE_IDENTITY();
 
             -- 1. Insert 1-2 Comments (ReviewBlogs)
-            DECLARE @commentCount INT = (@blogNum % 2) + 1; -- 1 or 2 comments
+            DECLARE @commentCount INT = (@blogNum % 2) + 1;
+            -- 1 or 2 comments
             DECLARE @c INT = 1;
 
             WHILE @c <= @commentCount
             BEGIN
                 DECLARE @custIdx INT = ((@blogNum + @c) % 5) + 1;
-                DECLARE @custID INT = (SELECT AccID FROM @Customers WHERE Idx = @custIdx);
+                DECLARE @custID INT = (SELECT AccID
+                FROM @Customers
+                WHERE Idx = @custIdx);
                 DECLARE @commentText NVARCHAR(500);
 
                 IF @catID = 1
@@ -1949,8 +2324,10 @@ BEGIN
 
                 DECLARE @commentDate DATETIME2(0) = DATEADD(HOUR, 2 * @c + 1, @bDate);
 
-                INSERT INTO [dbo].[ReviewBlogs] (BlogPostID, AccountID, Comment, ModerationStatus, IsHidden, IsDeleted, CreatedAt)
-                VALUES (@newPostID, @custID, @commentText, 'Approved', 0, 0, @commentDate);
+                INSERT INTO [dbo].[ReviewBlogs]
+                    (BlogPostID, AccountID, Comment, ModerationStatus, IsHidden, IsDeleted, CreatedAt)
+                VALUES
+                    (@newPostID, @custID, @commentText, 'Approved', 0, 0, @commentDate);
 
                 DECLARE @newCommentID INT = SCOPE_IDENTITY();
 
@@ -1958,30 +2335,43 @@ BEGIN
                 IF (@blogNum + @c) % 2 = 0
                 BEGIN
                     DECLARE @replyText NVARCHAR(500) = N'Thank you for your comment! If you have any further questions, feel free to contact our support hotline.';
-                    INSERT INTO [dbo].[ReviewBlogReplies] (ReviewBlogID, AccountID, Comment, CreatedAt)
-                    VALUES (@newCommentID, @authorID, @replyText, DATEADD(MINUTE, 30, @commentDate));
+                    INSERT INTO [dbo].[ReviewBlogReplies]
+                        (ReviewBlogID, AccountID, Comment, CreatedAt)
+                    VALUES
+                        (@newCommentID, @authorID, @replyText, DATEADD(MINUTE, 30, @commentDate));
                 END;
 
                 -- 3. Review Reactions
-                INSERT INTO [dbo].[ReviewBlogReactions] (ReviewBlogID, AccountID, ReactionTypeID, CreatedAt)
-                VALUES (@newCommentID, @adminId, 1, DATEADD(MINUTE, 45, @commentDate));
+                INSERT INTO [dbo].[ReviewBlogReactions]
+                    (ReviewBlogID, AccountID, ReactionTypeID, CreatedAt)
+                VALUES
+                    (@newCommentID, @adminId, 1, DATEADD(MINUTE, 45, @commentDate));
 
                 SET @c = @c + 1;
             END;
 
             -- 4. Blog Post Reactions (Likes/Love from 2-3 users)
-            DECLARE @rCust1 INT = (SELECT AccID FROM @Customers WHERE Idx = 1);
-            DECLARE @rCust2 INT = (SELECT AccID FROM @Customers WHERE Idx = 2);
-            DECLARE @rCust3 INT = (SELECT AccID FROM @Customers WHERE Idx = 3);
+            DECLARE @rCust1 INT = (SELECT AccID
+            FROM @Customers
+            WHERE Idx = 1);
+            DECLARE @rCust2 INT = (SELECT AccID
+            FROM @Customers
+            WHERE Idx = 2);
+            DECLARE @rCust3 INT = (SELECT AccID
+            FROM @Customers
+            WHERE Idx = 3);
 
-            INSERT INTO [dbo].[BlogPostReactions] (BlogPostID, AccountID, ReactionTypeID, CreatedAt)
-            VALUES 
+            INSERT INTO [dbo].[BlogPostReactions]
+                (BlogPostID, AccountID, ReactionTypeID, CreatedAt)
+            VALUES
                 (@newPostID, @rCust1, 1, DATEADD(MINUTE, 10, @bDate)),
                 (@newPostID, @rCust2, 2, DATEADD(MINUTE, 25, @bDate));
-                
+
             IF @blogNum % 2 = 0
-                INSERT INTO [dbo].[BlogPostReactions] (BlogPostID, AccountID, ReactionTypeID, CreatedAt)
-                VALUES (@newPostID, @rCust3, 1, DATEADD(MINUTE, 40, @bDate));
+                INSERT INTO [dbo].[BlogPostReactions]
+                (BlogPostID, AccountID, ReactionTypeID, CreatedAt)
+            VALUES
+                (@newPostID, @rCust3, 1, DATEADD(MINUTE, 40, @bDate));
         END;
     END;
 
@@ -1994,17 +2384,64 @@ GO
    SECTION 33 – SHIFT TEMPLATES & WORK SCHEDULES
 ══════════════════════════════════════════════════════════════ */
 PRINT N'[33] ShiftTemplates...';
+DECLARE @UtcNow33 DATETIME2(0) = (SELECT UtcNow
+FROM #SeedTime);
+
 SET IDENTITY_INSERT [dbo].[ShiftTemplates] ON;
 IF NOT EXISTS (SELECT 1
 FROM [dbo].[ShiftTemplates]
-WHERE ShiftTemplateID=1)
+WHERE ShiftTemplateID = 1)
     INSERT INTO [dbo].[ShiftTemplates]
-    (ShiftTemplateID,ShiftName,StartTime,EndTime,MaxOrdersPerShift,IsActive,CreatedAt)
+    (ShiftTemplateID, ShiftName, StartTime, EndTime, MaxOrdersPerShift, IsActive, CreatedAt)
 VALUES
-    (1, N'Morning Shift', '07:00:00', '12:00:00', 20, 1, '2026-01-01 08:00:00'),
-    (2, N'Afternoon Shift', '12:00:00', '17:00:00', 25, 1, '2026-01-01 08:00:00'),
-    (3, N'Evening Shift', '17:00:00', '22:00:00', 25, 1, '2026-01-01 08:00:00');
+    (1, N'Morning Shift', '07:00:00', '12:00:00', 20, 1, @UtcNow33),
+    (2, N'Afternoon Shift', '12:00:00', '17:00:00', 25, 1, @UtcNow33),
+    (3, N'Evening Shift', '17:00:00', '22:00:00', 25, 1, @UtcNow33);
 SET IDENTITY_INSERT [dbo].[ShiftTemplates] OFF;
+GO
+
+/* ══════════════════════════════════════════════════════════════
+   SECTION 33.1 – WORK SCHEDULES (next 14 days)
+══════════════════════════════════════════════════════════════ */
+PRINT N'[33.1] WorkSchedules...';
+
+IF NOT EXISTS (SELECT 1
+FROM [dbo].[WorkSchedules])
+BEGIN
+    DECLARE @UtcNow331 DATETIME2(0) = (SELECT UtcNow
+    FROM #SeedTime);
+    DECLARE @UtcToday331 DATE = (SELECT UtcToday
+    FROM #SeedTime);
+    DECLARE @admWS INT = (SELECT TOP 1
+        AccountID
+    FROM Accounts
+    WHERE Email = 'admin@toyhouse.vn');
+    DECLARE @st1WS INT = (SELECT TOP 1
+        AccountID
+    FROM Accounts
+    WHERE Email = 'nhung.st@toyhouse.vn');
+    DECLARE @st2WS INT = (SELECT TOP 1
+        AccountID
+    FROM Accounts
+    WHERE Email = 'dung.st@toyhouse.vn');
+    DECLARE @mc1WS INT = (SELECT TOP 1
+        AccountID
+    FROM Accounts
+    WHERE Email = 'bao.kho@toyhouse.vn');
+
+    DECLARE @d INT = 1;
+    WHILE @d <= 14
+    BEGIN
+        DECLARE @workDate DATE = DATEADD(DAY, @d, @UtcToday331);
+        INSERT INTO [dbo].[WorkSchedules]
+            (AccountID, ShiftTemplateID, WorkDate, Status, CreatedBy, CreatedAt)
+        VALUES
+            (@st1WS, 1 + (@d % 3), @workDate, 'Scheduled', @admWS, @UtcNow331),
+            (@st2WS, 1 + ((@d + 1) % 3), @workDate, 'Scheduled', @admWS, @UtcNow331),
+            (@mc1WS, 2, @workDate, 'Scheduled', @admWS, @UtcNow331);
+        SET @d = @d + 1;
+    END
+END
 GO
 /* ══════════════════════════════════════════════════════════════
    SECTION 35 – NOTIFICATION TEMPLATES, CAMPAIGNS, DELIVERIES
@@ -2013,135 +2450,143 @@ BEGIN TRY
     BEGIN TRAN;
 
     DECLARE @Tpl TABLE (
-        TemplateCode    VARCHAR(50)   NOT NULL PRIMARY KEY,
-        UsageScope      VARCHAR(10)   NOT NULL,
-        TitleTemplate   NVARCHAR(255) NOT NULL,
-        MessageTemplate NVARCHAR(500) NOT NULL
+    TemplateCode VARCHAR(50) NOT NULL PRIMARY KEY,
+    UsageScope VARCHAR(10) NOT NULL,
+    TitleTemplate NVARCHAR(255) NOT NULL,
+    MessageTemplate NVARCHAR(500) NOT NULL
     );
 
     /* ─── SYSTEM GROUP: automatic, cannot be disabled/deleted ─── */
 
     -- Orders — customer & staff
-    INSERT INTO @Tpl VALUES
-    ('ORDER_PLACED',          'SYSTEM', N'Order placed successfully',
-     N'Your order {{OrderCode}} ({{TotalAmount}} VND) has been received.'),
-    ('ORDER_CONFIRMED',       'SYSTEM', N'Order confirmed: {{OrderCode}}',
-     N'Your order {{OrderCode}} has been confirmed and is being prepared.'),
-    ('ORDER_PACKING',         'SYSTEM', N'Order {{OrderCode}} is being packed',
-     N'Your order {{OrderCode}} is being packed by our team.'),
-    ('ORDER_SHIPPING',        'SYSTEM', N'Order {{OrderCode}} is on the way',
-     N'Order {{OrderCode}} has been handed to courier {{ShipperName}}. Please keep your phone available.'),
+    INSERT INTO @Tpl
+VALUES
+    ('ORDER_PLACED', 'SYSTEM', N'Order placed successfully',
+        N'Your order {{OrderCode}} ({{TotalAmount}} VND) has been received.'),
+    ('ORDER_CONFIRMED', 'SYSTEM', N'Order confirmed: {{OrderCode}}',
+        N'Your order {{OrderCode}} has been confirmed and is being prepared.'),
+    ('ORDER_PACKING', 'SYSTEM', N'Order {{OrderCode}} is being packed',
+        N'Your order {{OrderCode}} is being packed by our team.'),
+    ('ORDER_SHIPPING', 'SYSTEM', N'Order {{OrderCode}} is on the way',
+        N'Order {{OrderCode}} has been handed to courier {{ShipperName}}. Please keep your phone available.'),
     ('ORDER_DELIVERED', 'SYSTEM', N'Delivery successful',
-     N'Order {{OrderCode}} has been delivered successfully. We would love to hear your feedback.'),
-    ('ORDER_CANCELLED',       'SYSTEM', N'Order {{OrderCode}} cancelled',
-     N'Your order {{OrderCode}} was cancelled. Reason: {{CancelReason}}.'),
+        N'Order {{OrderCode}} has been delivered successfully. We would love to hear your feedback.'),
+    ('ORDER_CANCELLED', 'SYSTEM', N'Order {{OrderCode}} cancelled',
+        N'Your order {{OrderCode}} was cancelled. Reason: {{CancelReason}}.'),
     ('ORDER_DELIVERY_FAILED', 'SYSTEM', N'Delivery unsuccessful',
-     N'The courier could not reach you. Another delivery attempt will be made. Please keep your phone nearby.'),
+        N'The courier could not reach you. Another delivery attempt will be made. Please keep your phone nearby.'),
     ('ORDER_RETURN_REFUND_PENDING', 'SYSTEM', N'Returned to shop',
-     N'Order {{OrderCode}} has returned to our shop. We are processing your refund.'),
+        N'Order {{OrderCode}} has returned to our shop. We are processing your refund.'),
     ('ORDER_CANCELLED_DELIVERY_FAIL', 'SYSTEM', N'Order cancelled',
-     N'Order {{OrderCode}} was cancelled due to failed delivery.'),
-    ('ORDER_ASSIGNED',        'SYSTEM', N'Order Assigned: {{OrderCode}}',
-     N'Order {{OrderCode}} from {{CustomerName}} has been assigned to you. Total: {{TotalAmount}} VND. Please process it during your current shift.');
+        N'Order {{OrderCode}} was cancelled due to failed delivery.'),
+    ('ORDER_ASSIGNED', 'SYSTEM', N'Order Assigned: {{OrderCode}}',
+        N'Order {{OrderCode}} from {{CustomerName}} has been assigned to you. Total: {{TotalAmount}} VND. Please process it during your current shift.');
 
     -- Payments & wallet
-    INSERT INTO @Tpl VALUES
-    ('PAYMENT_SUCCESS',  'SYSTEM', N'Payment successful',
-     N'You paid {{Amount}} VND for order {{OrderCode}}.'),
-    ('PAYMENT_FAILED',   'SYSTEM', N'Payment failed',
-     N'Payment of {{Amount}} VND for order {{OrderCode}} failed.'),
-    ('WALLET_TOPUP',     'SYSTEM', N'Wallet top-up successful',
-     N'{{Amount}} VND was added to your wallet. Current balance: {{Balance}} VND.'),
-    ('WALLET_REFUND',    'SYSTEM', N'Refund to wallet',
-     N'{{Amount}} VND was refunded to your wallet for order {{OrderCode}}.'),
+    INSERT INTO @Tpl
+VALUES
+    ('PAYMENT_SUCCESS', 'SYSTEM', N'Payment successful',
+        N'You paid {{Amount}} VND for order {{OrderCode}}.'),
+    ('PAYMENT_FAILED', 'SYSTEM', N'Payment failed',
+        N'Payment of {{Amount}} VND for order {{OrderCode}} failed.'),
+    ('WALLET_TOPUP', 'SYSTEM', N'Wallet top-up successful',
+        N'{{Amount}} VND was added to your wallet. Current balance: {{Balance}} VND.'),
+    ('WALLET_REFUND', 'SYSTEM', N'Refund to wallet',
+        N'{{Amount}} VND was refunded to your wallet for order {{OrderCode}}.'),
     ('WALLET_WITHDRAWAL_SUCCESS', 'SYSTEM', N'Withdrawal successful',
-     N'{{Amount}} VND has been transferred to {{BankName}} - {{AccountNumber}} successfully.'),
-    ('WALLET_WITHDRAWAL_FAILED',  'SYSTEM', N'Withdrawal failed',
-     N'Withdrawal of {{Amount}} VND failed. Reason: {{FailReason}}. Your wallet balance was not changed.'),
-    ('REFUND_APPROVED',  'SYSTEM', N'Refund approved',
-     N'Your refund request for order {{OrderCode}} was approved. {{Amount}} VND will be returned to your wallet.'),
-    ('REFUND_REJECTED',  'SYSTEM', N'Refund rejected',
-     N'Your refund request for order {{OrderCode}} was rejected. Contact support if you need help.'),
+        N'{{Amount}} VND has been transferred to {{BankName}} - {{AccountNumber}} successfully.'),
+    ('WALLET_WITHDRAWAL_FAILED', 'SYSTEM', N'Withdrawal failed',
+        N'Withdrawal of {{Amount}} VND failed. Reason: {{FailReason}}. Your wallet balance was not changed.'),
+    ('REFUND_APPROVED', 'SYSTEM', N'Refund approved',
+        N'Your refund request for order {{OrderCode}} was approved. {{Amount}} VND will be returned to your wallet.'),
+    ('REFUND_REJECTED', 'SYSTEM', N'Refund rejected',
+        N'Your refund request for order {{OrderCode}} was rejected. Contact support if you need help.'),
     ('REFUND_COMPLETED', 'SYSTEM', N'Refund completed',
-     N'{{Amount}} VND from order {{OrderCode}} has been refunded to your wallet.');
+        N'{{Amount}} VND from order {{OrderCode}} has been refunded to your wallet.');
 
     -- Products & Stock
-    INSERT INTO @Tpl VALUES
+    INSERT INTO @Tpl
+VALUES
     ('PRODUCT_BACK_IN_STOCK', 'SYSTEM', N'Product back in stock: {{ProductName}}',
-     N'The product {{ProductName}} you are interested in is back in stock at {{Price}} VND. Get it now before it runs out!'),
-    ('WISHLIST_PRICE_DROP',   'SYSTEM', N'Price drop on {{ProductName}}',
-     N'{{ProductName}} in your wishlist is now on sale for only {{Price}} VND.');
+        N'The product {{ProductName}} you are interested in is back in stock at {{Price}} VND. Get it now before it runs out!'),
+    ('WISHLIST_PRICE_DROP', 'SYSTEM', N'Price drop on {{ProductName}}',
+        N'{{ProductName}} in your wishlist is now on sale for only {{Price}} VND.');
 
     -- Reviews & Blogs
-    INSERT INTO @Tpl VALUES
+    INSERT INTO @Tpl
+VALUES
     ('REVIEW_STAFF_REPLIED', 'SYSTEM', N'Reply to review on {{ProductName}}',
-     N'A customer service representative has replied to your review of {{ProductName}}.'),
+        N'A customer service representative has replied to your review of {{ProductName}}.'),
     ('BLOG_COMMENT_REPLIED', 'SYSTEM', N'Blog comment reply: {{BlogTitle}}',
-     N'Someone replied to your comment on {{BlogTitle}}.');
+        N'Someone replied to your comment on {{BlogTitle}}.');
 
     -- Staff Notifications
-    INSERT INTO @Tpl VALUES
-    ('STAFF_NEW_ORDER',         'SYSTEM', N'New order received: {{OrderCode}}',
-     N'The system registered a new order {{OrderCode}} worth {{TotalAmount}} VND. Please process it.'),
-    ('STAFF_CANCEL_REQUEST',    'SYSTEM', N'Cancellation request for {{OrderCode}}',
-     N'Customer {{CustomerName}} has requested to cancel order {{OrderCode}}. Reason: {{Reason}}.'),
-    ('STAFF_REFUND_REQUEST',    'SYSTEM', N'Refund request for {{OrderCode}}',
-     N'Customer {{CustomerName}} requested a refund for order {{OrderCode}}.'),
+    INSERT INTO @Tpl
+VALUES
+    ('STAFF_NEW_ORDER', 'SYSTEM', N'New order received: {{OrderCode}}',
+        N'The system registered a new order {{OrderCode}} worth {{TotalAmount}} VND. Please process it.'),
+    ('STAFF_CANCEL_REQUEST', 'SYSTEM', N'Cancellation request for {{OrderCode}}',
+        N'Customer {{CustomerName}} has requested to cancel order {{OrderCode}}. Reason: {{Reason}}.'),
+    ('STAFF_REFUND_REQUEST', 'SYSTEM', N'Refund request for {{OrderCode}}',
+        N'Customer {{CustomerName}} requested a refund for order {{OrderCode}}.'),
     ('STAFF_REVIEW_MODERATION', 'SYSTEM', N'Approve new review',
-     N'There is a new {{Rating}}-star review for product {{ProductName}} that requires moderation.'),
-    ('STAFF_LOW_RATING',        'SYSTEM', N'Low rating warning',
-     N'Product {{ProductName}} just received a {{Rating}}-star review. Please check and resolve.'),
-    ('STAFF_SHIFT_STARTED',     'SYSTEM', N'Shift {{ShiftName}} started',
-     N'Your work shift {{ShiftName}} has started. Have a great shift!');
+        N'There is a new {{Rating}}-star review for product {{ProductName}} that requires moderation.'),
+    ('STAFF_LOW_RATING', 'SYSTEM', N'Low rating warning',
+        N'Product {{ProductName}} just received a {{Rating}}-star review. Please check and resolve.'),
+    ('STAFF_SHIFT_STARTED', 'SYSTEM', N'Shift {{ShiftName}} started',
+        N'Your work shift {{ShiftName}} has started. Have a great shift!');
 
     -- Merchandise Notifications
-    INSERT INTO @Tpl VALUES
+    INSERT INTO @Tpl
+VALUES
     ('MERCH_READY_TO_PACK', 'SYSTEM', N'Order ready for packing',
-     N'Order {{OrderCode}} is ready to be packed.'),
-    ('MERCH_PICKED_UP',     'SYSTEM', N'Package picked up by courier',
-     N'The courier has successfully picked up the package for order {{OrderCode}}.'),
-    ('MERCH_RETURNED',      'SYSTEM', N'Package returned to shop',
-     N'Order {{OrderCode}} has been returned to the shop.'),
-    ('MERCH_LOW_STOCK',     'SYSTEM', N'Low stock warning',
-     N'Product {{ProductName}} has only {{Quantity}} units left. Restocking is needed.'),
-    ('MERCH_OUT_OF_STOCK',  'SYSTEM', N'Out of stock warning',
-     N'Product {{ProductName}} is completely out of stock.');
+        N'Order {{OrderCode}} is ready to be packed.'),
+    ('MERCH_PICKED_UP', 'SYSTEM', N'Package picked up by courier',
+        N'The courier has successfully picked up the package for order {{OrderCode}}.'),
+    ('MERCH_RETURNED', 'SYSTEM', N'Package returned to shop',
+        N'Order {{OrderCode}} has been returned to the shop.'),
+    ('MERCH_LOW_STOCK', 'SYSTEM', N'Low stock warning',
+        N'Product {{ProductName}} has only {{Quantity}} units left. Restocking is needed.'),
+    ('MERCH_OUT_OF_STOCK', 'SYSTEM', N'Out of stock warning',
+        N'Product {{ProductName}} is completely out of stock.');
 
     -- Admin Notifications
-    INSERT INTO @Tpl VALUES
-    ('ADMIN_PAYMENT_ERROR',    'SYSTEM', N'Payment gateway error',
-     N'Payment gateway {{GatewayName}} reported error: {{ErrorMessage}}.'),
-    ('ADMIN_JOB_FAILED',       'SYSTEM', N'Background job failed',
-     N'Background Job {{JobName}} failed. Please check the logs.'),
-    ('ADMIN_OUTBOX_STUCK',     'SYSTEM', N'Outbox event stuck',
-     N'Outbox event {{EventType}} ({{EventId}}) has reached retry limits. Please check logs.'),
-    ('ADMIN_SHIPPING_ERROR',   'SYSTEM', N'Shipping sync error',
-     N'Error synchronizing shipping status for order {{OrderCode}}: {{ErrorMessage}}.'),
-    ('ADMIN_DAMAGE_LOST',      'SYSTEM', N'Items damaged/lost',
-     N'Order {{OrderCode}} reported as damaged or lost during delivery.'),
-    ('ADMIN_RETURN_FAIL',      'SYSTEM', N'GHN return failed',
-     N'Order {{OrderCode}} (GHN: {{ProviderOrderCode}}) reported return_fail. Please process manually.'),
-    ('ADMIN_BLOG_PENDING',     'SYSTEM', N'Blog pending approval: {{BlogTitle}}',
-     N'Blog post {{BlogTitle}} was submitted and is waiting for your approval.'),
-    ('ADMIN_ORDER_QUEUED',     'SYSTEM', N'Order {{OrderCode}} pending assignment',
-     N'Order {{OrderCode}} is pending assignment due to: {{Reason}}.'),
+    INSERT INTO @Tpl
+VALUES
+    ('ADMIN_PAYMENT_ERROR', 'SYSTEM', N'Payment gateway error',
+        N'Payment gateway {{GatewayName}} reported error: {{ErrorMessage}}.'),
+    ('ADMIN_JOB_FAILED', 'SYSTEM', N'Background job failed',
+        N'Background Job {{JobName}} failed. Please check the logs.'),
+    ('ADMIN_OUTBOX_STUCK', 'SYSTEM', N'Outbox event stuck',
+        N'Outbox event {{EventType}} ({{EventId}}) has reached retry limits. Please check logs.'),
+    ('ADMIN_SHIPPING_ERROR', 'SYSTEM', N'Shipping sync error',
+        N'Error synchronizing shipping status for order {{OrderCode}}: {{ErrorMessage}}.'),
+    ('ADMIN_DAMAGE_LOST', 'SYSTEM', N'Items damaged/lost',
+        N'Order {{OrderCode}} reported as damaged or lost during delivery.'),
+    ('ADMIN_RETURN_FAIL', 'SYSTEM', N'GHN return failed',
+        N'Order {{OrderCode}} (GHN: {{ProviderOrderCode}}) reported return_fail. Please process manually.'),
+    ('ADMIN_BLOG_PENDING', 'SYSTEM', N'Blog pending approval: {{BlogTitle}}',
+        N'Blog post {{BlogTitle}} was submitted and is waiting for your approval.'),
+    ('ADMIN_ORDER_QUEUED', 'SYSTEM', N'Order {{OrderCode}} pending assignment',
+        N'Order {{OrderCode}} is pending assignment due to: {{Reason}}.'),
     ('ADMIN_SHIFT_ENDED_PENDING', 'SYSTEM', N'Shift ended with pending orders',
-     N'Shift {{ShiftName}} (staff #{{AccountId}}) ended with {{CurrentLoad}} orders still pending.'),
-    ('ADMIN_SHIFT_FULL',       'SYSTEM', N'Shift capacity reached',
-     N'One or both roles in shift {{ShiftName}} reached order capacity on {{WorkDate}}. Please manage manually.');
+        N'Shift {{ShiftName}} (staff #{{AccountId}}) ended with {{CurrentLoad}} orders still pending.'),
+    ('ADMIN_SHIFT_FULL', 'SYSTEM', N'Shift capacity reached',
+        N'One or both roles in shift {{ShiftName}} reached order capacity on {{WorkDate}}. Please manage manually.');
 
     /* ─── ADMIN GROUP: marketing, togglable ─────────────────────── */
-    INSERT INTO @Tpl VALUES
+    INSERT INTO @Tpl
+VALUES
     ('FLASH_SALE_STARTED', 'ADMIN', N'{{PromotionName}} Started!',
-     N'The flash sale {{PromotionName}} has officially started from {{StartDate}} to {{EndDate}}. Grab the deals now!'),
-    ('VOUCHER_NEW',        'ADMIN', N'Voucher for you: {{VoucherCode}}',
-     N'You received a voucher {{VoucherCode}} for a discount of {{DiscountValue}} ({{DiscountType}}). Apply it before it expires on {{ExpiryDate}}!'),
-    ('VOUCHER_EXPIRING',   'ADMIN', N'Voucher {{VoucherCode}} is expiring soon!',
-     N'Don''t miss out on voucher {{VoucherCode}} (Discount of {{DiscountValue}}). It expires on {{ExpiryDate}}. Use it now!'),
-    ('BIRTHDAY_CUSTOMER',  'ADMIN', N'Happy Birthday, {{CustomerName}}!',
-     N'Happy birthday to you! ToyStore has sent you a special gift. Please check your Voucher wallet!'),
-    ('BIRTHDAY_CHILD',     'ADMIN', N'Happy Birthday, {{ChildName}}!',
-     N'Happy birthday to {{ChildName}}! ToyStore wishes them healthy growth and joy. Parents, pick a favorite toy for them!');
+        N'The flash sale {{PromotionName}} has officially started from {{StartDate}} to {{EndDate}}. Grab the deals now!'),
+    ('VOUCHER_NEW', 'ADMIN', N'Voucher for you: {{VoucherCode}}',
+        N'You received a voucher {{VoucherCode}} for a discount of {{DiscountValue}} ({{DiscountType}}). Apply it before it expires on {{ExpiryDate}}!'),
+    ('VOUCHER_EXPIRING', 'ADMIN', N'Voucher {{VoucherCode}} is expiring soon!',
+        N'Don''t miss out on voucher {{VoucherCode}} (Discount of {{DiscountValue}}). It expires on {{ExpiryDate}}. Use it now!'),
+    ('BIRTHDAY_CUSTOMER', 'ADMIN', N'Happy Birthday, {{CustomerName}}!',
+        N'Happy birthday to you! ToyStore has sent you a special gift. Please check your Voucher wallet!'),
+    ('BIRTHDAY_CHILD', 'ADMIN', N'Happy Birthday, {{ChildName}}!',
+        N'Happy birthday to {{ChildName}}! ToyStore wishes them healthy growth and joy. Parents, pick a favorite toy for them!');
 
     /* ─── MERGE idempotent insertion & update ─────────────────────── */
     MERGE [Notification].[Templates] AS target
@@ -2168,22 +2613,353 @@ END CATCH
 GO
 
 -- ============================================================
--- Campaigns
+-- Campaigns (UI-realistic: reference + target + action route + lifecycle)
 -- ============================================================
-DECLARE @admCamp INT = (SELECT TOP 1
-    AccountID
-FROM Accounts
-WHERE Email = 'admin@toyhouse.vn');
-
 IF NOT EXISTS (SELECT 1
 FROM [Notification].[Campaigns])
+BEGIN
+    DECLARE @UtcNowC DATETIME2(0) = (SELECT UtcNow
+    FROM #SeedTime);
+    DECLARE @admCamp INT = (SELECT TOP 1
+        AccountID
+    FROM Accounts
+    WHERE Email = 'admin@toyhouse.vn');
+    DECLARE @stfCamp INT = (SELECT TOP 1
+        AccountID
+    FROM Accounts
+    WHERE Email = 'nhung.st@toyhouse.vn');
+
+    -- Target convention (matches Admin Campaign Wizard):
+    --   ADMIN marketing → TargetType ALL (broadcast to all active customers)
+    --   SYSTEM          → automated notifications; INDIVIDUAL per account when event-driven
+
+    -- Reference entities (same lookups as Campaign Wizard step 1)
+    DECLARE @pSummer INT = (SELECT TOP 1
+        PromotionID
+    FROM Promotions
+    WHERE PromotionName = N'Summer Toy Festival 2026');
+    DECLARE @pMega   INT = (SELECT TOP 1
+        PromotionID
+    FROM Promotions
+    WHERE PromotionName = N'Mega Flash Sale');
+    DECLARE @pBTS    INT = (SELECT TOP 1
+        PromotionID
+    FROM Promotions
+    WHERE PromotionName = N'Back To School 2026');
+    DECLARE @pBF     INT = (SELECT TOP 1
+        PromotionID
+    FROM Promotions
+    WHERE PromotionName = N'Black Friday Preview');
+    DECLARE @vWelcome INT = (SELECT TOP 1
+        VoucherID
+    FROM Vouchers
+    WHERE VoucherCode = 'WELCOME15');
+    DECLARE @vFree    INT = (SELECT TOP 1
+        VoucherID
+    FROM Vouchers
+    WHERE VoucherCode = 'FREESHIP50');
+    DECLARE @vVIP     INT = (SELECT TOP 1
+        VoucherID
+    FROM Vouchers
+    WHERE VoucherCode = 'VIP300K');
+    DECLARE @vExpiring INT = (SELECT TOP 1
+        VoucherID
+    FROM Vouchers
+    WHERE VoucherCode = 'EXPIRING48H');
+    DECLARE @vUpcoming INT = (SELECT TOP 1
+        VoucherID
+    FROM Vouchers
+    WHERE VoucherCode = 'UPCOMING20');
+    DECLARE @blogHalloween INT = (SELECT TOP 1
+        BlogPostID
+    FROM BlogPosts
+    WHERE BlogTitle = N'Halloween Toy Preview 2026');
+    DECLARE @prodCS INT = 31;
+
+    DECLARE @pSummerStart DATETIME2(0) = (SELECT StartDate
+    FROM Promotions
+    WHERE PromotionID = @pSummer);
+    DECLARE @pSummerEnd   DATETIME2(0) = (SELECT EndDate
+    FROM Promotions
+    WHERE PromotionID = @pSummer);
+    DECLARE @vFreeStart   DATETIME2(0) = (SELECT StartDate
+    FROM Vouchers
+    WHERE VoucherID = @vFree);
+    DECLARE @vFreeEnd     DATETIME2(0) = (SELECT EndDate
+    FROM Vouchers
+    WHERE VoucherID = @vFree);
+    DECLARE @blogHalloweenAt DATETIME2(0) = (SELECT BlogAt
+    FROM BlogPosts
+    WHERE BlogPostID = @blogHalloween);
+    DECLARE @prodLaunch DATETIME2(0) = (SELECT LaunchDate
+    FROM Products
+    WHERE ProductID = @prodCS);
+    DECLARE @prodCreated DATETIME2(0) = (SELECT CreatedAt
+    FROM Products
+    WHERE ProductID = @prodCS);
+
+    DECLARE @schedFreeShip DATETIME2(0) = DATEADD(DAY, 2, @UtcNowC);
+    DECLARE @schedHalloween DATETIME2(0) = DATEADD(DAY, 7, @UtcNowC);
+    DECLARE @schedLego DATETIME2(0) = DATEADD(HOUR, -2, @prodLaunch);
+    DECLARE @sentSummerAt DATETIME2(0) = DATEADD(DAY, -14, @UtcNowC);
+    DECLARE @sentWelcomeAt DATETIME2(0) = DATEADD(DAY, -20, @UtcNowC);
+    DECLARE @sentFlashAt DATETIME2(0) = DATEADD(HOUR, -1, @UtcNowC);
+
+    -- 1) Sent – Summer DISCOUNT promo blast (staff submitted → admin approved → scheduled → sent)
     INSERT INTO [Notification].[Campaigns]
-    (CampaignName, TemplateCode, SourceType, TargetType, Status,
-    CreatedByAccountID, IsDeleted, CreatedAt)
-VALUES
-    (N'Summer Sale 2026 Announcement', 'FLASH_SALE_STARTED', 'ADMIN', 'ALL', 'Sent', @admCamp, 0, '2026-03-28 08:00:00'),
-    (N'Welcome Voucher for New Customers', 'VOUCHER_NEW', 'ADMIN', 'ALL', 'Sent', @admCamp, 0, '2026-01-01 08:00:00'),
-    (N'Post-Delivery Review Reminder', 'ORDER_DELIVERED', 'SYSTEM', 'INDIVIDUAL', 'Sent', NULL, 0, '2026-04-01 00:00:00');
+        (CampaignName, TemplateCode, SourceType, TargetType, Status,
+        ReferenceType, ReferenceID, ActionType, ActionTarget,
+        SubmittedByAccountID, SubmittedAt, ReviewedByAccountID, ReviewedAt,
+        ValidFrom, ValidTo, ScheduledAt,
+        CreatedByAccountID, IsDeleted, CreatedAt)
+    VALUES
+        (N'Summer Toy Festival 2026 – Customer Blast', 'FLASH_SALE_STARTED', 'ADMIN', 'ALL', 'Sent',
+            'SALE', @pSummer, 'ROUTE', N'/?flashSale=' + CAST(@pSummer AS NVARCHAR(10)),
+            @stfCamp, DATEADD(DAY, -16, @UtcNowC), @admCamp, DATEADD(DAY, -15, @UtcNowC),
+            @pSummerStart, @pSummerEnd, @sentSummerAt,
+            @stfCamp, 0, DATEADD(DAY, -17, @UtcNowC));
+
+    -- 2) Sent – WELCOME15 broadcast to all customers (default Wizard target = ALL)
+    INSERT INTO [Notification].[Campaigns]
+        (CampaignName, TemplateCode, SourceType, TargetType, Status,
+        ReferenceType, ReferenceID, ActionType, ActionTarget,
+        SubmittedByAccountID, SubmittedAt, ReviewedByAccountID, ReviewedAt,
+        ValidFrom, ValidTo, ScheduledAt,
+        CreatedByAccountID, IsDeleted, CreatedAt)
+    VALUES
+        (N'Welcome Gift – WELCOME15 for All Customers', 'VOUCHER_NEW', 'ADMIN', 'ALL', 'Sent',
+            'VOUCHER', @vWelcome, 'ROUTE', N'/profile/vouchers?code=WELCOME15',
+            @stfCamp, DATEADD(DAY, -22, @UtcNowC), @admCamp, DATEADD(DAY, -21, @UtcNowC),
+            (SELECT StartDate
+            FROM Vouchers
+            WHERE VoucherID = @vWelcome),
+            (SELECT EndDate
+            FROM Vouchers
+            WHERE VoucherID = @vWelcome),
+            @sentWelcomeAt,
+            @stfCamp, 0, DATEADD(DAY, -23, @UtcNowC));
+
+    -- 3) Sent – SYSTEM individual review reminders (per-account targets, no marketing reference)
+    INSERT INTO [Notification].[Campaigns]
+        (CampaignName, TemplateCode, SourceType, TargetType, Status, ScheduledAt, CreatedAt)
+    VALUES
+        (N'Post-Delivery Review Reminder', 'ORDER_DELIVERED', 'SYSTEM', 'INDIVIDUAL', 'Sent',
+            DATEADD(DAY, -30, @UtcNowC), DATEADD(DAY, -30, @UtcNowC));
+
+    -- 4) Sent – Mega Flash with reference + custom overrides (Wizard step 2–3)
+    INSERT INTO [Notification].[Campaigns]
+        (CampaignName, TemplateCode, SourceType, TargetType, Status,
+        ReferenceType, ReferenceID, ActionType, ActionTarget,
+        TitleOverride, MessageOverride,
+        SubmittedByAccountID, SubmittedAt, ReviewedByAccountID, ReviewedAt,
+        ScheduledAt, CreatedByAccountID, IsDeleted, CreatedAt)
+    VALUES
+        (N'Mega Flash Sale – Live Now', 'FLASH_SALE_STARTED', 'ADMIN', 'ALL', 'Sent',
+            'SALE', @pMega, 'ROUTE', N'/?flashSale=' + CAST(@pMega AS NVARCHAR(10)),
+            N'Mega Flash Sale is Live!', N'Click here to check out amazing toy deals right now!',
+            @stfCamp, DATEADD(HOUR, -3, @UtcNowC), @admCamp, DATEADD(HOUR, -2, @UtcNowC),
+            @sentFlashAt, @admCamp, 0, DATEADD(HOUR, -4, @UtcNowC));
+
+    -- 5) Approved – BTS promo waiting for staff to pick schedule window
+    INSERT INTO [Notification].[Campaigns]
+        (CampaignName, TemplateCode, SourceType, TargetType, Status,
+        ReferenceType, ReferenceID, ActionType, ActionTarget,
+        SubmittedByAccountID, SubmittedAt, ReviewedByAccountID, ReviewedAt, ApprovedExpireAt,
+        CreatedByAccountID, IsDeleted, CreatedAt)
+    VALUES
+        (N'Back To School 2026 – Early Notice', 'FLASH_SALE_STARTED', 'ADMIN', 'ALL', 'Approved',
+            'SALE', @pBTS, 'ROUTE', N'/?flashSale=' + CAST(@pBTS AS NVARCHAR(10)),
+            @stfCamp, DATEADD(DAY, -5, @UtcNowC), @admCamp, DATEADD(DAY, -2, @UtcNowC), DATEADD(DAY, 5, @UtcNowC),
+            @stfCamp, 0, DATEADD(DAY, -6, @UtcNowC));
+
+    -- 6) PendingApproval – Black Friday promo (ALL customers)
+    INSERT INTO [Notification].[Campaigns]
+        (CampaignName, TemplateCode, SourceType, TargetType, Status,
+        ReferenceType, ReferenceID, ActionType, ActionTarget,
+        SubmittedByAccountID, SubmittedAt, CreatedByAccountID, IsDeleted, CreatedAt)
+    VALUES
+        (N'Black Friday Preview 2026 – Storewide Push', 'FLASH_SALE_STARTED', 'ADMIN', 'ALL', 'PendingApproval',
+            'SALE', @pBF, 'ROUTE', N'/?flashSale=' + CAST(@pBF AS NVARCHAR(10)),
+            @stfCamp, DATEADD(DAY, -1, @UtcNowC), @stfCamp, 0, DATEADD(DAY, -2, @UtcNowC));
+
+    -- 7) Rejected – VIP300K over budget (admin ReviewNote required)
+    INSERT INTO [Notification].[Campaigns]
+        (CampaignName, TemplateCode, SourceType, TargetType, Status,
+        ReferenceType, ReferenceID, ActionType, ActionTarget,
+        SubmittedByAccountID, SubmittedAt, ReviewedByAccountID, ReviewedAt, ReviewNote,
+        CreatedByAccountID, IsDeleted, CreatedAt)
+    VALUES
+        (N'VIP300K High-Value Voucher Blast', 'VOUCHER_NEW', 'ADMIN', 'ALL', 'Rejected',
+            'VOUCHER', @vVIP, 'ROUTE', N'/profile/vouchers?code=VIP300K',
+            @stfCamp, DATEADD(DAY, -4, @UtcNowC), @admCamp, DATEADD(DAY, -3, @UtcNowC),
+            N'Rejected: voucher budget exceeds Q3 marketing cap. Please reduce discount or narrow audience.',
+            @stfCamp, 0, DATEADD(DAY, -5, @UtcNowC));
+
+    -- 8) Scheduled – FREESHIP50 (ValidFrom/To aligned with voucher entity)
+    INSERT INTO [Notification].[Campaigns]
+        (CampaignName, TemplateCode, SourceType, TargetType, Status,
+        ReferenceType, ReferenceID, ActionType, ActionTarget,
+        ValidFrom, ValidTo, ScheduledAt,
+        SubmittedByAccountID, SubmittedAt, ReviewedByAccountID, ReviewedAt,
+        CreatedByAccountID, IsDeleted, CreatedAt)
+    VALUES
+        (N'FREESHIP50 Free Shipping Reminder', 'VOUCHER_NEW', 'ADMIN', 'ALL', 'Scheduled',
+            'VOUCHER', @vFree, 'ROUTE', N'/profile/vouchers?code=FREESHIP50',
+            @vFreeStart, @vFreeEnd, @schedFreeShip,
+            @stfCamp, DATEADD(DAY, -5, @UtcNowC), @admCamp, DATEADD(DAY, -4, @UtcNowC),
+            @stfCamp, 0, DATEADD(DAY, -6, @UtcNowC));
+
+    -- 9) Scheduled – Halloween blog (custom title/message like Wizard without template)
+    INSERT INTO [Notification].[Campaigns]
+        (CampaignName, TemplateCode, SourceType, TargetType, Status,
+        ReferenceType, ReferenceID, ActionType, ActionTarget, ImageUrl,
+        TitleOverride, MessageOverride,
+        ValidFrom, ValidTo, ScheduledAt,
+        SubmittedByAccountID, SubmittedAt, ReviewedByAccountID, ReviewedAt,
+        CreatedByAccountID, IsDeleted, CreatedAt)
+    VALUES
+        (N'Halloween Toy Preview – Save the Date', NULL, 'ADMIN', 'ALL', 'Scheduled',
+            'BLOG', @blogHalloween, 'ROUTE', N'/blog/' + CAST(@blogHalloween AS NVARCHAR(10)),
+            (SELECT BlogThumbnail
+            FROM BlogPosts
+            WHERE BlogPostID = @blogHalloween),
+            N'New on the Blog: Halloween Toy Preview 2026',
+            N'Get an early look at spooky figures and dress-up sets before the October drop.',
+            @UtcNowC, @blogHalloweenAt, @schedHalloween,
+            @stfCamp, DATEADD(DAY, -3, @UtcNowC), @admCamp, DATEADD(DAY, -2, @UtcNowC),
+            @stfCamp, 0, DATEADD(DAY, -4, @UtcNowC));
+
+    -- 10) Sending – ComingSoon product pre-launch
+    INSERT INTO [Notification].[Campaigns]
+        (CampaignName, TemplateCode, SourceType, TargetType, Status,
+        ReferenceType, ReferenceID, ActionType, ActionTarget,
+        TitleOverride, MessageOverride,
+        ValidFrom, ValidTo, ScheduledAt,
+        SubmittedByAccountID, SubmittedAt, ReviewedByAccountID, ReviewedAt,
+        CreatedByAccountID, IsDeleted, CreatedAt)
+    VALUES
+        (N'Lego Friends Beach House – Pre-Launch Alert', NULL, 'ADMIN', 'ALL', 'Sending',
+            'PRODUCT', @prodCS, 'ROUTE', N'/products/' + CAST(@prodCS AS NVARCHAR(10)),
+            N'Coming Soon: Lego Friends 2026 Beach House',
+            N'Pre-orders open soon – tap to view the product page and set a reminder.',
+            @prodCreated, @prodLaunch, @schedLego,
+            @stfCamp, DATEADD(DAY, -2, @UtcNowC), @admCamp, DATEADD(DAY, -1, @UtcNowC),
+            @stfCamp, 0, @UtcNowC);
+
+    -- 11) Cancelled – staff cancelled after scheduling UPCOMING20 teaser
+    INSERT INTO [Notification].[Campaigns]
+        (CampaignName, TemplateCode, SourceType, TargetType, Status,
+        ReferenceType, ReferenceID, ActionType, ActionTarget,
+        ValidFrom, ValidTo, ScheduledAt,
+        SubmittedByAccountID, SubmittedAt, ReviewedByAccountID, ReviewedAt,
+        CreatedByAccountID, IsDeleted, CreatedAt)
+    VALUES
+        (N'UPCOMING20 Teaser – Cancelled by Staff', 'VOUCHER_NEW', 'ADMIN', 'ALL', 'Cancelled',
+            'VOUCHER', @vUpcoming, 'ROUTE', N'/profile/vouchers?code=UPCOMING20',
+            (SELECT StartDate
+            FROM Vouchers
+            WHERE VoucherID = @vUpcoming),
+            (SELECT EndDate
+            FROM Vouchers
+            WHERE VoucherID = @vUpcoming),
+            DATEADD(DAY, 10, @UtcNowC),
+            @stfCamp, DATEADD(DAY, -8, @UtcNowC), @admCamp, DATEADD(DAY, -7, @UtcNowC),
+            @stfCamp, 0, DATEADD(DAY, -9, @UtcNowC));
+
+    -- 12) Failed – dispatch exhausted retries on EXPIRING48H urgency push
+    INSERT INTO [Notification].[Campaigns]
+        (CampaignName, TemplateCode, SourceType, TargetType, Status,
+        ReferenceType, ReferenceID, ActionType, ActionTarget,
+        ValidFrom, ValidTo, ScheduledAt,
+        SubmittedByAccountID, SubmittedAt, ReviewedByAccountID, ReviewedAt,
+        CreatedByAccountID, IsDeleted, CreatedAt)
+    VALUES
+        (N'EXPIRING48H Urgency Push – Send Failed', 'VOUCHER_EXPIRING', 'ADMIN', 'ALL', 'Failed',
+            'VOUCHER', @vExpiring, 'ROUTE', N'/profile/vouchers?code=EXPIRING48H',
+            DATEADD(HOUR, -4, @UtcNowC), DATEADD(DAY, 2, @UtcNowC),
+            DATEADD(HOUR, -3, @UtcNowC),
+            @stfCamp, DATEADD(DAY, -2, @UtcNowC), @admCamp, DATEADD(DAY, -1, @UtcNowC),
+            @stfCamp, 0, DATEADD(DAY, -3, @UtcNowC));
+
+    -- 13) Draft – staff saved wizard (ALL customers + voucher reference)
+    INSERT INTO [Notification].[Campaigns]
+        (CampaignName, TemplateCode, SourceType, TargetType, Status,
+        ReferenceType, ReferenceID, ActionType, ActionTarget,
+        CreatedByAccountID, IsDeleted, CreatedAt)
+    VALUES
+        (N'Draft – EXPIRING48H Last-Chance Reminder', 'VOUCHER_EXPIRING', 'ADMIN', 'ALL', 'Draft',
+            'VOUCHER', @vExpiring, 'ROUTE', N'/profile/vouchers?code=EXPIRING48H',
+            @stfCamp, 0, @UtcNowC);
+
+    -- CampaignTargets: only INDIVIDUAL campaigns (ALL must have empty targets per schema)
+    INSERT INTO [Notification].[CampaignTargets]
+        (CampaignID, TargetType, TargetValue)
+    SELECT c.CampaignID, 'ACCOUNT_ID', CAST(a.AccountID AS VARCHAR(20))
+    FROM [Notification].[Campaigns] c
+    CROSS APPLY (
+        SELECT DISTINCT o.AccountID
+        FROM Orders o
+        WHERE o.DeliveredAt IS NOT NULL AND o.StatusID IN (6, 7)
+    ) a
+    WHERE c.CampaignName = N'Post-Delivery Review Reminder';
+
+    -- CampaignSchedules
+    INSERT INTO [Notification].[CampaignSchedules]
+        (CampaignID, ScheduledBy, ScheduledAt, ExecutionStatus, AttemptCount, LastError, ExecutedAt, CreatedAt)
+    SELECT c.CampaignID, @stfCamp, c.ScheduledAt, 'Waiting', 0, NULL, NULL, @UtcNowC
+    FROM [Notification].[Campaigns] c
+    WHERE c.Status = 'Scheduled' AND c.ScheduledAt IS NOT NULL;
+
+    INSERT INTO [Notification].[CampaignSchedules]
+        (CampaignID, ScheduledBy, ScheduledAt, ExecutionStatus, AttemptCount, LastError, ExecutedAt, CreatedAt)
+    SELECT c.CampaignID, @stfCamp, c.ScheduledAt, 'Dispatched', 0, NULL, NULL, @UtcNowC
+    FROM [Notification].[Campaigns] c
+    WHERE c.Status = 'Sending' AND c.ScheduledAt IS NOT NULL;
+
+    INSERT INTO [Notification].[CampaignSchedules]
+        (CampaignID, ScheduledBy, ScheduledAt, ExecutionStatus, AttemptCount, MaxAttemptCount, LastError, ExecutedAt, CreatedAt)
+    SELECT c.CampaignID, @stfCamp, c.ScheduledAt, 'Cancelled', 0, 3, NULL, NULL, @UtcNowC
+    FROM [Notification].[Campaigns] c
+    WHERE c.CampaignName = N'UPCOMING20 Teaser – Cancelled by Staff';
+
+    INSERT INTO [Notification].[CampaignSchedules]
+        (CampaignID, ScheduledBy, ScheduledAt, ExecutionStatus, AttemptCount, MaxAttemptCount, LastError, ExecutedAt, CreatedAt)
+    SELECT c.CampaignID, @stfCamp, c.ScheduledAt, 'Failed', 3, 3,
+        N'Notification fan-out failed: downstream email gateway timeout after 3 attempts.',
+        c.ScheduledAt, @UtcNowC
+    FROM [Notification].[Campaigns] c
+    WHERE c.CampaignName = N'EXPIRING48H Urgency Push – Send Failed';
+
+    -- Reference snapshots (taken when staff schedules – entity state frozen)
+    INSERT INTO [Notification].[CampaignReferenceSnapshots]
+        (CampaignID, ReferenceType, ReferenceID, EntityStatus, EntityStartDate, EntityEndDate, SnapshotAt)
+    SELECT c.CampaignID, c.ReferenceType, c.ReferenceID, v.Status, v.StartDate, v.EndDate, @UtcNowC
+    FROM [Notification].[Campaigns] c
+        JOIN [dbo].[Vouchers] v ON c.ReferenceType = 'VOUCHER' AND v.VoucherID = c.ReferenceID
+    WHERE c.Status IN ('Scheduled', 'Sent', 'Failed', 'Cancelled') AND c.ReferenceType = 'VOUCHER';
+
+    INSERT INTO [Notification].[CampaignReferenceSnapshots]
+        (CampaignID, ReferenceType, ReferenceID, EntityStatus, EntityStartDate, EntityEndDate, SnapshotAt)
+    SELECT c.CampaignID, c.ReferenceType, c.ReferenceID, p.Status, p.StartDate, p.EndDate, @UtcNowC
+    FROM [Notification].[Campaigns] c
+        JOIN [dbo].[Promotions] p ON c.ReferenceType = 'SALE' AND p.PromotionID = c.ReferenceID
+    WHERE c.ReferenceType = 'SALE'
+        AND c.Status IN ('Scheduled', 'Sent', 'PendingApproval', 'Approved');
+
+    INSERT INTO [Notification].[CampaignReferenceSnapshots]
+        (CampaignID, ReferenceType, ReferenceID, EntityStatus, EntityStartDate, EntityEndDate, SnapshotAt)
+    SELECT c.CampaignID, c.ReferenceType, c.ReferenceID, bp.Status, bp.CreatedAt, bp.BlogAt, @UtcNowC
+    FROM [Notification].[Campaigns] c
+        JOIN [dbo].[BlogPosts] bp ON c.ReferenceType = 'BLOG' AND bp.BlogPostID = c.ReferenceID
+    WHERE c.Status = 'Scheduled' AND c.ReferenceType = 'BLOG';
+
+    INSERT INTO [Notification].[CampaignReferenceSnapshots]
+        (CampaignID, ReferenceType, ReferenceID, EntityStatus, EntityStartDate, EntityEndDate, SnapshotAt)
+    SELECT c.CampaignID, c.ReferenceType, c.ReferenceID, pr.ProductStatus, pr.CreatedAt, pr.LaunchDate, @UtcNowC
+    FROM [Notification].[Campaigns] c
+        JOIN [dbo].[Products] pr ON c.ReferenceType = 'PRODUCT' AND pr.ProductID = c.ReferenceID
+    WHERE c.Status IN ('Scheduled', 'Sending') AND c.ReferenceType = 'PRODUCT';
+END
 GO
 
 -- ============================================================
@@ -2194,45 +2970,31 @@ FROM [Notification].[CampaignStats])
     INSERT INTO [Notification].[CampaignStats]
     (CampaignID, TotalSent, TotalRead, TotalClicked, ComputedAt)
 SELECT
-    CampaignID,
-    CASE CampaignName
-            WHEN N'Summer Sale 2026 Announcement'     THEN 5
-            WHEN N'Welcome Voucher for New Customers' THEN 5
-            ELSE 4
-        END,
-    CASE CampaignName
-            WHEN N'Summer Sale 2026 Announcement'     THEN 4
-            WHEN N'Welcome Voucher for New Customers' THEN 4
-            ELSE 3
-        END,
-    CASE CampaignName
-            WHEN N'Summer Sale 2026 Announcement'     THEN 2
-            WHEN N'Welcome Voucher for New Customers' THEN 3
-            ELSE 2
-        END,
-    GETDATE()
-FROM [Notification].[Campaigns];
+    c.CampaignID,
+    CASE WHEN c.Status = 'Sent' THEN 5 ELSE 0 END,
+    CASE WHEN c.Status = 'Sent' THEN 3 ELSE 0 END,
+    CASE WHEN c.CampaignName = N'Mega Flash Sale – Live Now' THEN 2
+         WHEN c.Status = 'Sent' THEN 1 ELSE 0 END,
+    (SELECT UtcNow
+    FROM #SeedTime)
+FROM [Notification].[Campaigns] c;
 GO
 
 -- ============================================================
--- Deliveries
+-- Deliveries (transactional notifications: CampaignID NULL)
 -- ============================================================
-DECLARE @cmpSale INT = (SELECT TOP 1
-    CampaignID
-FROM [Notification].[Campaigns]
-WHERE CampaignName = N'Summer Sale 2026 Announcement');
-DECLARE @cmpRv   INT = (SELECT TOP 1
+DECLARE @cmpRv INT = (SELECT TOP 1
     CampaignID
 FROM [Notification].[Campaigns]
 WHERE CampaignName = N'Post-Delivery Review Reminder');
 
--- Order placed notifications
+-- Order placed – system notification, not linked to a marketing campaign
 INSERT INTO [Notification].[Deliveries]
     (AccountID, CampaignID, TemplateCode, RecipientType, NotificationType,
     Title, Message, Payload, Status, IdempotencyKey, CreatedAt)
 SELECT
     o.AccountID,
-    @cmpSale,
+    NULL,
     'ORDER_PLACED',
     'CUSTOMER',
     'ORDER',
@@ -2282,61 +3044,32 @@ FROM [Notification].[Deliveries] d
     JOIN Orders o ON o.OrderID = CAST(JSON_VALUE(d.Payload, '$.orderId') AS INT)
 WHERE o.StatusID IN (6, 7)
     AND d.Status = 'Unread';
-GO
 
--- ============================================================
--- Mega Flash Sale Click Test Campaign [ADDED FOR TESTING]
--- ============================================================
-IF NOT EXISTS (SELECT 1 FROM [Notification].[Campaigns] WHERE CampaignName = N'Mega Flash Sale Click Test')
-BEGIN
-    DECLARE @admCampTest INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'admin@toyhouse.vn');
-    DECLARE @pMega INT = (SELECT TOP 1 PromotionID FROM Promotions WHERE PromotionName = N'Mega Flash Sale');
+-- Mega Flash Sale live campaign deliveries
+DECLARE @cmpFlash INT = (SELECT TOP 1
+    CampaignID
+FROM [Notification].[Campaigns]
+WHERE CampaignName = N'Mega Flash Sale – Live Now');
+DECLARE @pMegaD INT = (SELECT TOP 1
+    PromotionID
+FROM Promotions
+WHERE PromotionName = N'Mega Flash Sale');
 
-    IF @admCampTest IS NOT NULL AND @pMega IS NOT NULL
-    BEGIN
-        PRINT N'Seeding Mega Flash Sale Click Test Campaign...';
-        
-        INSERT INTO [Notification].[Campaigns]
-            (CampaignName, TemplateCode, SourceType, TargetType, Status,
-            ReferenceType, ReferenceID, ActionType, ActionTarget, TitleOverride, MessageOverride,
-            CreatedByAccountID, IsDeleted, CreatedAt)
-        VALUES
-            (N'Mega Flash Sale Click Test', 'FLASH_SALE_STARTED', 'ADMIN', 'ALL', 'Sent',
-            'SALE', @pMega, 'ROUTE', N'/?flashSale=' + CAST(@pMega AS NVARCHAR(10)),
-            N'Mega Flash Sale is Live!', N'Click here to check out amazing toy deals right now!',
-            @admCampTest, 0, GETUTCDATE());
-
-        DECLARE @newCmpId INT = SCOPE_IDENTITY();
-
-        -- CampaignStats
-        INSERT INTO [Notification].[CampaignStats]
-            (CampaignID, TotalSent, TotalRead, TotalClicked, ComputedAt)
-        VALUES
-            (@newCmpId, 5, 0, 0, GETUTCDATE());
-
-        -- Deliveries for all active customer accounts
-        INSERT INTO [Notification].[Deliveries]
-            (AccountID, CampaignID, TemplateCode, RecipientType, Channel, NotificationType,
-            ActionType, ActionTarget, Title, Message, Payload, Status, IsDeleted, CreatedAt)
-        SELECT
-            AccountID,
-            @newCmpId,
-            'FLASH_SALE_STARTED',
-            'CUSTOMER',
-            'WEB_BELL',
-            'PROMOTION',
-            'ROUTE',
-            N'/?flashSale=' + CAST(@pMega AS NVARCHAR(10)),
-            N'Mega Flash Sale is Live!',
-            N'Click here to check out amazing toy deals right now!',
-            N'{"promotionId":' + CAST(@pMega AS VARCHAR) + N'}',
-            'Unread',
-            0,
-            GETUTCDATE()
-        FROM Accounts
-        WHERE RoleID = 1 AND IsActive = 1 AND IsDeleted = 0;
-    END
-END
+IF @cmpFlash IS NOT NULL AND NOT EXISTS (SELECT 1
+    FROM [Notification].[Deliveries]
+    WHERE CampaignID = @cmpFlash)
+    INSERT INTO [Notification].[Deliveries]
+    (AccountID, CampaignID, TemplateCode, RecipientType, Channel, NotificationType,
+    ActionType, ActionTarget, Title, Message, Payload, Status, IsDeleted, CreatedAt)
+SELECT
+    AccountID, @cmpFlash, 'FLASH_SALE_STARTED', 'CUSTOMER', 'WEB_BELL', 'PROMOTION',
+    'ROUTE', N'/?flashSale=' + CAST(@pMegaD AS NVARCHAR(10)),
+    N'Mega Flash Sale is Live!', N'Click here to check out amazing toy deals right now!',
+    N'{"promotionId":' + CAST(@pMegaD AS VARCHAR) + N'}',
+    'Unread', 0, (SELECT UtcNow
+    FROM #SeedTime)
+FROM Accounts
+WHERE RoleID = 1 AND IsActive = 1 AND IsDeleted = 0;
 GO
 /* ══════════════════════════════════════════════════════════════
    SECTION 36 – REVIEW MODERATION LOGS  [NEW]
@@ -2415,42 +3148,77 @@ PRINT N'[37-NEW] CampaignApprovalLogs...';
 IF NOT EXISTS (SELECT 1
 FROM [Notification].[CampaignApprovalLogs])
 BEGIN
-    DECLARE @admAL  INT = (SELECT TOP 1
+    DECLARE @UtcNow37 DATETIME2(0) = (SELECT UtcNow
+    FROM #SeedTime);
+    DECLARE @admAL INT = (SELECT TOP 1
         AccountID
     FROM Accounts
-    WHERE Email='admin@toyhouse.vn');
-    DECLARE @stfAL  INT = (SELECT TOP 1
+    WHERE Email = 'admin@toyhouse.vn');
+    DECLARE @stfAL INT = (SELECT TOP 1
         AccountID
     FROM Accounts
-    WHERE Email='nhung.st@toyhouse.vn');
+    WHERE Email = 'nhung.st@toyhouse.vn');
 
-    -- Match English campaign names inserted above
-    DECLARE @cmpS   INT = (SELECT TOP 1
+    DECLARE @cmpSummer INT = (SELECT TOP 1
         CampaignID
     FROM [Notification].[Campaigns]
-    WHERE CampaignName=N'Summer Sale 2026 Announcement');
-    DECLARE @cmpV   INT = (SELECT TOP 1
+    WHERE CampaignName = N'Summer Toy Festival 2026 – Customer Blast');
+    DECLARE @cmpV INT = (SELECT TOP 1
         CampaignID
     FROM [Notification].[Campaigns]
-    WHERE CampaignName=N'Welcome Voucher for New Customers');
-    DECLARE @cmpR   INT = (SELECT TOP 1
+    WHERE CampaignName = N'Welcome Gift – WELCOME15 for All Customers');
+    DECLARE @cmpR INT = (SELECT TOP 1
         CampaignID
     FROM [Notification].[Campaigns]
-    WHERE CampaignName=N'Post-Delivery Review Reminder');
+    WHERE CampaignName = N'Post-Delivery Review Reminder');
+    DECLARE @cmpBTS INT = (SELECT TOP 1
+        CampaignID
+    FROM [Notification].[Campaigns]
+    WHERE CampaignName = N'Back To School 2026 – Early Notice');
+    DECLARE @cmpBF INT = (SELECT TOP 1
+        CampaignID
+    FROM [Notification].[Campaigns]
+    WHERE CampaignName = N'Black Friday Preview 2026 – Storewide Push');
+    DECLARE @cmpSched INT = (SELECT TOP 1
+        CampaignID
+    FROM [Notification].[Campaigns]
+    WHERE CampaignName = N'FREESHIP50 Free Shipping Reminder');
+    DECLARE @cmpRej INT = (SELECT TOP 1
+        CampaignID
+    FROM [Notification].[Campaigns]
+    WHERE CampaignName = N'VIP300K High-Value Voucher Blast');
+    DECLARE @cmpCancel INT = (SELECT TOP 1
+        CampaignID
+    FROM [Notification].[Campaigns]
+    WHERE CampaignName = N'UPCOMING20 Teaser – Cancelled by Staff');
 
-    /* Summer Sale campaign: Staff submit → Admin approve */
     INSERT INTO [Notification].[CampaignApprovalLogs]
-        (CampaignID,Action,ActorID,Note,CreatedAt)
+        (CampaignID, Action, ActorID, Note, CreatedAt)
     VALUES
-        (@cmpS, 'Submitted', @stfAL, N'Proposed Summer Sale 2026 campaign to notify all customers', '2026-03-27 14:00:00'),
-        (@cmpS, 'Approved', @admAL, N'Content and schedule approved', '2026-03-27 16:30:00'),
+        (@cmpSummer, 'Submitted', @stfAL, N'Notify all customers about the active Summer Toy Festival promotion', DATEADD(DAY, -16, @UtcNow37)),
+        (@cmpSummer, 'Approved', @admAL, N'Approved – linked to Summer Toy Festival 2026 promotion', DATEADD(DAY, -15, @UtcNow37)),
+        (@cmpSummer, 'Scheduled', @stfAL, N'Scheduled broadcast for campaign launch window', DATEADD(DAY, -14, @UtcNow37)),
+        (@cmpV, 'Submitted', @stfAL, N'WELCOME15 voucher broadcast to all customers', DATEADD(DAY, -22, @UtcNow37)),
+        (@cmpV, 'Approved', @admAL, N'Approved – storewide welcome voucher campaign', DATEADD(DAY, -21, @UtcNow37)),
+        (@cmpR, 'Approved', @admAL, N'System campaign – auto-approved for delivered-order recipients', DATEADD(DAY, -30, @UtcNow37)),
+        (@cmpBTS, 'Submitted', @stfAL, N'Back To School 2026 early notice linked to scheduled promotion', DATEADD(DAY, -5, @UtcNow37)),
+        (@cmpBTS, 'Approved', @admAL, N'Approved – staff must schedule within 5-day approval window', DATEADD(DAY, -2, @UtcNow37)),
+        (@cmpBF, 'Submitted', @stfAL, N'Black Friday Preview storewide push to all customers', DATEADD(DAY, -1, @UtcNow37)),
+        (@cmpRej, 'Submitted', @stfAL, N'VIP300K voucher blast to all customers', DATEADD(DAY, -4, @UtcNow37)),
+        (@cmpRej, 'Rejected', @admAL, N'Rejected: voucher budget exceeds Q3 marketing cap', DATEADD(DAY, -3, @UtcNow37)),
+        (@cmpSched, 'Submitted', @stfAL, N'FREESHIP50 reminder linked to active voucher', DATEADD(DAY, -5, @UtcNow37)),
+        (@cmpSched, 'Approved', @admAL, N'Approved – schedule within voucher validity window', DATEADD(DAY, -4, @UtcNow37)),
+        (@cmpSched, 'Scheduled', @stfAL, N'Scheduled FREESHIP50 push for all customers', DATEADD(DAY, -1, @UtcNow37)),
+        (@cmpCancel, 'Submitted', @stfAL, N'UPCOMING20 teaser campaign draft', DATEADD(DAY, -8, @UtcNow37)),
+        (@cmpCancel, 'Approved', @admAL, N'Approved for scheduling', DATEADD(DAY, -7, @UtcNow37)),
+        (@cmpCancel, 'Scheduled', @stfAL, N'Scheduled then cancelled – duplicate with FREESHIP50 week', DATEADD(DAY, -6, @UtcNow37)),
+        (@cmpCancel, 'Cancelled', @stfAL, N'Cancelled – overlaps with FREESHIP50 reminder week', DATEADD(DAY, -5, @UtcNow37));
 
-        /* Welcome voucher campaign: Staff submit → Admin approve */
-        (@cmpV, 'Submitted', @stfAL, N'Welcome voucher campaign for newly registered customers', '2025-12-30 09:00:00'),
-        (@cmpV, 'Approved', @admAL, N'Approved – voucher budget confirmed', '2025-12-30 11:00:00'),
-
-        /* Post-delivery review reminder: system campaign, auto-approved */
-        (@cmpR, 'Approved', @admAL, N'System campaign – auto-approved', '2026-04-01 00:00:00');
+    INSERT INTO [Notification].[CampaignScheduleLogs]
+        (CampaignID, ActorID, Action, PreviousScheduledAt, NewScheduledAt, CreatedAt)
+    VALUES
+        (@cmpSched, @stfAL, 'Scheduled', NULL, DATEADD(DAY, 2, @UtcNow37), DATEADD(DAY, -1, @UtcNow37)),
+        (@cmpCancel, @stfAL, 'Scheduled', NULL, DATEADD(DAY, 10, @UtcNow37), DATEADD(DAY, -6, @UtcNow37));
 END
 GO
 
@@ -2517,16 +3285,19 @@ GO
    Creates active wallets and default wallet PINs for customer accounts.
 ══════════════════════════════════════════════════════════════ */
 PRINT N'[43.1-NEW] Wallets & WalletPins...';
-IF NOT EXISTS (SELECT 1 FROM [dbo].[Wallets])
+IF NOT EXISTS (SELECT 1
+FROM [dbo].[Wallets])
 BEGIN
     -- Insert wallets for customers (RoleID = 1)
-    INSERT INTO [dbo].[Wallets] (AccountID, Currency, Balance, Status, CreatedAt)
+    INSERT INTO [dbo].[Wallets]
+        (AccountID, Currency, Balance, Status, CreatedAt)
     SELECT AccountID, 'VND', 5000000.00, 'Active', CreatedAt
     FROM Accounts
     WHERE RoleID = 1;
 
     -- Insert wallet pins for all wallets
-    INSERT INTO [dbo].[WalletPins] (WalletID, PinHash, IsActive, FailedAttempts, TotalFailedAttempts, LastChangedAt, CreatedAt)
+    INSERT INTO [dbo].[WalletPins]
+        (WalletID, PinHash, IsActive, FailedAttempts, TotalFailedAttempts, LastChangedAt, CreatedAt)
     SELECT WalletID, '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, 0, 0, CreatedAt, CreatedAt
     FROM Wallets;
 END
@@ -2543,22 +3314,20 @@ FROM [dbo].[WalletPinAttempts])
 BEGIN
     INSERT INTO [dbo].[WalletPinAttempts]
         (WalletID, AccountID, ActionType, IsSuccess, CreatedAt)
-    SELECT w.WalletID, a.AccountID, v.ActionType, v.IsSuccess, v.AtAt
+    SELECT w.WalletID, a.AccountID, v.ActionType, v.IsSuccess,
+        DATEADD(DAY, v.DayOffset, (SELECT UtcNow
+        FROM #SeedTime))
     FROM Accounts a
         JOIN Wallets w ON w.AccountID = a.AccountID
         JOIN (VALUES
-            /* lananh: 2 successful payment attempts */
-            ('lananh.pham@gmail.com', 'PAYMENT', 1, '2026-02-14 10:29:00'),
-            ('lananh.pham@gmail.com', 'PAYMENT', 1, '2026-04-05 08:59:00'),
-            /* hung: 1 failed attempt, then success */
-            ('hung.nguyen88@gmail.com', 'PAYMENT', 0, '2026-04-01 13:18:00'),
-            ('hung.nguyen88@gmail.com', 'PAYMENT', 1, '2026-04-01 13:19:00'),
-            /* thuha: successful payment */
-            ('thuha.hoang@gmail.com', 'PAYMENT', 1, '2026-04-01 13:19:30'),
-            ('thuha.hoang@gmail.com', 'VIEW_BALANCE', 1, '2026-04-15 09:00:00'),
-            /* mtuando: balance check */
-            ('mtuando@outlook.com', 'VIEW_BALANCE', 1, '2026-04-18 08:50:00')
-    ) AS v(Email, ActionType, IsSuccess, AtAt) ON a.Email = v.Email
+            ('lananh.pham@gmail.com', 'PAYMENT', 1, -60),
+            ('lananh.pham@gmail.com', 'PAYMENT', 1, -20),
+            ('hung.nguyen88@gmail.com', 'PAYMENT', 0, -15),
+            ('hung.nguyen88@gmail.com', 'PAYMENT', 1, -15),
+            ('thuha.hoang@gmail.com', 'PAYMENT', 1, -10),
+            ('thuha.hoang@gmail.com', 'VIEW_BALANCE', 1, -5),
+            ('mtuando@outlook.com', 'VIEW_BALANCE', 1, -3)
+    ) AS v(Email, ActionType, IsSuccess, DayOffset) ON a.Email = v.Email
     WHERE a.RoleID = 1;
 END
 GO
@@ -2616,4 +3385,9 @@ WHERE NOT EXISTS (
 FROM [System].[DomainEventOutbox] eb
 WHERE eb.AggregateId=CAST(ReviewProducts.ReviewID AS VARCHAR)
     AND eb.EventType='ProductReviewedEvent');
+GO
+
+PRINT N'================================================================';
+PRINT N'  DataSeed v5.4 complete – UTC timeline, English content.';
+PRINT N'================================================================';
 GO
