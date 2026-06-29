@@ -85,6 +85,6 @@ public class RefundProfile : Profile
             }
         }
 
-        return historyList.OrderByDescending(h => h.ProcessedAt).ToList();
+        return historyList.OrderByDescending(h => h.ProcessedAt).ThenByDescending(h => h.HistoryId).ToList();
     }
 }

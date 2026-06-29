@@ -103,6 +103,6 @@ public class OrdersProfile : Profile
         var tx = order.ShippingProviderTransactions
             .OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt)
             .FirstOrDefault();
-        return tx?.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt).ToList() ?? [];
+        return tx?.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt).ThenByDescending(h => h.HistoryId).ToList() ?? [];
     }
 }

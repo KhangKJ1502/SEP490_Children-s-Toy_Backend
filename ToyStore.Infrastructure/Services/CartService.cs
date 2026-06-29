@@ -91,7 +91,7 @@ public class CartService : ICartService
             if (mergedQty > product.Quantity)
             {
                 return Result<CartDto>.BusinessError(
-                    $"Cart quantity has reached the maximum available stock ({product.Quantity}).");
+                    $"Cart quantity has reached the maximum available quantity.");
             }
 
             var existingActiveItem = cartWithItems?.CartItems.FirstOrDefault(x => x.ProductId == dto.ProductId && x.RemovedAt == null);
@@ -117,7 +117,7 @@ public class CartService : ICartService
             if (dto.Quantity > product.Quantity)
             {
                 return Result<CartDto>.BusinessError(
-                    $"Cart quantity has reached the maximum available stock ({product.Quantity}).");
+                    $"Cart quantity has reached the maximum available quantity.");
             }
 
             var projectedSubTotal = currentSubTotal + (currentPrice * dto.Quantity);
@@ -147,7 +147,7 @@ public class CartService : ICartService
             accountId,
             CartHubEvents.CartItemAdded,
             snapshot,
-            "Item added to cart.",
+            "Added to cart successfully.",
             new { dto.ProductId, dto.Quantity },
             cancellationToken);
 
@@ -195,7 +195,7 @@ public class CartService : ICartService
         if (dto.Quantity > item.Product.Quantity)
         {
             return Result<CartDto>.BusinessError(
-                $"Cart quantity has reached the maximum available stock ({item.Product.Quantity}).");
+                $"Cart quantity has reached the maximum available quantity.");
         }
 
         var cartWithItems = await _unitOfWork.Carts.GetByAccountIdWithItemsAsync(accountId, cancellationToken);
