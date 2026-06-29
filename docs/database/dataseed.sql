@@ -296,6 +296,45 @@ VALUES
     (14, 'RefundReturnToCustomerFailed', N'Failed to Return Order to Customer');
 SET IDENTITY_INSERT [dbo].[StatusRefunds] OFF;
 GO
+
+/* ══════════════════════════════════════════════════════════════
+   SECTION 7.1 – ORDER REFUND REASONS
+══════════════════════════════════════════════════════════════ */
+PRINT N'[7.1] OrderRefundReasons...';
+DECLARE @NowRefundReasons DATETIME2(0) = GETUTCDATE();
+
+IF NOT EXISTS (SELECT 1 FROM [dbo].[OrderRefundReasons] WHERE [Content] = N'Delivery failed / Unable to deliver')
+    INSERT INTO [dbo].[OrderRefundReasons] ([Content], [Description], [ResponsibleParty], [IsSystem], [IsDeleted], [CreatedAt])
+    VALUES (N'Delivery failed / Unable to deliver', N'GHN failed to deliver the package to the customer.', 'Store', 1, 0, @NowRefundReasons);
+
+IF NOT EXISTS (SELECT 1 FROM [dbo].[OrderRefundReasons] WHERE [Content] = N'Wrong product delivered')
+    INSERT INTO [dbo].[OrderRefundReasons] ([Content], [Description], [ResponsibleParty], [IsSystem], [IsDeleted], [CreatedAt])
+    VALUES (N'Wrong product delivered', N'The received product does not match the order.', 'Store', 0, 0, @NowRefundReasons);
+
+IF NOT EXISTS (SELECT 1 FROM [dbo].[OrderRefundReasons] WHERE [Content] = N'Defective / Damaged product')
+    INSERT INTO [dbo].[OrderRefundReasons] ([Content], [Description], [ResponsibleParty], [IsSystem], [IsDeleted], [CreatedAt])
+    VALUES (N'Defective / Damaged product', N'The product is defective or damaged due to manufacturing issues.', 'Store', 0, 0, @NowRefundReasons);
+
+IF NOT EXISTS (SELECT 1 FROM [dbo].[OrderRefundReasons] WHERE [Content] = N'Missing item')
+    INSERT INTO [dbo].[OrderRefundReasons] ([Content], [Description], [ResponsibleParty], [IsSystem], [IsDeleted], [CreatedAt])
+    VALUES (N'Missing item', N'The quantity received is less than the quantity ordered.', 'Store', 0, 0, @NowRefundReasons);
+
+IF NOT EXISTS (SELECT 1 FROM [dbo].[OrderRefundReasons] WHERE [Content] = N'Product not as described')
+    INSERT INTO [dbo].[OrderRefundReasons] ([Content], [Description], [ResponsibleParty], [IsSystem], [IsDeleted], [CreatedAt])
+    VALUES (N'Product not as described', N'The product differs from the images or description on the website.', 'Store', 0, 0, @NowRefundReasons);
+
+IF NOT EXISTS (SELECT 1 FROM [dbo].[OrderRefundReasons] WHERE [Content] = N'No longer needed')
+    INSERT INTO [dbo].[OrderRefundReasons] ([Content], [Description], [ResponsibleParty], [IsSystem], [IsDeleted], [CreatedAt])
+    VALUES (N'No longer needed', N'The customer changed their mind after placing the order.', 'Customer', 0, 0, @NowRefundReasons);
+
+IF NOT EXISTS (SELECT 1 FROM [dbo].[OrderRefundReasons] WHERE [Content] = N'Ordered the wrong product')
+    INSERT INTO [dbo].[OrderRefundReasons] ([Content], [Description], [ResponsibleParty], [IsSystem], [IsDeleted], [CreatedAt])
+    VALUES (N'Ordered the wrong product', N'The customer selected the wrong product when placing the order.', 'Customer', 0, 0, @NowRefundReasons);
+
+IF NOT EXISTS (SELECT 1 FROM [dbo].[OrderRefundReasons] WHERE [Content] = N'Wrong size / color selected')
+    INSERT INTO [dbo].[OrderRefundReasons] ([Content], [Description], [ResponsibleParty], [IsSystem], [IsDeleted], [CreatedAt])
+    VALUES (N'Wrong size / color selected', N'The customer selected the wrong product variant.', 'Customer', 0, 0, @NowRefundReasons);
+GO
 /* ══════════════════════════════════════════════════════════════
    SECTION 8 – PRODUCTS (30 products)
 ══════════════════════════════════════════════════════════════ */

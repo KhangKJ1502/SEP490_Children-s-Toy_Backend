@@ -1917,6 +1917,7 @@ CREATE TABLE [OrderRefundReasons] (
     [RefundReasonID] TINYINT IDENTITY(1,1) PRIMARY KEY,
     [Content]        NVARCHAR(150) NOT NULL,
     [Description]    NVARCHAR(255) NULL,
+    [ResponsibleParty] NVARCHAR(20) NOT NULL CONSTRAINT [DF_OrderRefundReasons_ResponsibleParty] DEFAULT 'Store',
     [IsDeleted]      BIT NOT NULL DEFAULT 0,
     [IsSystem]       BIT NOT NULL DEFAULT 0, -- Cột phân loại lý do Hệ thống (System-only)
     [CreatedAt]      DATETIME2(0) NOT NULL DEFAULT GETDATE()
@@ -1954,6 +1955,11 @@ CREATE TABLE [OrderRefunds] (
     [ApprovedAmount]      DECIMAL(12,0) NOT NULL CHECK ([ApprovedAmount] >= 0),
     [StatusID]            TINYINT NOT NULL DEFAULT 1,
     [RefundSource]        NVARCHAR(20) NOT NULL DEFAULT 'Customer',
+    [ReturnShippingFee]   DECIMAL(18,2) NOT NULL CONSTRAINT [DF_OrderRefunds_ReturnShippingFee] DEFAULT 0,
+    [ReturnShippingFeeBy] NVARCHAR(20) NOT NULL CONSTRAINT [DF_OrderRefunds_ReturnShippingFeeBy] DEFAULT 'Store',
+    [ReturnShippingFeeNote] NVARCHAR(500) NULL,
+    [FinalRefundAmount]   DECIMAL(18,2) NOT NULL CONSTRAINT [DF_OrderRefunds_FinalRefundAmount] DEFAULT 0,
+    [DamageResponsibility] NVARCHAR(20) NULL,
     [AdminNote]           NVARCHAR(1000) NULL,
     [ApprovedAt]          DATETIME2(0) NULL,
     [RejectedAt]          DATETIME2(0) NULL,
