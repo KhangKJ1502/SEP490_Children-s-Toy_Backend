@@ -81,13 +81,23 @@ public class AdminBlogReviewsController : ControllerBase
         return result.ToActionResult();
     }
 
+    [HttpPost("blog-reviews/{reviewBlogId:int}/staff-replies")]
+    public async Task<ActionResult<BlogReviewReplyDto>> CreateStaffBlogReviewReply(
+        [FromRoute] int reviewBlogId,
+        [FromBody] CreateBlogReviewReplyDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _blogService.CreateStaffBlogReviewReplyAsync(reviewBlogId, dto, cancellationToken);
+        return result.ToActionResult();
+    }
+
     [HttpPost("blog-reviews/{reviewBlogId:int}/replies")]
     public async Task<ActionResult<BlogReviewReplyDto>> CreateBlogReviewReply(
         [FromRoute] int reviewBlogId,
         [FromBody] CreateBlogReviewReplyDto dto,
         CancellationToken cancellationToken = default)
     {
-        var result = await _blogService.CreateBlogReviewReplyAsync(reviewBlogId, dto, cancellationToken);
+        var result = await _blogService.CreateStaffBlogReviewReplyAsync(reviewBlogId, dto, cancellationToken);
         return result.ToActionResult();
     }
 }

@@ -83,6 +83,14 @@ public class Result<T>
     }
 
     /// <summary>
+    /// Creates a failure result for forbidden access.
+    /// </summary>
+    public static Result<T> Forbidden(string message = "You do not have permission to perform this action.")
+    {
+        return new Result<T>(false, default, "FORBIDDEN", message, null);
+    }
+
+    /// <summary>
     /// Creates a failure result for unprocessable entity (invalid state transition, business rule).
     /// Maps to HTTP 422.
     /// </summary>
@@ -178,6 +186,14 @@ public class Result
     public static Result Unauthorized(string message = "You are not authorized to perform this action.")
     {
         return new Result(false, "UNAUTHORIZED", message, null);
+    }
+
+    /// <summary>
+    /// Creates a failure result for forbidden access.
+    /// </summary>
+    public static Result Forbidden(string message = "You do not have permission to perform this action.")
+    {
+        return new Result(false, "FORBIDDEN", message, null);
     }
 
     /// <summary>

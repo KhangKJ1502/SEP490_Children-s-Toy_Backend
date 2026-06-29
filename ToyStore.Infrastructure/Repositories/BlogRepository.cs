@@ -150,6 +150,7 @@ public class BlogRepository : IBlogRepository
         var query = _context.ReviewBlogReplies
             .AsNoTracking()
             .Include(x => x.Account)
+                .ThenInclude(x => x.Role)
             .Include(x => x.ReplyToAccount)
             .Where(x => reviewIds.Contains(x.ReviewBlogId));
 
@@ -167,6 +168,7 @@ public class BlogRepository : IBlogRepository
     {
         return _context.ReviewBlogs
             .Include(x => x.Account)
+                .ThenInclude(x => x.Role)
             .Include(x => x.BlogPost)
             .FirstOrDefaultAsync(x => x.ReviewBlogId == reviewBlogId, cancellationToken);
     }
@@ -175,6 +177,7 @@ public class BlogRepository : IBlogRepository
     {
         return _context.ReviewBlogReplies
             .Include(x => x.Account)
+                .ThenInclude(x => x.Role)
             .Include(x => x.ReplyToAccount)
             .Include(x => x.ReviewBlog)
             .FirstOrDefaultAsync(x => x.ReplyBlogId == replyBlogId, cancellationToken);
@@ -782,6 +785,7 @@ public class BlogRepository : IBlogRepository
         var query = _context.ReviewBlogs
             .AsNoTracking()
             .Include(x => x.Account)
+                .ThenInclude(x => x.Role)
             .Include(x => x.BlogPost)
             .OrderByDescending(x => x.CreatedAt)
             .AsQueryable();
