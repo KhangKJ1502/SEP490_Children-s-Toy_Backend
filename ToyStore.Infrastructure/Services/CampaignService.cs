@@ -247,8 +247,35 @@ public class CampaignService : ICampaignService
             var created = await _unitOfWork.Campaigns.CreateAsync(dto, _timeProvider.UtcNow, cancellationToken);
 
             await ApplyActionTargetFromResolverAsync(created, cancellationToken);
+
+            // Admin tao campaign thi tu dong duyet — bo qua buoc Submit + Review.
+            var creatorIsAdmin = string.Equals(_currentUser.RoleName, "Admin", StringComparison.OrdinalIgnoreCase);
+            if (creatorIsAdmin)
+            {
+                var now = _timeProvider.UtcNow;
+                created.Status = "Approved";
+                created.ReviewedByAccountId = dto.CreatedByAccountId;
+                created.ReviewedAt = now;
+                created.ReviewNote = "Auto-approved: created by Admin";
+                created.ApprovedExpireAt = now.AddDays(7);
+            }
+
             _unitOfWork.Campaigns.Update(created);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            // Ghi audit log neu admin tu dong duyet
+            if (creatorIsAdmin)
+            {
+                await _unitOfWork.CampaignApprovalLogs.AddAsync(new CampaignApprovalLog
+                {
+                    CampaignId = created.CampaignId,
+                    Action = "Approved",
+                    ActorId = dto.CreatedByAccountId,
+                    Note = "Auto-approved: created by Admin",
+                    CreatedAt = _timeProvider.UtcNow
+                }, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+            }
 
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 

@@ -729,6 +729,10 @@ public sealed class CampaignLifecycleRules : ICampaignLifecycleRules
             LatestUtc = gMax,
             IsFeasible = true,
             ReferenceRulesApplied = false,
+            MinLeadMinutes = _settings.MinLeadMinutes,
+            MaxFutureDays = _settings.MaxFutureDays,
+            VoucherEndBufferHours = _settings.VoucherEndBufferHours,
+            SaleLeadWindowHours = _settings.SaleLeadWindowHours,
         };
 
         if (string.IsNullOrWhiteSpace(campaign.ReferenceType) || campaign.ReferenceId is null or <= 0)
