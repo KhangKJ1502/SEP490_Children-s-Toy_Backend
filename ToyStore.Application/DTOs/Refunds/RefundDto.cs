@@ -12,6 +12,8 @@ public class RefundDto
     public string PaymentStatus { get; set; } = null!;
     public byte? RefundReasonId { get; set; }
     public string? RefundReasonContent { get; set; }
+    /// <summary>Bên chịu phí vận chuyển hoàn trả mặc định theo lý do refund: "Store" hoặc "Customer".</summary>
+    public string? RefundReasonResponsibleParty { get; set; }
     public int CustomerId { get; set; }
     public string CustomerName { get; set; } = null!;
     public string CustomerPhone { get; set; } = null!;
@@ -39,6 +41,25 @@ public class RefundDto
     public string? AssignedToStaffName { get; set; }
     public string? AssignedToMerchName { get; set; }
     public string? CustomerAddress { get; set; }
+
+    /// <summary>Phí vận chuyển hoàn trả (customer → shop). 0 nếu Store chịu hoặc RefundOnly.</summary>
+    public decimal ReturnShippingFee { get; set; }
+
+    /// <summary>"Store" hoặc "Customer" — bên chịu phí vận chuyển hoàn trả.</summary>
+    public string ReturnShippingFeeBy { get; set; } = "Store";
+
+    /// <summary>Lý do override ReturnShippingFeeBy (audit trail).</summary>
+    public string? ReturnShippingFeeNote { get; set; }
+
+    /// <summary>
+    /// Số tiền thực tế credit vào ví khách. Tách biệt hoàn toàn với ApprovedAmount.
+    /// = ApprovedAmount nếu Store chịu phí.
+    /// = Max(0, ApprovedAmount - ReturnShippingFee) nếu Customer chịu phí.
+    /// </summary>
+    public decimal FinalRefundAmount { get; set; }
+
+    /// <summary>Nguyên nhân hàng hỏng: null / "Customer" / "Carrier".</summary>
+    public string? DamageResponsibility { get; set; }
 
     public List<string> Images { get; set; } = new List<string>();
     public List<RefundDetailDto> Details { get; set; } = new List<RefundDetailDto>();

@@ -69,6 +69,43 @@ public partial class OrderRefund
 
     public DateTime? UpdatedAt { get; set; }
 
+    /// <summary>
+    /// Phí vận chuyển chiều hoàn trả (customer → shop).
+    /// Được cập nhật 2 lần: ước tính từ GHN GetFeeAsync lúc Approve,
+    /// sau đó ghi đè bằng TotalFee thực tế từ CreateOrderAsync lúc PickupCreated.
+    /// = 0 nếu ReturnShippingFeeBy = "Store" hoặc RefundType = "RefundOnly".
+    /// </summary>
+    public decimal ReturnShippingFee { get; set; } = 0m;
+
+    /// <summary>
+    /// Bên chịu phí vận chuyển hoàn trả: "Store" hoặc "Customer".
+    /// Được xác định lúc Approve (dựa trên RefundReason.ResponsibleParty), Admin/Staff có thể override.
+    /// </summary>
+    public string ReturnShippingFeeBy { get; set; } = RefundResponsibleParty.Store;
+
+    /// <summary>
+    /// Lý do override ReturnShippingFeeBy (bắt buộc nếu override khác với suggestion từ RefundReason).
+    /// Dùng cho audit trail.
+    /// </summary>
+    public string? ReturnShippingFeeNote { get; set; }
+
+    /// <summary>
+    /// Số tiền thực tế sẽ được credit vào ví khách hàng.
+    /// = ApprovedAmount nếu Shop chịu phí.
+    /// = Max(0, ApprovedAmount - ReturnShippingFee) nếu Customer chịu phí.
+    /// ApprovedAmount KHÔNG bị thay đổi — FinalRefundAmount là giá trị tách biệt.
+    /// </summary>
+    public decimal FinalRefundAmount { get; set; } = 0m;
+
+    /// <summary>
+    /// Nguyên nhân hàng hóa bị hư hỏng trong quá trình vận chuyển hoàn trả.
+    /// NULL = chưa xác định / không có hư hỏng.
+    /// "Customer" = khách gửi hàng đã hỏng sẵn.
+    /// "Carrier"  = hàng hỏng trong quá trình GHN vận chuyển.
+    /// Merchandise đề xuất → Staff/Admin xác nhận.
+    /// </summary>
+    public string? DamageResponsibility { get; set; }
+
     public virtual Account? ApprovedByNavigation { get; set; }
 
     public virtual Account Customer { get; set; } = null!;
