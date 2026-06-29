@@ -23,4 +23,16 @@ public class CampaignScheduleBoundsDto
 
     /// <summary>Khi không đọc được reference hoặc entity không active — vẫn trả khung chung; kèm cảnh báo.</summary>
     public string? ReferenceHintWarning { get; set; }
+
+    /// <summary>System rule: minimum lead minutes from server config.</summary>
+    public int MinLeadMinutes { get; set; }
+
+    /// <summary>System rule: maximum future days from server config.</summary>
+    public int MaxFutureDays { get; set; }
+
+    /// <summary>Buffer hours before voucher/promotion end.</summary>
+    public int VoucherEndBufferHours { get; set; }
+
+    /// <summary>Hours before sale start when send is allowed.</summary>
+    public int SaleLeadWindowHours { get; set; }
 }

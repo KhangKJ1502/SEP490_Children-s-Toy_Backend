@@ -46,6 +46,9 @@ services:
       - MongoDb__SessionEventsCollection=session_events
       - MongoDb__UserProfilesCollection=user_profiles
       - MongoDb__RecommendationCacheCollection=recommendation_cache
+      - FrontendUrls__Customer=https://childrenstoystore.store
+      - FrontendUrls__Admin=https://admin.childrenstoystore.store
+      - BackendUrls__Api=https://api.childrenstoystore.store
     ports:
       - "5216:8080"
     depends_on:
@@ -71,6 +74,9 @@ services:
       - MongoDb__SessionEventsCollection=session_events
       - MongoDb__UserProfilesCollection=user_profiles
       - MongoDb__RecommendationCacheCollection=recommendation_cache
+      - FrontendUrls__Customer=https://childrenstoystore.store
+      - FrontendUrls__Admin=https://admin.childrenstoystore.store
+      - BackendUrls__Api=https://api.childrenstoystore.store
     depends_on:
       sqlserver:
         condition: service_healthy
