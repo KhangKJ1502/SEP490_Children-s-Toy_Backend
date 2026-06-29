@@ -57,16 +57,16 @@ public sealed class GhnClient : IGhnClient
         {
             ["payment_type_id"] = 2, // Match create_order: shop contract rate (not retail)
             ["from_district_id"] = request.FromDistrictId,
-            ["from_ward_code"]   = request.FromWardCode,
-            ["to_district_id"]   = request.ToDistrictId,
-            ["to_ward_code"]     = request.ToWardCode,
-            ["insurance_value"]  = Math.Min(RoundToInt(request.InsuranceValue), 5000000),
-            ["cod_value"]        = RoundToInt(request.CodValue),
-            ["weight"]           = request.Weight,
-            ["length"]           = request.Length,
-            ["width"]            = request.Width,
-            ["height"]           = request.Height,
-            ["service_type_id"]  = (request.ServiceTypeId.HasValue && request.ServiceTypeId.Value > 0) ? request.ServiceTypeId.Value : 2
+            ["from_ward_code"] = request.FromWardCode,
+            ["to_district_id"] = request.ToDistrictId,
+            ["to_ward_code"] = request.ToWardCode,
+            ["insurance_value"] = Math.Min(RoundToInt(request.InsuranceValue), 5000000),
+            ["cod_value"] = RoundToInt(request.CodValue),
+            ["weight"] = request.Weight,
+            ["length"] = request.Length,
+            ["width"] = request.Width,
+            ["height"] = request.Height,
+            ["service_type_id"] = (request.ServiceTypeId.HasValue && request.ServiceTypeId.Value > 0) ? request.ServiceTypeId.Value : 2
         };
 
         if (request.Items != null && request.Items.Any())
