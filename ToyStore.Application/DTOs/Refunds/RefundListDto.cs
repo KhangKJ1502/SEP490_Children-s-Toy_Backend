@@ -25,4 +25,7 @@ public class RefundListDto
 
     /// <summary>True nếu refund do hệ thống tự tạo (GHN returned). UI dùng để ẩn nút pickup và hiển thị label "System return".</summary>
     public bool IsSystemReturn => string.Equals(RefundSource, "System", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Số tiền thực tế credit vào ví. 0 nếu chưa Approve (DB default). Dùng cho Customer FE card display.</summary>
+    public decimal FinalRefundAmount { get; set; }
 }

@@ -116,6 +116,7 @@ public class RefundRepository : IRefundRepository
                 RequestedByName = r.RequestedByNavigation != null ? r.RequestedByNavigation.AccountName : null,
                 RefundReasonContent = r.RefundReason != null ? r.RefundReason.Content : null,
                 ApprovedAmount = r.ApprovedAmount,
+                FinalRefundAmount = r.FinalRefundAmount,
                 RefundStatus = r.Status.StatusName,
                 CreatedAt = r.CreatedAt
             })
@@ -236,6 +237,7 @@ public class RefundRepository : IRefundRepository
                 RequestedByName = r.RequestedByNavigation != null ? r.RequestedByNavigation.AccountName : null,
                 RefundReasonContent = r.RefundReason != null ? r.RefundReason.Content : null,
                 ApprovedAmount = r.ApprovedAmount,
+                FinalRefundAmount = r.FinalRefundAmount,
                 RefundStatus = r.Status.StatusName,
                 CreatedAt = r.CreatedAt,
                 AssignedToStaffName = _context.Set<OrderAssignment>()

@@ -14,6 +14,7 @@ public class RefundProfile : Profile
             .ForMember(dest => dest.OrderStatus, opt => opt.MapFrom(src => src.Order.Status.StatusName))
             .ForMember(dest => dest.PaymentStatus, opt => opt.MapFrom(src => src.Order.PaymentStatus))
             .ForMember(dest => dest.RefundReasonContent, opt => opt.MapFrom(src => src.RefundReason != null ? src.RefundReason.Content : null))
+            .ForMember(dest => dest.RefundReasonResponsibleParty, opt => opt.MapFrom(src => src.RefundReason != null ? src.RefundReason.ResponsibleParty : null))
             .ForMember(dest => dest.CustomerName, opt => opt.MapFrom(src => src.Customer.AccountName))
             .ForMember(dest => dest.CustomerPhone, opt => opt.MapFrom(src => src.Order.ShippingPhone))
             .ForMember(dest => dest.CustomerEmail, opt => opt.MapFrom(src => src.Customer.Email))

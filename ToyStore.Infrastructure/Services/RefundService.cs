@@ -77,6 +77,16 @@ public class RefundService : IRefundService
         };
     }
 
+    /// <summary>
+    /// Tính số tiền thực tế credit vào ví khách. ApprovedAmount KHÔNG bị thay đổi.
+    /// </summary>
+    private static decimal ComputeFinalRefundAmount(decimal approvedAmount, decimal returnShippingFee, string returnShippingFeeBy)
+    {
+        if (string.Equals(returnShippingFeeBy, RefundResponsibleParty.Customer, StringComparison.OrdinalIgnoreCase))
+            return Math.Max(0m, approvedAmount - returnShippingFee);
+        return approvedAmount; // Store chịu hoặc mọi trường hợp khác
+    }
+
     private string? NormalizeRefundStatusFilter(string? status)
     {
         if (string.IsNullOrWhiteSpace(status))
@@ -632,6 +642,18 @@ public class RefundService : IRefundService
                 dto.InspectionNote = dto.AdminNote;
                 dto.AdminNote = null;
             }
+
+            // Merchandise đề xuất DamageResponsibility khi chuyển sang kiểm kho
+            if (!string.IsNullOrWhiteSpace(dto.DamageResponsibility))
+            {
+                if (!string.Equals(dto.DamageResponsibility, RefundDamageResponsibility.Customer, StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(dto.DamageResponsibility, RefundDamageResponsibility.Carrier, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Result<RefundDto>.BusinessError(
+                        "DamageResponsibility must be 'Customer' or 'Carrier'.");
+                }
+                refund.DamageResponsibility = dto.DamageResponsibility; // Proposal từ Merchandise
+            }
         }
 
         var isSystemReturnRefund = IsSystemReturnRefund(refund);
@@ -704,6 +726,15 @@ public class RefundService : IRefundService
             }
 
             dto.ShippingOrderCode = ghnResult.Data!.OrderCode;
+
+                // Cập nhật phí thực tế từ GHN (ghi đè giá trị ước tính lúc Approve)
+                if (ghnResult.Data.TotalFee > 0
+                    && string.Equals(refund.ReturnShippingFeeBy, RefundResponsibleParty.Customer, StringComparison.OrdinalIgnoreCase))
+                {
+                    refund.ReturnShippingFee = ghnResult.Data.TotalFee;
+                    refund.FinalRefundAmount = ComputeFinalRefundAmount(
+                        refund.ApprovedAmount, refund.ReturnShippingFee, refund.ReturnShippingFeeBy);
+                }
         }
 
         // Automatically call GHN API to generate waybill for returning products back to customer if inspection fails
@@ -840,6 +871,72 @@ public class RefundService : IRefundService
             {
                 refund.ApprovedBy = staffId;
                 refund.ApprovedAt = DateTime.UtcNow;
+
+                // Logic phí vận chuyển hoàn trả — chỉ áp dụng cho ReturnAndRefund (có GHN pickup)
+                if (refund.RefundType == RefundTypes.ReturnAndRefund)
+                {
+                    // 1. Xác định bên chịu phí
+                    var suggestion = refund.RefundReason?.ResponsibleParty ?? RefundResponsibleParty.Store;
+                    var finalFeeBy = !string.IsNullOrWhiteSpace(dto.ReturnShippingFeeBy)
+                        ? dto.ReturnShippingFeeBy
+                        : suggestion;
+
+                    // 2. Nếu override: bắt buộc có ghi chú
+                    if (!string.Equals(finalFeeBy, suggestion, StringComparison.OrdinalIgnoreCase)
+                        && string.IsNullOrWhiteSpace(dto.ReturnShippingFeeNote))
+                    {
+                        return Result<RefundDto>.BusinessError(
+                            "ReturnShippingFeeNote is required when overriding the suggested responsible party.");
+                    }
+
+                    refund.ReturnShippingFeeBy   = finalFeeBy;
+                    refund.ReturnShippingFeeNote = dto.ReturnShippingFeeNote;
+
+                    // 3. Nếu Customer chịu phí → gọi GHN GetFeeAsync để ước tính phí thực tế
+                    if (string.Equals(finalFeeBy, RefundResponsibleParty.Customer, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var feeRequest = new ToyStore.Application.DTOs.Checkouts.FeeRequestDTO
+                        {
+                            FromDistrictId = order.ShippingDistrictId,
+                            FromWardCode   = order.ShippingWardCode,
+                            ToDistrictId   = _shopAddress.DistrictId,
+                            ToWardCode     = _shopAddress.WardCode,
+                            ServiceTypeId  = 2, // Standard — khớp với CreateOrderAsync
+                            Weight         = 1000,
+                            Length         = 20,
+                            Width          = 15,
+                            Height         = 15,
+                            InsuranceValue = 0m,
+                            CodValue       = 0m
+                        };
+
+                        var feeResult = await _ghnClient.GetFeeAsync(feeRequest, cancellationToken);
+                        refund.ReturnShippingFee = feeResult.IsSuccess && feeResult.Data != null
+                            ? feeResult.Data.Fee
+                            : 0m; // Fallback nếu GHN không response — sẽ được cập nhật lại lúc PickupCreated
+                    }
+
+                    // 4. Tính FinalRefundAmount (ApprovedAmount KHÔNG thay đổi)
+                    refund.FinalRefundAmount = ComputeFinalRefundAmount(
+                        refund.ApprovedAmount, refund.ReturnShippingFee, refund.ReturnShippingFeeBy);
+
+                    // 5. Cảnh báo nếu FinalRefundAmount = 0 (không block)
+                    if (refund.FinalRefundAmount == 0m
+                        && string.Equals(refund.ReturnShippingFeeBy, RefundResponsibleParty.Customer, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var warningNote = "[WARNING] Return shipping fee equals or exceeds approved amount. Customer will receive 0 refund.";
+                        refund.AdminNote = string.IsNullOrEmpty(refund.AdminNote)
+                            ? warningNote
+                            : refund.AdminNote + " | " + warningNote;
+                    }
+                }
+                else
+                {
+                    // RefundOnly → không có GHN pickup, không áp dụng phí hoàn trả
+                    refund.ReturnShippingFee     = 0m;
+                    refund.ReturnShippingFeeBy   = RefundResponsibleParty.Store;
+                    refund.FinalRefundAmount     = refund.ApprovedAmount;
+                }
             }
             else if (newStatusId == (byte)RefundStatusEnum.RefundRejected)
             {
@@ -869,18 +966,40 @@ public class RefundService : IRefundService
                 {
                     if (refund.InspectionPassed == false)
                     {
-                        return Result<RefundDto>.BusinessError("Cannot complete a return refund that failed quality inspection. Please process return shipment back to the customer instead.");
+                        // Staff xác nhận DamageResponsibility: chỉ cho phép Complete nếu lỗi Carrier
+                        var confirmedDamageBy = !string.IsNullOrWhiteSpace(dto.DamageResponsibility)
+                            ? dto.DamageResponsibility
+                            : refund.DamageResponsibility;
+
+                        if (!string.Equals(confirmedDamageBy, RefundDamageResponsibility.Carrier, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return Result<RefundDto>.BusinessError(
+                                "Cannot complete a return refund that failed quality inspection. " +
+                                "If damage was caused by the carrier, set DamageResponsibility = 'Carrier'.");
+                        }
+
+                        // Carrier fault xác nhận bởi Staff → cho phép complete, credit tiền cho khách
+                        refund.DamageResponsibility = RefundDamageResponsibility.Carrier;
+                        var carrierNote = "Goods damaged by carrier in return transit. Refund approved. No stock restoration. File carrier claim with GHN.";
+                        refund.AdminNote = string.IsNullOrEmpty(refund.AdminNote)
+                            ? carrierNote
+                            : refund.AdminNote + " | " + carrierNote;
                     }
 
                     if (refund.StatusId == (byte)RefundStatusEnum.RefundInspectionPending)
                     {
-                        refund.InspectionPassed = true;
+                        refund.InspectionPassed = refund.InspectionPassed ?? true;
                         if (string.IsNullOrWhiteSpace(refund.InspectionNote) && !string.IsNullOrWhiteSpace(dto.AdminNote))
                         {
                             refund.InspectionNote = dto.AdminNote;
                         }
                     }
                 }
+
+                // Đảm bảo FinalRefundAmount đã được set (fallback cho các path khác: Damage, system refund...)
+                if (refund.FinalRefundAmount == 0m && refund.ApprovedAmount > 0m)
+                    refund.FinalRefundAmount = ComputeFinalRefundAmount(
+                        refund.ApprovedAmount, refund.ReturnShippingFee, refund.ReturnShippingFeeBy);
 
                 refund.CompletedAt = DateTime.UtcNow;
                 await ExecuteCompletedSideEffects(refund, order, cancellationToken);
@@ -962,7 +1081,7 @@ public class RefundService : IRefundService
         {
             await _walletRefundCreditor.CreditRefundAsync(
                 refund.CustomerId,
-                refund.ApprovedAmount,
+                refund.FinalRefundAmount > 0m ? refund.FinalRefundAmount : refund.ApprovedAmount,
                 order.OrderCode,
                 order.OrderId,
                 cancellationToken,
@@ -1028,7 +1147,8 @@ public class RefundService : IRefundService
         // 5. Restore Inventory strictly for the items returned - ONLY if they were not lost or damaged!
         bool isLostOrDamaged = string.Equals(order.CancelReason, OrderCancelReasons.LostInTransit, StringComparison.OrdinalIgnoreCase)
             || string.Equals(order.CancelReason, OrderCancelReasons.DamagedInTransit, StringComparison.OrdinalIgnoreCase)
-            || refund.RefundStatusHistories.Any(h => h.StatusId == (byte)RefundStatusEnum.RefundDamage);
+            || refund.RefundStatusHistories.Any(h => h.StatusId == (byte)RefundStatusEnum.RefundDamage)
+            || string.Equals(refund.DamageResponsibility, RefundDamageResponsibility.Carrier, StringComparison.OrdinalIgnoreCase);
 
         if (!isLostOrDamaged)
         {

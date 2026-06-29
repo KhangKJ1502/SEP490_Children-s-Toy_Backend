@@ -1,3 +1,4 @@
+
 /* =================================================================
    E-COMMERCE DATABASE SCHEMA (OPTIMIZED FULL VERSION + AI MODERATION)
    Platform: SQL Server | Version: 3.2
@@ -3124,4 +3125,3 @@ CREATE INDEX [IX_WithdrawalStatusHistory_Withdrawal]
 GO
 
 /* ============================================= */
-
