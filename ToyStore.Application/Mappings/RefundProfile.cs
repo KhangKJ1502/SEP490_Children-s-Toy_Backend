@@ -33,7 +33,10 @@ public class RefundProfile : Profile
             .ForMember(dest => dest.StatusHistory, opt => opt.MapFrom(src => src.RefundStatusHistories))
             .ForMember(dest => dest.Images, opt => opt.MapFrom(src => src.RefundImages.Where(i => !i.IsDeleted).Select(i => i.ImageUrl).ToList()))
             .ForMember(dest => dest.ShippingOrderCode, opt => opt.MapFrom(src => src.ShippingOrderCode))
-            .ForMember(dest => dest.ShippingHistory, opt => opt.MapFrom(src => MapRefundShippingHistory(src)));
+            .ForMember(dest => dest.ShippingHistory, opt => opt.MapFrom(src => MapRefundShippingHistory(src)))
+            .ForMember(dest => dest.VoucherDiscountAmount, opt => opt.MapFrom(src => src.Order != null ? src.Order.VoucherDiscountAmount : 0m))
+            .ForMember(dest => dest.CustomerShippingPaid, opt => opt.MapFrom(src => src.CustomerShippingPaid))
+            .ForMember(dest => dest.IncludeShippingInRefund, opt => opt.MapFrom(src => src.IncludeShippingInRefund));
 
         CreateMap<OrderRefund, RefundListDto>()
             .ForMember(dest => dest.OrderCode, opt => opt.MapFrom(src => src.Order.OrderCode))
@@ -51,7 +54,8 @@ public class RefundProfile : Profile
 
         CreateMap<RefundDetail, RefundDetailDto>()
             .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product.ProductName))
-            .ForMember(dest => dest.ProductImage, opt => opt.MapFrom(src => src.Product.ProductImage != null ? src.Product.ProductImage.ImageUrl : null));
+            .ForMember(dest => dest.ProductImage, opt => opt.MapFrom(src => src.Product.ProductImage != null ? src.Product.ProductImage.ImageUrl : null))
+            .ForMember(dest => dest.RestorableQuantity, opt => opt.MapFrom(src => src.RestorableQuantity));
 
         CreateMap<RefundStatusHistory, RefundStatusHistoryDto>()
             .ForMember(dest => dest.StatusName, opt => opt.MapFrom(src => src.Status.StatusName))

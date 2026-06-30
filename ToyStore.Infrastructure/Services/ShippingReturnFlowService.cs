@@ -443,16 +443,6 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
                 notifications.Add(new PendingShippingNotification(
                     NotificationEventTypes.OrderReturnRefundPending,
                     new { orderId = order.OrderId, orderCode = order.OrderCode }));
-
-                notifications.Add(new PendingShippingNotification(
-                    NotificationEventTypes.RefundNewRequest,
-                    new
-                    {
-                        refundId = refund.RefundId,
-                        orderId = order.OrderId,
-                        orderCode = order.OrderCode,
-                        customerId = order.AccountId
-                    }));
             }
 
             if (!skipReturnCompletedStep)
@@ -461,8 +451,9 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
                     NotificationEventTypes.MerchReturned,
                     new
                     {
-                        orderId = order.OrderId,
-                        orderCode = order.OrderCode,
+                        orderId    = order.OrderId,
+                        orderCode  = order.OrderCode,
+                        refundId   = refund?.RefundId ?? 0,
                         providerStatus = ShippingStatuses.Returned
                     }));
             }

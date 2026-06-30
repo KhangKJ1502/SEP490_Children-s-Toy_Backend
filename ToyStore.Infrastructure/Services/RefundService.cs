@@ -153,7 +153,7 @@ public class RefundService : IRefundService
             var rEntity = await _unitOfWork.Refunds.GetByIdAsync(rDto.RefundId, cancellationToken);
             if (rEntity != null)
             {
-                if (rEntity.StatusId != (byte)RefundStatusEnum.RefundCancelled && 
+                if (rEntity.StatusId != (byte)RefundStatusEnum.RefundCancelled &&
                     rEntity.StatusId != (byte)RefundStatusEnum.RefundRejected &&
                     rEntity.StatusId != (byte)RefundStatusEnum.RefundReturnedToCustomer &&
                     rEntity.StatusId != (byte)RefundStatusEnum.RefundReturnToCustomerFailed)
@@ -336,7 +336,8 @@ public class RefundService : IRefundService
             cancellationToken);
 
         if (existing.Items.Any(r =>
-                r.RefundStatus is RefundStatuses.Requested or RefundStatuses.Approved or RefundStatuses.Completed or RefundStatuses.Damage))
+                r.RefundStatus is RefundStatuses.Requested or RefundStatuses.Approved or RefundStatuses.Received
+                    or RefundStatuses.InspectionPending or RefundStatuses.Completed or RefundStatuses.Damage))
         {
             return null;
         }
@@ -361,18 +362,26 @@ public class RefundService : IRefundService
             Quantity = od.Quantity,
             UnitPrice = od.UnitPrice,
             RefundAmount = Math.Round(od.Quantity * od.UnitPrice * (1 - discountRatio), 0),
+            RestorableQuantity = od.Quantity, // default = nguyên vẹn; Merchandise chỉnh khi inspect
             CreatedAt = DateTime.UtcNow
         }).ToList();
 
         var subTotal = refundDetails.Sum(d => d.RefundAmount);
         var shippingFee = refundOrder.ActualShippingFee ?? refundOrder.EstimatedShippingFee;
-        var totalAmount = subTotal + shippingFee;
+        // Tiền khách thực trả = TotalAmount (đã trừ voucher); dùng TotalAmount làm chuẩn
+        var orderTotalAmount = refundOrder.TotalAmount;
+        // CustomerShippingPaid = phần phí ship khách thực trả (sau voucher freeship)
+        var customerShippingPaid = Math.Max(0m, orderTotalAmount - subTotal);
         var now = DateTime.UtcNow;
 
-        var statusId = initialStatusId ?? (byte)RefundStatusEnum.RefundRequested;
-        var defaultReason = statusId == (byte)RefundStatusEnum.RefundDamage
-            ? "Auto-created: GHN damaged/lost package in transit"
-            : "Auto-created: GHN delivery failure return";
+        // Delivery failure: GHN webhook fires when goods are already at warehouse — skip Staff Approve.
+        var statusId = initialStatusId ?? (byte)RefundStatusEnum.RefundReceived;
+        var defaultReason = statusId switch
+        {
+            (byte)RefundStatusEnum.RefundDamage => "Auto-created: GHN damaged/lost package in transit",
+            (byte)RefundStatusEnum.RefundReceived => "Auto-created: GHN delivery failure return — goods at warehouse, pending merchandise inspection",
+            _ => "Auto-created: GHN delivery failure return"
+        };
 
         var refund = new OrderRefund
         {
@@ -382,17 +391,23 @@ public class RefundService : IRefundService
             RefundSource = RefundSources.System,   // Luồng B: system tạo, không có GHN pickup
             CustomerId = refundOrder.AccountId,
             RequestedBy = null,
-            ApprovedAmount = totalAmount,
+            ApprovedAmount = orderTotalAmount, // tổng tối đa có thể hoàn (tiền hàng + ship sau voucher)
             RefundCode = "REF-" + now.ToString("yyyyMMdd") + "-" + Guid.NewGuid().ToString().Substring(0, 8).ToUpper(),
             SubTotal = subTotal,
-            ShippingFee = shippingFee,
-            TotalAmount = totalAmount,
+            ShippingFee = shippingFee, // gross shipping fee (display)
+            TotalAmount = orderTotalAmount,
+            CustomerShippingPaid = customerShippingPaid,
             StatusId = statusId,
             IsDeleted = false,
             CreatedAt = now,
-            AdminNote = statusId == (byte)RefundStatusEnum.RefundDamage
-                ? "Orders are damaged/lost during shipping (GHN updates Damage/Lost). No quality inspection is required."
-                : null
+            AdminNote = statusId switch
+            {
+                (byte)RefundStatusEnum.RefundDamage =>
+                    "Orders are damaged/lost during shipping (GHN updates Damage/Lost). No quality inspection is required.",
+                (byte)RefundStatusEnum.RefundReceived =>
+                    "System return: customer did not receive the order. Merchandise inspect upon warehouse receipt.",
+                _ => null
+            }
         };
 
         refund.RefundStatusHistories.Add(new RefundStatusHistory
@@ -608,7 +623,7 @@ public class RefundService : IRefundService
             return Result<RefundDto>.BusinessError($"Invalid status name '{dto.Status}'.");
 
         // Automatically map RefundReceived or RefundInspectionPending -> RefundRejected to RefundReturnShipmentCreated for ReturnAndRefund type
-        if (newStatusId.Value == (byte)RefundStatusEnum.RefundRejected 
+        if (newStatusId.Value == (byte)RefundStatusEnum.RefundRejected
             && (refund.StatusId == (byte)RefundStatusEnum.RefundInspectionPending || refund.StatusId == (byte)RefundStatusEnum.RefundReceived)
             && refund.RefundType == RefundTypes.ReturnAndRefund)
         {
@@ -619,7 +634,7 @@ public class RefundService : IRefundService
 
             newStatusId = (byte)RefundStatusEnum.RefundReturnShipmentCreated;
             dto.InspectionPassed = false;
-            
+
             if (string.IsNullOrWhiteSpace(refund.InspectionNote))
             {
                 dto.InspectionNote = dto.RejectReason;
@@ -630,8 +645,11 @@ public class RefundService : IRefundService
                 : $"{refund.ReasonDetails} | Reject Reason: {dto.RejectReason}";
         }
 
-        // When Merchandise checks returned order and sends to Quality Inspection, set InspectionPassed and InspectionNote
-        if (newStatusId.Value == (byte)RefundStatusEnum.RefundInspectionPending && refund.StatusId == (byte)RefundStatusEnum.RefundReceived)
+        // When Merchandise submits inspection results (system return: from Received or legacy Approved)
+        if (newStatusId.Value == (byte)RefundStatusEnum.RefundInspectionPending
+            && (refund.StatusId == (byte)RefundStatusEnum.RefundReceived
+                || refund.StatusId == (byte)RefundStatusEnum.RefundApproved
+                || refund.StatusId == (byte)RefundStatusEnum.RefundRequested))
         {
             if (!dto.InspectionPassed.HasValue)
             {
@@ -665,12 +683,11 @@ public class RefundService : IRefundService
 
         if (isSystemReturnRefund)
         {
-            var isPickupFlowStatus = newStatusId == (byte)RefundStatusEnum.RefundPickupCreated
-                || newStatusId == (byte)RefundStatusEnum.RefundShipping
-                || newStatusId == (byte)RefundStatusEnum.RefundReceived
-                || newStatusId == (byte)RefundStatusEnum.RefundInspectionPending;
+            // Pickup/shipping không áp dụng cho system return (GHN đã trả hàng về kho rồi)
+            var isPickupShippingStatus = newStatusId == (byte)RefundStatusEnum.RefundPickupCreated
+                || newStatusId == (byte)RefundStatusEnum.RefundShipping;
 
-            if (isPickupFlowStatus)
+            if (isPickupShippingStatus)
             {
                 return Result<RefundDto>.BusinessError("System return refunds do not use pickup/shipping statuses.");
             }
@@ -678,6 +695,58 @@ public class RefundService : IRefundService
             if (!string.IsNullOrWhiteSpace(dto.ShippingOrderCode))
             {
                 return Result<RefundDto>.BusinessError("System return refunds do not accept a shipping order code.");
+            }
+
+            // Merchandise gửi kết quả kiểm tra — lưu RestorableQuantity per line
+            if (newStatusId == (byte)RefundStatusEnum.RefundInspectionPending
+                && dto.RestockItems != null && dto.RestockItems.Count > 0)
+            {
+                foreach (var restockItem in dto.RestockItems)
+                {
+                    var detail = refund.RefundDetails.FirstOrDefault(d => d.ProductId == restockItem.ProductId);
+                    if (detail == null)
+                        return Result<RefundDto>.BusinessError($"Product ID {restockItem.ProductId} does not exist in this refund.");
+
+                    if (restockItem.RestorableQuantity < 0 || restockItem.RestorableQuantity > detail.Quantity)
+                        return Result<RefundDto>.BusinessError(
+                            $"RestorableQuantity for Product ID {restockItem.ProductId} must be between 0 and {detail.Quantity}.");
+
+                    detail.RestorableQuantity = restockItem.RestorableQuantity;
+                }
+
+                // Carrier fault → force RestorableQuantity = 0 cho tất cả
+                if (string.Equals(dto.DamageResponsibility, RefundDamageResponsibility.Carrier, StringComparison.OrdinalIgnoreCase))
+                {
+                    foreach (var detail in refund.RefundDetails)
+                        detail.RestorableQuantity = 0;
+                }
+            }
+            else if (newStatusId == (byte)RefundStatusEnum.RefundInspectionPending)
+            {
+                // Không gửi RestockItems → giữ nguyên default (Quantity)
+                // Carrier fault → force 0
+                if (string.Equals(dto.DamageResponsibility, RefundDamageResponsibility.Carrier, StringComparison.OrdinalIgnoreCase))
+                {
+                    foreach (var detail in refund.RefundDetails)
+                        detail.RestorableQuantity = 0;
+                }
+            }
+
+            // Staff Complete system return: bắt buộc chọn IncludeShippingInRefund
+            if (newStatusId == (byte)RefundStatusEnum.RefundCompleted
+                && refund.StatusId == (byte)RefundStatusEnum.RefundInspectionPending)
+            {
+                if (!dto.IncludeShippingInRefund.HasValue)
+                    return Result<RefundDto>.BusinessError(
+                        "IncludeShippingInRefund is required when completing a system return. " +
+                        "true = refund shipping fee, false = product amount only.");
+
+                refund.IncludeShippingInRefund = dto.IncludeShippingInRefund.Value;
+
+                var productRefundAmount = refund.RefundDetails.Sum(d => d.RefundAmount);
+                refund.FinalRefundAmount = dto.IncludeShippingInRefund.Value
+                    ? (refund.TotalAmount ?? refund.ApprovedAmount)
+                    : productRefundAmount;
             }
         }
 
@@ -727,14 +796,14 @@ public class RefundService : IRefundService
 
             dto.ShippingOrderCode = ghnResult.Data!.OrderCode;
 
-                // Cập nhật phí thực tế từ GHN (ghi đè giá trị ước tính lúc Approve)
-                if (ghnResult.Data.TotalFee > 0
-                    && string.Equals(refund.ReturnShippingFeeBy, RefundResponsibleParty.Customer, StringComparison.OrdinalIgnoreCase))
-                {
-                    refund.ReturnShippingFee = ghnResult.Data.TotalFee;
-                    refund.FinalRefundAmount = ComputeFinalRefundAmount(
-                        refund.ApprovedAmount, refund.ReturnShippingFee, refund.ReturnShippingFeeBy);
-                }
+            // Cập nhật phí thực tế từ GHN (ghi đè giá trị ước tính lúc Approve)
+            if (ghnResult.Data.TotalFee > 0
+                && string.Equals(refund.ReturnShippingFeeBy, RefundResponsibleParty.Customer, StringComparison.OrdinalIgnoreCase))
+            {
+                refund.ReturnShippingFee = ghnResult.Data.TotalFee;
+                refund.FinalRefundAmount = ComputeFinalRefundAmount(
+                    refund.ApprovedAmount, refund.ReturnShippingFee, refund.ReturnShippingFeeBy);
+            }
         }
 
         // Automatically call GHN API to generate waybill for returning products back to customer if inspection fails
@@ -889,7 +958,7 @@ public class RefundService : IRefundService
                             "ReturnShippingFeeNote is required when overriding the suggested responsible party.");
                     }
 
-                    refund.ReturnShippingFeeBy   = finalFeeBy;
+                    refund.ReturnShippingFeeBy = finalFeeBy;
                     refund.ReturnShippingFeeNote = dto.ReturnShippingFeeNote;
 
                     // 3. Nếu Customer chịu phí → gọi GHN GetFeeAsync để ước tính phí thực tế
@@ -898,16 +967,16 @@ public class RefundService : IRefundService
                         var feeRequest = new ToyStore.Application.DTOs.Checkouts.FeeRequestDTO
                         {
                             FromDistrictId = order.ShippingDistrictId,
-                            FromWardCode   = order.ShippingWardCode,
-                            ToDistrictId   = _shopAddress.DistrictId,
-                            ToWardCode     = _shopAddress.WardCode,
-                            ServiceTypeId  = 2, // Standard — khớp với CreateOrderAsync
-                            Weight         = 1000,
-                            Length         = 20,
-                            Width          = 15,
-                            Height         = 15,
+                            FromWardCode = order.ShippingWardCode,
+                            ToDistrictId = _shopAddress.DistrictId,
+                            ToWardCode = _shopAddress.WardCode,
+                            ServiceTypeId = 2, // Standard — khớp với CreateOrderAsync
+                            Weight = 1000,
+                            Length = 20,
+                            Width = 15,
+                            Height = 15,
                             InsuranceValue = 0m,
-                            CodValue       = 0m
+                            CodValue = 0m
                         };
 
                         var feeResult = await _ghnClient.GetFeeAsync(feeRequest, cancellationToken);
@@ -933,9 +1002,9 @@ public class RefundService : IRefundService
                 else
                 {
                     // RefundOnly → không có GHN pickup, không áp dụng phí hoàn trả
-                    refund.ReturnShippingFee     = 0m;
-                    refund.ReturnShippingFeeBy   = RefundResponsibleParty.Store;
-                    refund.FinalRefundAmount     = refund.ApprovedAmount;
+                    refund.ReturnShippingFee = 0m;
+                    refund.ReturnShippingFeeBy = RefundResponsibleParty.Store;
+                    refund.FinalRefundAmount = refund.ApprovedAmount;
                 }
             }
             else if (newStatusId == (byte)RefundStatusEnum.RefundRejected)
@@ -962,11 +1031,33 @@ public class RefundService : IRefundService
             }
             else if (newStatusId == (byte)RefundStatusEnum.RefundCompleted)
             {
-                if (refund.RefundType == RefundTypes.ReturnAndRefund)
+                if (isSystemReturnRefund)
+                {
+                    // System Return: khách chưa nhận hàng → luôn hoàn tiền.
+                    // Inspection chỉ quyết định RestorableQuantity (nhập kho), không chặn hoàn tiền.
+                    // DamageResponsibility (Carrier) nếu Merch đề xuất → Staff xác nhận
+                    if (!string.IsNullOrWhiteSpace(dto.DamageResponsibility))
+                    {
+                        refund.DamageResponsibility = dto.DamageResponsibility;
+                    }
+
+                    if (string.Equals(refund.DamageResponsibility, RefundDamageResponsibility.Carrier, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Carrier fault: force RestorableQuantity = 0, ghi note
+                        foreach (var detail in refund.RefundDetails)
+                            detail.RestorableQuantity = 0;
+
+                        var carrierNote = "Goods damaged by GHN in transit. Full refund approved. No stock restoration. File carrier claim with GHN.";
+                        refund.AdminNote = string.IsNullOrEmpty(refund.AdminNote)
+                            ? carrierNote
+                            : refund.AdminNote + " | " + carrierNote;
+                    }
+                }
+                else if (refund.RefundType == RefundTypes.ReturnAndRefund)
                 {
                     if (refund.InspectionPassed == false)
                     {
-                        // Staff xác nhận DamageResponsibility: chỉ cho phép Complete nếu lỗi Carrier
+                        // Customer return: Staff xác nhận DamageResponsibility: chỉ cho phép Complete nếu lỗi Carrier
                         var confirmedDamageBy = !string.IsNullOrWhiteSpace(dto.DamageResponsibility)
                             ? dto.DamageResponsibility
                             : refund.DamageResponsibility;
@@ -978,7 +1069,6 @@ public class RefundService : IRefundService
                                 "If damage was caused by the carrier, set DamageResponsibility = 'Carrier'.");
                         }
 
-                        // Carrier fault xác nhận bởi Staff → cho phép complete, credit tiền cho khách
                         refund.DamageResponsibility = RefundDamageResponsibility.Carrier;
                         var carrierNote = "Goods damaged by carrier in return transit. Refund approved. No stock restoration. File carrier claim with GHN.";
                         refund.AdminNote = string.IsNullOrEmpty(refund.AdminNote)
@@ -996,7 +1086,7 @@ public class RefundService : IRefundService
                     }
                 }
 
-                // Đảm bảo FinalRefundAmount đã được set (fallback cho các path khác: Damage, system refund...)
+                // Đảm bảo FinalRefundAmount đã được set (fallback cho các path khác: Damage, system refund Damage webhook...)
                 if (refund.FinalRefundAmount == 0m && refund.ApprovedAmount > 0m)
                     refund.FinalRefundAmount = ComputeFinalRefundAmount(
                         refund.ApprovedAmount, refund.ReturnShippingFee, refund.ReturnShippingFeeBy);
@@ -1006,21 +1096,39 @@ public class RefundService : IRefundService
             }
 
             // Log status transitions in the history logs
+            string historyNote;
+            if (!string.IsNullOrEmpty(dto.RejectReason))
+            {
+                historyNote = $"Reject Reason: {dto.RejectReason}";
+            }
+            else if (isSystemReturnRefund && newStatusId == (byte)RefundStatusEnum.RefundCompleted && dto.IncludeShippingInRefund.HasValue)
+            {
+                historyNote = dto.IncludeShippingInRefund.Value
+                    ? $"System Return Complete — Shipping fee included. FinalRefundAmount={refund.FinalRefundAmount:N0}."
+                    : $"System Return Complete — Shipping fee excluded. FinalRefundAmount={refund.FinalRefundAmount:N0}.";
+            }
+            else if (!string.IsNullOrEmpty(dto.AdminNote))
+            {
+                historyNote = $"Note: {dto.AdminNote}";
+            }
+            else if (!string.IsNullOrEmpty(dto.InspectionNote))
+            {
+                historyNote = $"Quality Inspection Note: {dto.InspectionNote}";
+            }
+            else
+            {
+                historyNote = $"Status changed to {dto.Status} by staff.";
+            }
+
             refund.RefundStatusHistories.Add(new RefundStatusHistory
             {
                 StatusId = newStatusId.Value,
                 ChangedBy = staffId,
-                Note = string.IsNullOrEmpty(dto.RejectReason)
-                    ? (!string.IsNullOrEmpty(dto.AdminNote) 
-                        ? $"Note: {dto.AdminNote}" 
-                        : (!string.IsNullOrEmpty(dto.InspectionNote) 
-                            ? $"Quality Inspection Note: {dto.InspectionNote}" 
-                            : $"Status changed to {dto.Status} by staff."))
-                    : $"Reject Reason: {dto.RejectReason}",
+                Note = historyNote,
                 CreatedAt = DateTime.UtcNow
             });
 
-            var shouldReleaseCapacity = newStatusId == (byte)RefundStatusEnum.RefundCompleted || 
+            var shouldReleaseCapacity = newStatusId == (byte)RefundStatusEnum.RefundCompleted ||
                                          newStatusId == (byte)RefundStatusEnum.RefundRejected ||
                                          newStatusId == (byte)RefundStatusEnum.RefundReturnedToCustomer ||
                                          newStatusId == (byte)RefundStatusEnum.RefundReturnToCustomerFailed ||
@@ -1056,6 +1164,20 @@ public class RefundService : IRefundService
                         customerId = refund.CustomerId,
                         status = dto.Status,
                         amount = refund.ApprovedAmount,
+                    },
+                    CancellationToken.None);
+            }
+
+            // [System Return] Merchandise hoàn tất inspection → notify Staff để Complete (hoàn tiền ví)
+            if (isSystemReturnRefund && newStatusId == (byte)RefundStatusEnum.RefundInspectionPending)
+            {
+                await _eventPublisher.PublishAsync("Refund", refundId.ToString(),
+                    NotificationEventTypes.StaffSystemRefundReady,
+                    new
+                    {
+                        refundId,
+                        orderId  = order.OrderId,
+                        orderCode = order.OrderCode,
                     },
                     CancellationToken.None);
             }
@@ -1144,7 +1266,7 @@ public class RefundService : IRefundService
         }
         // order is tracked by EF, no need to call Update
 
-        // 5. Restore Inventory strictly for the items returned - ONLY if they were not lost or damaged!
+        // 5. Restore Quantity Product
         bool isLostOrDamaged = string.Equals(order.CancelReason, OrderCancelReasons.LostInTransit, StringComparison.OrdinalIgnoreCase)
             || string.Equals(order.CancelReason, OrderCancelReasons.DamagedInTransit, StringComparison.OrdinalIgnoreCase)
             || refund.RefundStatusHistories.Any(h => h.StatusId == (byte)RefundStatusEnum.RefundDamage)
@@ -1152,15 +1274,21 @@ public class RefundService : IRefundService
 
         if (!isLostOrDamaged)
         {
+            bool isSystemReturn = IsSystemReturnRefund(refund);
             foreach (var item in refund.RefundDetails)
             {
-                await _unitOfWork.Products.AdjustStockAsync(item.ProductId, item.Quantity, cancellationToken);
-                // Find if this product was sold as part of flash sale slot in original order
+                // System Return: dùng RestorableQuantity (Merchandise đánh giá); Customer Return: dùng Quantity
+                short restoreQty = isSystemReturn
+                    ? (item.RestorableQuantity ?? item.Quantity)
+                    : item.Quantity;
+
+                if (restoreQty <= 0) continue;
+
+                await _unitOfWork.Products.AdjustStockAsync(item.ProductId, restoreQty, cancellationToken);
                 var originalDetail = order.OrderDetails.FirstOrDefault(od => od.ProductId == item.ProductId);
                 if (originalDetail != null && originalDetail.SlotProductId.HasValue)
                 {
-                    // Refund means stock was deducted from SoldQuantity
-                    await _unitOfWork.Orders.AdjustFlashSaleStockAsync(originalDetail.SlotProductId.Value, -item.Quantity, 0, cancellationToken);
+                    await _unitOfWork.Orders.AdjustFlashSaleStockAsync(originalDetail.SlotProductId.Value, -restoreQty, 0, cancellationToken);
                 }
             }
         }

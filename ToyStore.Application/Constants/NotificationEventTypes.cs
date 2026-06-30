@@ -60,6 +60,9 @@ public static class NotificationEventTypes
     public const string ProductLowStock   = "product.low_stock";
     public const string ProductOutOfStock = "product.out_of_stock";
 
+    // Staff — system return inspection done
+    public const string StaffSystemRefundReady = "refund.system_refund_ready";
+
     // Admin — system
     public const string SystemPaymentGatewayError = "system.payment_gateway_error";
     public const string SystemBackgroundJobFailed  = "system.background_job_failed";

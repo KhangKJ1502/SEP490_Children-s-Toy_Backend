@@ -161,6 +161,12 @@ public class MerchReturnedHandler : IOutboxEventHandler
 
         var orderId   = root.GetProperty("orderId").GetInt32();
         var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
+        var refundId  = root.TryGetProperty("refundId", out var ri) ? ri.GetInt32() : 0;
+
+        // Nếu có refundId → trỏ vào trang refund (System Return flow mới)
+        var actionTarget = refundId > 0
+            ? $"/admin/refunds/{refundId}"
+            : $"/admin/orders/{orderId}";
 
         var merch = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 4 }, ct);
         foreach (var m in merch)
@@ -178,7 +184,51 @@ public class MerchReturnedHandler : IOutboxEventHandler
                 ReferenceId  = $"{orderId}:{m.AccountId}",
                 SendBell     = true,
                 SendEmail    = false,
-                ActionTarget = $"/admin/orders/{orderId}",
+                ActionTarget = actionTarget,
+            }, ct);
+        }
+    }
+}
+
+public class StaffSystemRefundReadyHandler : IOutboxEventHandler
+{
+    public string EventType => NotificationEventTypes.StaffSystemRefundReady;
+
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly INotificationDispatcher _dispatcher;
+
+    public StaffSystemRefundReadyHandler(IUnitOfWork unitOfWork, INotificationDispatcher dispatcher)
+    {
+        _unitOfWork = unitOfWork;
+        _dispatcher = dispatcher;
+    }
+
+    public async Task HandleAsync(OutboxEventData ev, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(ev.Payload);
+        var root = doc.RootElement;
+
+        var refundId  = root.GetProperty("refundId").GetInt32();
+        var orderId   = root.GetProperty("orderId").GetInt32();
+        var orderCode = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
+
+        var staff = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 3 }, ct);
+        foreach (var s in staff)
+        {
+            await _dispatcher.DispatchAsync(new NotificationContext
+            {
+                RecipientAccountId = s.AccountId,
+                RecipientType      = RecipientTypes.Staff,
+                NotificationType   = NotificationTypes.Order,
+                TemplateCode       = NotificationTemplates.StaffSystemRefundReady,
+                Placeholders       = new Dictionary<string, string>
+                {
+                    ["OrderCode"] = orderCode,
+                },
+                ReferenceId  = $"staff_refund_ready:{refundId}:{s.AccountId}",
+                SendBell     = true,
+                SendEmail    = false,
+                ActionTarget = $"/admin/refunds/{refundId}",
             }, ct);
         }
     }
