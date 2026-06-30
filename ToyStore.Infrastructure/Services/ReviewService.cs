@@ -663,7 +663,7 @@ public class ReviewService : IReviewService
 
         // Chỉ staff tạo reply mới được sửa/xoá (hoặc admin)
         if (reply.StaffId != _currentUser.AccountId && _currentUser.RoleName != "Admin")
-            return Result<StaffReplyDto>.Failure("UNAUTHORIZED", "You can only edit or delete your own replies.");
+            return Result<StaffReplyDto>.Forbidden("You can only edit or delete your own replies.");
 
         if (dto.IsDeleted == true)
         {
