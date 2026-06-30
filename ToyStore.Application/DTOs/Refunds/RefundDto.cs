@@ -61,6 +61,15 @@ public class RefundDto
     /// <summary>Nguyên nhân hàng hỏng: null / "Customer" / "Carrier".</summary>
     public string? DamageResponsibility { get; set; }
 
+    /// <summary>[System Return] Tiền ship khách đã thực trả. Dùng để hiển thị breakdown và tính FinalRefundAmount.</summary>
+    public decimal CustomerShippingPaid { get; set; }
+
+    /// <summary>[System Return] Staff đã chọn có hoàn phí ship chưa. null = chưa Complete.</summary>
+    public bool? IncludeShippingInRefund { get; set; }
+
+    /// <summary>Voucher discount amount từ đơn hàng gốc (display only, voucher không được trả lại).</summary>
+    public decimal VoucherDiscountAmount { get; set; }
+
     public List<string> Images { get; set; } = new List<string>();
     public List<RefundDetailDto> Details { get; set; } = new List<RefundDetailDto>();
     public List<RefundStatusHistoryDto> StatusHistory { get; set; } = new List<RefundStatusHistoryDto>();
@@ -75,6 +84,9 @@ public class RefundDetailDto
     public short Quantity { get; set; }
     public decimal UnitPrice { get; set; }
     public decimal RefundAmount { get; set; }
+
+    /// <summary>[System Return] Số lượng Merchandise xác nhận nhập kho lại. null = chưa kiểm tra.</summary>
+    public short? RestorableQuantity { get; set; }
 }
 
 public class RefundStatusHistoryDto

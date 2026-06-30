@@ -148,15 +148,39 @@ Use order with `SE_PAY` / `WALLET` / `BANK_TRANSFER` and `PaymentStatus = PAID`.
 |------|----------------|---------------------|
 | 1 | `waiting_to_return` | **10** Returning |
 | 2 | `return_transporting` | **10** (history only) |
-| 3 | `returned` | **11** ReturnCompleted |
+| 3 | `returned` | **11** ReturnCompleted → **8** Cancelled |
 
-**After step 3:**
+**After step 3 (`returned`):**
 
-- `OrderRefunds` row: `RefundStatus = Requested`, reason = delivery failure
-- Customer notification: refund processing
-- Staff notification: new refund request
+- `OrderRefunds` row: `RefundStatus = RefundReceived`, `RefundSource = System`
+- `RestorableQuantity` defaults to `Quantity` per line
+- `CustomerShippingPaid` = max(0, TotalAmount - sum(RefundDetail.RefundAmount))
+- `ApprovedAmount = TotalAmount` (includes shipping)
+- Merchandise notification: link to `/admin/refunds/{refundId}`
+- No Staff approval notification (refund is auto-created at warehouse receipt)
 
-**Admin follow-up:** `PATCH /api/admin/refunds/{id}/status` → Completed → order becomes **Refunded (9)**.
+**Admin follow-up — GHN Return Inspection Flow (3 steps):**
+
+| Step | Actor | Action | Endpoint |
+|------|-------|--------|----------|
+| 1 | Merchandise | Submit inspection + restock qty | `PATCH /api/admin/refunds/{id}/status` `{"status":"RefundInspectionPending","restockItems":[{"productId":X,"restorableQuantity":2}],"inspectionNote":"...","damageResponsibility":null}` |
+| 2 | Staff | Confirm wallet refund, choose shipping refund | `{"status":"RefundCompleted","includeShippingInRefund":true}` |
+
+**Legacy in-flight refunds** (`RefundRequested` / `RefundApproved`): Merchandise may transition directly to `RefundInspectionPending` without Staff Approve.
+
+**Expected after Staff Complete (`includeShippingInRefund=true`):**
+- `FinalRefundAmount = order.TotalAmount`
+- Wallet credited with `FinalRefundAmount`
+- Stock: only `RestorableQuantity` units returned to inventory (not `Quantity`)
+- `VoucherUsageLogs` unchanged (voucher NOT restored)
+
+**Expected after Staff Complete (`includeShippingInRefund=false`):**
+- `FinalRefundAmount = TotalAmount - CustomerShippingPaid`
+
+**Expected after case Carrier fault (`damageResponsibility="Carrier"`):**
+- All `RestorableQuantity` = 0
+- No stock restoration
+- `FinalRefundAmount` = TotalAmount (hoặc TotalAmount - CustomerShippingPaid tuỳ chọn ship)
 
 ---
 
@@ -304,12 +328,79 @@ ORDER BY CreatedAt DESC;
 
 ---
 
+### TC-09 — System Return: Include shipping fee
+
+**Setup:** Prepaid order (TotalAmount = 500,000đ, CustomerShippingPaid = 30,000đ). Complete full 5-step flow với `includeShippingInRefund=true`.
+
+**Expected:** `FinalRefundAmount = 500,000đ`. Wallet credited 500,000đ.
+
+---
+
+### TC-10 — System Return: Exclude shipping fee
+
+Same setup, `includeShippingInRefund=false`.
+
+**Expected:** `FinalRefundAmount = 470,000đ` (= TotalAmount - CustomerShippingPaid).
+
+---
+
+### TC-11 — System Return: Freeship voucher
+
+Order with freeship voucher → `CustomerShippingPaid = 0`.
+
+**Expected:** Toggle hoàn ship ẩn/disabled. `FinalRefundAmount = TotalAmount` bất kể chọn gì.
+
+---
+
+### TC-12 — Voucher không restore sau Complete
+
+Sau khi Complete system return, kiểm tra:
+
+```sql
+SELECT * FROM VoucherUsageLogs WHERE OrderID = @OrderID;
+```
+
+**Expected:** Bản ghi vẫn còn, `IsUsed = 1`. Voucher không được kích hoạt lại.
+
+---
+
+### TC-13 — Carrier fault: RestorableQuantity = 0, stock unchanged
+
+Merchandise đánh giá `damageResponsibility = Carrier` tại `RefundInspectionPending`.
+
+**Expected:**
+- `RefundDetails.RestorableQuantity = 0` cho tất cả dòng
+- `Products.Quantity` không thay đổi sau Complete
+- Staff vẫn được Complete (tiền vẫn hoàn cho khách)
+
+---
+
+### TC-14 — Regression: COD flow unchanged
+
+Gửi `returned` webhook với COD order.
+
+**Expected:** Không tạo refund, cancel ngay lập tức, stock restore đầy đủ (`Quantity`). Không có bước Merch/Staff mới.
+
+---
+
+### TC-15 — Regression: Customer-initiated return unchanged
+
+Tạo customer refund request sau khi order **Completed**. Process toàn bộ flow customer return.
+
+**Expected:**
+- `getNextStatus` trả về `RefundPickupCreated` (không phải `RefundReceived`)
+- Modal không hiện `RestockQuantitySection` hay `SystemReturnCompleteSection`
+- `IncludeShippingInRefund` không được set
+- Stock restored theo `Quantity` (không phải `RestorableQuantity`)
+
+---
+
 ## 8. Test Checklist Summary
 
 - [ ] TC-01: `delivery_fail` keeps Delivering
 - [ ] TC-02: Duplicate webhook idempotency
-- [ ] TC-03: Prepaid return lifecycle 10 → 11 + refund
-- [ ] TC-04: COD `returned` → Cancelled
+- [ ] TC-03: Prepaid return lifecycle — full 5-step inspection flow
+- [ ] TC-04: COD `returned` → Cancelled (regression)
 - [ ] TC-05: `damage` / `lost`
 - [ ] TC-06: Customer status masking
 - [ ] TC-07a: Delivering filter includes return-flow orders
@@ -317,3 +408,10 @@ ORDER BY CreatedAt DESC;
 - [ ] TC-07c: Admin detail has `shippingHistory` + GHN fields
 - [ ] TC-07d: Assigned Staff/Merch — My Orders + GHN chip
 - [ ] TC-08: Pre-cancelled order ignored
+- [ ] TC-09: IncludeShipping=true → FinalRefundAmount = TotalAmount
+- [ ] TC-10: IncludeShipping=false → FinalRefundAmount = TotalAmount - CustomerShippingPaid
+- [ ] TC-11: Freeship voucher → toggle ẩn, full TotalAmount
+- [ ] TC-12: VoucherUsageLogs intact after Complete (voucher NOT restored)
+- [ ] TC-13: Carrier fault → RestorableQuantity=0, no stock change
+- [ ] TC-14: COD regression unchanged
+- [ ] TC-15: Customer return regression unchanged
