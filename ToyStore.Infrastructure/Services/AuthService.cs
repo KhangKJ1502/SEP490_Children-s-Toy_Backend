@@ -139,12 +139,23 @@ public class AuthService : IAuthService
 
         if (dto.RoleId.HasValue && account.RoleId != dto.RoleId.Value)
         {
-            return Result<AuthResponseDto>.Failure("ROLE_MISMATCH", "Invalid account.");
+            var message = dto.RoleId.Value == CustomerRoleId 
+                ? "Administrator accounts cannot be used to log into the customer portal."
+                : (account.RoleId == CustomerRoleId 
+                    ? "You do not have permission to access the admin portal with a customer account."
+                    : "You do not have the required permissions to access this portal.");
+            return Result<AuthResponseDto>.Failure("ROLE_MISMATCH", message);
         }
 
         if (dto.AllowedRoleIds is { Count: > 0 } && !dto.AllowedRoleIds.Contains(account.RoleId))
         {
-            return Result<AuthResponseDto>.Failure("ROLE_MISMATCH", "Invalid account.");
+            var isCustomerRequired = dto.AllowedRoleIds.Count == 1 && dto.AllowedRoleIds.Contains(CustomerRoleId);
+            var message = isCustomerRequired 
+                ? "Administrator accounts cannot be used to log into the customer portal."
+                : (account.RoleId == CustomerRoleId 
+                    ? "You do not have permission to access the admin portal with a customer account."
+                    : "You do not have the required permissions to access this portal.");
+            return Result<AuthResponseDto>.Failure("ROLE_MISMATCH", message);
         }
 
         // Đăng nhập thành công → reset các lần thất bại
@@ -647,8 +658,12 @@ public class AuthService : IAuthService
         // Nếu chỉ định RoleId, kiểm tra role có khớp không
         if (dto.RoleId.HasValue && existingAccount.RoleId != dto.RoleId.Value)
         {
-            return Result<AuthResponseDto>.Failure("ROLE_MISMATCH", 
-                $"This account does not have {GetRoleName(dto.RoleId.Value)} role.");
+            var message = dto.RoleId.Value == CustomerRoleId 
+                ? "Administrator accounts cannot be used to log into the customer portal."
+                : (existingAccount.RoleId == CustomerRoleId 
+                    ? "You do not have permission to access the admin portal with a customer account."
+                    : "You do not have the required permissions to access this portal.");
+            return Result<AuthResponseDto>.Failure("ROLE_MISMATCH", message);
         }
 
         // Login thành công
