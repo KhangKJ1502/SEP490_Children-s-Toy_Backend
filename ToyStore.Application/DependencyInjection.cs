@@ -69,6 +69,7 @@ public static class DependencyInjection
         services.AddScoped<IOutboxEventHandler, AdminReturnFailHandler>();
         services.AddScoped<IOutboxEventHandler, MerchPickedUpHandler>();
         services.AddScoped<IOutboxEventHandler, MerchReturnedHandler>();
+        services.AddScoped<IOutboxEventHandler, StaffSystemRefundReadyHandler>();
 
         // Wishlist and voucher handlers
         services.AddScoped<IOutboxEventHandler, WishlistPriceDropHandler>();

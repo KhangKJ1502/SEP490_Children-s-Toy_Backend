@@ -106,6 +106,21 @@ public partial class OrderRefund
     /// </summary>
     public string? DamageResponsibility { get; set; }
 
+    /// <summary>
+    /// [System Return only] Tiền ship mà khách thực trả (sau khi trừ voucher freeship).
+    /// = max(0, TotalAmount - sum(RefundDetail.RefundAmount)).
+    /// Snapshot lúc tạo system refund, dùng để tính FinalRefundAmount khi Staff Complete.
+    /// </summary>
+    public decimal CustomerShippingPaid { get; set; } = 0m;
+
+    /// <summary>
+    /// [System Return only] Staff chọn có hoàn phí vận chuyển cho khách hay không khi Complete.
+    /// NULL = chưa xác định (customer return hoặc chưa Complete).
+    /// true = hoàn phí ship → FinalRefundAmount = TotalAmount.
+    /// false = không hoàn ship → FinalRefundAmount = TotalAmount - CustomerShippingPaid.
+    /// </summary>
+    public bool? IncludeShippingInRefund { get; set; }
+
     public virtual Account? ApprovedByNavigation { get; set; }
 
     public virtual Account Customer { get; set; } = null!;

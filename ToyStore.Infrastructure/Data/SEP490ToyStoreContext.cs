@@ -1241,6 +1241,8 @@ public partial class SEP490ToyStoreContext : DbContext
                 .IsUnicode(false);
             entity.Property(e => e.InspectionNote).HasMaxLength(500);
             entity.Property(e => e.InspectionPassed);
+            entity.Property(e => e.CustomerShippingPaid).HasColumnType("decimal(12, 0)").HasDefaultValue(0m);
+            entity.Property(e => e.IncludeShippingInRefund);
             entity.Property(e => e.ShippingFee).HasColumnType("decimal(10, 0)");
             entity.Property(e => e.SubTotal).HasColumnType("decimal(12, 0)");
             entity.Property(e => e.TotalAmount).HasColumnType("decimal(12, 0)");
@@ -1339,6 +1341,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.RefundId).HasColumnName("RefundID");
             entity.Property(e => e.ProductId).HasColumnName("ProductID");
             entity.Property(e => e.Quantity);
+            entity.Property(e => e.RestorableQuantity);
             entity.Property(e => e.UnitPrice).HasColumnType("decimal(12, 0)");
             entity.Property(e => e.RefundAmount).HasColumnType("decimal(12, 0)");
             entity.Property(e => e.CreatedAt)

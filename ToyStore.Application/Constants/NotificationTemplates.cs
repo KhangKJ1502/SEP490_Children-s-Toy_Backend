@@ -60,6 +60,9 @@ public static class NotificationTemplates
     public const string MerchLowStock        = "MERCH_LOW_STOCK";
     public const string MerchOutOfStock      = "MERCH_OUT_OF_STOCK";
 
+    // Staff — system return
+    public const string StaffSystemRefundReady = "STAFF_SYSTEM_REFUND_READY";
+
     // Admin — system alerts
     public const string AdminPaymentError    = "ADMIN_PAYMENT_ERROR";
     public const string AdminJobFailed       = "ADMIN_JOB_FAILED";

@@ -55,13 +55,20 @@ public static class RefundStatusTransitionValidator
             };
         }
 
-        // 2. Luồng System Return Refund (giao thất bại - hệ thống tự tạo)
+        // 2. System return (GHN delivery failure — customer did not receive)
+        // Default: Received (auto) → InspectionPending (Merch) → Completed (Staff)
+        // Legacy in-flight: Requested/Approved may still transition forward without Staff Approve.
         if (isSystemReturnRefund)
         {
             return (currentStatusId, newStatusId) switch
             {
                 ((byte)RefundStatusEnum.RefundRequested, (byte)RefundStatusEnum.RefundApproved) => true,
-                ((byte)RefundStatusEnum.RefundApproved, (byte)RefundStatusEnum.RefundCompleted) => true,
+                ((byte)RefundStatusEnum.RefundRequested, (byte)RefundStatusEnum.RefundReceived) => true,
+                ((byte)RefundStatusEnum.RefundRequested, (byte)RefundStatusEnum.RefundInspectionPending) => true,
+                ((byte)RefundStatusEnum.RefundApproved, (byte)RefundStatusEnum.RefundReceived) => true,
+                ((byte)RefundStatusEnum.RefundApproved, (byte)RefundStatusEnum.RefundInspectionPending) => true,
+                ((byte)RefundStatusEnum.RefundReceived, (byte)RefundStatusEnum.RefundInspectionPending) => true,
+                ((byte)RefundStatusEnum.RefundInspectionPending, (byte)RefundStatusEnum.RefundCompleted) => true,
                 ((byte)RefundStatusEnum.RefundRejected, (byte)RefundStatusEnum.RefundApproved) => isAdmin,
                 ((byte)RefundStatusEnum.RefundDamage, (byte)RefundStatusEnum.RefundCompleted) => true,
                 _ => false
