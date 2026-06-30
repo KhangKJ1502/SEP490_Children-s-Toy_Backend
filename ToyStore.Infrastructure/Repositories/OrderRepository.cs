@@ -163,7 +163,7 @@ public class OrderRepository : IOrderRepository
             .Include(o => o.OrderStatusHistories)
                 .ThenInclude(h => h.Status)
             .Include(o => o.ShippingProviderTransactions.OrderByDescending(t => t.CreatedAt))
-                .ThenInclude(t => t.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt));
+                .ThenInclude(t => t.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt).ThenByDescending(h => h.HistoryId));
     }
 
     public async Task<Order?> GetByIdForCustomerAsync(
@@ -205,7 +205,7 @@ public class OrderRepository : IOrderRepository
             .AsNoTracking()
             .Include(o => o.Status)
             .Include(o => o.ShippingProviderTransactions.OrderByDescending(t => t.CreatedAt))
-                .ThenInclude(t => t.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt))
+                .ThenInclude(t => t.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt).ThenByDescending(h => h.HistoryId))
             .FirstOrDefaultAsync(o => o.OrderId == orderId && !o.IsDeleted, cancellationToken);
     }
 
