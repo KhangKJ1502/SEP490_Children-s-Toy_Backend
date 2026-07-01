@@ -12,8 +12,8 @@ namespace ToyStore.Application.Services;
 public static class CustomerOrderDisplayStatusMapper
 {
     public const string DeliveringLabel = "Delivering";
-    public const string ReturningLabel = "Returning to warehouse";
-    public const string ReturnedToWarehouseLabel = "Returned to warehouse";
+    public const string ReturningLabel = "Returning to shop";
+    public const string ReturnedToWarehouseLabel = "Returned to shop";
     public const string RefundProcessingLabel = "Refund processing";
     public const string CancelledLabel = "Cancelled";
     public const string RefundedLabel = "Refunded";
@@ -71,7 +71,7 @@ public static class CustomerOrderDisplayStatusMapper
             return internalStatusName ?? string.Empty;
 
         if (internalStatusName.Equals(OrderStatuses.Cancelled, StringComparison.OrdinalIgnoreCase))
-            return CancelledLabel;
+            return hasActiveRefund ? RefundProcessingLabel : CancelledLabel;
 
         if (internalStatusName.Equals(OrderStatuses.Refunded, StringComparison.OrdinalIgnoreCase))
             return RefundedLabel;

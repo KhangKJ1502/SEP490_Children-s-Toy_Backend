@@ -376,18 +376,34 @@ public class RefundService : IRefundService
 
         // Delivery failure: GHN webhook fires when goods are already at warehouse — skip Staff Approve.
         var statusId = initialStatusId ?? (byte)RefundStatusEnum.RefundReceived;
-        var defaultReason = statusId switch
+
+        var rawCancelReason = refundOrder.CancelReason;
+        var translatedReason = ToyStore.Infrastructure.Mappers.GhnFailCodeMapper.GetFriendlyDescription(
+            refundOrder.LastGHNFailCode,
+            !string.IsNullOrWhiteSpace(rawCancelReason) && rawCancelReason != "DELIVERY_FAILED_GHN"
+                ? rawCancelReason
+                : null);
+        var ghnReason = !string.IsNullOrWhiteSpace(translatedReason)
+            ? $" (GHN Reason: {translatedReason})"
+            : "";
+        var ghnCode = !string.IsNullOrWhiteSpace(refundOrder.LastGHNFailCode)
+            ? $" (Code: {refundOrder.LastGHNFailCode})"
+            : "";
+
+        // Internal log note (stored in history, not shown to customer)
+        var internalNote = statusId switch
         {
-            (byte)RefundStatusEnum.RefundDamage => "Auto-created: GHN damaged/lost package in transit",
-            (byte)RefundStatusEnum.RefundReceived => "Auto-created: GHN delivery failure return — goods at warehouse, pending merchandise inspection",
-            _ => "Auto-created: GHN delivery failure return"
+            (byte)RefundStatusEnum.RefundDamage => $"Auto-created: GHN damaged/lost package in transit{ghnReason}{ghnCode}",
+            (byte)RefundStatusEnum.RefundReceived => $"Auto-created: GHN delivery failure return — goods at shop, pending merchandise inspection{ghnReason}{ghnCode}",
+            _ => $"Auto-created: GHN delivery failure return{ghnReason}{ghnCode}"
         };
 
         var refund = new OrderRefund
         {
             OrderId = refundOrder.OrderId,
             RefundReasonId = refundReasonId,
-            ReasonDetails = defaultReason,
+            // ReasonDetails is the customer-facing note — null for system-created refunds
+            ReasonDetails = null,
             RefundSource = RefundSources.System,   // Luồng B: system tạo, không có GHN pickup
             CustomerId = refundOrder.AccountId,
             RequestedBy = null,
@@ -403,10 +419,10 @@ public class RefundService : IRefundService
             AdminNote = statusId switch
             {
                 (byte)RefundStatusEnum.RefundDamage =>
-                    "Orders are damaged/lost during shipping (GHN updates Damage/Lost). No quality inspection is required.",
+                    $"Orders are damaged/lost during shipping (GHN updates Damage/Lost). No quality inspection is required.{ghnReason}{ghnCode}",
                 (byte)RefundStatusEnum.RefundReceived =>
-                    "System return: customer did not receive the order. Merchandise inspect upon warehouse receipt.",
-                _ => null
+                    $"System return: customer did not receive the order. Merchandise inspect upon shop receipt.{ghnReason}{ghnCode}",
+                _ => !string.IsNullOrWhiteSpace(refundOrder.CancelReason) ? $"GHN Failure Reason: {refundOrder.CancelReason}{ghnCode}" : null
             }
         };
 
@@ -414,7 +430,7 @@ public class RefundService : IRefundService
         {
             StatusId = statusId,
             ChangedBy = null,
-            Note = defaultReason,
+            Note = internalNote,
             CreatedAt = now
         });
 

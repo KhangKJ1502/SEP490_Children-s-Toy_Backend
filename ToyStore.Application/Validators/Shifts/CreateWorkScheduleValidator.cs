@@ -31,7 +31,7 @@ public class CreateWorkScheduleValidator : AbstractValidator<CreateWorkScheduleD
                     accountIdForCreate: dto.AccountId,
                     forCreate: true,
                     cancellationToken: ct))
-            .WithMessage("Each shift must have at least 1 sales staff and 1 warehouse staff");
+            .WithMessage("Each shift must have at least 1 sales staff and 1 merchandise staff");
 
         When(x => x.MaxLoadOverride.HasValue, () =>
         {
