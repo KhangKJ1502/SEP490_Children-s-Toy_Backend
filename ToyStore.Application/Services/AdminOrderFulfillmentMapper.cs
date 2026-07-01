@@ -60,7 +60,7 @@ public static class AdminOrderFulfillmentMapper
         string? cancelReason)
     {
         if (internalStatusName.Equals(OrderStatuses.Returning, StringComparison.OrdinalIgnoreCase))
-            return "Returning to warehouse";
+            return "Returning to shop";
 
         if (internalStatusName.Equals(OrderStatuses.ReturnCompleted, StringComparison.OrdinalIgnoreCase))
             return "Returned";
@@ -76,7 +76,7 @@ public static class AdminOrderFulfillmentMapper
             return $"Delivering (GHN: {FormatGhnStatus(ghnShippingStatus)})";
 
         if (IsGhnReturned(ghnShippingStatus))
-            return "Returned to warehouse (GHN)";
+            return "Returned to shop (GHN)";
 
         return internalStatusName;
     }

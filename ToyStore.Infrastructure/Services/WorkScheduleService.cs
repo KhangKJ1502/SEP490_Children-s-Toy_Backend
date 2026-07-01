@@ -38,7 +38,7 @@ public class WorkScheduleService : IWorkScheduleService
             : roleId == MerchRoleId && !OrderStatusTransitionValidator.MerchRoleWorkComplete(statusName);
 
     private const string MinimumCoverageError =
-        "Each shift must have at least 1 sales staff and 1 warehouse staff";
+        "Each shift must have at least 1 sales staff and 1 merchandise staff";
 
     public WorkScheduleService(
         IUnitOfWork unitOfWork,

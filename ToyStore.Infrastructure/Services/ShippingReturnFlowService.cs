@@ -55,7 +55,12 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
             ShippingWebhookAction.KeepReturning =>
                 await HandleKeepReturningAsync(order, ghnStatus, now, cancellationToken),
             ShippingWebhookAction.HandleReturnCompleted =>
-                await HandleReturnCompletedAsync(order, OrderCancelReasons.DeliveryFailedGhn, now, cancellationToken),
+                await HandleReturnCompletedAsync(
+                    order,
+                    !string.IsNullOrEmpty(order.CancelReason) && order.CancelReason != OrderCancelReasons.DeliveryFailedGhn
+                        ? order.CancelReason
+                        : ToyStore.Infrastructure.Mappers.GhnFailCodeMapper.GetFriendlyDescription(order.LastGHNFailCode, OrderCancelReasons.DeliveryFailedGhn),
+                    now, cancellationToken),
             ShippingWebhookAction.HandleReturnFail =>
                 await HandleReturnFailAsync(order, tx, ghnStatus, now, cancellationToken),
             ShippingWebhookAction.HandleDamageLost =>
@@ -75,10 +80,16 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(ct);
         var deliveryFailedId = ResolveStatusId(statusMap, OrderStatuses.DeliveryFailed, OrderStatus.DeliveryFailed);
 
+        var friendlyReason = ToyStore.Infrastructure.Mappers.GhnFailCodeMapper.GetFriendlyDescription(
+            order.LastGHNFailCode, order.CancelReason);
+
         if (string.IsNullOrEmpty(order.CancelReason) || order.CancelReason == OrderCancelReasons.DeliveryFailedGhn)
         {
-            order.CancelReason = OrderCancelReasons.DeliveryFailedGhn;
+            order.CancelReason = !string.IsNullOrEmpty(friendlyReason) && friendlyReason != OrderCancelReasons.DeliveryFailedGhn
+                ? friendlyReason
+                : OrderCancelReasons.DeliveryFailedGhn;
         }
+
         order.StatusId = deliveryFailedId;
         order.UpdatedAt = now;
 
@@ -232,7 +243,9 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         {
             order.StatusId = cancelledId;
             order.CancelledAt = now;
-            order.CancelReason = cancelReason;
+            // Only overwrite CancelReason if it has no real translated reason already
+            if (string.IsNullOrEmpty(order.CancelReason) || order.CancelReason == OrderCancelReasons.DeliveryFailedGhn)
+                order.CancelReason = cancelReason;
             order.UpdatedAt = now;
 
             await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
@@ -240,7 +253,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
                 OrderId = order.OrderId,
                 StatusId = cancelledId,
                 ChangedBy = null,
-                Note = "GHN returned: goods received at warehouse. Cancelled & Refund pending.",
+                Note = null,
                 CreatedAt = now
             }, ct);
         }
@@ -254,7 +267,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
                 OrderId = order.OrderId,
                 StatusId = returnCompletedId,
                 ChangedBy = null,
-                Note = "GHN returned: goods received at warehouse.",
+                Note = null,
                 CreatedAt = now
             }, ct);
         }
