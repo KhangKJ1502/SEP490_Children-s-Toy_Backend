@@ -30,6 +30,18 @@ services:
     networks:
       - toystore-network
     restart: unless-stopped
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: toystore-rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-guest}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS:-guest}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - toystore-network
+    restart: unless-stopped
 
   api:
     build:
@@ -43,18 +55,23 @@ services:
       - Redis__ConnectionString=redis:6379
       - MongoDb__ConnectionString=${MONGODB_CONNECTION_STRING}
       - MongoDb__DatabaseName=toystore_recommendation
-      - MongoDb__SessionEventsCollection=session_events
       - MongoDb__UserProfilesCollection=user_profiles
       - MongoDb__RecommendationCacheCollection=recommendation_cache
       - FrontendUrls__Customer=https://childrenstoystore.store
       - FrontendUrls__Admin=https://admin.childrenstoystore.store
       - BackendUrls__Api=https://api.childrenstoystore.store
+      - RabbitMq__Host=rabbitmq
+      - RabbitMq__Port=5672
+      - RabbitMq__UserName=${RABBITMQ_USER:-guest}
+      - RabbitMq__Password=${RABBITMQ_PASS:-guest}
     ports:
       - "5216:8080"
     depends_on:
       sqlserver:
         condition: service_healthy
       redis:
+        condition: service_started
+      rabbitmq:
         condition: service_started
     networks:
       - toystore-network
@@ -71,18 +88,23 @@ services:
       - Redis__ConnectionString=redis:6379
       - MongoDb__ConnectionString=${MONGODB_CONNECTION_STRING}
       - MongoDb__DatabaseName=toystore_recommendation
-      - MongoDb__SessionEventsCollection=session_events
       - MongoDb__UserProfilesCollection=user_profiles
       - MongoDb__RecommendationCacheCollection=recommendation_cache
       - FrontendUrls__Customer=https://childrenstoystore.store
       - FrontendUrls__Admin=https://admin.childrenstoystore.store
       - BackendUrls__Api=https://api.childrenstoystore.store
+      - RabbitMq__Host=rabbitmq
+      - RabbitMq__Port=5672
+      - RabbitMq__UserName=${RABBITMQ_USER:-guest}
+      - RabbitMq__Password=${RABBITMQ_PASS:-guest}
     depends_on:
       sqlserver:
         condition: service_healthy
       api:
         condition: service_started
       redis:
+        condition: service_started
+      rabbitmq:
         condition: service_started
     networks:
       - toystore-network

@@ -14,9 +14,6 @@ public class MongoDbOptions
     /// <summary>Tên database trong MongoDB.</summary>
     public string DatabaseName { get; set; } = "toystore_recommendation";
 
-    /// <summary>Tên collection lưu session events tạm.</summary>
-    public string SessionEventsCollection { get; set; } = "session_events";
-
     /// <summary>Tên collection lưu user preference profile.</summary>
     public string UserProfilesCollection { get; set; } = "user_profiles";
 
