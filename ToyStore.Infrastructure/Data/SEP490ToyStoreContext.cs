@@ -1246,6 +1246,13 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.InspectionPassed);
             entity.Property(e => e.CustomerShippingPaid).HasColumnType("decimal(12, 0)").HasDefaultValue(0m);
             entity.Property(e => e.IncludeShippingInRefund);
+
+            entity.Property(e => e.ItemApprovedSubTotal).HasColumnType("decimal(12, 0)").HasDefaultValue(0m);
+            entity.Property(e => e.ItemRejectedSubTotal).HasColumnType("decimal(12, 0)").HasDefaultValue(0m);
+            entity.Property(e => e.ReturnToCustomerFee).HasColumnType("decimal(12, 0)").HasDefaultValue(0m);
+            entity.Property(e => e.CustomerResponseDeadline).HasColumnType("datetime");
+            entity.Property(e => e.CustomerResponse).HasMaxLength(50);
+            entity.Property(e => e.ReturnToCustomerFeePaid).HasDefaultValue(false);
             entity.Property(e => e.ShippingFee).HasColumnType("decimal(10, 0)");
             entity.Property(e => e.SubTotal).HasColumnType("decimal(12, 0)");
             entity.Property(e => e.TotalAmount).HasColumnType("decimal(12, 0)");
@@ -1345,6 +1352,8 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.ProductId).HasColumnName("ProductID");
             entity.Property(e => e.Quantity);
             entity.Property(e => e.RestorableQuantity);
+            entity.Property(e => e.FailedCustomerQty);
+            entity.Property(e => e.FailedCarrierQty);
             entity.Property(e => e.UnitPrice).HasColumnType("decimal(12, 0)");
             entity.Property(e => e.RefundAmount).HasColumnType("decimal(12, 0)");
             entity.Property(e => e.CreatedAt)

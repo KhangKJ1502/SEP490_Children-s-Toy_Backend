@@ -121,6 +121,13 @@ public partial class OrderRefund
     /// </summary>
     public bool? IncludeShippingInRefund { get; set; }
 
+    public decimal ItemApprovedSubTotal { get; set; } = 0m;
+    public decimal ItemRejectedSubTotal { get; set; } = 0m;
+    public decimal ReturnToCustomerFee { get; set; } = 0m;
+    public DateTime? CustomerResponseDeadline { get; set; }
+    public string? CustomerResponse { get; set; }
+    public bool ReturnToCustomerFeePaid { get; set; } = false;
+
     public virtual Account? ApprovedByNavigation { get; set; }
 
     public virtual Account Customer { get; set; } = null!;

@@ -57,5 +57,8 @@ builder.Services.AddHostedService<GhnShippingRetryJob>();
 builder.Services.AddHostedService<WithdrawalTimeoutJob>();
 builder.Services.AddHostedService<WithdrawalPayoutPollJob>();
 
+// Refund workers
+builder.Services.AddHostedService<RefundTimeoutJob>();
+
 var host = builder.Build();
 host.Run();

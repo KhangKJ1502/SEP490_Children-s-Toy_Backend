@@ -120,22 +120,6 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
     private async Task<ShippingReturnFlowResult> HandleReturnStartedAsync(
         Order order, string ghnStatus, DateTime now, CancellationToken ct)
     {
-        if (string.Equals(order.PaymentMethod, "SHIP_COD", StringComparison.OrdinalIgnoreCase))
-        {
-            await ApplyCodCancelForDeliveryFailAsync(order, OrderCancelReasons.DeliveryFailedGhn, now, ct);
-
-            return new ShippingReturnFlowResult
-            {
-                Notifications =
-                [
-                    new PendingShippingNotification(
-                        NotificationEventTypes.OrderCancelledDeliveryFail,
-                        new { orderId = order.OrderId, orderCode = order.OrderCode })
-                ],
-                ReleaseShiftCapacity = true
-            };
-        }
-
         return await HandleSetReturningAsync(order, ghnStatus, now, ct);
     }
 
@@ -420,11 +404,48 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
 
         if (string.Equals(order.PaymentMethod, "SHIP_COD", StringComparison.OrdinalIgnoreCase))
         {
-            await ApplyCodCancelForDeliveryFailAsync(order, cancelReason, now, ct);
+            await ApplyCodCancelForDeliveryFailAsync(order, cancelReason, now, ct, restoreStock: false);
 
             notifications.Add(new PendingShippingNotification(
                 NotificationEventTypes.OrderCancelledDeliveryFail,
                 new { orderId = order.OrderId, orderCode = order.OrderCode }));
+
+            var reason = await _unitOfWork.Refunds.GetReasonByContentAsync(RefundReasons.DeliveryFailedGhn, ct);
+            if (reason is null)
+            {
+                _logger.LogError("Refund reason '{Reason}' not found cannot create system refund for COD order {OrderId}",
+                    RefundReasons.DeliveryFailedGhn, order.OrderId);
+            }
+            else
+            {
+                byte? initialStatusId = null;
+                if (string.Equals(cancelReason, OrderCancelReasons.LostInTransit, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(cancelReason, OrderCancelReasons.DamagedInTransit, StringComparison.OrdinalIgnoreCase))
+                {
+                    initialStatusId = (byte)RefundStatusEnum.RefundDamage;
+                }
+
+                var refund = await _refundService.CreateSystemRefundForDeliveryFailAsync(order, reason.RefundReasonId, initialStatusId, ct);
+                if (refund is not null)
+                {
+                    notifications.Add(new PendingShippingNotification(
+                        NotificationEventTypes.OrderReturnRefundPending,
+                        new { orderId = order.OrderId, orderCode = order.OrderCode }));
+                }
+
+                if (!skipReturnCompletedStep)
+                {
+                    notifications.Add(new PendingShippingNotification(
+                        NotificationEventTypes.MerchReturned,
+                        new
+                        {
+                            orderId    = order.OrderId,
+                            orderCode  = order.OrderCode,
+                            refundId   = refund?.RefundId ?? 0,
+                            providerStatus = ShippingStatuses.Returned
+                        }));
+                }
+            }
 
             return new ShippingReturnFlowResult
             {
@@ -476,7 +497,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
     }
 
     private async Task ApplyCodCancelForDeliveryFailAsync(
-        Order order, string cancelReason, DateTime now, CancellationToken ct)
+        Order order, string cancelReason, DateTime now, CancellationToken ct, bool restoreStock = true)
     {
         var fullOrder = await _unitOfWork.Orders.GetByIdForUpdateAsync(order.OrderId, ct)
             ?? order;
@@ -484,14 +505,14 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(ct);
         var cancelledId = ResolveStatusId(statusMap, OrderStatuses.Cancelled, OrderStatus.Cancelled);
 
-        bool productsSubtracted = fullOrder.PaymentStatus != "PAID";
+        bool productsSubtracted = fullOrder.PaymentStatus != "PAID" && restoreStock;
 
         foreach (var detail in fullOrder.OrderDetails)
         {
             if (productsSubtracted)
                 await _unitOfWork.Products.AdjustStockAsync(detail.ProductId, detail.Quantity, ct);
 
-            if (detail.SlotProductId.HasValue)
+            if (detail.SlotProductId.HasValue && restoreStock)
             {
                 if (fullOrder.PaymentStatus == "PAID")
                     await _unitOfWork.Orders.AdjustFlashSaleStockAsync(

@@ -1962,6 +1962,12 @@ CREATE TABLE [OrderRefunds] (
     [DamageResponsibility] NVARCHAR(20) NULL,
     [CustomerShippingPaid] DECIMAL(12,0) NOT NULL CONSTRAINT [DF_OrderRefunds_CustomerShippingPaid] DEFAULT 0,
     [IncludeShippingInRefund] BIT NULL,
+    [ItemApprovedSubTotal] DECIMAL(12,0) NOT NULL DEFAULT 0,
+    [ItemRejectedSubTotal] DECIMAL(12,0) NOT NULL DEFAULT 0,
+    [ReturnToCustomerFee] DECIMAL(12,0) NOT NULL DEFAULT 0,
+    [CustomerResponseDeadline] DATETIME NULL,
+    [CustomerResponse] NVARCHAR(50) NULL,
+    [ReturnToCustomerFeePaid] BIT NOT NULL DEFAULT 0,
     [AdminNote]           NVARCHAR(1000) NULL,
     [ApprovedAt]          DATETIME2(0) NULL,
     [RejectedAt]          DATETIME2(0) NULL,
@@ -1990,15 +1996,22 @@ CREATE TABLE [dbo].[RefundDetails] (
     [RefundDetailID]  INT IDENTITY(1,1) PRIMARY KEY,
     [RefundID]        INT NOT NULL,
     [ProductID]       INT NOT NULL,
-    [Quantity]        SMALLINT NOT NULL CHECK ([Quantity] > 0),
     [RestorableQuantity] SMALLINT NULL,
+    [FailedCustomerQty] SMALLINT NOT NULL DEFAULT 0,
+    [FailedCarrierQty] SMALLINT NOT NULL DEFAULT 0,
+    [Quantity]        SMALLINT NOT NULL CHECK ([Quantity] > 0),
     [UnitPrice]       DECIMAL(12,0) NOT NULL CHECK ([UnitPrice] >= 0),
     [RefundAmount]    DECIMAL(12,0) NOT NULL CHECK ([RefundAmount] >= 0),
     [CreatedAt]       DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     
     CONSTRAINT [FK_RefundDetails_OrderRefunds] FOREIGN KEY ([RefundID]) REFERENCES [dbo].[OrderRefunds]([RefundID]),
     CONSTRAINT [FK_RefundDetails_Products] FOREIGN KEY ([ProductID]) REFERENCES [dbo].[Products]([ProductID]),
-    CONSTRAINT [UQ_RefundDetails_RefundProduct] UNIQUE ([RefundID], [ProductID])
+    CONSTRAINT [UQ_RefundDetails_RefundProduct] UNIQUE ([RefundID], [ProductID]),
+    CONSTRAINT [CK_RefundDetails_QtySum] CHECK (
+        [FailedCustomerQty] >= 0 AND 
+        [FailedCarrierQty] >= 0 AND 
+        ([RestorableQuantity] IS NULL OR ([RestorableQuantity] + [FailedCustomerQty] + [FailedCarrierQty] <= [Quantity]))
+    )
 );
 GO
 
@@ -2664,21 +2677,23 @@ GO
 
 
 CREATE TABLE [Interaction].[Events] (
-    [EventID]       BIGINT IDENTITY(1,1) PRIMARY KEY,
-    [AccountID]     INT NULL,
-    [SessionID]     VARCHAR(100) NOT NULL,
-    [EventType]     VARCHAR(50) NOT NULL,
-    [EntityID]      VARCHAR(50) NOT NULL,
-    [EntityType]    VARCHAR(30) NOT NULL,
-    [Source]        VARCHAR(30) NULL,
-    [Referrer]      VARCHAR(200) NULL,
-    [DeviceType]    VARCHAR(15) NULL,
-    [DurationMs]    INT NULL,
-    [ScrollDepth]   TINYINT NULL,
-    [ClickPosition] VARCHAR(30) NULL,
-    [Metadata]      NVARCHAR(500) NULL,
-    [CreatedAt]     DATETIME2(0) NOT NULL DEFAULT GETDATE(),
-    CONSTRAINT [FK_Events_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [Accounts]([AccountID])
+    [EventID]        BIGINT IDENTITY(1,1) PRIMARY KEY,
+    [IdempotencyKey] UNIQUEIDENTIFIER NOT NULL,
+    [AccountID]      INT NULL,
+    [SessionID]      VARCHAR(100) NOT NULL,
+    [EventType]      VARCHAR(50) NOT NULL,
+    [EntityID]       VARCHAR(50) NOT NULL,
+    [EntityType]     VARCHAR(30) NOT NULL,
+    [Source]         VARCHAR(30) NULL,
+    [Referrer]       VARCHAR(200) NULL,
+    [DeviceType]     VARCHAR(15) NULL,
+    [DurationMs]     INT NULL,
+    [ScrollDepth]    TINYINT NULL,
+    [ClickPosition]  VARCHAR(30) NULL,
+    [Metadata]       NVARCHAR(500) NULL,
+    [CreatedAt]      DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    CONSTRAINT [FK_Events_Accounts] FOREIGN KEY ([AccountID]) REFERENCES [Accounts]([AccountID]),
+    CONSTRAINT [UQ_Events_IdempotencyKey] UNIQUE ([IdempotencyKey])
 );
 GO
 

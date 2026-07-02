@@ -17,6 +17,7 @@ using Microsoft.Extensions.Options;
 using ToyStore.Application.DTOs.Checkouts;
 using ToyStore.Application.Services;
 using ToyStore.Infrastructure.Options;
+using ToyStore.Application.Common.Helpers;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -82,9 +83,7 @@ public class RefundService : IRefundService
     /// </summary>
     private static decimal ComputeFinalRefundAmount(decimal approvedAmount, decimal returnShippingFee, string returnShippingFeeBy)
     {
-        if (string.Equals(returnShippingFeeBy, RefundResponsibleParty.Customer, StringComparison.OrdinalIgnoreCase))
-            return Math.Max(0m, approvedAmount - returnShippingFee);
-        return approvedAmount; // Store chịu hoặc mọi trường hợp khác
+        return approvedAmount; // Khách hàng tự thanh toán tiền mặt chiều đi nên không khấu trừ ví
     }
 
     private string? NormalizeRefundStatusFilter(string? status)
@@ -352,6 +351,11 @@ public class RefundService : IRefundService
             }
         }
 
+        var isUnpaid = refundOrder.PaymentStatus != "PAID"
+            || string.Equals(refundOrder.PaymentMethod, "SHIP_COD", StringComparison.OrdinalIgnoreCase);
+
+        var refundType = isUnpaid ? RefundTypes.ReturnOnly : RefundTypes.ReturnAndRefund;
+
         var discountRatio = refundOrder.SubTotal > 0
             ? (refundOrder.VoucherDiscountAmount / refundOrder.SubTotal)
             : 0m;
@@ -361,17 +365,17 @@ public class RefundService : IRefundService
             ProductId = od.ProductId,
             Quantity = od.Quantity,
             UnitPrice = od.UnitPrice,
-            RefundAmount = Math.Round(od.Quantity * od.UnitPrice * (1 - discountRatio), 0),
+            RefundAmount = isUnpaid ? 0m : Math.Round(od.Quantity * od.UnitPrice * (1 - discountRatio), 0),
             RestorableQuantity = od.Quantity, // default = nguyên vẹn; Merchandise chỉnh khi inspect
             CreatedAt = DateTime.UtcNow
         }).ToList();
 
-        var subTotal = refundDetails.Sum(d => d.RefundAmount);
-        var shippingFee = refundOrder.ActualShippingFee ?? refundOrder.EstimatedShippingFee;
+        var subTotal = isUnpaid ? 0m : refundDetails.Sum(d => d.RefundAmount);
+        var shippingFee = isUnpaid ? 0m : (refundOrder.ActualShippingFee ?? refundOrder.EstimatedShippingFee);
         // Tiền khách thực trả = TotalAmount (đã trừ voucher); dùng TotalAmount làm chuẩn
-        var orderTotalAmount = refundOrder.TotalAmount;
+        var orderTotalAmount = isUnpaid ? 0m : refundOrder.TotalAmount;
         // CustomerShippingPaid = phần phí ship khách thực trả (sau voucher freeship)
-        var customerShippingPaid = Math.Max(0m, orderTotalAmount - subTotal);
+        var customerShippingPaid = isUnpaid ? 0m : Math.Max(0m, orderTotalAmount - subTotal);
         var now = DateTime.UtcNow;
 
         // Delivery failure: GHN webhook fires when goods are already at warehouse — skip Staff Approve.
@@ -394,7 +398,9 @@ public class RefundService : IRefundService
         var internalNote = statusId switch
         {
             (byte)RefundStatusEnum.RefundDamage => $"Auto-created: GHN damaged/lost package in transit{ghnReason}{ghnCode}",
-            (byte)RefundStatusEnum.RefundReceived => $"Auto-created: GHN delivery failure return — goods at shop, pending merchandise inspection{ghnReason}{ghnCode}",
+            (byte)RefundStatusEnum.RefundReceived => isUnpaid 
+                ? $"Auto-created: GHN COD delivery failure return — pending merchandise inspection{ghnReason}{ghnCode}"
+                : $"Auto-created: GHN delivery failure return — goods at shop, pending merchandise inspection{ghnReason}{ghnCode}",
             _ => $"Auto-created: GHN delivery failure return{ghnReason}{ghnCode}"
         };
 
@@ -405,6 +411,7 @@ public class RefundService : IRefundService
             // ReasonDetails is the customer-facing note — null for system-created refunds
             ReasonDetails = null,
             RefundSource = RefundSources.System,   // Luồng B: system tạo, không có GHN pickup
+            RefundType = refundType,
             CustomerId = refundOrder.AccountId,
             RequestedBy = null,
             ApprovedAmount = orderTotalAmount, // tổng tối đa có thể hoàn (tiền hàng + ship sau voucher)
@@ -416,12 +423,15 @@ public class RefundService : IRefundService
             StatusId = statusId,
             IsDeleted = false,
             CreatedAt = now,
+            ReturnToCustomerFeePaid = isUnpaid, // COD has no shortfall fee requested from customer
             AdminNote = statusId switch
             {
                 (byte)RefundStatusEnum.RefundDamage =>
                     $"Orders are damaged/lost during shipping (GHN updates Damage/Lost). No quality inspection is required.{ghnReason}{ghnCode}",
                 (byte)RefundStatusEnum.RefundReceived =>
-                    $"System return: customer did not receive the order. Merchandise inspect upon shop receipt.{ghnReason}{ghnCode}",
+                    isUnpaid
+                        ? $"System ReturnOnly: COD delivery failure return. Merchandise inspect upon shop receipt.{ghnReason}{ghnCode}"
+                        : $"System return: customer did not receive the order. Merchandise inspect upon shop receipt.{ghnReason}{ghnCode}",
                 _ => !string.IsNullOrWhiteSpace(refundOrder.CancelReason) ? $"GHN Failure Reason: {refundOrder.CancelReason}{ghnCode}" : null
             }
         };
@@ -713,41 +723,6 @@ public class RefundService : IRefundService
                 return Result<RefundDto>.BusinessError("System return refunds do not accept a shipping order code.");
             }
 
-            // Merchandise gửi kết quả kiểm tra — lưu RestorableQuantity per line
-            if (newStatusId == (byte)RefundStatusEnum.RefundInspectionPending
-                && dto.RestockItems != null && dto.RestockItems.Count > 0)
-            {
-                foreach (var restockItem in dto.RestockItems)
-                {
-                    var detail = refund.RefundDetails.FirstOrDefault(d => d.ProductId == restockItem.ProductId);
-                    if (detail == null)
-                        return Result<RefundDto>.BusinessError($"Product ID {restockItem.ProductId} does not exist in this refund.");
-
-                    if (restockItem.RestorableQuantity < 0 || restockItem.RestorableQuantity > detail.Quantity)
-                        return Result<RefundDto>.BusinessError(
-                            $"RestorableQuantity for Product ID {restockItem.ProductId} must be between 0 and {detail.Quantity}.");
-
-                    detail.RestorableQuantity = restockItem.RestorableQuantity;
-                }
-
-                // Carrier fault → force RestorableQuantity = 0 cho tất cả
-                if (string.Equals(dto.DamageResponsibility, RefundDamageResponsibility.Carrier, StringComparison.OrdinalIgnoreCase))
-                {
-                    foreach (var detail in refund.RefundDetails)
-                        detail.RestorableQuantity = 0;
-                }
-            }
-            else if (newStatusId == (byte)RefundStatusEnum.RefundInspectionPending)
-            {
-                // Không gửi RestockItems → giữ nguyên default (Quantity)
-                // Carrier fault → force 0
-                if (string.Equals(dto.DamageResponsibility, RefundDamageResponsibility.Carrier, StringComparison.OrdinalIgnoreCase))
-                {
-                    foreach (var detail in refund.RefundDetails)
-                        detail.RestorableQuantity = 0;
-                }
-            }
-
             // Staff Complete system return: bắt buộc chọn IncludeShippingInRefund
             if (newStatusId == (byte)RefundStatusEnum.RefundCompleted
                 && refund.StatusId == (byte)RefundStatusEnum.RefundInspectionPending)
@@ -766,15 +741,220 @@ public class RefundService : IRefundService
             }
         }
 
+        // Merchandise/Staff gửi kết quả kiểm tra — lưu số lượng phân rã (RestorableQuantity, FailedCustomerQty, FailedCarrierQty)
+        if (newStatusId == (byte)RefundStatusEnum.RefundInspectionPending)
+        {
+            if (dto.RestockItems != null && dto.RestockItems.Count > 0)
+            {
+                foreach (var restockItem in dto.RestockItems)
+                {
+                    var detail = refund.RefundDetails.FirstOrDefault(d => d.ProductId == restockItem.ProductId);
+                    if (detail == null)
+                        return Result<RefundDto>.BusinessError($"Product ID {restockItem.ProductId} does not exist in this refund.");
+
+                    if (restockItem.RestorableQuantity < 0 || restockItem.RestorableQuantity > detail.Quantity)
+                        return Result<RefundDto>.BusinessError(
+                            $"RestorableQuantity for Product ID {restockItem.ProductId} must be between 0 and {detail.Quantity}.");
+
+                    if (restockItem.FailedCustomerQty < 0 || restockItem.FailedCustomerQty > detail.Quantity)
+                        return Result<RefundDto>.BusinessError(
+                            $"FailedCustomerQty for Product ID {restockItem.ProductId} must be between 0 and {detail.Quantity}.");
+
+                    if (restockItem.FailedCarrierQty < 0 || restockItem.FailedCarrierQty > detail.Quantity)
+                        return Result<RefundDto>.BusinessError(
+                            $"FailedCarrierQty for Product ID {restockItem.ProductId} must be between 0 and {detail.Quantity}.");
+
+                    if (restockItem.RestorableQuantity + restockItem.FailedCustomerQty + restockItem.FailedCarrierQty != detail.Quantity)
+                    {
+                        return Result<RefundDto>.BusinessError(
+                            $"Sum of RestorableQuantity ({restockItem.RestorableQuantity}), FailedCustomerQty ({restockItem.FailedCustomerQty}), " +
+                            $"and FailedCarrierQty ({restockItem.FailedCarrierQty}) must equal total product Quantity ({detail.Quantity}) for Product ID {restockItem.ProductId}.");
+                    }
+
+                    detail.RestorableQuantity = restockItem.RestorableQuantity;
+                    detail.FailedCustomerQty = restockItem.FailedCustomerQty;
+                    detail.FailedCarrierQty = restockItem.FailedCarrierQty;
+                }
+            }
+            else
+            {
+                // Không gửi RestockItems -> mặc định Passed (RestorableQuantity = Quantity) cho tất cả,
+                // trừ khi DamageResponsibility = Carrier -> mặc định FailedCarrierQty = Quantity cho tất cả
+                var isCarrierDamage = string.Equals(dto.DamageResponsibility, RefundDamageResponsibility.Carrier, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(refund.DamageResponsibility, RefundDamageResponsibility.Carrier, StringComparison.OrdinalIgnoreCase);
+
+                foreach (var detail in refund.RefundDetails)
+                {
+                    if (isCarrierDamage)
+                    {
+                        detail.RestorableQuantity = 0;
+                        detail.FailedCustomerQty = 0;
+                        detail.FailedCarrierQty = detail.Quantity;
+                    }
+                    else
+                    {
+                        detail.RestorableQuantity = detail.Quantity;
+                        detail.FailedCustomerQty = 0;
+                        detail.FailedCarrierQty = 0;
+                    }
+                }
+            }
+
+            // Force all to FailedCarrierQty = Quantity if DamageResponsibility = Carrier is passed globally
+            if (string.Equals(dto.DamageResponsibility, RefundDamageResponsibility.Carrier, StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var detail in refund.RefundDetails)
+                {
+                    detail.RestorableQuantity = 0;
+                    detail.FailedCustomerQty = 0;
+                    detail.FailedCarrierQty = detail.Quantity;
+                }
+            }
+
+            // Cập nhật InspectionPassed ở header: true nếu toàn bộ sản phẩm đạt chuẩn hoàn toàn (không có lỗi)
+            refund.InspectionPassed = refund.RefundDetails.All(d => d.FailedCustomerQty == 0 && d.FailedCarrierQty == 0);
+
+            // Auto-derive DamageResponsibility based on quantity breakdown
+            var totalFailedCustomer = refund.RefundDetails.Sum(d => d.FailedCustomerQty);
+            var totalFailedCarrier = refund.RefundDetails.Sum(d => d.FailedCarrierQty);
+
+            if (totalFailedCustomer > 0)
+            {
+                refund.DamageResponsibility = RefundDamageResponsibility.Customer;
+            }
+            else if (totalFailedCarrier > 0)
+            {
+                refund.DamageResponsibility = RefundDamageResponsibility.Carrier;
+            }
+            else
+            {
+                refund.DamageResponsibility = null;
+            }
+
+            if (refund.RefundType == RefundTypes.ReturnOnly)
+            {
+                refund.ItemApprovedSubTotal = 0m;
+                refund.ItemRejectedSubTotal = 0m;
+                refund.ReturnToCustomerFee = 0m;
+                refund.FinalRefundAmount = 0m;
+                refund.ReturnToCustomerFeePaid = true;
+                refund.CustomerResponseDeadline = null;
+            }
+            else
+            {
+                // 1. Tính toán giá trị sản phẩm approved & rejected
+                refund.ItemApprovedSubTotal = refund.RefundDetails.Sum(d => 
+                    d.RefundAmount * (decimal)((d.RestorableQuantity ?? d.Quantity) + d.FailedCarrierQty) / d.Quantity);
+                refund.ItemRejectedSubTotal = refund.RefundDetails.Sum(d => 
+                    d.RefundAmount * (decimal)d.FailedCustomerQty / d.Quantity);
+
+                // 2. Tính tiền ship gốc được hoàn: chỉ hoàn phí ship gốc nếu không có sản phẩm nào bị hỏng do khách
+                var originalShipFeeRefund = totalFailedCustomer > 0 ? 0m : refund.ShippingFee;
+
+                // 3. Số tiền hoàn cấn trừ ban đầu
+                var totalRefundCandidate = refund.ItemApprovedSubTotal + originalShipFeeRefund;
+
+                // 4. Nếu có hàng hỏng do khách, ước tính phí giao trả về nhà khách
+                if (totalFailedCustomer > 0)
+                {
+                    var shippingItems = refund.RefundDetails
+                        .Where(d => d.FailedCustomerQty > 0)
+                        .Select(d => new ShippingItem(
+                            d.ProductId,
+                            d.Product?.ProductName ?? "Sản phẩm hoàn trả",
+                            d.Product?.Category?.CategoryName ?? "Toys",
+                            (int)d.FailedCustomerQty,
+                            d.UnitPrice,
+                            d.Product?.ProductDetail?.WeightGram ?? _ghnOptions.DefaultItemWeight,
+                            d.Product?.ProductDetail?.LengthCm ?? _ghnOptions.DefaultLength,
+                            d.Product?.ProductDetail?.WidthCm ?? _ghnOptions.DefaultWidth,
+                            d.Product?.ProductDetail?.HeightCm ?? _ghnOptions.DefaultHeight
+                        )).ToList();
+
+                    var package = GhnPackageCalculator.Calculate(
+                        shippingItems,
+                        _ghnOptions.DefaultItemWeight,
+                        _ghnOptions.DefaultLength,
+                        _ghnOptions.DefaultWidth,
+                        _ghnOptions.DefaultHeight);
+
+                    var feeRequest = new FeeRequestDTO
+                    {
+                        FromDistrictId = _shopAddress.DistrictId,
+                        FromWardCode = _shopAddress.WardCode,
+                        ToDistrictId = order.ShippingDistrictId,
+                        ToWardCode = order.ShippingWardCode,
+                        Weight = Math.Max(package.Weight, 1),
+                        Length = package.Length,
+                        Width = package.Width,
+                        Height = package.Height,
+                        ServiceTypeId = package.ServiceTypeId,
+                        InsuranceValue = 0m,
+                        CodValue = 0m,
+                        Items = package.Items
+                    };
+                    var feeResult = await _ghnClient.GetFeeAsync(feeRequest, cancellationToken);
+                    refund.ReturnToCustomerFee = feeResult.IsSuccess && feeResult.Data != null
+                        ? feeResult.Data.Fee
+                        : 30000m; // Fallback 30.000 VND
+
+                    // 5. Kiểm tra cấn trừ ưu tiên
+                    if (totalRefundCandidate >= refund.ReturnToCustomerFee)
+                    {
+                        refund.FinalRefundAmount = totalRefundCandidate - refund.ReturnToCustomerFee;
+                        refund.ReturnToCustomerFeePaid = true;
+                        refund.CustomerResponseDeadline = null;
+                    }
+                    else
+                    {
+                        refund.FinalRefundAmount = 0m;
+                        refund.ReturnToCustomerFeePaid = false;
+                        refund.CustomerResponseDeadline = DateTime.UtcNow.AddHours(48);
+                    }
+                }
+                else
+                {
+                    refund.ReturnToCustomerFee = 0m;
+                    refund.FinalRefundAmount = totalRefundCandidate;
+                    refund.ReturnToCustomerFeePaid = true;
+                    refund.CustomerResponseDeadline = null;
+                }
+            }
+        }
+
         // Automatically call GHN API to generate waybill if new status is RefundPickupCreated
         // and ShippingOrderCode is not manually entered!
         if (newStatusId == (byte)RefundStatusEnum.RefundPickupCreated && string.IsNullOrWhiteSpace(dto.ShippingOrderCode))
         {
             var clientOrderCode = $"R-{refund.RefundCode ?? refund.RefundId.ToString()}";
 
+            var paymentType = string.Equals(refund.ReturnShippingFeeBy, RefundResponsibleParty.Customer, StringComparison.OrdinalIgnoreCase)
+                ? 1   // 1: Người gửi trả phí (Khách hàng trả tiền mặt lúc shipper lấy hàng)
+                : 2;  // 2: Người nhận trả phí (Shop thanh toán / công nợ shop)
+
+            var shippingItems = refund.RefundDetails.Select(x => new ShippingItem(
+                x.ProductId,
+                x.Product?.ProductName ?? "Sản phẩm hoàn trả",
+                x.Product?.Category?.CategoryName ?? "Toys",
+                x.Quantity,
+                x.UnitPrice,
+                x.Product?.ProductDetail?.WeightGram ?? _ghnOptions.DefaultItemWeight,
+                x.Product?.ProductDetail?.LengthCm ?? _ghnOptions.DefaultLength,
+                x.Product?.ProductDetail?.WidthCm ?? _ghnOptions.DefaultWidth,
+                x.Product?.ProductDetail?.HeightCm ?? _ghnOptions.DefaultHeight
+            )).ToList();
+
+            var package = GhnPackageCalculator.Calculate(
+                shippingItems,
+                _ghnOptions.DefaultItemWeight,
+                _ghnOptions.DefaultLength,
+                _ghnOptions.DefaultWidth,
+                _ghnOptions.DefaultHeight);
+
             var ghnRequest = new ShippingOrderCreateRequestDto
             {
                 ClientOrderCode = clientOrderCode,
+                PaymentTypeId = paymentType,
                 ToName = _shopAddress.Name,
                 ToPhone = _shopAddress.Phone,
                 ToAddress = _shopAddress.AddressLine,
@@ -785,22 +965,25 @@ public class RefundService : IRefundService
                 FromAddress = order.ShippingAddress,
                 FromWardName = order.ShippingWardName,
                 FromDistrictName = order.ShippingDistrictName,
-                ServiceTypeId = 2, // Standard
+                ServiceTypeId = package.ServiceTypeId,
                 InsuranceValue = 0m,
                 CodAmount = 0m,
-                Weight = 1000,
-                Length = 20,
-                Width = 15,
-                Height = 15,
+                Weight = Math.Max(package.Weight, 1),
+                Length = package.Length,
+                Width = package.Width,
+                Height = package.Height,
                 Note = "Khach hang tra hang - Shop chiu phi",
                 RequiredNote = "KHONGCHOXEMHANG",
-                Items = refund.RefundDetails.Select(x => new ShippingOrderCreateItemDto
+                Items = package.Items.Select(i => new ShippingOrderCreateItemDto
                 {
-                    Name = x.Product?.ProductName ?? "Sản phẩm hoàn trả",
-                    Quantity = x.Quantity,
-                    Price = x.UnitPrice,
-                    Weight = 500,
-                    Code = x.ProductId.ToString()
+                    Name = i.Name,
+                    Code = i.Code,
+                    Quantity = i.Quantity,
+                    Price = i.Price,
+                    Weight = i.Weight,
+                    Length = i.Length,
+                    Width = i.Width,
+                    Height = i.Height
                 }).ToList()
             };
 
@@ -827,6 +1010,34 @@ public class RefundService : IRefundService
         {
             var clientOrderCode = $"R2-{refund.RefundCode ?? refund.RefundId.ToString()}";
 
+            var returnItems = refund.RefundDetails
+                .Where(x => x.FailedCustomerQty > 0)
+                .ToList();
+
+            if (!returnItems.Any())
+            {
+                returnItems = refund.RefundDetails.ToList();
+            }
+
+            var shippingItems = returnItems.Select(x => new ShippingItem(
+                x.ProductId,
+                x.Product?.ProductName ?? "Sản phẩm hoàn trả",
+                x.Product?.Category?.CategoryName ?? "Toys",
+                (int)(x.FailedCustomerQty > 0 ? x.FailedCustomerQty : x.Quantity),
+                x.UnitPrice,
+                x.Product?.ProductDetail?.WeightGram ?? _ghnOptions.DefaultItemWeight,
+                x.Product?.ProductDetail?.LengthCm ?? _ghnOptions.DefaultLength,
+                x.Product?.ProductDetail?.WidthCm ?? _ghnOptions.DefaultWidth,
+                x.Product?.ProductDetail?.HeightCm ?? _ghnOptions.DefaultHeight
+            )).ToList();
+
+            var package = GhnPackageCalculator.Calculate(
+                shippingItems,
+                _ghnOptions.DefaultItemWeight,
+                _ghnOptions.DefaultLength,
+                _ghnOptions.DefaultWidth,
+                _ghnOptions.DefaultHeight);
+
             var ghnRequest = new ShippingOrderCreateRequestDto
             {
                 ClientOrderCode = clientOrderCode,
@@ -838,22 +1049,25 @@ public class RefundService : IRefundService
                 ToAddress = order.ShippingAddress,
                 ToDistrictId = order.ShippingDistrictId,
                 ToWardCode = order.ShippingWardCode,
-                ServiceTypeId = 2, // Standard
+                ServiceTypeId = package.ServiceTypeId,
                 InsuranceValue = 0m,
                 CodAmount = 0m,
-                Weight = 1000,
-                Length = 20,
-                Width = 15,
-                Height = 15,
+                Weight = Math.Max(package.Weight, 1),
+                Length = package.Length,
+                Width = package.Width,
+                Height = package.Height,
                 Note = "Giao tra san pham tu choi refund - Shop chiu phi",
                 RequiredNote = "KHONGCHOXEMHANG",
-                Items = refund.RefundDetails.Select(x => new ShippingOrderCreateItemDto
+                Items = package.Items.Select(i => new ShippingOrderCreateItemDto
                 {
-                    Name = x.Product?.ProductName ?? "Sản phẩm hoàn trả",
-                    Quantity = x.Quantity,
-                    Price = x.UnitPrice,
-                    Weight = 500,
-                    Code = x.ProductId.ToString()
+                    Name = i.Name,
+                    Code = i.Code,
+                    Quantity = i.Quantity,
+                    Price = i.Price,
+                    Weight = i.Weight,
+                    Length = i.Length,
+                    Width = i.Width,
+                    Height = i.Height
                 }).ToList()
             };
 
@@ -980,19 +1194,39 @@ public class RefundService : IRefundService
                     // 3. Nếu Customer chịu phí → gọi GHN GetFeeAsync để ước tính phí thực tế
                     if (string.Equals(finalFeeBy, RefundResponsibleParty.Customer, StringComparison.OrdinalIgnoreCase))
                     {
+                        var shippingItems = refund.RefundDetails.Select(x => new ShippingItem(
+                            x.ProductId,
+                            x.Product?.ProductName ?? "Sản phẩm hoàn trả",
+                            x.Product?.Category?.CategoryName ?? "Toys",
+                            x.Quantity,
+                            x.UnitPrice,
+                            x.Product?.ProductDetail?.WeightGram ?? _ghnOptions.DefaultItemWeight,
+                            x.Product?.ProductDetail?.LengthCm ?? _ghnOptions.DefaultLength,
+                            x.Product?.ProductDetail?.WidthCm ?? _ghnOptions.DefaultWidth,
+                            x.Product?.ProductDetail?.HeightCm ?? _ghnOptions.DefaultHeight
+                        )).ToList();
+
+                        var package = GhnPackageCalculator.Calculate(
+                            shippingItems,
+                            _ghnOptions.DefaultItemWeight,
+                            _ghnOptions.DefaultLength,
+                            _ghnOptions.DefaultWidth,
+                            _ghnOptions.DefaultHeight);
+
                         var feeRequest = new ToyStore.Application.DTOs.Checkouts.FeeRequestDTO
                         {
                             FromDistrictId = order.ShippingDistrictId,
                             FromWardCode = order.ShippingWardCode,
                             ToDistrictId = _shopAddress.DistrictId,
                             ToWardCode = _shopAddress.WardCode,
-                            ServiceTypeId = 2, // Standard — khớp với CreateOrderAsync
-                            Weight = 1000,
-                            Length = 20,
-                            Width = 15,
-                            Height = 15,
+                            ServiceTypeId = package.ServiceTypeId,
+                            Weight = Math.Max(package.Weight, 1),
+                            Length = package.Length,
+                            Width = package.Width,
+                            Height = package.Height,
                             InsuranceValue = 0m,
-                            CodValue = 0m
+                            CodValue = 0m,
+                            Items = package.Items
                         };
 
                         var feeResult = await _ghnClient.GetFeeAsync(feeRequest, cancellationToken);
@@ -1059,9 +1293,13 @@ public class RefundService : IRefundService
 
                     if (string.Equals(refund.DamageResponsibility, RefundDamageResponsibility.Carrier, StringComparison.OrdinalIgnoreCase))
                     {
-                        // Carrier fault: force RestorableQuantity = 0, ghi note
+                        // Carrier fault: force RestorableQuantity = 0, FailedCarrierQty = Quantity, FailedCustomerQty = 0, ghi note
                         foreach (var detail in refund.RefundDetails)
+                        {
                             detail.RestorableQuantity = 0;
+                            detail.FailedCarrierQty = detail.Quantity;
+                            detail.FailedCustomerQty = 0;
+                        }
 
                         var carrierNote = "Goods damaged by GHN in transit. Full refund approved. No stock restoration. File carrier claim with GHN.";
                         refund.AdminNote = string.IsNullOrEmpty(refund.AdminNote)
@@ -1071,41 +1309,123 @@ public class RefundService : IRefundService
                 }
                 else if (refund.RefundType == RefundTypes.ReturnAndRefund)
                 {
-                    if (refund.InspectionPassed == false)
-                    {
-                        // Customer return: Staff xác nhận DamageResponsibility: chỉ cho phép Complete nếu lỗi Carrier
-                        var confirmedDamageBy = !string.IsNullOrWhiteSpace(dto.DamageResponsibility)
-                            ? dto.DamageResponsibility
-                            : refund.DamageResponsibility;
+                    var customerFaultItems = refund.RefundDetails.Where(d => d.FailedCustomerQty > 0).ToList();
 
-                        if (!string.Equals(confirmedDamageBy, RefundDamageResponsibility.Carrier, StringComparison.OrdinalIgnoreCase))
+                    // Block if there are customer fault items but the fee is not paid yet
+                    if (customerFaultItems.Any() && !refund.ReturnToCustomerFeePaid)
+                    {
+                        var originalShipFeeRefund = refund.RefundDetails.Any(d => d.FailedCustomerQty > 0) ? 0m : refund.ShippingFee;
+                        var candidate = refund.ItemApprovedSubTotal + originalShipFeeRefund;
+                        var shortfall = refund.ReturnToCustomerFee - candidate;
+                        return Result<RefundDto>.BusinessError(
+                            $"Cannot complete the refund. The customer has not paid the return shipping fee shortfall of {shortfall:N0} VND.");
+                    }
+
+                    // Create return shipment only if not disposed
+                    if (customerFaultItems.Any() && !string.Equals(refund.CustomerResponse, "Disposed", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Create GHN return shipment for customer-fault items
+                        if (string.IsNullOrWhiteSpace(refund.ReturnShippingOrderCode))
                         {
-                            return Result<RefundDto>.BusinessError(
-                                "Cannot complete a return refund that failed quality inspection. " +
-                                "If damage was caused by the carrier, set DamageResponsibility = 'Carrier'.");
+                            var ghnItems = customerFaultItems.Select(x => new ShippingOrderCreateItemDto
+                            {
+                                Name = x.Product?.ProductName ?? "Sản phẩm hoàn trả",
+                                Quantity = x.FailedCustomerQty,
+                                Price = x.UnitPrice,
+                                Weight = 500,
+                                Code = x.ProductId.ToString()
+                            }).ToList();
+
+                            var clientOrderCode = $"R2-{refund.RefundCode ?? refund.RefundId.ToString()}";
+
+                            var ghnRequest = new ShippingOrderCreateRequestDto
+                            {
+                                ClientOrderCode = clientOrderCode,
+                                FromName = _shopAddress.Name,
+                                FromPhone = _shopAddress.Phone,
+                                FromAddress = _shopAddress.AddressLine,
+                                ToName = order.ShippingName,
+                                ToPhone = order.ShippingPhone,
+                                ToAddress = order.ShippingAddress,
+                                ToDistrictId = order.ShippingDistrictId,
+                                ToWardCode = order.ShippingWardCode,
+                                ServiceTypeId = 2, // Standard
+                                InsuranceValue = 0m,
+                                CodAmount = 0m, // Khách đã trả trước phí qua cấn trừ hoặc Ví, không thu COD nữa
+                                Weight = 1000,
+                                Length = 20,
+                                Width = 15,
+                                Height = 15,
+                                Note = "Giao tra san pham tu choi refund (khach lam hong) - Khách đã thanh toán trước",
+                                RequiredNote = "KHONGCHOXEMHANG",
+                                Items = ghnItems
+                            };
+
+                            var ghnResult = await _ghnClient.CreateOrderAsync(ghnRequest, cancellationToken);
+                            if (!ghnResult.IsSuccess)
+                            {
+                                return Result<RefundDto>.Failure("GHN_CREATE_FAILED", $"Failed to create GHN return shipment: {ghnResult.ErrorMessage}");
+                            }
+
+                            refund.ReturnShippingOrderCode = ghnResult.Data!.OrderCode;
+
+                            // Create transaction records
+                            var existingTx = await _unitOfWork.Orders.GetShippingTransactionByProviderCodeAsync(refund.ReturnShippingOrderCode, cancellationToken);
+                            if (existingTx is null)
+                            {
+                                var tx = new ShippingProviderTransaction
+                                {
+                                    OrderId = refund.OrderId,
+                                    Provider = "GHN",
+                                    ProviderOrderCode = refund.ReturnShippingOrderCode,
+                                    Status = ShippingStatuses.ReadyToPick,
+                                    CreatedAt = DateTime.UtcNow,
+                                    UpdatedAt = DateTime.UtcNow
+                                };
+                                await _unitOfWork.Orders.AddShippingTransactionAsync(tx, cancellationToken);
+                            }
                         }
 
+                        var itemDetails = string.Join(", ", customerFaultItems.Select(d => $"{d.Product?.ProductName ?? d.ProductId.ToString()} (x{d.FailedCustomerQty})"));
+                        var note = $"Partial refund: [{itemDetails}] returned to customer. Refunded: {refund.FinalRefundAmount:N0} VND. Return Shipping Fee: {refund.ReturnToCustomerFee:N0} VND (Paid).";
+                        refund.AdminNote = string.IsNullOrEmpty(refund.AdminNote) ? note : refund.AdminNote + " | " + note;
+                        refund.DamageResponsibility = RefundDamageResponsibility.Customer;
+                    }
+                    else if (customerFaultItems.Any() && string.Equals(refund.CustomerResponse, "Disposed", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var itemDetails = string.Join(", ", customerFaultItems.Select(d => $"{d.Product?.ProductName ?? d.ProductId.ToString()} (x{d.FailedCustomerQty})"));
+                        var note = $"Partial refund: [{itemDetails}] customer fault items are DISPOSED (customer chose to dispose or failed to pay fee). Refunded: {refund.FinalRefundAmount:N0} VND.";
+                        refund.AdminNote = string.IsNullOrEmpty(refund.AdminNote) ? note : refund.AdminNote + " | " + note;
+                        refund.DamageResponsibility = RefundDamageResponsibility.Customer;
+                    }
+                    else if (refund.InspectionPassed == false)
+                    {
+                        // All failed items are carrier fault (since customerFaultItems is empty)
                         refund.DamageResponsibility = RefundDamageResponsibility.Carrier;
                         var carrierNote = "Goods damaged by carrier in return transit. Refund approved. No stock restoration. File carrier claim with GHN.";
                         refund.AdminNote = string.IsNullOrEmpty(refund.AdminNote)
                             ? carrierNote
                             : refund.AdminNote + " | " + carrierNote;
                     }
+                }
 
-                    if (refund.StatusId == (byte)RefundStatusEnum.RefundInspectionPending)
+                if (refund.StatusId == (byte)RefundStatusEnum.RefundInspectionPending)
+                {
+                    refund.InspectionPassed = refund.InspectionPassed ?? true;
+                    if (string.IsNullOrWhiteSpace(refund.InspectionNote) && !string.IsNullOrWhiteSpace(dto.AdminNote))
                     {
-                        refund.InspectionPassed = refund.InspectionPassed ?? true;
-                        if (string.IsNullOrWhiteSpace(refund.InspectionNote) && !string.IsNullOrWhiteSpace(dto.AdminNote))
-                        {
-                            refund.InspectionNote = dto.AdminNote;
-                        }
+                        refund.InspectionNote = dto.AdminNote;
                     }
                 }
 
-                // Đảm bảo FinalRefundAmount đã được set (fallback cho các path khác: Damage, system refund Damage webhook...)
-                if (refund.FinalRefundAmount == 0m && refund.ApprovedAmount > 0m)
-                    refund.FinalRefundAmount = ComputeFinalRefundAmount(
-                        refund.ApprovedAmount, refund.ReturnShippingFee, refund.ReturnShippingFeeBy);
+                 // Đảm bảo FinalRefundAmount đã được set (fallback cho các path khác: Damage, system refund Damage webhook...)
+                 // Không chạy fallback nếu đã qua bước kiểm hàng (tức là đã xác định chi tiết tiền duyệt/từ chối sản phẩm cụ thể)
+                 if (refund.FinalRefundAmount == 0m && refund.ApprovedAmount > 0m && refund.ItemApprovedSubTotal == 0m && refund.ItemRejectedSubTotal == 0m)
+                 {
+                     refund.FinalRefundAmount = string.Equals(refund.ReturnShippingFeeBy, RefundResponsibleParty.Customer, StringComparison.OrdinalIgnoreCase)
+                         ? Math.Max(0m, refund.ApprovedAmount - refund.ReturnShippingFee)
+                         : refund.ApprovedAmount;
+                 }
 
                 refund.CompletedAt = DateTime.UtcNow;
                 await ExecuteCompletedSideEffects(refund, order, cancellationToken);
@@ -1215,11 +1535,11 @@ public class RefundService : IRefundService
             await _unitOfWork.Orders.HasCompletedRefundWalletCreditForOrderAsync(order.OrderId, cancellationToken)
             || await _unitOfWork.Orders.ExistsWalletTransactionByIdempotencyKeyAsync(orderRefundKey, cancellationToken);
 
-        if (!alreadyCredited)
+        if (!alreadyCredited && refund.FinalRefundAmount > 0m)
         {
             await _walletRefundCreditor.CreditRefundAsync(
                 refund.CustomerId,
-                refund.FinalRefundAmount > 0m ? refund.FinalRefundAmount : refund.ApprovedAmount,
+                refund.FinalRefundAmount,
                 order.OrderCode,
                 order.OrderId,
                 cancellationToken,
@@ -1234,7 +1554,9 @@ public class RefundService : IRefundService
         foreach (var originalDetail in order.OrderDetails)
         {
             var refundedItem = refund.RefundDetails.FirstOrDefault(rd => rd.ProductId == originalDetail.ProductId);
-            if (refundedItem == null || refundedItem.Quantity < originalDetail.Quantity)
+            if (refundedItem == null 
+                || refundedItem.FailedCustomerQty > 0
+                || refundedItem.Quantity < originalDetail.Quantity)
             {
                 isFullRefund = false;
                 break;
@@ -1290,13 +1612,10 @@ public class RefundService : IRefundService
 
         if (!isLostOrDamaged)
         {
-            bool isSystemReturn = IsSystemReturnRefund(refund);
             foreach (var item in refund.RefundDetails)
             {
-                // System Return: dùng RestorableQuantity (Merchandise đánh giá); Customer Return: dùng Quantity
-                short restoreQty = isSystemReturn
-                    ? (item.RestorableQuantity ?? item.Quantity)
-                    : item.Quantity;
+                // Dùng RestorableQuantity nếu có (được Merchandise kiểm tra), fallback về Quantity cho các dòng cũ
+                short restoreQty = item.RestorableQuantity ?? item.Quantity;
 
                 if (restoreQty <= 0) continue;
 
@@ -1452,6 +1771,104 @@ public class RefundService : IRefundService
             return Result.NotFound("Refund", refundId);
 
         return await _shiftAssignmentService.ReassignOrderAsync(refund.OrderId, dto, cancellationToken);
+    }
+
+    public async Task<Result<RefundDto>> PayReturnFeeAsync(int customerId, int refundId, CancellationToken cancellationToken = default)
+    {
+        var refund = await _unitOfWork.Refunds.GetByIdAsync(refundId, cancellationToken);
+        if (refund == null || refund.CustomerId != customerId)
+            return Result<RefundDto>.NotFound("Refund", refundId);
+
+        if (refund.StatusId != (byte)RefundStatusEnum.RefundInspectionPending)
+            return Result<RefundDto>.BusinessError("Return shipping fee payment is only allowed during the Inspection Pending stage.");
+
+        if (refund.ReturnToCustomerFeePaid)
+            return Result<RefundDto>.BusinessError("Return shipping fee is already paid.");
+
+        var customerFaultItems = refund.RefundDetails.Where(d => d.FailedCustomerQty > 0).ToList();
+        if (!customerFaultItems.Any())
+            return Result<RefundDto>.BusinessError("This refund does not contain any customer-fault items.");
+
+        var originalShipFeeRefund = refund.RefundDetails.Any(d => d.FailedCustomerQty > 0) ? 0m : refund.ShippingFee;
+        var candidate = refund.ItemApprovedSubTotal + originalShipFeeRefund;
+        var shortfall = refund.ReturnToCustomerFee - candidate;
+
+        if (shortfall <= 0)
+        {
+            refund.ReturnToCustomerFeePaid = true;
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            return Result<RefundDto>.Success(_mapper.Map<RefundDto>(refund));
+        }
+
+        var wallet = await _unitOfWork.Wallets.GetByAccountIdAsync(customerId, cancellationToken);
+        if (wallet == null)
+            return Result<RefundDto>.BusinessError("Wallet not found for this customer.");
+
+        if (wallet.Balance < shortfall)
+            return Result<RefundDto>.BusinessError($"Insufficient wallet balance. You need {shortfall:N0} VND but balance is {wallet.Balance:N0} VND. Please top up your wallet.");
+
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var balanceBefore = wallet.Balance;
+            wallet.Balance -= shortfall;
+            wallet.UpdatedAt = DateTime.UtcNow;
+            _unitOfWork.Wallets.UpdateWallet(wallet);
+
+            var walletTx = new WalletTransaction
+            {
+                WalletId = wallet.WalletId,
+                AccountId = customerId,
+                RelatedOrderId = refund.OrderId,
+                TxnType = WalletTxnTypes.Payment,
+                Direction = WalletTxnDirections.Debit,
+                Amount = shortfall,
+                BalanceBefore = balanceBefore,
+                BalanceAfter = wallet.Balance,
+                Method = "Internal",
+                Reason = $"Payment for return shipping shortfall on Refund #{refund.RefundCode}",
+                IdempotencyKey = $"PayShortfall-{refund.RefundCode}-{DateTime.UtcNow.Ticks}",
+                Status = "Completed",
+                CreatedAt = DateTime.UtcNow,
+                CompletedAt = DateTime.UtcNow
+            };
+            await _unitOfWork.Orders.AddWalletTransactionAsync(walletTx, cancellationToken);
+
+            refund.ReturnToCustomerFeePaid = true;
+            refund.CustomerResponse = "AcceptReturn";
+            refund.UpdatedAt = DateTime.UtcNow;
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            // Automatically call UpdateRefundStatusAsync to transition to Completed
+            var completeDto = new UpdateRefundStatusDto
+            {
+                Status = "RefundCompleted",
+                AdminNote = $"Customer paid ReturnShippingFee shortfall of {shortfall:N0} VND via Wallet. Automatically completed."
+            };
+
+            var completeResult = await UpdateRefundStatusAsync(
+                staffId: refund.ApprovedBy ?? customerId,
+                roleId: 2, // Staff role
+                refundId: refund.RefundId,
+                dto: completeDto,
+                isAdmin: true,
+                cancellationToken: cancellationToken);
+
+            if (!completeResult.IsSuccess)
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                return Result<RefundDto>.Failure(completeResult.ErrorCode ?? "COMPLETE_FAILED", completeResult.ErrorMessage ?? "Failed to auto-complete refund after payment.");
+            }
+
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+            return completeResult;
+        }
+        catch (Exception)
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw;
+        }
     }
 
     private static bool IsSystemReturnRefund(OrderRefund refund)
