@@ -21,6 +21,19 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: toystore-rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - toystore-network
+    restart: unless-stopped
 
   # ToyStore API
   api:
@@ -37,6 +50,8 @@ services:
     depends_on:
       sqlserver:
         condition: service_healthy
+      rabbitmq:
+        condition: service_started
     networks:
       - toystore-network
     restart: unless-stopped
@@ -54,6 +69,8 @@ services:
       sqlserver:
         condition: service_healthy
       api:
+        condition: service_started
+      rabbitmq:
         condition: service_started
     networks:
       - toystore-network

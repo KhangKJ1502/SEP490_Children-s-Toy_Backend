@@ -973,7 +973,10 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.HasIndex(e => new { e.AccountId, e.EventType, e.CreatedAt }, "IX_InteractionEvents_UserBehavior").IsDescending(false, false, true);
 
+            entity.HasIndex(e => e.IdempotencyKey, "UQ_Events_IdempotencyKey").IsUnique();
+
             entity.Property(e => e.EventId).HasColumnName("EventID");
+            entity.Property(e => e.IdempotencyKey).HasColumnName("IdempotencyKey");
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
             entity.Property(e => e.ClickPosition)
                 .HasMaxLength(30)
