@@ -61,4 +61,10 @@ public class RefundDetailRestockDto
 
     /// <summary>0 ≤ RestorableQuantity ≤ Quantity trong đơn.</summary>
     public short RestorableQuantity { get; set; }
+
+    /// <summary>Số lượng sản phẩm hỏng do lỗi của khách (không hoàn tiền).</summary>
+    public short FailedCustomerQty { get; set; }
+
+    /// <summary>Số lượng sản phẩm hỏng do lỗi vận chuyển (được hoàn tiền).</summary>
+    public short FailedCarrierQty { get; set; }
 }

@@ -136,6 +136,11 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
 
         try
         {
+            // Acquire exclusive update lock on the order row to prevent concurrent assignment race conditions
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM [Orders] WITH (UPDLOCK, ROWLOCK) WHERE [OrderID] = {orderId}",
+                cancellationToken);
+
             var activeAssignments = await _context.OrderAssignments
                 .Where(oa => oa.OrderId == orderId && oa.IsActive)
                 .ToListAsync(cancellationToken);

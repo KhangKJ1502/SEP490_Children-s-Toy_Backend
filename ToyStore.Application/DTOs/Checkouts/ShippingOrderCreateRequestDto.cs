@@ -45,5 +45,6 @@ public class ShippingOrderCreateRequestDto
 
     public string? FromDistrictName { get; set; }
 
+    public int PaymentTypeId { get; set; }
     public List<ShippingOrderCreateItemDto> Items { get; set; } = [];
 }

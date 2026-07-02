@@ -271,6 +271,8 @@ public class RefundRepository : IRefundRepository
             .Include(r => r.RequestedByNavigation)
             .Include(r => r.RefundImages.Where(i => !i.IsDeleted))
             .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.ProductImage)
+            .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.ProductDetail)
+            .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.Category)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.Status)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.ChangedByNavigation)
             .FirstOrDefaultAsync(r => r.RefundId == id && !r.IsDeleted, cancellationToken);
@@ -289,6 +291,8 @@ public class RefundRepository : IRefundRepository
             .Include(r => r.RequestedByNavigation)
             .Include(r => r.RefundImages.Where(i => !i.IsDeleted))
             .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.ProductImage)
+            .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.ProductDetail)
+            .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.Category)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.Status)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.ChangedByNavigation)
             .FirstOrDefaultAsync(r => r.OrderId == orderId && !r.IsDeleted, cancellationToken);
@@ -307,6 +311,8 @@ public class RefundRepository : IRefundRepository
             .Include(r => r.RequestedByNavigation)
             .Include(r => r.RefundImages.Where(i => !i.IsDeleted))
             .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.ProductImage)
+            .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.ProductDetail)
+            .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.Category)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.Status)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.ChangedByNavigation)
             .FirstOrDefaultAsync(r => r.ShippingOrderCode == code && !r.IsDeleted, cancellationToken);
@@ -325,6 +331,8 @@ public class RefundRepository : IRefundRepository
             .Include(r => r.RequestedByNavigation)
             .Include(r => r.RefundImages.Where(i => !i.IsDeleted))
             .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.ProductImage)
+            .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.ProductDetail)
+            .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.Category)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.Status)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.ChangedByNavigation)
             .FirstOrDefaultAsync(r => (r.ShippingOrderCode == code || r.ReturnShippingOrderCode == code) && !r.IsDeleted, cancellationToken);
@@ -339,5 +347,19 @@ public class RefundRepository : IRefundRepository
     public void Update(OrderRefund refund)
     {
         _context.OrderRefunds.Update(refund);
+    }
+
+    public async Task<List<OrderRefund>> GetStaleUnpaidRefundsAsync(System.DateTime cutoff, CancellationToken cancellationToken = default)
+    {
+        return await _context.OrderRefunds
+            .Include(r => r.Status)
+            .Include(r => r.Order)
+            .Include(r => r.RefundDetails).ThenInclude(d => d.Product)
+            .Where(r => !r.IsDeleted 
+                && r.StatusId == (byte)ToyStore.Domain.Enums.RefundStatusEnum.RefundInspectionPending
+                && r.ReturnToCustomerFeePaid == false
+                && r.CustomerResponseDeadline.HasValue
+                && r.CustomerResponseDeadline.Value < cutoff)
+            .ToListAsync(cancellationToken);
     }
 }
