@@ -159,7 +159,7 @@ public sealed class GhnClient : IGhnClient
 
         var payload = new Dictionary<string, object>
         {
-            ["payment_type_id"] = 2,
+            ["payment_type_id"] = request.PaymentTypeId > 0 ? request.PaymentTypeId : 2,
             ["note"] = request.Note ?? string.Empty,
             ["required_note"] = request.RequiredNote,
             ["from_name"] = !string.IsNullOrWhiteSpace(request.FromName) ? request.FromName : _shopAddressOptions.Name,

@@ -28,9 +28,6 @@ public class MongoDbContext
         EnsureIndexes();
     }
 
-    public IMongoCollection<SessionEventDocument> SessionEvents =>
-        _database.GetCollection<SessionEventDocument>(_options.SessionEventsCollection);
-
     public IMongoCollection<UserProfileDocument> UserProfiles =>
         _database.GetCollection<UserProfileDocument>(_options.UserProfilesCollection);
 
@@ -41,29 +38,6 @@ public class MongoDbContext
     {
         try
         {
-            // ── session_events: idx tìm event chưa flush + idx phụ trợ
-            var sessionEventIndexes = new[]
-            {
-                new CreateIndexModel<SessionEventDocument>(
-                    Builders<SessionEventDocument>.IndexKeys
-                        .Ascending(x => x.FlushedAt)
-                        .Ascending(x => x.CreatedAt),
-                    new CreateIndexOptions { Name = "ix_flushedAt_createdAt" }),
-                new CreateIndexModel<SessionEventDocument>(
-                    Builders<SessionEventDocument>.IndexKeys.Ascending(x => x.SessionId),
-                    new CreateIndexOptions { Name = "ix_sessionId" }),
-                // TTL: xoá session_event đã flush sau 7 ngày để tránh phình MongoDB
-                new CreateIndexModel<SessionEventDocument>(
-                    Builders<SessionEventDocument>.IndexKeys.Ascending(x => x.FlushedAt),
-                    new CreateIndexOptions
-                    {
-                        Name = "ttl_flushedAt_7d",
-                        ExpireAfter = TimeSpan.FromDays(7),
-                        Sparse = true
-                    }),
-            };
-            SessionEvents.Indexes.CreateMany(sessionEventIndexes);
-
             // ── recommendation_cache: unique cacheKey + TTL theo ExpiresAt
             var cacheIndexes = new[]
             {

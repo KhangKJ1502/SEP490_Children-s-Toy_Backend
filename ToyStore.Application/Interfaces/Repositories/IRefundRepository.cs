@@ -19,4 +19,5 @@ public interface IRefundRepository
     Task<OrderRefund?> GetByShippingOrReturnOrderCodeAsync(string code, CancellationToken cancellationToken = default);
     Task<OrderRefund> AddAsync(OrderRefund refund, CancellationToken cancellationToken = default);
     void Update(OrderRefund refund);
+    Task<List<OrderRefund>> GetStaleUnpaidRefundsAsync(System.DateTime cutoff, CancellationToken cancellationToken = default);
 }

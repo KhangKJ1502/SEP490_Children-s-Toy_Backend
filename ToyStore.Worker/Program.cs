@@ -14,7 +14,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddRecommendation(builder.Configuration);
 
 // Recommendation background jobs
-builder.Services.AddHostedService<FlushEventsJob>();
+builder.Services.AddHostedService<EventTrackingConsumer>();
 builder.Services.AddHostedService<ComputeScoresJob>();
 builder.Services.AddHostedService<ComputeSimilarityJob>();
 builder.Services.AddHostedService<ComputeTrendingJob>();
@@ -56,6 +56,9 @@ builder.Services.AddHostedService<GhnShippingRetryJob>();
 // Withdrawal workers
 builder.Services.AddHostedService<WithdrawalTimeoutJob>();
 builder.Services.AddHostedService<WithdrawalPayoutPollJob>();
+
+// Refund workers
+builder.Services.AddHostedService<RefundTimeoutJob>();
 
 var host = builder.Build();
 host.Run();

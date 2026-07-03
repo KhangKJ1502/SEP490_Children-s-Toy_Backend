@@ -67,6 +67,13 @@ public class RefundDto
     /// <summary>[System Return] Staff đã chọn có hoàn phí ship chưa. null = chưa Complete.</summary>
     public bool? IncludeShippingInRefund { get; set; }
 
+    public decimal ItemApprovedSubTotal { get; set; }
+    public decimal ItemRejectedSubTotal { get; set; }
+    public decimal ReturnToCustomerFee { get; set; }
+    public DateTime? CustomerResponseDeadline { get; set; }
+    public string? CustomerResponse { get; set; }
+    public bool ReturnToCustomerFeePaid { get; set; }
+
     /// <summary>Voucher discount amount từ đơn hàng gốc (display only, voucher không được trả lại).</summary>
     public decimal VoucherDiscountAmount { get; set; }
 
@@ -87,6 +94,12 @@ public class RefundDetailDto
 
     /// <summary>[System Return] Số lượng Merchandise xác nhận nhập kho lại. null = chưa kiểm tra.</summary>
     public short? RestorableQuantity { get; set; }
+
+    /// <summary>Số lượng sản phẩm hỏng do lỗi của khách (không hoàn tiền).</summary>
+    public short FailedCustomerQty { get; set; }
+
+    /// <summary>Số lượng sản phẩm hỏng do lỗi vận chuyển (được hoàn tiền).</summary>
+    public short FailedCarrierQty { get; set; }
 }
 
 public class RefundStatusHistoryDto

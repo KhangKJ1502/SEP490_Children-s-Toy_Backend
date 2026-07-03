@@ -46,6 +46,9 @@ public static class DependencyInjection
         // Application services
         services.AddScoped<ITrackingService, TrackingService>();
         services.AddScoped<IRecommendationService, RecommendationService>();
+        
+        // RabbitMQ
+        services.AddSingleton<ToyStore.Recommendation.RabbitMq.IRabbitMqEventPublisher, ToyStore.Recommendation.RabbitMq.RabbitMqEventPublisher>();
 
         return services;
     }

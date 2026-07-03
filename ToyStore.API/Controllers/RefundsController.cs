@@ -72,6 +72,15 @@ public class RefundsController : ControllerBase
         return result.ToActionResult();
     }
 
+    [HttpPost("{refundId:int}/pay-return-fee")]
+    public async Task<ActionResult<RefundDto>> PayReturnFee(
+        [FromRoute] int refundId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _refundService.PayReturnFeeAsync(_currentUserService.AccountId, refundId, cancellationToken);
+        return result.ToActionResult();
+    }
+
     [HttpPost("upload-image")]
     [Consumes("multipart/form-data")]
     public async Task<ActionResult<UploadImageResponseDto>> UploadImage(

@@ -12,23 +12,23 @@ namespace ToyStore.Recommendation.Tracking;
 
 /// <summary>
 /// Implementation của ITrackingService.
-/// Luồng: Validate → Map sang SessionEventDocument → InsertMany Mongo → trả về số lượng.
-/// Toàn bộ pipeline non-blocking: chỉ ghi 1 lần insert nhanh, không gọi sang SQL Server.
+/// Luồng: Validate → Đẩy TrackEventMessage sang RabbitMQ → trả về số lượng.
+/// Toàn bộ pipeline non-blocking: đẩy nhanh vào queue, không gọi thẳng sang SQL Server.
 /// </summary>
 public class TrackingService : ITrackingService
 {
-    private readonly MongoDbContext _mongo;
+    private readonly ToyStore.Recommendation.RabbitMq.IRabbitMqEventPublisher _rabbitMq;
     private readonly IValidator<TrackEventRequestDto> _validator;
     private readonly RecommendationOptions _options;
     private readonly ILogger<TrackingService> _logger;
 
     public TrackingService(
-        MongoDbContext mongo,
+        ToyStore.Recommendation.RabbitMq.IRabbitMqEventPublisher rabbitMq,
         IValidator<TrackEventRequestDto> validator,
         IOptions<RecommendationOptions> options,
         ILogger<TrackingService> logger)
     {
-        _mongo = mongo;
+        _rabbitMq = rabbitMq;
         _validator = validator;
         _options = options.Value;
         _logger = logger;
@@ -71,13 +71,14 @@ public class TrackingService : ITrackingService
                 request.Events.Count, _options.MaxEventsPerBatch, request.SessionId);
         }
 
-        // 4. Map DTO → MongoDB document
+        // 4. Map DTO → Message Document
         var now = DateTime.UtcNow;
-        var docs = new List<SessionEventDocument>(toInsert.Count);
+        var messages = new List<ToyStore.Recommendation.RabbitMq.TrackEventMessage>(toInsert.Count);
         foreach (var ev in toInsert)
         {
-            docs.Add(new SessionEventDocument
+            messages.Add(new ToyStore.Recommendation.RabbitMq.TrackEventMessage
             {
+                IdempotencyKey = Guid.NewGuid(),
                 AccountId = request.AccountId,
                 SessionId = request.SessionId,
                 EventType = ev.EventType.Trim().ToLowerInvariant(),
@@ -91,28 +92,24 @@ public class TrackingService : ITrackingService
                 ClickPosition = ev.ClickPosition,
                 Metadata = ev.Metadata,
                 OccurredAt = ev.OccurredAt ?? now,
-                CreatedAt = now,
-                FlushedAt = null, // sẽ được FlushEventsJob set khi flush sang SQL Server
+                CreatedAt = now
             });
         }
 
-        // 5. Bulk insert vào MongoDB (ordered=false → không dừng khi 1 doc lỗi)
+        // 5. Publish to RabbitMQ
         try
         {
-            await _mongo.SessionEvents.InsertManyAsync(
-                docs,
-                new MongoDB.Driver.InsertManyOptions { IsOrdered = false, BypassDocumentValidation = false },
-                cancellationToken);
+            _rabbitMq.PublishEvents("tracking_events", messages);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to insert {Count} events into MongoDB session_events", docs.Count);
-            return Result<TrackEventResponseDto>.Failure("TRACKING_INSERT_FAILED", "Failed to persist events.");
+            _logger.LogError(ex, "Failed to publish {Count} events to RabbitMQ", messages.Count);
+            return Result<TrackEventResponseDto>.Failure("TRACKING_PUBLISH_FAILED", "Failed to enqueue events.");
         }
 
         return Result<TrackEventResponseDto>.Success(new TrackEventResponseDto
         {
-            AcceptedCount = docs.Count,
+            AcceptedCount = messages.Count,
             RejectedCount = rejected,
         });
     }
