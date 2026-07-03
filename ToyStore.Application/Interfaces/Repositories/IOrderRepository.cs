@@ -110,8 +110,6 @@ public interface IOrderRepository
     /// </summary>
     Task<List<ShippingItem>> GetShippingItemsForOrderAsync(int orderId, CancellationToken cancellationToken = default);
 
-    // ── Writes ────────────────────────────────────────────────────────────────
-
     /// <summary>
     /// Them ban ghi OrderStatusHistory.
     /// </summary>
