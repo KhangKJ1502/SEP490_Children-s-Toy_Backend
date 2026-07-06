@@ -378,8 +378,8 @@ public class ShippingWebhookService : IShippingWebhookService
                 // 2. Process Refund Status transition
                 if (targetRefundStatusId is not null && refund.StatusId != targetRefundStatusId.Value)
                 {
-                    if (refund.StatusId != (byte)RefundStatusEnum.RefundCompleted && 
-                        (refund.StatusId != (byte)RefundStatusEnum.RefundCancelled || targetRefundStatusId.Value == (byte)RefundStatusEnum.RefundDamage))
+                    if (!RefundStatusTransitionValidator.IsFinal(refund.StatusId) || 
+                        (refund.StatusId == (byte)RefundStatusEnum.RefundCancelled && targetRefundStatusId.Value == (byte)RefundStatusEnum.RefundDamage))
                     {
                         var previousRefundStatusId = refund.StatusId;
                         refund.StatusId = targetRefundStatusId.Value;

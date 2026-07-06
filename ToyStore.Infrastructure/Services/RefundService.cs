@@ -74,6 +74,10 @@ public class RefundService : IRefundService
             "refundcompleted" or "completed" => (byte)RefundStatusEnum.RefundCompleted,
             "refundcancelled" or "cancelled" => (byte)RefundStatusEnum.RefundCancelled,
             "refunddamage" or "damage" => (byte)RefundStatusEnum.RefundDamage,
+            "refundreturnshipmentcreated" => (byte)RefundStatusEnum.RefundReturnShipmentCreated,
+            "refundreturningtocustomer" => (byte)RefundStatusEnum.RefundReturningToCustomer,
+            "refundreturnedtocustomer" => (byte)RefundStatusEnum.RefundReturnedToCustomer,
+            "refundreturntocustomerfailed" => (byte)RefundStatusEnum.RefundReturnToCustomerFailed,
             _ => null
         };
     }
@@ -1324,6 +1328,10 @@ public class RefundService : IRefundService
                     // Create return shipment only if not disposed
                     if (customerFaultItems.Any() && !string.Equals(refund.CustomerResponse, "Disposed", StringComparison.OrdinalIgnoreCase))
                     {
+                        // Redirect target status to RefundReturnShipmentCreated
+                        newStatusId = (byte)RefundStatusEnum.RefundReturnShipmentCreated;
+                        refund.StatusId = newStatusId.Value;
+
                         // Create GHN return shipment for customer-fault items
                         if (string.IsNullOrWhiteSpace(refund.ReturnShippingOrderCode))
                         {
@@ -1843,8 +1851,8 @@ public class RefundService : IRefundService
             // Automatically call UpdateRefundStatusAsync to transition to Completed
             var completeDto = new UpdateRefundStatusDto
             {
-                Status = "RefundCompleted",
-                AdminNote = $"Customer paid ReturnShippingFee shortfall of {shortfall:N0} VND via Wallet. Automatically completed."
+                Status = "RefundReturnShipmentCreated",
+                AdminNote = $"Customer paid ReturnShippingFee shortfall of {shortfall:N0} VND via Wallet. Automatically scheduled return shipping."
             };
 
             var completeResult = await UpdateRefundStatusAsync(
