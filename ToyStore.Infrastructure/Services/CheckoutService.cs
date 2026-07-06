@@ -163,34 +163,25 @@ public class CheckoutService : ICheckoutService
 
         var activeProductIds = activeCartItems.Select(ci => ci.ProductId).ToList();
 
-        var productDetailsList = await _db.ProductDetails
-            .Where(pd => activeProductIds.Contains(pd.ProductId))
-            .Join(_db.Products,
-                  pd => pd.ProductId, p => p.ProductId,
-                  (pd, p) => new { pd, p })
-            .Join(_db.Categories,
-                  x => x.p.CategoryId, c => c.CategoryId,
-                  (x, c) => new { x.pd, x.p, c })
-            .ToListAsync(cancellationToken);
-
-        var detailsMap = productDetailsList.ToDictionary(x => x.p.ProductId);
+        var productsWithDetails = await _uow.Products.GetProductsWithDetailsAndCategoriesAsync(activeProductIds, cancellationToken);
+        var detailsMap = productsWithDetails.ToDictionary(p => p.ProductId);
 
         var shippingItems = new List<ShippingItem>();
         foreach (var ci in activeCartItems)
         {
-            if (detailsMap.TryGetValue(ci.ProductId, out var details))
+            if (detailsMap.TryGetValue(ci.ProductId, out var product))
             {
                 var currentPrice = PriceHelper.ResolveCurrentPrice(ci.Product, _timeProvider.UtcNow, (int)ci.Quantity);
                 shippingItems.Add(new ShippingItem(
                     ci.ProductId,
                     ci.Product.ProductName,
-                    details.c.CategoryName,
+                    product.Category?.CategoryName ?? "",
                     (int)ci.Quantity,
                     currentPrice,
-                    details.pd.WeightGram,
-                    details.pd.LengthCm,
-                    details.pd.WidthCm,
-                    details.pd.HeightCm
+                    product.ProductDetail?.WeightGram ?? 0,
+                    product.ProductDetail?.LengthCm ?? 0,
+                    product.ProductDetail?.WidthCm ?? 0,
+                    product.ProductDetail?.HeightCm ?? 0
                 ));
             }
         }
@@ -471,16 +462,7 @@ public class CheckoutService : ICheckoutService
 
         // Lấy sản phẩm và validate sơ bộ
         var productIds = request.Items.Select(i => i.ProductId).Distinct().ToList();
-        var products = await _db.Products
-            .Include(p => p.ProductImage)
-            .Include(p => p.PromotionProductSlots)
-                .ThenInclude(pps => pps.TimeSlot)
-                    .ThenInclude(ts => ts.Promotion)
-            .Include(p => p.ProductPromotions)
-                .ThenInclude(pp => pp.Promotion)
-                    .ThenInclude(p => p.PromotionTimeSlots)
-            .Where(p => productIds.Contains(p.ProductId))
-            .ToListAsync(cancellationToken);
+        var products = await _uow.Products.GetProductsForCheckoutAsync(productIds, cancellationToken);
 
         var productMap = products.ToDictionary(p => p.ProductId);
         var softErrors = new List<string>();
@@ -542,35 +524,26 @@ public class CheckoutService : ICheckoutService
         // Lấy chi tiết cân nặng, chiều dài, rộng, cao thực tế của sản phẩm cho Confirm
         var confirmProductIds = request.Items.Select(i => i.ProductId).Distinct().ToList();
 
-        var productDetailsList = await _db.ProductDetails
-            .Where(pd => confirmProductIds.Contains(pd.ProductId))
-            .Join(_db.Products,
-                  pd => pd.ProductId, p => p.ProductId,
-                  (pd, p) => new { pd, p })
-            .Join(_db.Categories,
-                  x => x.p.CategoryId, c => c.CategoryId,
-                  (x, c) => new { x.pd, x.p, c })
-            .ToListAsync(cancellationToken);
-
-        var detailsMap = productDetailsList.ToDictionary(x => x.p.ProductId);
+        var productsWithDetails = await _uow.Products.GetProductsWithDetailsAndCategoriesAsync(confirmProductIds, cancellationToken);
+        var detailsMap = productsWithDetails.ToDictionary(p => p.ProductId);
 
         var shippingItems = new List<ShippingItem>();
         foreach (var item in request.Items)
         {
-            if (detailsMap.TryGetValue(item.ProductId, out var details))
+            if (detailsMap.TryGetValue(item.ProductId, out var product))
             {
                 var p = productMap[item.ProductId];
                 var currentPrice = PriceHelper.ResolveCurrentPrice(p, _timeProvider.UtcNow, (int)item.Quantity);
                 shippingItems.Add(new ShippingItem(
                     item.ProductId,
                     p.ProductName,
-                    details.c.CategoryName,
+                    product.Category?.CategoryName ?? "",
                     (int)item.Quantity,
                     currentPrice,
-                    details.pd.WeightGram,
-                    details.pd.LengthCm,
-                    details.pd.WidthCm,
-                    details.pd.HeightCm
+                    product.ProductDetail?.WeightGram ?? 0,
+                    product.ProductDetail?.LengthCm ?? 0,
+                    product.ProductDetail?.WidthCm ?? 0,
+                    product.ProductDetail?.HeightCm ?? 0
                 ));
             }
         }
@@ -1030,9 +1003,6 @@ public class CheckoutService : ICheckoutService
             throw;
         }
     }
-
-    // ── Retry QR ──────────────────────────────────────────────────────────────
-
     public async Task<Result<RetryPaymentResponseDto>> RetryPaymentAsync(
         int accountId,
         int orderId,

@@ -123,6 +123,16 @@ public interface IProductRepository
     Task<List<Product>> GetByIdsAsync(IEnumerable<int> productIds, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Lay danh sach Product phuc vu cho Checkout, kem theo Image, PromotionProductSlots, ProductPromotions.
+    /// </summary>
+    Task<List<Product>> GetProductsForCheckoutAsync(IEnumerable<int> productIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lay danh sach Product phuc vu cho tinh phi ship Checkout, kem theo ProductDetail va Category.
+    /// </summary>
+    Task<List<Product>> GetProductsWithDetailsAndCategoriesAsync(IEnumerable<int> productIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Lay danh sach Product cho bao cao ton kho.
     /// </summary>
     Task<List<Product>> GetProductQuantityReportAsync(
