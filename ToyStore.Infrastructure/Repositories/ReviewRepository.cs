@@ -314,6 +314,10 @@ public class ReviewRepository : IReviewRepository
         {
             query = query.Where(r => r.IsDeleted == isDeleted.Value);
         }
+        else
+        {
+            query = query.Where(r => !r.IsDeleted);
+        }
 
         if (!string.IsNullOrWhiteSpace(moderationStatus))
         {

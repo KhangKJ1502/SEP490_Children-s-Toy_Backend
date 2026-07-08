@@ -108,6 +108,10 @@ public class RefundService : IRefundService
             (byte)RefundStatusEnum.RefundCompleted => RefundStatuses.Completed,
             (byte)RefundStatusEnum.RefundCancelled => RefundStatuses.Cancelled,
             (byte)RefundStatusEnum.RefundDamage => RefundStatuses.Damage,
+            (byte)RefundStatusEnum.RefundReturnShipmentCreated => RefundStatuses.ReturnShipmentCreated,
+            (byte)RefundStatusEnum.RefundReturningToCustomer => RefundStatuses.ReturningToCustomer,
+            (byte)RefundStatusEnum.RefundReturnedToCustomer => RefundStatuses.ReturnedToCustomer,
+            (byte)RefundStatusEnum.RefundReturnToCustomerFailed => RefundStatuses.ReturnToCustomerFailed,
             _ => status
         };
     }
@@ -474,6 +478,10 @@ public class RefundService : IRefundService
             if (normalized == "processing")
             {
                 statusFilter = $"{RefundStatuses.Approved},{RefundStatuses.PickupCreated},{RefundStatuses.Shipping},{RefundStatuses.Received},{RefundStatuses.InspectionPending}";
+            }
+            else if (normalized == "rejected")
+            {
+                statusFilter = $"{RefundStatuses.Rejected},{RefundStatuses.ReturnShipmentCreated},{RefundStatuses.ReturningToCustomer},{RefundStatuses.ReturnedToCustomer},{RefundStatuses.ReturnToCustomerFailed}";
             }
             else
             {

@@ -96,22 +96,6 @@ public class ReviewService : IReviewService
             new PaginatedResponse<ReviewProductListDto>(dtos, count, pageNumber, pageSize));
     }
 
-    public async Task<Result<ReviewProductDto>> GetPublicDetailAsync(
-        int reviewId, CancellationToken cancellationToken = default)
-    {
-        var review = await _unitOfWork.Reviews.GetByIdPublicAsync(reviewId, cancellationToken);
-        if (review == null)
-            return Result<ReviewProductDto>.NotFound("Review", reviewId);
-
-        var dto = _mapper.Map<ReviewProductDto>(review);
-        
-        var currentUserId = _currentUser.IsAuthenticated ? _currentUser.AccountId : 0;
-        dto.LikeCount = review.ReviewProductReactions.Count(r => !r.IsDeleted && r.ReactionTypeNavigation.Code.ToLower() == "like");
-        dto.IsLiked = currentUserId > 0 && review.ReviewProductReactions.Any(r => !r.IsDeleted && r.AccountId == currentUserId && r.ReactionTypeNavigation.Code.ToLower() == "like");
-        
-        return Result<ReviewProductDto>.Success(dto);
-    }
-
     public async Task<Result<ReviewProductDto>> CreateReviewAsync(
         CreateReviewProductDto dto, CancellationToken cancellationToken = default)
     {
