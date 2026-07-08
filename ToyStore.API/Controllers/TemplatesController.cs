@@ -8,7 +8,7 @@ using ToyStore.Application.Interfaces.Services;
 namespace ToyStore.API.Controllers;
 
 [ApiController]
-[Authorize(Roles = "Admin,Staff,Merchandise")]
+[Authorize(Roles = "Admin,Staff")]
 [Route("api/[controller]")]
 public class TemplatesController : ControllerBase
 {
@@ -69,9 +69,6 @@ public class TemplatesController : ControllerBase
         [FromBody] UpdateTemplateDto dto,
         CancellationToken cancellationToken = default)
     {
-        if (dto.IsDeleted && !User.IsInRole("Admin"))
-            return Forbid();
-
         var result = await _templateService.SaveTemplateAsync(templateId, dto, cancellationToken);
 
         if (!result.IsSuccess)

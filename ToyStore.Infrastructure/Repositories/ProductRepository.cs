@@ -713,6 +713,29 @@ public class ProductRepository : IProductRepository
             .ToListAsync(cancellationToken);
     }
 
+    public Task<List<Product>> GetProductsForCheckoutAsync(IEnumerable<int> productIds, CancellationToken cancellationToken = default)
+    {
+        return _context.Products
+            .Include(p => p.ProductImage)
+            .Include(p => p.PromotionProductSlots)
+                .ThenInclude(pps => pps.TimeSlot)
+                    .ThenInclude(ts => ts.Promotion)
+            .Include(p => p.ProductPromotions)
+                .ThenInclude(pp => pp.Promotion)
+                    .ThenInclude(p => p.PromotionTimeSlots)
+            .Where(p => productIds.Contains(p.ProductId) && !p.IsDeleted)
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<List<Product>> GetProductsWithDetailsAndCategoriesAsync(IEnumerable<int> productIds, CancellationToken cancellationToken = default)
+    {
+        return _context.Products
+            .Include(p => p.ProductDetail)
+            .Include(p => p.Category)
+            .Where(p => productIds.Contains(p.ProductId) && !p.IsDeleted)
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<List<PriceRange>> GetPriceRangesAsync(CancellationToken cancellationToken = default)
     {
         return _context.PriceRanges
