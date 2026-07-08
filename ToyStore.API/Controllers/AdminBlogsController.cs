@@ -213,16 +213,6 @@ public class AdminBlogsController : ControllerBase
         return result.ToActionResult();
     }
 
-    [HttpPatch("blogs/{blogPostId:int}/featured")]
-    public async Task<ActionResult<BlogDetailDto>> UpdateFeatured(
-        [FromRoute] int blogPostId,
-        [FromBody] UpdateBlogFeaturedDto dto,
-        CancellationToken cancellationToken = default)
-    {
-        var result = await _blogService.UpdateFeaturedAsync(blogPostId, dto, cancellationToken);
-        return result.ToActionResult();
-    }
-
     [HttpPost("ai-blogs/generate")]
     public async Task<ActionResult<AiBlogGenerateResult>> GenerateBlogWithAi(
         [FromBody] AiBlogGenerateRequest request,

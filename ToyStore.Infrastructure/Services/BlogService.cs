@@ -451,18 +451,6 @@ public class BlogService : IBlogService
         return Result<BlogDetailDto>.Success(_mapper.Map<BlogDetailDto>(updated!));
     }
 
-    public Task<Result<BlogDetailDto>> UpdateFeaturedAsync(
-        int blogPostId,
-        UpdateBlogFeaturedDto dto,
-        CancellationToken cancellationToken = default)
-    {
-        _ = blogPostId;
-        _ = dto;
-        _ = cancellationToken;
-        return Task.FromResult(Result<BlogDetailDto>.BusinessError(
-            "Featured status is managed automatically by database triggers based on blog interactions."));
-    }
-
     public async Task<Result<BlogDetailDto>> HideBlogAsync(int blogPostId, CancellationToken cancellationToken = default)
     {
         if (_currentUserService.AccountId <= 0)
@@ -1450,21 +1438,6 @@ public class BlogService : IBlogService
     private static bool IsCustomerAccount(Account? account)
     {
         return string.Equals(account?.Role?.RoleName, CustomerRoleName, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool? ParseHiddenStatus(string? status)
-    {
-        if (string.Equals(status?.Trim(), "Visible", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        if (string.Equals(status?.Trim(), "Hidden", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return null;
     }
 
     private static List<BlogReviewDto> MapReviewThreads(
