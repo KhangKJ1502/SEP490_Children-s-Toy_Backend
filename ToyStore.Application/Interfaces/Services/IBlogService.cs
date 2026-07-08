@@ -82,11 +82,6 @@ public interface IBlogService
     Task<Result<BlogDetailDto>> PublishNowAsync(int blogPostId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Updates featured flag for a blog.
-    /// </summary>
-    Task<Result<BlogDetailDto>> UpdateFeaturedAsync(int blogPostId, UpdateBlogFeaturedDto dto, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Hides a blog from public visibility.
     /// </summary>
     Task<Result<BlogDetailDto>> HideBlogAsync(int blogPostId, CancellationToken cancellationToken = default);
