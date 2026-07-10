@@ -11,9 +11,6 @@ public interface IReviewService
     Task<Result<PaginatedResponse<ReviewProductListDto>>> GetPublicListAsync(
         ReviewQueryDto query, CancellationToken cancellationToken = default);
 
-    Task<Result<ReviewProductDto>> GetPublicDetailAsync(
-        int reviewId, CancellationToken cancellationToken = default);
-
     Task<Result<ReviewProductDto>> CreateReviewAsync(
         CreateReviewProductDto dto, CancellationToken cancellationToken = default);
 
