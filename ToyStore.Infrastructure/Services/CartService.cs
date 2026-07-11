@@ -270,40 +270,6 @@ public class CartService : ICartService
         return Result<CartDto>.Success(snapshot);
     }
 
-    public async Task<Result<CartDto>> ClearCartAsync(CancellationToken cancellationToken = default)
-    {
-        var accountId = _currentUserService.AccountId;
-        if (accountId <= 0)
-        {
-            return Result<CartDto>.Unauthorized("Please login to manage cart.");
-        }
-
-        var cart = await EnsureCartAsync(accountId, cancellationToken);
-        var cartWithItems = await _unitOfWork.Carts.GetByAccountIdWithItemsAsync(accountId, cancellationToken);
-
-        if (cartWithItems != null)
-        {
-            var now = DateTime.UtcNow;
-            _unitOfWork.Carts.RemoveItems(cartWithItems.CartItems);
-
-            cart.UpdatedAt = now;
-            _unitOfWork.Carts.UpdateCart(cart);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-        }
-
-        var snapshot = await BuildCartSnapshotAsync(accountId, cancellationToken);
-
-        await PublishCartEventAsync(
-            accountId,
-            CartHubEvents.CartUpdated,
-            snapshot,
-            "Cart has been cleared.",
-            null,
-            cancellationToken);
-
-        return Result<CartDto>.Success(snapshot);
-    }
-
     public async Task<Result<CartDto>> GetMyCartAsync(CancellationToken cancellationToken = default)
     {
         var accountId = _currentUserService.AccountId;
