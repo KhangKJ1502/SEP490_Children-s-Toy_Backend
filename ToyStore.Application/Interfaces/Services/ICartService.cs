@@ -14,8 +14,6 @@ public interface ICartService
 
     Task<Result<CartDto>> RemoveItemAsync(int cartItemId, CancellationToken cancellationToken = default);
 
-    Task<Result<CartDto>> ClearCartAsync(CancellationToken cancellationToken = default);
-
     Task<Result<CartDto>> GetMyCartAsync(CancellationToken cancellationToken = default);
 
     Task NotifyProductChangedAsync(int productId, CancellationToken cancellationToken = default);
