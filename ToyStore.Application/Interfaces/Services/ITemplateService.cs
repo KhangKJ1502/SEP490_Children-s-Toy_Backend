@@ -25,6 +25,13 @@ public interface ITemplateService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Lay chi tiet Template theo ID.
+    /// </summary>
+    Task<Result<TemplateListDto>> GetTemplateByIdAsync(
+        short templateId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Tao moi Template.
     /// </summary>
     Task<Result<TemplateListDto>> CreateTemplateAsync(
