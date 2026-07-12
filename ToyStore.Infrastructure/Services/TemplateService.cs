@@ -87,6 +87,22 @@ public class TemplateService : ITemplateService
         return Result<PaginatedResponse<TemplateListDto>>.Success(response);
     }
 
+    public async Task<Result<TemplateListDto>> GetTemplateByIdAsync(
+        short templateId,
+        CancellationToken cancellationToken = default)
+    {
+        if (templateId <= 0)
+            return Result<TemplateListDto>.Failure("VALIDATION_ERROR", "Template ID must be greater than 0.");
+
+        var template = await _unitOfWork.Templates.GetByIdAsync(templateId, cancellationToken);
+        if (template is null)
+            return Result<TemplateListDto>.NotFound("Template", templateId);
+
+        var dto = _mapper.Map<TemplateListDto>(template);
+        dto.IsUsed = await _unitOfWork.Templates.IsUsedAsync(template.TemplateCode, cancellationToken);
+        return Result<TemplateListDto>.Success(dto);
+    }
+
     public async Task<Result<TemplateListDto>> CreateTemplateAsync(
         CreateTemplateDto dto,
         CancellationToken cancellationToken = default)
