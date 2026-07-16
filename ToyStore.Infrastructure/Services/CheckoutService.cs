@@ -719,7 +719,7 @@ public class CheckoutService : ICheckoutService
                 var p = productMap[item.ProductId];
                 var flashSaleSlot = PriceHelper.GetActiveFlashSaleSlot(p, now, (int)item.Quantity);
 
-                await _db.OrderDetails.AddAsync(new OrderDetail
+                await _uow.Orders.AddOrderDetailAsync(new OrderDetail
                 {
                     OrderId = order.OrderId,
                     ProductId = p.ProductId,
@@ -736,11 +736,8 @@ public class CheckoutService : ICheckoutService
                 // WALLET trừ sau khi kiểm tra số dư ví thành công (bên dưới)
                 if (payMethod == PayMethodCod || payMethod == PayMethodSepay)
                 {
-                    var affected = await _db.Database.ExecuteSqlRawAsync(
-                        "UPDATE Products SET Quantity = Quantity - {0} WHERE ProductID = {1} AND Quantity >= {0} AND ProductStatus = 'Active'",
-                        new object[] { item.Quantity, item.ProductId },
-                        cancellationToken);
-                    if (affected == 0)
+                    var success = await _uow.Orders.UpdateProductQuantityAsync(item.ProductId, (int)item.Quantity, cancellationToken);
+                    if (!success)
                     {
                         await _uow.RollbackTransactionAsync(cancellationToken);
                         return Result<CheckoutConfirmResponseDto>.Conflict(
@@ -846,11 +843,8 @@ public class CheckoutService : ICheckoutService
                 // when a withdrawal is in-flight (LockedBalance > 0). Using Balance alone would allow
                 // spending funds already reserved for a pending/processing withdrawal, causing
                 // the withdrawal CommitAsync to fail with InsufficientAvailable and losing store money.
-                var walletAffected = await _db.Database.ExecuteSqlRawAsync(
-                    "UPDATE Wallets SET Balance = Balance - {0} WHERE AccountID = {1} AND (Balance - LockedBalance) >= {0} AND Status = 'Active'",
-                    new object[] { totalAmount, accountId },
-                    cancellationToken);
-                if (walletAffected == 0)
+                var walletSuccess = await _uow.Orders.DeductWalletBalanceAsync(accountId, totalAmount, cancellationToken);
+                if (!walletSuccess)
                 {
                     await _uow.RollbackTransactionAsync(cancellationToken);
                     return Result<CheckoutConfirmResponseDto>.BusinessError("Insufficient wallet balance.");
@@ -881,11 +875,8 @@ public class CheckoutService : ICheckoutService
                 foreach (var item in request.Items)
                 {
                     var p = productMap[item.ProductId];
-                    var affected = await _db.Database.ExecuteSqlRawAsync(
-                        "UPDATE Products SET Quantity = Quantity - {0} WHERE ProductID = {1} AND Quantity >= {0} AND ProductStatus = 'Active'",
-                        new object[] { item.Quantity, item.ProductId },
-                        cancellationToken);
-                    if (affected == 0)
+                    var success = await _uow.Orders.UpdateProductQuantityAsync(item.ProductId, (int)item.Quantity, cancellationToken);
+                    if (!success)
                     {
                         await _uow.RollbackTransactionAsync(cancellationToken);
                         return Result<CheckoutConfirmResponseDto>.Conflict(

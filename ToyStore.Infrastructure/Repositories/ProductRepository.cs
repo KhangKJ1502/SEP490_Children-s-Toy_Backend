@@ -777,11 +777,4 @@ public class ProductRepository : IProductRepository
             .ToListAsync(cancellationToken);
     }
 
-    public Task AdjustStockAsync(int productId, int amount, CancellationToken cancellationToken = default)
-    {
-        return _context.Database.ExecuteSqlRawAsync(
-            "UPDATE Products SET Quantity = Quantity + {0} WHERE ProductID = {1}",
-            new object[] { amount, productId },
-            cancellationToken);
-    }
 }

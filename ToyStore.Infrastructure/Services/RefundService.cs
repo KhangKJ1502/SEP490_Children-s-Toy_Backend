@@ -1635,7 +1635,7 @@ public class RefundService : IRefundService
 
                 if (restoreQty <= 0) continue;
 
-                await _unitOfWork.Products.AdjustStockAsync(item.ProductId, restoreQty, cancellationToken);
+                await _unitOfWork.Orders.AdjustStockAsync(item.ProductId, restoreQty, cancellationToken);
                 var originalDetail = order.OrderDetails.FirstOrDefault(od => od.ProductId == item.ProductId);
                 if (originalDetail != null && originalDetail.SlotProductId.HasValue)
                 {

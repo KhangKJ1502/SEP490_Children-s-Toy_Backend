@@ -405,7 +405,37 @@ public class OrderRepository : IOrderRepository
             cancellationToken);
     }
 
-    // ── Private helpers ───────────────────────────────────────────────────────
+    public async Task AddOrderDetailAsync(OrderDetail detail, CancellationToken cancellationToken = default)
+    {
+        await _context.OrderDetails.AddAsync(detail, cancellationToken);
+    }
+
+    public async Task<bool> UpdateProductQuantityAsync(int productId, int quantity, CancellationToken cancellationToken = default)
+    {
+        var affected = await _context.Database.ExecuteSqlRawAsync(
+            "UPDATE Products SET Quantity = Quantity - {0} WHERE ProductID = {1} AND Quantity >= {0} AND ProductStatus = 'Active'",
+            new object[] { quantity, productId },
+            cancellationToken);
+        return affected > 0;
+    }
+
+    public async Task<bool> DeductWalletBalanceAsync(int accountId, decimal amount, CancellationToken cancellationToken = default)
+    {
+        var affected = await _context.Database.ExecuteSqlRawAsync(
+            "UPDATE Wallets SET Balance = Balance - {0} WHERE AccountID = {1} AND (Balance - LockedBalance) >= {0} AND Status = 'Active'",
+            new object[] { amount, accountId },
+            cancellationToken);
+        return affected > 0;
+    }
+
+    public Task AdjustStockAsync(int productId, int amount, CancellationToken cancellationToken = default)
+    {
+        return _context.Database.ExecuteSqlRawAsync(
+            "UPDATE Products SET Quantity = Quantity + {0} WHERE ProductID = {1}",
+            new object[] { amount, productId },
+            cancellationToken);
+    }
+
 
     private static readonly string[] AdminGhnReturnStatuses =
     [
