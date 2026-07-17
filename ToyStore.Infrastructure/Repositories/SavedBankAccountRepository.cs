@@ -54,4 +54,9 @@ public class SavedBankAccountRepository : ISavedBankAccountRepository
                            && (w.Status == "PENDING" || w.Status == "PROCESSING"), 
                        cancellationToken);
     }
+
+    public void Update(SavedBankAccount account)
+    {
+        _context.SavedBankAccounts.Update(account);
+    }
 }

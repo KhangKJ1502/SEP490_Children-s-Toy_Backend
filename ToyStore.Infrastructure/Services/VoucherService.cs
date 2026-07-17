@@ -490,6 +490,7 @@ public class VoucherService : IVoucherService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
+            _unitOfWork.Vouchers.Update(existingVoucher);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
         }
