@@ -73,7 +73,6 @@ public interface ITemplateRepository
     Task<Template?> SaveAsync(
         short templateId,
         bool isDeleted,
-        string? templateCode,
         string? titleTemplate,
         string? messageTemplate,
         bool? isActive,
