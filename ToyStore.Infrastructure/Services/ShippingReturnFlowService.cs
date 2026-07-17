@@ -510,7 +510,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         foreach (var detail in fullOrder.OrderDetails)
         {
             if (productsSubtracted)
-                await _unitOfWork.Products.AdjustStockAsync(detail.ProductId, detail.Quantity, ct);
+                await _unitOfWork.Orders.AdjustStockAsync(detail.ProductId, detail.Quantity, ct);
 
             if (detail.SlotProductId.HasValue && restoreStock)
             {

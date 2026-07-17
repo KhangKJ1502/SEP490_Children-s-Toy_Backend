@@ -47,3 +47,6 @@ TestResults/
 
 ## Migration backups
 *.bak
+
+## Local Test Project
+ToyStore.Tests/

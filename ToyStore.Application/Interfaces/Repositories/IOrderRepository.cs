@@ -164,4 +164,8 @@ public interface IOrderRepository
     Task<bool> ExistsWalletTransactionByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken = default);
     Task<long?> GetWalletTransactionIdByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken = default);
     Task<bool> HasCompletedRefundWalletCreditForOrderAsync(int orderId, CancellationToken cancellationToken = default);
+    Task AddOrderDetailAsync(OrderDetail detail, CancellationToken cancellationToken = default);
+    Task<bool> UpdateProductQuantityAsync(int productId, int quantity, CancellationToken cancellationToken = default);
+    Task<bool> DeductWalletBalanceAsync(int accountId, decimal amount, CancellationToken cancellationToken = default);
+    Task AdjustStockAsync(int productId, int amount, CancellationToken cancellationToken = default);
 }

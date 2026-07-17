@@ -47,13 +47,6 @@ public class CartController : ControllerBase
         return ToApiResponse(result, "Cart item removed successfully.");
     }
 
-    [HttpDelete("clear")]
-    public async Task<ActionResult<ApiResponse<CartDto>>> ClearCart(CancellationToken cancellationToken = default)
-    {
-        var result = await _cartService.ClearCartAsync(cancellationToken);
-        return ToApiResponse(result, "Cart cleared successfully.");
-    }
-
     [HttpGet("my-cart")]
     public async Task<ActionResult<ApiResponse<CartDto>>> GetMyCart(CancellationToken cancellationToken = default)
     {

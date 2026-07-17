@@ -49,6 +49,15 @@ public class TemplatesController : ControllerBase
         return result.ToActionResult();
     }
 
+    [HttpGet("{templateId:int}")]
+    public async Task<ActionResult<TemplateListDto>> GetTemplateById(
+        [FromRoute] short templateId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _templateService.GetTemplateByIdAsync(templateId, cancellationToken);
+        return result.ToActionResult();
+    }
+
     [HttpPost]
     public async Task<ActionResult<TemplateListDto>> CreateTemplate(
         [FromBody] CreateTemplateDto dto,

@@ -84,6 +84,7 @@ public class SavedBankAccountService : ISavedBankAccountService
                 foreach (var account in previousDefaults)
                 {
                     account.IsDefault = false;
+                    _unitOfWork.SavedBankAccounts.Update(account);
                 }
 
                 if (previousDefaults.Any())
@@ -107,6 +108,7 @@ public class SavedBankAccountService : ISavedBankAccountService
                 existing.LastUsedAt = null; // Reset last used
 
                 resultEntity = existing;
+                _unitOfWork.SavedBankAccounts.Update(existing);
             }
             else
             {
@@ -172,7 +174,8 @@ public class SavedBankAccountService : ISavedBankAccountService
         {
             var wasDefault = account.IsDefault;
             account.IsDeleted = true;
-            account.IsDefault = false; // Turn off default
+            account.IsDefault = false;
+            _unitOfWork.SavedBankAccounts.Update(account);
 
             if (wasDefault)
             {
@@ -181,6 +184,7 @@ public class SavedBankAccountService : ISavedBankAccountService
                 if (nextDefault != null)
                 {
                     nextDefault.IsDefault = true;
+                    _unitOfWork.SavedBankAccounts.Update(nextDefault);
                 }
             }
 
@@ -228,6 +232,7 @@ public class SavedBankAccountService : ISavedBankAccountService
             foreach (var previousDefault in previousDefaults)
             {
                 previousDefault.IsDefault = false;
+                _unitOfWork.SavedBankAccounts.Update(previousDefault);
             }
 
             if (previousDefaults.Any())
@@ -237,6 +242,7 @@ public class SavedBankAccountService : ISavedBankAccountService
             }
 
             account.IsDefault = true;
+            _unitOfWork.SavedBankAccounts.Update(account);
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
