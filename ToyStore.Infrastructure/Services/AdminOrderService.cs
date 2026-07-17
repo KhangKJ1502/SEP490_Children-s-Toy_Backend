@@ -625,6 +625,9 @@ public class AdminOrderService : IAdminOrderService
                 _logger.LogWarning(
                     "GHN cancel failed for {GhnCode} (order {OrderId}): {Error}",
                     order.ShippingOrderCode, orderId, ghnCancel.ErrorMessage);
+                return Result<CancelOrderResponseDto>.BadGateway(
+                    $"Cannot cancel order: the GHN shipment could not be cancelled ({ghnCancel.ErrorMessage}). " +
+                    "The shipment may already be in transit. Please cancel directly on the GHN portal first.");
             }
         }
 
