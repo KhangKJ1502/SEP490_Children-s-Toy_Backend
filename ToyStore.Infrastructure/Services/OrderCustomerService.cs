@@ -107,13 +107,7 @@ public class OrderCustomerService : IOrderCustomerService
         var order = await _uow.Orders.GetByIdForCustomerAsync(orderId, accountId, cancellationToken);
         if (order is null)
         {
-            var exists = await _uow.Orders.GetByIdAsync(orderId, cancellationToken);
-            if (exists is null)
-            {
-                return Result<CustomerOrderDetailDto>.NotFound("Order", orderId);
-            }
-
-            return Result<CustomerOrderDetailDto>.Unauthorized("You are not authorized to view this order.");
+            return Result<CustomerOrderDetailDto>.Failure("NOT_FOUND", "Order not found or you don't have permission to view this order.");
         }
 
         var dto = _mapper.Map<CustomerOrderDetailDto>(order);
@@ -133,12 +127,8 @@ public class OrderCustomerService : IOrderCustomerService
         CancellationToken cancellationToken = default)
     {
         var order = await _uow.Orders.GetByIdForUpdateAsync(orderId, cancellationToken);
-        if (order is null)
-            return Result<CancelOrderCustomerResponseDto>.NotFound("Order", orderId);
-
-        // Ownership check
-        if (!isAdmin && order.AccountId != actorAccountId)
-            return Result<CancelOrderCustomerResponseDto>.Unauthorized("You are not authorized to cancel this order.");
+        if (order is null || (!isAdmin && order.AccountId != actorAccountId))
+            return Result<CancelOrderCustomerResponseDto>.Failure("NOT_FOUND", "Order not found or you don't have permission to cancel this order.");
 
         // Chỉ hủy khi trạng thái còn Pending hoặc Confirmed
         if (!OrderStatuses.CancellableStatuses.Contains(order.Status.StatusName))
@@ -176,6 +166,9 @@ public class OrderCustomerService : IOrderCustomerService
                 _logger.LogWarning(
                     "GHN cancel failed for {GhnCode} (order {OrderCode}): {Error}",
                     order.ShippingOrderCode, order.OrderCode, ghnCancel.ErrorMessage);
+                return Result<CancelOrderCustomerResponseDto>.BadGateway(
+                    $"Cannot cancel order: the GHN shipment could not be cancelled ({ghnCancel.ErrorMessage}). " +
+                    "The shipment may already be in transit. Please contact support.");
             }
         }
 
@@ -215,11 +208,8 @@ public class OrderCustomerService : IOrderCustomerService
         CancellationToken cancellationToken = default)
     {
         var order = await _uow.Orders.GetByIdWithTrackingAsync(orderId, cancellationToken);
-        if (order is null)
-            return Result<OrderTrackingDto>.NotFound("Order", orderId);
-
-        if (!isAdmin && order.AccountId != accountId)
-            return Result<OrderTrackingDto>.Unauthorized("You are not authorized to view this order tracking.");
+        if (order is null || (!isAdmin && order.AccountId != accountId))
+            return Result<OrderTrackingDto>.Failure("NOT_FOUND", "Order not found or you don't have permission to view this order tracking.");
 
         var shippingTxn = order.ShippingProviderTransactions.FirstOrDefault();
 
@@ -264,11 +254,8 @@ public class OrderCustomerService : IOrderCustomerService
         CancellationToken cancellationToken = default)
     {
         var order = await _uow.Orders.GetByIdAsync(orderId, cancellationToken);
-        if (order is null)
-            return Result<OrderPaymentStatusDto>.NotFound("Order", orderId);
-
-        if (!isAdmin && order.AccountId != accountId)
-            return Result<OrderPaymentStatusDto>.Unauthorized("You are not authorized to view this order payment status.");
+        if (order is null || (!isAdmin && order.AccountId != accountId))
+            return Result<OrderPaymentStatusDto>.Failure("NOT_FOUND", "Order not found or you don't have permission to view this order payment status.");
 
         // Guard: nếu đơn SE_PAY đã bị cancel nhưng PaymentStatus chưa được cập nhật (dữ liệu cũ)
         var effectivePaymentStatus = order.PaymentStatus;
@@ -295,10 +282,8 @@ public class OrderCustomerService : IOrderCustomerService
     public async Task<Result<string>> CompleteAsync(int orderId, int accountId, CancellationToken cancellationToken = default)
     {
         var order = await _uow.Orders.GetByIdAsync(orderId, cancellationToken);
-        if (order is null) return Result<string>.NotFound("Order", orderId);
-
-        if (order.AccountId != accountId)
-            return Result<string>.Unauthorized("You are not authorized to confirm this order.");
+        if (order is null || order.AccountId != accountId)
+            return Result<string>.Failure("NOT_FOUND", "Order not found or you don't have permission to confirm this order.");
 
         // Chỉ được xác nhận khi đơn ở trạng thái Delivered
         if (order.StatusId != (byte)OrderStatus.Delivered)
@@ -325,11 +310,8 @@ public class OrderCustomerService : IOrderCustomerService
         CancellationToken cancellationToken = default)
     {
         var order = await _uow.Orders.GetByIdAsync(orderId, cancellationToken);
-        if (order is null)
-            return Result<OrderPaymentInfoDto>.NotFound("Order", orderId);
-
-        if (order.AccountId != accountId)
-            return Result<OrderPaymentInfoDto>.Unauthorized("You are not authorized to access this order's payment info.");
+        if (order is null || order.AccountId != accountId)
+            return Result<OrderPaymentInfoDto>.Failure("NOT_FOUND", "Order not found or you don't have permission to access this order's payment info.");
 
         if (order.PaymentMethod != "SE_PAY")
             return Result<OrderPaymentInfoDto>.BusinessError("This order does not use QR payment.");
