@@ -63,7 +63,7 @@ public class OrderLifecycleService : IOrderLifecycleService
                 // General Stock restoration
                 if (productsSubtracted)
                 {
-                    await _unitOfWork.Products.AdjustStockAsync(detail.ProductId, detail.Quantity, cancellationToken);
+                    await _unitOfWork.Orders.AdjustStockAsync(detail.ProductId, detail.Quantity, cancellationToken);
                 }
 
                 // Flash Sale Stock restoration

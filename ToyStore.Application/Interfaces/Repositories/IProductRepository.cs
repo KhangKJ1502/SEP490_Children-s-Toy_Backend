@@ -176,11 +176,4 @@ public interface IProductRepository
     /// Lay danh sach Origin.
     /// </summary>
     Task<List<Origin>> GetOriginsAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Cap nhat ton kho atomic (thread-safe).
-    /// </summary>
-    /// <param name="productId">ID san pham.</param>
-    /// <param name="amount">So luong can thay doi (duong de tang, am de giam).</param>
-    Task AdjustStockAsync(int productId, int amount, CancellationToken cancellationToken = default);
 }

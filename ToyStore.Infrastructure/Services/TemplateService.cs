@@ -162,7 +162,6 @@ public class TemplateService : ITemplateService
 
         if (!dto.IsDeleted)
         {
-            if (dto.TemplateCode != null) dto.TemplateCode = dto.TemplateCode.Trim();
             if (dto.TitleTemplate != null) dto.TitleTemplate = dto.TitleTemplate.Trim();
             if (dto.MessageTemplate != null) dto.MessageTemplate = dto.MessageTemplate.Trim();
         }
@@ -190,21 +189,12 @@ public class TemplateService : ITemplateService
             return Result<TemplateListDto?>.Failure("BUSINESS_RULE_VIOLATION", msg);
         }
 
-        if (!dto.IsDeleted)
-        {
-            var isDuplicate = await _unitOfWork.Templates.ExistsByCodeExceptIdAsync(
-                dto.TemplateCode, templateId, cancellationToken);
-            if (isDuplicate)
-                return Result<TemplateListDto?>.Conflict("Template code already exists.");
-        }
-
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
             var saved = await _unitOfWork.Templates.SaveAsync(
                 templateId,
                 dto.IsDeleted,
-                dto.IsDeleted ? null : dto.TemplateCode,
                 dto.IsDeleted ? null : dto.TitleTemplate,
                 dto.IsDeleted ? null : dto.MessageTemplate,
                 dto.IsDeleted ? null : dto.IsActive,

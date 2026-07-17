@@ -9,12 +9,6 @@ public class UpdateTemplateValidator : AbstractValidator<UpdateTemplateDto>
     {
         When(x => !x.IsDeleted, () =>
         {
-            RuleFor(x => x.TemplateCode)
-                .NotEmpty().WithMessage("Template code is required.")
-                .MinimumLength(3).WithMessage("Template code must be at least 3 characters.")
-                .MaximumLength(50).WithMessage("Template code must not exceed 50 characters.")
-                .Matches("^[A-Z0-9_]+$").WithMessage("Template code can only contain UPPERCASE letters, numbers, and underscores.");
-
             RuleFor(x => x.TitleTemplate)
                 .NotEmpty().WithMessage("Template title is required.")
                 .MinimumLength(3).WithMessage("Template title must be at least 3 characters.")

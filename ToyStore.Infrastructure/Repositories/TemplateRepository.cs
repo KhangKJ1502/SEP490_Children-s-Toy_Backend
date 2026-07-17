@@ -195,7 +195,6 @@ public class TemplateRepository : ITemplateRepository
     public async Task<Template?> SaveAsync(
         short templateId,
         bool isDeleted,
-        string? templateCode,
         string? titleTemplate,
         string? messageTemplate,
         bool? isActive,
@@ -213,7 +212,6 @@ public class TemplateRepository : ITemplateRepository
         }
         else
         {
-            entity.TemplateCode = templateCode!;
             entity.TitleTemplate = titleTemplate!;
             entity.MessageTemplate = messageTemplate!;
             entity.IsActive = isActive!.Value;
