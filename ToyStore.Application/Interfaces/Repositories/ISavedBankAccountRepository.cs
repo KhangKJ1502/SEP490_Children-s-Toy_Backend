@@ -12,4 +12,6 @@ public interface ISavedBankAccountRepository
     Task<SavedBankAccount?> GetByUniqueKeyAsync(int accountId, string bankBin, string accountNumber, CancellationToken cancellationToken = default);
     Task AddAsync(SavedBankAccount account, CancellationToken cancellationToken = default);
     Task<bool> HasPendingWithdrawalRequestsAsync(string bankBin, string accountNumber, CancellationToken cancellationToken = default);
+    void Update(SavedBankAccount account);
 }
+
