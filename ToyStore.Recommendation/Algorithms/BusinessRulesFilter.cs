@@ -66,6 +66,8 @@ public class BusinessRulesFilter
         var bufferLimit = Math.Min(candidateIds.Count, Math.Max(maxItems * 3, maxItems + 20));
         var idsToFetch = candidateIds.Take(bufferLimit).ToList();
 
+        var now = DateTime.UtcNow;
+
         var products = await _db.Products
             .AsNoTracking()
             .Where(p => idsToFetch.Contains(p.ProductId)
@@ -89,9 +91,83 @@ public class BusinessRulesFilter
                 SoldQuantity = p.OrderDetails
                     .Where(od => !od.Order.IsDeleted && od.Order.CancelledAt == null)
                     .Sum(od => (int?)od.Quantity) ?? 0,
-                HasActivePromotion = p.ProductPromotions.Any(pp =>
-                    !pp.Promotion.IsDeleted
-                    && pp.Promotion.Status == "Active"),
+                // --- Flash Sale (ưu tiên cao nhất) ---
+                BestFlashSalePrice = p.PromotionProductSlots
+                    .Where(pps => !pps.IsDeleted
+                        && pps.TimeSlot != null
+                        && pps.TimeSlot.Status == "Active"
+                        && pps.TimeSlot.StartAt <= now
+                        && pps.TimeSlot.EndAt >= now
+                        && pps.TimeSlot.Promotion != null
+                        && !pps.TimeSlot.Promotion.IsDeleted
+                        && (pps.TimeSlot.Promotion.Status == "Active" || pps.TimeSlot.Promotion.Status == "Scheduled")
+                        && (pps.SoldQuantity + pps.ReservedQuantity) < pps.SaleQuantity)
+                    .OrderByDescending(pps => pps.TimeSlot.Promotion.Priority)
+                    .ThenBy(pps => pps.SalePrice)
+                    .Select(pps => (decimal?)pps.SalePrice)
+                    .FirstOrDefault(),
+                BestFlashSaleDiscountPercent = p.PromotionProductSlots
+                    .Where(pps => !pps.IsDeleted
+                        && pps.TimeSlot != null
+                        && pps.TimeSlot.Status == "Active"
+                        && pps.TimeSlot.StartAt <= now
+                        && pps.TimeSlot.EndAt >= now
+                        && pps.TimeSlot.Promotion != null
+                        && !pps.TimeSlot.Promotion.IsDeleted
+                        && (pps.TimeSlot.Promotion.Status == "Active" || pps.TimeSlot.Promotion.Status == "Scheduled")
+                        && (pps.SoldQuantity + pps.ReservedQuantity) < pps.SaleQuantity)
+                    .OrderByDescending(pps => pps.TimeSlot.Promotion.Priority)
+                    .ThenBy(pps => pps.SalePrice)
+                    .Select(pps => pps.DiscountPercent)
+                    .FirstOrDefault(),
+                BestFlashSalePromotionType = p.PromotionProductSlots
+                    .Where(pps => !pps.IsDeleted
+                        && pps.TimeSlot != null
+                        && pps.TimeSlot.Status == "Active"
+                        && pps.TimeSlot.StartAt <= now
+                        && pps.TimeSlot.EndAt >= now
+                        && pps.TimeSlot.Promotion != null
+                        && !pps.TimeSlot.Promotion.IsDeleted
+                        && (pps.TimeSlot.Promotion.Status == "Active" || pps.TimeSlot.Promotion.Status == "Scheduled")
+                        && (pps.SoldQuantity + pps.ReservedQuantity) < pps.SaleQuantity)
+                    .OrderByDescending(pps => pps.TimeSlot.Promotion.Priority)
+                    .ThenBy(pps => pps.SalePrice)
+                    .Select(pps => pps.TimeSlot.Promotion.PromotionType)
+                    .FirstOrDefault(),
+                // --- Regular Promotion ---
+                BestRegularPromoPrice = p.ProductPromotions
+                    .Where(pp => !pp.IsDeleted
+                        && pp.Promotion != null
+                        && !pp.Promotion.IsDeleted
+                        && (pp.Promotion.Status == "Active" || pp.Promotion.Status == "Scheduled")
+                        && pp.Promotion.StartDate <= now
+                        && pp.Promotion.EndDate >= now)
+                    .OrderByDescending(pp => pp.Promotion.Priority)
+                    .ThenBy(pp => pp.SalePrice)
+                    .Select(pp => (decimal?)pp.SalePrice)
+                    .FirstOrDefault(),
+                BestRegularPromoDiscountPercent = p.ProductPromotions
+                    .Where(pp => !pp.IsDeleted
+                        && pp.Promotion != null
+                        && !pp.Promotion.IsDeleted
+                        && (pp.Promotion.Status == "Active" || pp.Promotion.Status == "Scheduled")
+                        && pp.Promotion.StartDate <= now
+                        && pp.Promotion.EndDate >= now)
+                    .OrderByDescending(pp => pp.Promotion.Priority)
+                    .ThenBy(pp => pp.SalePrice)
+                    .Select(pp => pp.DiscountPercent)
+                    .FirstOrDefault(),
+                BestRegularPromoPromotionType = p.ProductPromotions
+                    .Where(pp => !pp.IsDeleted
+                        && pp.Promotion != null
+                        && !pp.Promotion.IsDeleted
+                        && (pp.Promotion.Status == "Active" || pp.Promotion.Status == "Scheduled")
+                        && pp.Promotion.StartDate <= now
+                        && pp.Promotion.EndDate >= now)
+                    .OrderByDescending(pp => pp.Promotion.Priority)
+                    .ThenBy(pp => pp.SalePrice)
+                    .Select(pp => pp.Promotion.PromotionType)
+                    .FirstOrDefault(),
             })
             .ToListAsync(ct);
 
@@ -112,9 +188,30 @@ public class BusinessRulesFilter
             if (purchasedSet.Contains(c.ProductId)) continue;
 
             var finalScore = c.Score;
-            if (p.HasActivePromotion)
+
+            // Chọn promotion tốt nhất: Flash Sale ưu tiên hơn Regular
+            var discountedPrice = p.BestFlashSalePrice ?? p.BestRegularPromoPrice;
+
+            // Boost score 10% nếu sản phẩm đang có khuyến mãi
+            if (discountedPrice.HasValue && discountedPrice.Value < p.Price)
             {
                 finalScore *= 1.1m; // boost 10% — ưu tiên item đang khuyến mãi
+            }
+
+            var rawDiscountPercent = p.BestFlashSalePrice.HasValue
+                ? p.BestFlashSaleDiscountPercent
+                : p.BestRegularPromoDiscountPercent;
+            var promotionType = p.BestFlashSalePrice.HasValue
+                ? p.BestFlashSalePromotionType
+                : p.BestRegularPromoPromotionType;
+
+            // Tính lại discountPercent nếu không có sẵn (fallback)
+            int? discountPercent = null;
+            if (discountedPrice.HasValue && discountedPrice.Value < p.Price && p.Price > 0)
+            {
+                discountPercent = rawDiscountPercent.HasValue
+                    ? (int)Math.Round((double)rawDiscountPercent.Value)
+                    : (int)Math.Round((1 - (double)(discountedPrice.Value / p.Price)) * 100);
             }
 
             ranked.Add(new RecommendationItemDto
@@ -122,6 +219,9 @@ public class BusinessRulesFilter
                 ProductId = p.ProductId,
                 ProductName = p.ProductName,
                 Price = p.Price,
+                DiscountedPrice = (discountedPrice.HasValue && discountedPrice.Value < p.Price) ? discountedPrice : null,
+                DiscountPercent = discountPercent,
+                PromotionType = promotionType,
                 Quantity = p.Quantity,
                 ProductStatus = p.ProductStatus,
                 CategoryId = p.CategoryId,
@@ -159,6 +259,13 @@ public class BusinessRulesFilter
         public double? AverageRating { get; set; }
         public int ReviewCount { get; set; }
         public int SoldQuantity { get; set; }
-        public bool HasActivePromotion { get; set; }
+        // Flash Sale
+        public decimal? BestFlashSalePrice { get; set; }
+        public decimal? BestFlashSaleDiscountPercent { get; set; }
+        public string? BestFlashSalePromotionType { get; set; }
+        // Regular Promotion
+        public decimal? BestRegularPromoPrice { get; set; }
+        public decimal? BestRegularPromoDiscountPercent { get; set; }
+        public string? BestRegularPromoPromotionType { get; set; }
     }
 }
