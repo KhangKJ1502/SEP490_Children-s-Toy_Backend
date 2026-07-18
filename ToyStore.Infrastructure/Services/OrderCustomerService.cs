@@ -281,29 +281,17 @@ public class OrderCustomerService : IOrderCustomerService
 
     public async Task<Result<string>> CompleteAsync(int orderId, int accountId, CancellationToken cancellationToken = default)
     {
-        var order = await _uow.Orders.GetByIdAsync(orderId, cancellationToken);
-        if (order is null || order.AccountId != accountId)
-            return Result<string>.Failure("NOT_FOUND", "Order not found or you don't have permission to confirm this order.");
-
-        // Chỉ được xác nhận khi đơn ở trạng thái Delivered
-        if (order.StatusId != (byte)OrderStatus.Delivered)
-        {
-            return Result<string>.UnprocessableEntity("Receipt can only be confirmed after the order has been successfully delivered.");
-        }
-
-        var result = await _orderLifecycle.CompleteOrderAsync(orderId, accountId, cancellationToken);
+        var result = await _orderLifecycle.CompleteOrderAsync(orderId, accountId, enforceOwnerCheck: true, cancellationToken);
         if (!result.IsSuccess)
             return Result<string>.Failure(result.ErrorCode!, result.ErrorMessage!);
 
-        // Publish event for notification (if needed, e.g. for points or stats)
+        var order = result.Data!;
         await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), "order.completed",
             new { orderId = order.OrderId, orderCode = order.OrderCode }, CancellationToken.None);
 
         return Result<string>.Success("Order receipt confirmed successfully.");
     }
-
-    // ── Payment Info (secure endpoint, không lộ qua URL) ─────────────────────
-
+    
     public async Task<Result<OrderPaymentInfoDto>> GetPaymentInfoAsync(
         int orderId,
         int accountId,

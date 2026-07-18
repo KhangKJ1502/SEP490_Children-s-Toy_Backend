@@ -193,16 +193,24 @@ public class OrderLifecycleService : IOrderLifecycleService
         }
     }
 
-    public async Task<Result> CompleteOrderAsync(int orderId, int? changedByAccountId = null, CancellationToken cancellationToken = default)
+    public async Task<Result<Order>> CompleteOrderAsync(int orderId, int? changedByAccountId = null, bool enforceOwnerCheck = false, CancellationToken cancellationToken = default)
     {
         var order = await _unitOfWork.Orders.GetByIdForUpdateAsync(orderId, cancellationToken);
-        if (order is null) return Result.NotFound("Order", orderId);
+        if (order is null) return Result<Order>.NotFound("Order", orderId);
+
+        if (enforceOwnerCheck && changedByAccountId.HasValue && order.AccountId != changedByAccountId.Value)
+            return Result<Order>.Failure("NOT_FOUND", "Order not found or you don't have permission to confirm this order.");
 
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
         if (!statusMap.TryGetValue(OrderStatuses.Completed, out var completedId))
-            return Result.Failure("INTERNAL_ERROR", "Status 'Completed' not found.");
+            return Result<Order>.Failure("INTERNAL_ERROR", "Status 'Completed' not found.");
 
-        if (order.StatusId == completedId) return Result.Success();
+        if (order.StatusId == completedId) return Result<Order>.Success(order);
+
+        if (statusMap.TryGetValue(OrderStatuses.Delivered, out var deliveredId) && order.StatusId != deliveredId)
+        {
+            return Result<Order>.UnprocessableEntity("Receipt can only be confirmed after the order has been successfully delivered.");
+        }
 
         var now = _timeProvider.UtcNow;
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
@@ -235,7 +243,7 @@ public class OrderLifecycleService : IOrderLifecycleService
 
             await TryReleaseCapacityAsync(orderId, cancellationToken);
 
-            return Result.Success();
+            return Result<Order>.Success(order);
         }
         catch (Exception ex)
         {
