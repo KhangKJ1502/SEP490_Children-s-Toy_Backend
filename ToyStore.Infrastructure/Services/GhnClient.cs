@@ -139,8 +139,6 @@ public sealed class GhnClient : IGhnClient
         });
     }
 
-    // ── Tao don van chuyen ──────────────────────────────────────────────────
-
     public async Task<Result<ShippingOrderCreateResponseDto>> CreateOrderAsync(
         ShippingOrderCreateRequestDto request,
         CancellationToken cancellationToken = default)

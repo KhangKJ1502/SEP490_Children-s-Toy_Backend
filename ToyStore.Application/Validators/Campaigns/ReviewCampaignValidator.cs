@@ -17,12 +17,12 @@ public class ReviewCampaignValidator : AbstractValidator<ReviewCampaignDto>
         // ReviewNote bắt buộc khi Rejected
         RuleFor(x => x.ReviewNote)
             .NotEmpty().WithMessage("Review note is required when rejecting a campaign.")
-            .MaximumLength(500).WithMessage("Review note must not exceed 500 characters.")
+            .MaximumLength(400).WithMessage("Review note must not exceed 400 characters.")
             .When(x => x.Action == "Rejected");
 
         // Khi Approved, ReviewNote không bắt buộc nhưng nếu có thì giới hạn độ dài
         RuleFor(x => x.ReviewNote)
-            .MaximumLength(500).WithMessage("Review note must not exceed 500 characters.")
+            .MaximumLength(400).WithMessage("Review note must not exceed 400 characters.")
             .When(x => x.Action == "Approved" && !string.IsNullOrEmpty(x.ReviewNote));
     }
 }

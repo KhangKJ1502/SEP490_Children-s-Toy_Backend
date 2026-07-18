@@ -189,8 +189,6 @@ public class AdminOrderService : IAdminOrderService
         return Result<AdminOrderDetailDto>.Success(dto);
     }
 
-    // ── UC3: Staff xac nhan don ───────────────────────────────────────────────
-
     public async Task<Result<ConfirmOrderResponseDto>> ConfirmOrderAsync(
         int orderId,
         ConfirmOrderRequestDto request,

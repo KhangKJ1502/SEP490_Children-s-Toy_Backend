@@ -70,8 +70,10 @@ public class TemplateRepository : ITemplateRepository
             ("isactive", false) => query.OrderBy(x => x.IsActive),
             ("createdat", true) => query.OrderByDescending(x => x.CreatedAt),
             ("createdat", false) => query.OrderBy(x => x.CreatedAt),
+            ("templateid", true) => query.OrderByDescending(x => x.TemplateId),
+            ("templateid", false) => query.OrderBy(x => x.TemplateId),
             (_, true) => query.OrderByDescending(x => x.TemplateId),
-            _ => query.OrderBy(x => x.TemplateId)
+            _ => query.OrderByDescending(x => x.TemplateId)
         };
 
         return await query
