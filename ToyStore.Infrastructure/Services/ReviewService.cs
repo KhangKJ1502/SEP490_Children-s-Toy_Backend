@@ -546,6 +546,16 @@ public class ReviewService : IReviewService
                     var productName = review.Product?.ProductName ?? "product";
                     var orderSuffix = review.Order != null ? $" from order #{review.Order.OrderCode}" : "";
 
+                    var rawMessage = string.IsNullOrWhiteSpace(dto.Reason)
+                        ? $"Your review for product '{productName}'{orderSuffix} has not been approved due to content guidelines violation."
+                        : $"Your review for product '{productName}'{orderSuffix} has not been approved due to content guidelines violation: {dto.Reason}";
+
+                    var message = rawMessage;
+                    if (message.Length > 2000)
+                    {
+                        message = message.Substring(0, 1997) + "...";
+                    }
+
                     var delivery = new Delivery
                     {
                         AccountId = review.AccountId,
@@ -553,9 +563,7 @@ public class ReviewService : IReviewService
                         Channel = "WEB_BELL",
                         NotificationType = "SYSTEM",
                         Title = "Your review was not approved",
-                        Message = string.IsNullOrWhiteSpace(dto.Reason)
-                            ? $"Your review for product '{productName}'{orderSuffix} has not been approved due to content guidelines violation."
-                            : $"Your review for product '{productName}'{orderSuffix} has not been approved due to content guidelines violation: {dto.Reason}",
+                        Message = message,
                         Payload = System.Text.Json.JsonSerializer.Serialize(new { reviewId = review.ReviewId, reason = dto.Reason }),
                         Status = "Unread",
                         ActionTarget = "/profile/reviews",

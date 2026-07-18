@@ -45,7 +45,7 @@ public class CreateCampaignValidator : AbstractValidator<CreateCampaignDto>
             .When(x => !string.IsNullOrEmpty(x.TitleOverride));
 
         RuleFor(x => x.MessageOverride)
-            .MaximumLength(500).WithMessage("Message override must not exceed 500 characters.")
+            .MaximumLength(2000).WithMessage("Message override must not exceed 2000 characters.")
             .When(x => !string.IsNullOrEmpty(x.MessageOverride));
 
         RuleFor(x => x)

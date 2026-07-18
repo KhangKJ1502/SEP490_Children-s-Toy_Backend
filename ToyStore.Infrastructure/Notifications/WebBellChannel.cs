@@ -34,21 +34,45 @@ public class WebBellChannel : INotificationChannel
 
     public async Task SendAsync(NotificationDeliveryRequest request, CancellationToken ct = default)
     {
+        var title = request.Title ?? string.Empty;
+        if (title.Length > 255)
+        {
+            title = title.Substring(0, 252) + "...";
+        }
+
+        var message = request.Message ?? string.Empty;
+        if (message.Length > 2000)
+        {
+            message = message.Substring(0, 1997) + "...";
+        }
+
+        var actionTarget = request.ActionTarget;
+        if (actionTarget != null && actionTarget.Length > 500)
+        {
+            actionTarget = actionTarget.Substring(0, 500);
+        }
+
+        var idempotencyKey = request.IdempotencyKey;
+        if (idempotencyKey != null && idempotencyKey.Length > 200)
+        {
+            idempotencyKey = idempotencyKey.Substring(0, 200);
+        }
+
         var delivery = new Delivery
         {
             AccountId        = request.AccountId,
             RecipientType    = request.RecipientType,
             Channel          = NotificationChannels.WebBell,
             NotificationType = request.NotificationType,
-            Title            = request.Title,
-            Message          = request.Message,
+            Title            = title,
+            Message          = message,
             Payload          = request.PayloadJson ?? "{}",
             Status           = NotificationStatuses.Unread,
             TemplateCode     = request.TemplateCode,
             ImageUrl         = request.ImageUrl,
             ActionType       = request.ActionType,
-            ActionTarget     = request.ActionTarget,
-            IdempotencyKey   = request.IdempotencyKey,
+            ActionTarget     = actionTarget,
+            IdempotencyKey   = idempotencyKey,
             CampaignId       = request.CampaignId,
             CreatedAt        = _timeProvider.UtcNow,
         };
