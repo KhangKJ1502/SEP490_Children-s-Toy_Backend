@@ -53,41 +53,27 @@ public class OrderLifecycleService : IOrderLifecycleService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            // 1. Restore stock
-            // Stock is always deducted at confirm (COD, SE_PAY reserve, WALLET post-debit)
-            // Restore when order is not PAID (WALLET PAID already handled separately as REFUNDED)
-            bool productsSubtracted = order.PaymentStatus != "PAID";
-
+          
             foreach (var detail in order.OrderDetails)
             {
-                // General Stock restoration
-                if (productsSubtracted)
-                {
-                    await _unitOfWork.Orders.AdjustStockAsync(detail.ProductId, detail.Quantity, cancellationToken);
-                }
-
-                // Flash Sale Stock restoration
+              
+                await _unitOfWork.Orders.AdjustStockAsync(detail.ProductId, detail.Quantity, cancellationToken);
                 if (detail.SlotProductId.HasValue)
                 {
                     if (order.PaymentStatus == "PAID")
                     {
-                        // Deducted from SoldQuantity (webhook moved Reserved→Sold)
                         await _unitOfWork.Orders.AdjustFlashSaleStockAsync(detail.SlotProductId.Value, -detail.Quantity, 0, cancellationToken);
                     }
                     else if (order.PaymentMethod == "SE_PAY")
                     {
-                        // SE_PAY: stock reserved but not yet sold — release ReservedQuantity
                         await _unitOfWork.Orders.AdjustFlashSaleStockAsync(detail.SlotProductId.Value, 0, -detail.Quantity, cancellationToken);
                     }
                     else
                     {
-                        // COD: deducted from SoldQuantity at confirm
                         await _unitOfWork.Orders.AdjustFlashSaleStockAsync(detail.SlotProductId.Value, -detail.Quantity, 0, cancellationToken);
                     }
                 }
             }
-
-            // 2. Restore voucher
             if (restoreVoucher)
             {
                 await _unitOfWork.Orders.RestoreVoucherAsync(order.OrderId, cancellationToken);
