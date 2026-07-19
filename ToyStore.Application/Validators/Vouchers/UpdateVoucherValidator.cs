@@ -129,6 +129,10 @@ public class UpdateVoucherValidator : AbstractValidator<UpdateVoucherDto>
             .Equal((short)1)
             .When(x => string.Equals(x.DiscountTarget?.Trim(), "FINAL_PRICE", StringComparison.OrdinalIgnoreCase) && x.MaxUsagePerUser.HasValue)
             .WithMessage("Max usage per user must be exactly 1 for FINAL_PRICE vouchers.");
+
+        RuleFor(x => x.Reason)
+            .MaximumLength(500).WithMessage("Reason must not exceed 500 characters.")
+            .When(x => x.Reason is not null);
     }
 
     private static bool HasAtLeastOneField(UpdateVoucherDto dto)

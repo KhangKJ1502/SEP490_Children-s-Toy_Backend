@@ -1257,6 +1257,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.SubTotal).HasColumnType("decimal(12, 0)");
             entity.Property(e => e.TotalAmount).HasColumnType("decimal(12, 0)");
             entity.Property(e => e.AdminNote).HasMaxLength(1000);
+            entity.Property(e => e.ReturnShippingFeeNote).HasMaxLength(500);
             entity.Property(e => e.ApprovedAt).HasPrecision(0);
             entity.Property(e => e.RejectedAt).HasPrecision(0);
             entity.Property(e => e.CompletedAt).HasPrecision(0);
