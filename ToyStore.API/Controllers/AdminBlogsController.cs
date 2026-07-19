@@ -1,16 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Globalization;
-using System.Net.Http.Json;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using ToyStore.API.Extensions;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Blogs;
 using ToyStore.Application.Interfaces.Services;
-using ToyStore.Infrastructure.Options;
-using Microsoft.Extensions.Options;
 
 namespace ToyStore.API.Controllers;
 
@@ -43,35 +39,12 @@ public class AiBlogGenerateResult
     public string? AiError { get; set; }
 }
 
-internal sealed class PythonBlogGenerateRequest
-{
-    public string Action { get; set; } = "Generate";
-    public string Title { get; set; } = string.Empty;
-    public string? Description { get; set; }
-    public string PromptStructure { get; set; } = string.Empty;
-    public string DefaultTone { get; set; } = "Friendly";
-    public int DefaultCategoryId { get; set; }
-    public string? SourceContent { get; set; }
-}
-
-internal sealed class PythonBlogGenerateResponse
-{
-    public string? Status { get; set; }
-    public string? Violation_Type { get; set; }
-    public string? Violated_Keyword { get; set; }
-    public string? Reason { get; set; }
-    public string[]? Suggestions { get; set; }
-    public string Title { get; set; } = string.Empty;
-    public string Content { get; set; } = string.Empty;
-}
-
 [ApiController]
 [Route("api/admin")]
 [Authorize(Roles = "Admin,Staff")]
 public class AdminBlogsController : ControllerBase
 {
     private const string BlogThumbnailFolder = "SEP490_Blogs";
-    private const string AiModerationHttpClientName = "AI_MODERATION";
     private static readonly string[] AiKeyboardRows =
     {
         "qwertyuiop",
@@ -82,21 +55,18 @@ public class AdminBlogsController : ControllerBase
     private static readonly IReadOnlyDictionary<char, (double Column, int Row)> AiKeyboardCoordinates = BuildKeyboardCoordinates();
     private readonly IBlogService _blogService;
     private readonly IImageUploadService _imageUploadService;
-    private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IOptions<AiModerationOptions> _aiModerationOptions;
+    private readonly IBlogContentGenerationGateway _blogContentGenerationGateway;
     private readonly ILogger<AdminBlogsController> _logger;
 
     public AdminBlogsController(
         IBlogService blogService,
         IImageUploadService imageUploadService,
-        IHttpClientFactory httpClientFactory,
-        IOptions<AiModerationOptions> aiModerationOptions,
+        IBlogContentGenerationGateway blogContentGenerationGateway,
         ILogger<AdminBlogsController> logger)
     {
         _blogService = blogService;
         _imageUploadService = imageUploadService;
-        _httpClientFactory = httpClientFactory;
-        _aiModerationOptions = aiModerationOptions;
+        _blogContentGenerationGateway = blogContentGenerationGateway;
         _logger = logger;
     }
 
@@ -253,58 +223,38 @@ public class AdminBlogsController : ControllerBase
             }
         }
 
-        PythonBlogGenerateResponse? aiGenerated;
-        try
+        var aiResult = await _blogContentGenerationGateway.GenerateAsync(
+            new PythonBlogGenerateRequest
+            {
+                Action = action,
+                Title = request.Title.Trim(),
+                Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
+                PromptStructure = request.PromptStructure.Trim(),
+                DefaultTone = tone,
+                DefaultCategoryId = request.DefaultCategoryId,
+                SourceContent = sourceContent
+            },
+            cancellationToken);
+
+        if (!aiResult.IsSuccess)
         {
-            using var client = _httpClientFactory.CreateClient(AiModerationHttpClientName);
-            using var aiRequest = new HttpRequestMessage(HttpMethod.Post, "/moderation/blog-content/generate")
+            if (aiResult.ErrorBody != null)
             {
-                Content = JsonContent.Create(new PythonBlogGenerateRequest
-                {
-                    Action = action,
-                    Title = request.Title.Trim(),
-                    Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
-                    PromptStructure = request.PromptStructure.Trim(),
-                    DefaultTone = tone,
-                    DefaultCategoryId = request.DefaultCategoryId,
-                    SourceContent = sourceContent
-                })
-            };
-            aiRequest.Headers.Add("X-Internal-Key", _aiModerationOptions.Value.InternalApiKey);
-
-            using var aiResponse = await client.SendAsync(aiRequest, cancellationToken);
-            if (!aiResponse.IsSuccessStatusCode)
-            {
-                var aiErrorBody = await aiResponse.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning("AI blog generate failed. Status={StatusCode}, Body={Body}", aiResponse.StatusCode, aiErrorBody);
-                return StatusCode((int)aiResponse.StatusCode, new { code = "AI_GENERATE_ERROR", message = "AI generation failed.", detail = aiErrorBody });
+                return StatusCode(aiResult.StatusCode ?? 502, new { code = "AI_GENERATE_ERROR", message = "AI generation failed.", detail = aiResult.ErrorBody });
             }
 
-            await using var aiStream = await aiResponse.Content.ReadAsStreamAsync(cancellationToken);
-            using var aiJsonDoc = await JsonDocument.ParseAsync(aiStream, cancellationToken: cancellationToken);
-            var root = aiJsonDoc.RootElement;
-            if (root.ValueKind == JsonValueKind.Object
-                && root.TryGetProperty("status", out var statusNode)
-                && string.Equals(statusNode.GetString(), "blocked", StringComparison.OrdinalIgnoreCase))
-            {
-                return Ok(root.Clone());
-            }
-            var content = root.TryGetProperty("content", out var contentNode) ? contentNode.GetString() : null;
-            var titleFromAi = root.TryGetProperty("title", out var titleNode) ? titleNode.GetString() : null;
-            aiGenerated = new PythonBlogGenerateResponse
-            {
-                Title = titleFromAi ?? string.Empty,
-                Content = content ?? string.Empty,
-            };
-            if (aiGenerated == null || string.IsNullOrWhiteSpace(aiGenerated.Content))
-            {
-                return StatusCode(502, new { code = "AI_GENERATE_EMPTY", message = "AI returned empty content." });
-            }
+            return StatusCode(502, new { code = "AI_SERVICE_UNAVAILABLE", message = aiResult.ErrorMessage ?? "Unable to call AI service." });
         }
-        catch (Exception ex)
+
+        var aiGenerated = aiResult.Data;
+        if (aiGenerated?.IsBlocked == true)
         {
-            _logger.LogWarning(ex, "AI blog generate call threw exception.");
-            return StatusCode(502, new { code = "AI_SERVICE_UNAVAILABLE", message = "Unable to call AI service." });
+            return Ok(aiGenerated);
+        }
+
+        if (aiGenerated == null || string.IsNullOrWhiteSpace(aiGenerated.Content))
+        {
+            return StatusCode(502, new { code = "AI_GENERATE_EMPTY", message = "AI returned empty content." });
         }
 
         var generatedTitle = string.IsNullOrWhiteSpace(aiGenerated.Title)
@@ -315,7 +265,7 @@ public class AdminBlogsController : ControllerBase
         {
             BlogPostId = request.BlogPostId.GetValueOrDefault(0),
             Title = generatedTitle,
-            BlogContent = aiGenerated.Content,
+            BlogContent = aiGenerated.Content!,
             BlogCategoryId = request.DefaultCategoryId,
             PromptData = request.PromptStructure,
             AiStatus = "Success",
