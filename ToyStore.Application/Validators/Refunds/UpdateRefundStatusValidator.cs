@@ -31,6 +31,10 @@ public class UpdateRefundStatusValidator : AbstractValidator<UpdateRefundStatusD
             .When(x => x.Status == RefundStatuses.Rejected)
             .MaximumLength(500).WithMessage("RejectReason must not exceed 500 characters.");
 
+        RuleFor(x => x.ReturnShippingFeeNote)
+            .MaximumLength(500).WithMessage("ReturnShippingFeeNote must not exceed 500 characters.")
+            .When(x => !string.IsNullOrEmpty(x.ReturnShippingFeeNote));
+
         RuleFor(x => x.ShippingOrderCode)
             .Matches(@"^[A-Z0-9]{5,20}$").WithMessage("Shipping Order Code must be uppercase alphanumeric (5 to 20 characters) and contain no spaces or special symbols.")
             .When(x => !string.IsNullOrEmpty(x.ShippingOrderCode));
