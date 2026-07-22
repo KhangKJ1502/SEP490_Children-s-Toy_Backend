@@ -499,6 +499,9 @@ public class ReviewService : IReviewService
 
             if (!string.IsNullOrWhiteSpace(dto.ModerationStatus))
             {
+                if (string.Equals(review.ModerationStatus, dto.ModerationStatus, StringComparison.OrdinalIgnoreCase))
+                    return Result<AdminReviewDetailDto>.BusinessError($"Status is already {dto.ModerationStatus}.");
+
                 if (review.ModerationStatus == "Rejected")
                     return Result<AdminReviewDetailDto>.BusinessError("Cannot change moderation status of a rejected review.");
 

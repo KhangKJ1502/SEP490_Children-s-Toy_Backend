@@ -10,6 +10,7 @@ public class RefundProfile : Profile
     public RefundProfile()
     {
         CreateMap<OrderRefund, RefundDto>()
+            .ForMember(dest => dest.ReasonDetails, opt => opt.MapFrom(src => CleanReasonDetails(src.ReasonDetails)))
             .ForMember(dest => dest.OrderCode, opt => opt.MapFrom(src => src.Order.OrderCode))
             .ForMember(dest => dest.OrderStatus, opt => opt.MapFrom(src => src.Order.Status.StatusName))
             .ForMember(dest => dest.PaymentStatus, opt => opt.MapFrom(src => src.Order.PaymentStatus))
@@ -60,6 +61,25 @@ public class RefundProfile : Profile
         CreateMap<RefundStatusHistory, RefundStatusHistoryDto>()
             .ForMember(dest => dest.StatusName, opt => opt.MapFrom(src => src.Status.StatusName))
             .ForMember(dest => dest.ChangedByName, opt => opt.MapFrom(src => src.ChangedByNavigation != null ? src.ChangedByNavigation.AccountName : null));
+    }
+
+    private static string? CleanReasonDetails(string? reasonDetails)
+    {
+        if (string.IsNullOrWhiteSpace(reasonDetails)) return null;
+
+        if (reasonDetails.StartsWith("Reject Reason:", System.StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var index = reasonDetails.IndexOf(" | Reject Reason:", System.StringComparison.OrdinalIgnoreCase);
+        if (index >= 0)
+        {
+            var cleaned = reasonDetails.Substring(0, index).Trim();
+            return string.IsNullOrEmpty(cleaned) ? null : cleaned;
+        }
+
+        return reasonDetails;
     }
 
     private static System.Collections.Generic.List<ShippingStatusHistory> MapRefundShippingHistory(OrderRefund refund)

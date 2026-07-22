@@ -15,6 +15,7 @@ namespace ToyStore.Infrastructure.Services;
 
 public class BlogService : IBlogService
 {
+    private const int MaxBlogRejectReasonLength = 500;
     private const int MaxReviewCommentLength = 500;
     private const string ReactionLike = "like";
     private const string ReactionLove = "love";
@@ -400,12 +401,23 @@ public class BlogService : IBlogService
         }
         else if (isRejected)
         {
-            if (string.IsNullOrWhiteSpace(dto.Reason))
+            var rejectReason = dto.Reason?.Trim();
+            if (string.IsNullOrWhiteSpace(rejectReason))
             {
-                return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "Reason is required when rejecting a blog.");
+                return Result<BlogDetailDto>.ValidationFailure(new Dictionary<string, string[]>
+                {
+                    ["Reason"] = ["Reason is required when rejecting a blog."]
+                });
+            }
+            if (rejectReason.Length > MaxBlogRejectReasonLength)
+            {
+                return Result<BlogDetailDto>.ValidationFailure(new Dictionary<string, string[]>
+                {
+                    ["Reason"] = [$"Reason must not exceed {MaxBlogRejectReasonLength} characters."]
+                });
             }
             blog.Status = RejectedStatus;
-            blog.Reason = dto.Reason.Trim();
+            blog.Reason = rejectReason;
         }
         else
         {

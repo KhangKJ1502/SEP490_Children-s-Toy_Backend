@@ -280,6 +280,7 @@ public static class DependencyInjection
             }
             client.Timeout = TimeSpan.FromSeconds(opts.TimeoutSeconds <= 0 ? 10 : opts.TimeoutSeconds);
         });
+        services.AddScoped<IBlogContentGenerationGateway, BlogContentGenerationGateway>();
         services.AddScoped<IBlogCommentModerationGateway, BlogCommentModerationGateway>();
 
         services.AddHttpClient("BankLookup", client =>
