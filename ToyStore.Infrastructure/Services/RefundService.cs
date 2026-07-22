@@ -18,6 +18,7 @@ using ToyStore.Application.DTOs.Checkouts;
 using ToyStore.Application.Services;
 using ToyStore.Infrastructure.Options;
 using ToyStore.Application.Common.Helpers;
+using FluentValidation;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -32,6 +33,9 @@ public class RefundService : IRefundService
     private readonly IWalletRefundCreditor _walletRefundCreditor;
     private readonly IShiftAssignmentService _shiftAssignmentService;
     private readonly ITimeProvider _timeProvider;
+    private readonly IValidator<CreateRefundDto> _createRefundValidator;
+    private readonly IValidator<CreateAdminRefundDto> _createAdminRefundValidator;
+    private readonly IValidator<UpdateRefundStatusDto> _updateRefundStatusValidator;
 
     public RefundService(
         IUnitOfWork unitOfWork,
@@ -42,7 +46,10 @@ public class RefundService : IRefundService
         IOptions<ShopAddressOptions> shopAddress,
         IWalletRefundCreditor walletRefundCreditor,
         IShiftAssignmentService shiftAssignmentService,
-        ITimeProvider timeProvider)
+        ITimeProvider timeProvider,
+        IValidator<CreateRefundDto> createRefundValidator,
+        IValidator<CreateAdminRefundDto> createAdminRefundValidator,
+        IValidator<UpdateRefundStatusDto> updateRefundStatusValidator)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
@@ -53,6 +60,9 @@ public class RefundService : IRefundService
         _walletRefundCreditor = walletRefundCreditor;
         _shiftAssignmentService = shiftAssignmentService;
         _timeProvider = timeProvider;
+        _createRefundValidator = createRefundValidator;
+        _createAdminRefundValidator = createAdminRefundValidator;
+        _updateRefundStatusValidator = updateRefundStatusValidator;
     }
 
     private byte? MapStatusStringToId(string statusStr)
@@ -145,6 +155,10 @@ public class RefundService : IRefundService
 
     public async Task<Result<RefundDto>> CreateRefundAsync(int customerId, CreateRefundDto dto, CancellationToken cancellationToken = default)
     {
+        var validation = await _createRefundValidator.ValidateAsync(dto, cancellationToken);
+        if (!validation.IsValid)
+            return validation.ToResult<RefundDto>();
+
         var order = await _unitOfWork.Orders.GetByIdForUpdateAsync(dto.OrderId, cancellationToken);
         if (order == null || order.AccountId != customerId)
             return Result<RefundDto>.NotFound("Order", dto.OrderId);
@@ -626,6 +640,10 @@ public class RefundService : IRefundService
 
     public async Task<Result<RefundDto>> UpdateRefundStatusAsync(int staffId, byte roleId, int refundId, UpdateRefundStatusDto dto, bool isAdmin = false, CancellationToken cancellationToken = default)
     {
+        var validation = await _updateRefundStatusValidator.ValidateAsync(dto, cancellationToken);
+        if (!validation.IsValid)
+            return validation.ToResult<RefundDto>();
+
         var refund = await _unitOfWork.Refunds.GetByIdAsync(refundId, cancellationToken);
         if (refund == null)
             return Result<RefundDto>.NotFound("Refund", refundId);
@@ -1661,6 +1679,10 @@ public class RefundService : IRefundService
 
     public async Task<Result<RefundDto>> CreateAdminRefundAsync(int staffId, CreateAdminRefundDto dto, CancellationToken cancellationToken = default)
     {
+        var validation = await _createAdminRefundValidator.ValidateAsync(dto, cancellationToken);
+        if (!validation.IsValid)
+            return validation.ToResult<RefundDto>();
+
         var order = await _unitOfWork.Orders.GetByIdForUpdateAsync(dto.OrderId, cancellationToken);
         if (order == null)
             return Result<RefundDto>.NotFound("Order", dto.OrderId);
