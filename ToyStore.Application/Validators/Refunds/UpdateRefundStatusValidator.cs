@@ -42,5 +42,13 @@ public class UpdateRefundStatusValidator : AbstractValidator<UpdateRefundStatusD
         RuleFor(x => x.ReturnShippingOrderCode)
             .Matches(@"^[A-Z0-9]{5,20}$").WithMessage("Return Shipping Order Code must be uppercase alphanumeric (5 to 20 characters) and contain no spaces or special symbols.")
             .When(x => !string.IsNullOrEmpty(x.ReturnShippingOrderCode));
+
+        RuleFor(x => x.InspectionNote)
+            .MaximumLength(500).WithMessage("InspectionNote must not exceed 500 characters.")
+            .When(x => !string.IsNullOrWhiteSpace(x.InspectionNote));
+
+        RuleFor(x => x.AdminNote)
+            .MaximumLength(500).WithMessage("AdminNote must not exceed 500 characters.")
+            .When(x => !string.IsNullOrWhiteSpace(x.AdminNote));
     }
 }

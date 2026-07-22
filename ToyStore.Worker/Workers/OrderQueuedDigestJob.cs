@@ -87,8 +87,6 @@ public class OrderQueuedDigestJob : BackgroundService
         {
             try
             {
-                // BUG FIX #1: nếu lần trước gửi fail, bắt buộc delay _interval
-                // dù threshold vẫn cao, tránh busy-loop tấn công SMTP liên tục
                 if (_lastSendFailed)
                 {
                     _logger.LogInformation("OrderQueuedDigestJob: previous send failed — cooling down for {Interval}", _interval);
