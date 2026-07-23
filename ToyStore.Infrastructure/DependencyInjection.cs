@@ -282,6 +282,7 @@ public static class DependencyInjection
         });
         services.AddScoped<IBlogContentGenerationGateway, BlogContentGenerationGateway>();
         services.AddScoped<IBlogCommentModerationGateway, BlogCommentModerationGateway>();
+        services.AddScoped<IProductReviewModerationGateway, ProductReviewModerationGateway>();
 
         services.AddHttpClient("BankLookup", client =>
         {
