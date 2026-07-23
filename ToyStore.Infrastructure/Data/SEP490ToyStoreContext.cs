@@ -453,7 +453,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasMaxLength(100)
                 .IsUnicode(false);
             entity.Property(e => e.ImageUrl).HasMaxLength(500);
-            entity.Property(e => e.MessageOverride).HasMaxLength(500);
+            entity.Property(e => e.MessageOverride).HasMaxLength(2000);
             entity.Property(e => e.ReferenceType)
                 .HasMaxLength(20)
                 .IsUnicode(false);
@@ -831,7 +831,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasDefaultValueSql("(getdate())");
             entity.Property(e => e.CreatedByJobId).HasColumnName("CreatedByJobID");
             entity.Property(e => e.ImageUrl).HasMaxLength(500);
-            entity.Property(e => e.Message).HasMaxLength(500);
+            entity.Property(e => e.Message).HasMaxLength(2000);
             entity.Property(e => e.NotificationType)
                 .HasMaxLength(20)
                 .IsUnicode(false)
@@ -1257,6 +1257,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.SubTotal).HasColumnType("decimal(12, 0)");
             entity.Property(e => e.TotalAmount).HasColumnType("decimal(12, 0)");
             entity.Property(e => e.AdminNote).HasMaxLength(1000);
+            entity.Property(e => e.ReturnShippingFeeNote).HasMaxLength(500);
             entity.Property(e => e.ApprovedAt).HasPrecision(0);
             entity.Property(e => e.RejectedAt).HasPrecision(0);
             entity.Property(e => e.CompletedAt).HasPrecision(0);
@@ -2480,7 +2481,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
             entity.Property(e => e.IsActive).HasDefaultValue(true);
-            entity.Property(e => e.MessageTemplate).HasMaxLength(500);
+            entity.Property(e => e.MessageTemplate).HasMaxLength(2000);
             entity.Property(e => e.UsageScope)
                 .HasMaxLength(10)
                 .IsUnicode(false)

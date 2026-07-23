@@ -99,7 +99,6 @@ public class TemplateService : ITemplateService
             return Result<TemplateListDto>.NotFound("Template", templateId);
 
         var dto = _mapper.Map<TemplateListDto>(template);
-        dto.IsUsed = await _unitOfWork.Templates.IsUsedAsync(template.TemplateCode, cancellationToken);
         return Result<TemplateListDto>.Success(dto);
     }
 

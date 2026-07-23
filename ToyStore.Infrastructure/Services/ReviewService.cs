@@ -27,6 +27,7 @@ public class ReviewService : IReviewService
     private readonly IValidator<CreateStaffReplyDto> _createReplyValidator;
     private readonly IValidator<UpdateStaffReplyDto> _updateReplyValidator;
     private readonly ITimeProvider _timeProvider;
+    private readonly IProductReviewModerationGateway _productReviewModerationGateway;
 
     public ReviewService(
         IUnitOfWork unitOfWork,
@@ -40,7 +41,8 @@ public class ReviewService : IReviewService
         IValidator<UpdateModerationStatusDto> updateStatusValidator,
         IValidator<CreateStaffReplyDto> createReplyValidator,
         IValidator<UpdateStaffReplyDto> updateReplyValidator,
-        ITimeProvider timeProvider)
+        ITimeProvider timeProvider,
+        IProductReviewModerationGateway productReviewModerationGateway)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
@@ -54,6 +56,7 @@ public class ReviewService : IReviewService
         _createReplyValidator = createReplyValidator;
         _updateReplyValidator = updateReplyValidator;
         _timeProvider = timeProvider;
+        _productReviewModerationGateway = productReviewModerationGateway;
     }
 
     // --- Public / Customer ---
@@ -179,12 +182,11 @@ public class ReviewService : IReviewService
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
 
-            // 5. AI Moderation: Review đã được tạo với ModerationStatus = "Pending".
-            //    AI Sidecar sẽ tự động pick up và xử lý qua polling mỗi 30 giây.
-            //    Không cần auto-approve ở đây nữa.
-
+            // 5. AI Moderation: Kích hoạt ngay lập tức AI Moderation dạng Async Fire-and-Forget (<<include>> Moderate Review)
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            _ = _productReviewModerationGateway.ModerateReviewAsync(review.ReviewId, CancellationToken.None);
 
             _logger.LogInformation("User {UserId} created review {ReviewId} for product {ProductId}", accountId, review.ReviewId, dto.ProductId);
 
@@ -313,11 +315,11 @@ public class ReviewService : IReviewService
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
 
-            // AI Moderation: Review đã được reset về ModerationStatus = "Pending" (line 271).
-            //    AI Sidecar sẽ tự động pick up và xử lý lại qua polling.
-
+            // AI Moderation: Kích hoạt ngay lập tức AI Moderation dạng Async Fire-and-Forget (<<include>> Moderate Review)
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            _ = _productReviewModerationGateway.ModerateReviewAsync(reviewId, CancellationToken.None);
 
             _logger.LogInformation("User {UserId} edited review {ReviewId}", accountId, reviewId);
 
@@ -499,6 +501,9 @@ public class ReviewService : IReviewService
 
             if (!string.IsNullOrWhiteSpace(dto.ModerationStatus))
             {
+                if (string.Equals(review.ModerationStatus, dto.ModerationStatus, StringComparison.OrdinalIgnoreCase))
+                    return Result<AdminReviewDetailDto>.BusinessError($"Status is already {dto.ModerationStatus}.");
+
                 if (review.ModerationStatus == "Rejected")
                     return Result<AdminReviewDetailDto>.BusinessError("Cannot change moderation status of a rejected review.");
 
@@ -546,6 +551,16 @@ public class ReviewService : IReviewService
                     var productName = review.Product?.ProductName ?? "product";
                     var orderSuffix = review.Order != null ? $" from order #{review.Order.OrderCode}" : "";
 
+                    var rawMessage = string.IsNullOrWhiteSpace(dto.Reason)
+                        ? $"Your review for product '{productName}'{orderSuffix} has not been approved due to content guidelines violation."
+                        : $"Your review for product '{productName}'{orderSuffix} has not been approved due to content guidelines violation: {dto.Reason}";
+
+                    var message = rawMessage;
+                    if (message.Length > 2000)
+                    {
+                        message = message.Substring(0, 1997) + "...";
+                    }
+
                     var delivery = new Delivery
                     {
                         AccountId = review.AccountId,
@@ -553,9 +568,7 @@ public class ReviewService : IReviewService
                         Channel = "WEB_BELL",
                         NotificationType = "SYSTEM",
                         Title = "Your review was not approved",
-                        Message = string.IsNullOrWhiteSpace(dto.Reason)
-                            ? $"Your review for product '{productName}'{orderSuffix} has not been approved due to content guidelines violation."
-                            : $"Your review for product '{productName}'{orderSuffix} has not been approved due to content guidelines violation: {dto.Reason}",
+                        Message = message,
                         Payload = System.Text.Json.JsonSerializer.Serialize(new { reviewId = review.ReviewId, reason = dto.Reason }),
                         Status = "Unread",
                         ActionTarget = "/profile/reviews",

@@ -21,7 +21,8 @@ public interface IOrderLifecycleService
     /// Hoàn thành đơn hàng (internal logic).
     /// </summary>
     /// <param name="changedByAccountId">Người xác nhận (khách). null = hệ thống (auto-complete job).</param>
-    Task<Result> CompleteOrderAsync(int orderId, int? changedByAccountId = null, CancellationToken cancellationToken = default);
+    /// <param name="enforceOwnerCheck">Có bắt buộc kiểm tra quyền sở hữu đơn hàng hay không (dùng cho customer).</param>
+    Task<Result<Order>> CompleteOrderAsync(int orderId, int? changedByAccountId = null, bool enforceOwnerCheck = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Đánh dấu đơn hàng là đã giao (internal logic).

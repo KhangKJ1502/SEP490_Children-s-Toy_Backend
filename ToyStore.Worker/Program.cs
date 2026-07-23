@@ -25,6 +25,7 @@ builder.Services.AddHostedService<OrderStatusWorker>();
 builder.Services.AddHostedService<PromotionStatusJob>();
 builder.Services.AddHostedService<BlogPublishWorker>();
 builder.Services.AddHostedService<BlogCommentModerationPollJob>();
+builder.Services.AddHostedService<ProductReviewModerationPollJob>();
 builder.Services.AddHostedService<BlogCommentManualReviewTimeoutJob>();
 builder.Services.AddHostedService<BlogCommentPermissionUnlockJob>();
 

@@ -19,6 +19,10 @@ public class UpdateModerationStatusValidator : AbstractValidator<UpdateModeratio
             .When(x => !string.IsNullOrWhiteSpace(x.ModerationStatus));
             
         RuleFor(x => x.Reason)
+            .NotEmpty().WithMessage("Reason is required when status is Rejected.")
+            .When(x => x.ModerationStatus == "Rejected");
+
+        RuleFor(x => x.Reason)
             .MaximumLength(500).WithMessage("Reason must not exceed 500 characters.")
             .When(x => !string.IsNullOrWhiteSpace(x.Reason));
     }

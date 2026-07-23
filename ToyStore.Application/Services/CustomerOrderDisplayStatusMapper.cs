@@ -276,6 +276,11 @@ public static class CustomerOrderDisplayStatusMapper
             return false;
 
         var existingRefunds = order.OrderRefunds.Where(r => !r.IsDeleted).ToList();
+
+        // Limit to maximum 2 refund attempts per order
+        if (existingRefunds.Count >= 2)
+            return false;
+
         foreach (var r in existingRefunds)
         {
             if (r.StatusId != (byte)RefundStatusEnum.RefundCancelled && 
@@ -291,7 +296,7 @@ public static class CustomerOrderDisplayStatusMapper
                 h.StatusId != (byte)RefundStatusEnum.RefundCancelled &&
                 h.StatusId != (byte)RefundStatusEnum.RefundRejected);
 
-            if (wentPastRequested)
+            if (wentPastRequested && r.StatusId != (byte)RefundStatusEnum.RefundRejected && r.StatusId != (byte)RefundStatusEnum.RefundReturnedToCustomer)
             {
                 return false;
             }
