@@ -197,9 +197,8 @@ public class CustomerService : ICustomerService
             return Result<CustomerDetailDto>.Failure("VALIDATION_ERROR", "Account ID must be greater than 0.");
         }
 
-        var customer = await _db.Accounts
-            .Include(x => x.Role)
-            .FirstOrDefaultAsync(x => x.AccountId == accountId && !x.IsDeleted, cancellationToken);
+        var customer = await _unitOfWork.Accounts
+            .GetAccountWithRoleForUpdateAsync(accountId, cancellationToken);
 
         if (customer is null || customer.RoleId != CustomerRoleId)
         {
