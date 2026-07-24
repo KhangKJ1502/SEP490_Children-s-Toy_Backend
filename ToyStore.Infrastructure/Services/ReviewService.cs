@@ -579,6 +579,7 @@ public class ReviewService : IReviewService
                 }
             }
 
+            _unitOfWork.Reviews.Update(review);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
