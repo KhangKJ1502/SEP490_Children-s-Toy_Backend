@@ -9,7 +9,7 @@ namespace ToyStore.API.Controllers;
 
 [ApiController]
 [Route("api/admin/reviews")]
-[Authorize(Roles = "Staff,Merchandise,Admin")]
+[Authorize(Roles = "Staff,Admin")]
 public class AdminReviewsController : ControllerBase
 {
     private readonly IReviewService _reviewService;

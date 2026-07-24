@@ -157,6 +157,11 @@ public class ReviewRepository : IReviewRepository
         await _context.ReviewModerationLogs.AddAsync(log, cancellationToken);
     }
 
+    public void Update(ReviewProduct review)
+    {
+        _context.Update(review);
+    }
+
     // --- Customer My Reviews ---
 
     public async Task<List<OrderDetail>> GetUnreviewedProductsAsync(int accountId, int pageNumber, int pageSize, CancellationToken cancellationToken = default)

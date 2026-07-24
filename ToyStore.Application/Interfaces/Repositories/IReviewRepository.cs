@@ -41,6 +41,7 @@ public interface IReviewRepository
     Task AddReviewAsync(ReviewProduct review, CancellationToken cancellationToken = default);
     Task AddImageAsync(ReviewProductImage image, CancellationToken cancellationToken = default);
     Task AddModerationLogAsync(ReviewModerationLog log, CancellationToken cancellationToken = default);
+    void Update(ReviewProduct review);
 
     // --- Customer My Reviews ---
     Task<List<OrderDetail>> GetUnreviewedProductsAsync(int accountId, int pageNumber, int pageSize, CancellationToken cancellationToken = default);
