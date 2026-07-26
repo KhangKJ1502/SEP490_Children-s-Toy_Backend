@@ -31,7 +31,7 @@ public class ReviewProfile : Profile
             .ForMember(dest => dest.OrderCode, opt => opt.MapFrom(src => src.Order.OrderCode))
             .ForMember(dest => dest.Images, opt => opt.MapFrom(src => src.ReviewProductImages.Where(i => !i.IsDeleted)))
             .ForMember(dest => dest.Replies, opt => opt.MapFrom(src => src.StaffReviewProductReplies.Where(r => !r.IsDeleted)))
-            .ForMember(dest => dest.ModerationLogs, opt => opt.MapFrom(src => src.ReviewModerationLogs.Where(l => l.ImageId == null).OrderByDescending(l => l.CreatedAt)));
+            .ForMember(dest => dest.ModerationLogs, opt => opt.MapFrom(src => src.ReviewModerationLogs.OrderByDescending(l => l.CreatedAt)));
 
         // Customer Detail DTO (After created/updated)
         CreateMap<ReviewProduct, ReviewProductDto>()

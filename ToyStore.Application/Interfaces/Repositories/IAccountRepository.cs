@@ -124,6 +124,8 @@ public interface IAccountRepository
     /// </summary>
     Task<int> CountActiveCustomersByIdsAsync(IReadOnlyCollection<int> accountIds, CancellationToken cancellationToken = default);
 
+    Task<Account?> GetAccountWithRoleForUpdateAsync(int accountId, CancellationToken cancellationToken = default);
+
     Task<List<CustomerDeliveryAbuseSummaryDto>> GetDeliveryAbuseSummariesAsync(
         IReadOnlyCollection<int> accountIds,
         CancellationToken cancellationToken = default);

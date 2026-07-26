@@ -322,6 +322,14 @@ public class AccountRepository : IAccountRepository
         return GetDeliveryAbuseSummariesCoreAsync(accountIds, cancellationToken);
     }
 
+    public Task<Account?> GetAccountWithRoleForUpdateAsync(int accountId, CancellationToken cancellationToken = default)
+    {
+        return _context.Accounts
+            .Include(x => x.Role)
+            .Where(x => x.AccountId == accountId && !x.IsDeleted)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
     private async Task<List<CustomerDeliveryAbuseSummaryDto>> GetDeliveryAbuseSummariesCoreAsync(
         IReadOnlyCollection<int> accountIds,
         CancellationToken cancellationToken)
