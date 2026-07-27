@@ -1695,6 +1695,17 @@ public class BlogService : IBlogService
                     : $"Your reply has been rejected because: {reason}.";
             }
 
+            var blogPostId = reply.ReviewBlog?.BlogPostId ?? 0;
+            if (blogPostId <= 0 && reply.ReviewBlogId > 0)
+            {
+                var review = await _unitOfWork.Blogs.GetReviewByIdAsync(reply.ReviewBlogId, cancellationToken);
+                blogPostId = review?.BlogPostId ?? 0;
+            }
+
+            var actionTarget = blogPostId > 0
+                ? $"/blog/{blogPostId}#reply-{reply.ReplyBlogId}"
+                : "/blog";
+
             await _notificationDispatcher.DispatchAsync(new NotificationContext
             {
                 RecipientAccountId = reply.AccountId,
@@ -1704,7 +1715,7 @@ public class BlogService : IBlogService
                 Message = message,
                 SendBell = true,
                 SendEmail = false,
-                ActionTarget = $"/blog/{reply.ReviewBlog?.BlogPostId ?? 0}#reply-{reply.ReplyBlogId}",
+                ActionTarget = actionTarget,
                 IdempotencyKey = $"blog-reply-moderation:{reply.ReplyBlogId}:{reply.AccountId}:{moderationStatus}:{DateTime.UtcNow.Ticks}"
             }, cancellationToken);
         }

@@ -100,6 +100,12 @@ public class WorkScheduleService : IWorkScheduleService
             return Result<WorkScheduleDto>.Failure("BUSINESS_RULE_VIOLATION", "Cannot schedule shifts in the past.");
         }
 
+        var nowVn = _timeProvider.VnNow;
+        if (dto.WorkDate.Date == nowVn.Date && template.EndTime <= nowVn.TimeOfDay)
+        {
+            return Result<WorkScheduleDto>.Failure("BUSINESS_RULE_VIOLATION", "Cannot assign staff to a shift that has already ended today.");
+        }
+
         var existing = await _unitOfWork.WorkSchedules.GetByUniqueKeyForUpdateAsync(dto.AccountId, dto.WorkDate, dto.ShiftTemplateId, cancellationToken);
         if (existing is not null)
         {

@@ -55,9 +55,8 @@ public class ShiftLifecycleJob : BackgroundService
 
         var toStart = await db.WorkSchedules
             .Include(ws => ws.ShiftTemplate)
-            .Where(ws => ws.WorkDate == today
-                         && ws.Status == "Scheduled"
-                         && ws.ShiftTemplate.StartTime <= nowTime)
+            .Where(ws => ws.Status == "Scheduled"
+                         && (ws.WorkDate < today || (ws.WorkDate == today && ws.ShiftTemplate.StartTime <= nowTime)))
             .ToListAsync(ct);
 
         if (toStart.Count > 0)
@@ -89,9 +88,8 @@ public class ShiftLifecycleJob : BackgroundService
         var toClose = await db.WorkSchedules
             .Include(ws => ws.ShiftTemplate)
             .Include(ws => ws.StaffShiftCapacity)
-            .Where(ws => ws.WorkDate == today
-                         && ws.Status == "OnDuty"
-                         && ws.ShiftTemplate.EndTime < nowTime)
+            .Where(ws => (ws.Status == "OnDuty" || ws.Status == "Scheduled")
+                         && (ws.WorkDate < today || (ws.WorkDate == today && ws.ShiftTemplate.EndTime < nowTime)))
             .ToListAsync(ct);
 
         if (toClose.Count == 0)
