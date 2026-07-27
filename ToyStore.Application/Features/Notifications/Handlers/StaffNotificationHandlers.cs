@@ -193,6 +193,10 @@ public class BlogCommentRepliedHandler : IOutboxEventHandler
         var blogPostId  = root.TryGetProperty("blogPostId", out var b) ? b.GetInt32() : 0;
         var blogTitle   = root.TryGetProperty("blogTitle", out var bt) ? bt.GetString() ?? "" : "";
 
+        var actionTarget = blogPostId > 0
+            ? $"/blog/{blogPostId}#reply-{replyBlogId}"
+            : "/blog";
+
         await _dispatcher.DispatchAsync(new NotificationContext
         {
             RecipientAccountId = accountId,
@@ -206,7 +210,7 @@ public class BlogCommentRepliedHandler : IOutboxEventHandler
             ReferenceId  = $"{replyBlogId}:{accountId}",
             SendBell     = true,
             SendEmail    = false,
-            ActionTarget = $"/blog/{blogPostId}#reply-{replyBlogId}",
+            ActionTarget = actionTarget,
         }, ct);
     }
 }

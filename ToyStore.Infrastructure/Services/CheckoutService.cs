@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using ToyStore.Application.Common.Helpers;
+using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs.Checkouts;
 using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Repositories;
@@ -8,8 +10,6 @@ using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Options;
-using ToyStore.Application.Common.Helpers;
-using ToyStore.Application.Constants;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -411,9 +411,9 @@ public class CheckoutService : ICheckoutService
 
                 if (isExpired)
                 {
-                    _logger.LogInformation("ConfirmAsync: Auto-cancelling expired SE_PAY order {OrderId} for account {AccountId}", 
+                    _logger.LogInformation("ConfirmAsync: Auto-cancelling expired SE_PAY order {OrderId} for account {AccountId}",
                         existingPending.OrderId, accountId);
-                    
+
                     var cancelResult = await _orderLifecycle.CancelOrderInternalAsync(
                         existingPending,
                         "SE_PAY payment timeout — auto-cancelled during new checkout attempt",
@@ -424,9 +424,9 @@ public class CheckoutService : ICheckoutService
 
                     if (!cancelResult.IsSuccess)
                     {
-                        _logger.LogWarning("ConfirmAsync: Failed to auto-cancel expired SE_PAY order {OrderId}: {Err}", 
+                        _logger.LogWarning("ConfirmAsync: Failed to auto-cancel expired SE_PAY order {OrderId}: {Err}",
                             existingPending.OrderId, cancelResult.ErrorMessage);
-                        
+
                         return Result<CheckoutConfirmResponseDto>.BusinessError(
                             $"You have an expired pending order #{existingPending.OrderCode} that could not be automatically cancelled: {cancelResult.ErrorMessage}");
                     }
@@ -1023,7 +1023,7 @@ public class CheckoutService : ICheckoutService
         {
             if (order.PaymentStatus == "PENDING" && order.CancelledAt == null)
             {
-                _logger.LogInformation("RetryPaymentAsync: Auto-cancelling expired SE_PAY order {OrderId} for account {AccountId}", 
+                _logger.LogInformation("RetryPaymentAsync: Auto-cancelling expired SE_PAY order {OrderId} for account {AccountId}",
                     order.OrderId, accountId);
 
                 await _orderLifecycle.CancelOrderInternalAsync(
@@ -1093,9 +1093,6 @@ public class CheckoutService : ICheckoutService
             TotalAmount = order.TotalAmount
         });
     }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
 
     private async Task<Result<decimal>> CalculateVoucherDiscountAsync(
         string voucherCode,
