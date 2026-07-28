@@ -68,20 +68,6 @@ public class CheckoutController : ControllerBase
         var result = await _checkout.ConfirmAsync(accountId, request, ct);
         return result.ToActionResult();
     }
-
-    /// <summary>
-    /// Sinh QR mới cho đơn SE_PAY chưa thanh toán.
-    /// POST /api/checkout/retry-payment/{orderId}
-    /// </summary>
-    [HttpPost("retry-payment/{orderId:int}")]
-    public async Task<ActionResult<RetryPaymentResponseDto>> RetryPayment(
-        int orderId,
-        CancellationToken ct)
-    {
-        var accountId = _currentUser.AccountId;
-        var result = await _checkout.RetryPaymentAsync(accountId, orderId, ct);
-        return result.ToActionResult();
-    }
 }
 
 /// <summary>Query DTO cho preview (không cần items — lấy từ cart hiện tại).</summary>

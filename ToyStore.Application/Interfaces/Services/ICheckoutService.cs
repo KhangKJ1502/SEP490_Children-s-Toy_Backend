@@ -30,11 +30,4 @@ public interface ICheckoutService
         CheckoutConfirmRequestDto request,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Sinh QR mới cho đơn SE_PAY chưa thanh toán.
-    /// </summary>
-    Task<Result<RetryPaymentResponseDto>> RetryPaymentAsync(
-        int accountId,
-        int orderId,
-        CancellationToken cancellationToken = default);
 }
