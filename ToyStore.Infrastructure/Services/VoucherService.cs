@@ -306,6 +306,16 @@ public class VoucherService : IVoucherService
                 {
                     return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Expired vouchers are locked. You can only update the End Date, Status, or delete it to reactivate/archive.");
                 }
+
+                // If not archiving/deleting, require extending the End Date to a future time
+                var targetEndDate = normalizedRequest.EndDate ?? existingVoucher.EndDate;
+                var targetStatus = normalizedRequest.Status ?? existingVoucher.Status;
+                bool isArchiving = string.Equals(targetStatus, VoucherStatuses.Inactive, StringComparison.OrdinalIgnoreCase) || normalizedRequest.IsDeleted == true;
+
+                if (!isArchiving && targetEndDate <= now)
+                {
+                    return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Expired vouchers are locked. Please update the End Date to a future time to reactivate it, or change the status to Inactive/delete it to archive.");
+                }
             }
 
             // Rule 1: Check if Staff modifies financial fields of an Active or Scheduled voucher
@@ -387,8 +397,8 @@ public class VoucherService : IVoucherService
                     normalizedRequest.Reason = null;
                 }
 
-                // If Admin updates dates without explicitly specifying Status
-                if (normalizedRequest.Status == null)
+                // If Admin updates dates without explicitly specifying Status (or status remains Expired)
+                if (normalizedRequest.Status == null || string.Equals(normalizedRequest.Status, VoucherStatuses.Expired, StringComparison.OrdinalIgnoreCase))
                 {
                     var targetStartDate = normalizedRequest.StartDate ?? existingVoucher.StartDate;
                     var targetEndDate = normalizedRequest.EndDate ?? existingVoucher.EndDate;
@@ -399,7 +409,8 @@ public class VoucherService : IVoucherService
                         {
                             if (string.Equals(oldStatus, VoucherStatuses.Scheduled, StringComparison.OrdinalIgnoreCase) ||
                                 string.Equals(oldStatus, VoucherStatuses.Inactive, StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(oldStatus, VoucherStatuses.Pending, StringComparison.OrdinalIgnoreCase))
+                                string.Equals(oldStatus, VoucherStatuses.Pending, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(oldStatus, VoucherStatuses.Expired, StringComparison.OrdinalIgnoreCase))
                             {
                                 normalizedRequest.Status = VoucherStatuses.Active;
                             }
@@ -407,7 +418,8 @@ public class VoucherService : IVoucherService
                         else
                         {
                             if (string.Equals(oldStatus, VoucherStatuses.Active, StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(oldStatus, VoucherStatuses.Pending, StringComparison.OrdinalIgnoreCase))
+                                string.Equals(oldStatus, VoucherStatuses.Pending, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(oldStatus, VoucherStatuses.Expired, StringComparison.OrdinalIgnoreCase))
                             {
                                 normalizedRequest.Status = VoucherStatuses.Scheduled;
                             }
