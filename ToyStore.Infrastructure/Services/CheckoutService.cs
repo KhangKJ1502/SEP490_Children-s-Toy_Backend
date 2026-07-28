@@ -821,17 +821,15 @@ public class CheckoutService : ICheckoutService
 
             if (payMethod == PayMethodWallet)
             {
-                // Kiểm tra ví
-                var wallet = await _db.Wallets
-                    .FirstOrDefaultAsync(w => w.AccountId == accountId, cancellationToken);
+                // Kiểm tra ví qua WalletRepository
+                var wallet = await _uow.Wallets.GetByAccountIdWithActivePinAsync(accountId, cancellationToken);
                 if (wallet is null || wallet.Status != "Active")
                 {
                     await _uow.RollbackTransactionAsync(cancellationToken);
                     return Result<CheckoutConfirmResponseDto>.BusinessError("Wallet is not available.");
                 }
 
-                var hasActivePin = await _db.WalletPins
-                    .AnyAsync(p => p.WalletId == wallet.WalletId && p.IsActive, cancellationToken);
+                var hasActivePin = wallet.WalletPins.Any(p => p.IsActive);
                 if (!hasActivePin)
                 {
                     await _uow.RollbackTransactionAsync(cancellationToken);
@@ -993,105 +991,6 @@ public class CheckoutService : ICheckoutService
             await _uow.RollbackTransactionAsync(cancellationToken);
             throw;
         }
-    }
-    public async Task<Result<RetryPaymentResponseDto>> RetryPaymentAsync(
-        int accountId,
-        int orderId,
-        CancellationToken cancellationToken = default)
-    {
-        var order = await _db.Orders
-            .Include(o => o.OrderDetails)
-            .Include(o => o.Status)
-            .Include(o => o.PaymentGatewayTransactions)
-            .FirstOrDefaultAsync(o => o.OrderId == orderId && o.AccountId == accountId && !o.IsDeleted, cancellationToken);
-
-        if (order is null)
-            return Result<RetryPaymentResponseDto>.NotFound("Order", orderId);
-
-        if (order.PaymentMethod != PayMethodSepay)
-            return Result<RetryPaymentResponseDto>.BusinessError("Order does not use SE_PAY payment.");
-
-        if (order.PaymentStatus == "PAID")
-            return Result<RetryPaymentResponseDto>.BusinessError("Order has already been paid.");
-
-        if (order.CancelledAt.HasValue)
-            return Result<RetryPaymentResponseDto>.BusinessError("Order has been cancelled, cannot generate new QR.");
-
-        var now = _timeProvider.UtcNow;
-        var ttl = TimeSpan.FromMinutes(_sePayOpts.PaymentTtlMinutes);
-        if (order.CreatedAt + ttl < now)
-        {
-            if (order.PaymentStatus == "PENDING" && order.CancelledAt == null)
-            {
-                _logger.LogInformation("RetryPaymentAsync: Auto-cancelling expired SE_PAY order {OrderId} for account {AccountId}",
-                    order.OrderId, accountId);
-
-                await _orderLifecycle.CancelOrderInternalAsync(
-                    order,
-                    "SE_PAY payment timeout — auto-cancelled during retry payment attempt",
-                    cancelledByAccountId: 0, // system
-                    restoreCart: false,
-                    restoreVoucher: true,
-                    cancellationToken: cancellationToken);
-            }
-            return Result<RetryPaymentResponseDto>.BusinessError("Order payment window has expired.");
-        }
-
-        if (order.PaymentStatus is "EXPIRED" or "CANCELLED" or "FAILED")
-            return Result<RetryPaymentResponseDto>.BusinessError($"Order is in {order.PaymentStatus} status, cannot generate new QR.");
-
-        var totalAttempts = order.PaymentGatewayTransactions.Count;
-        if (totalAttempts >= _sePayOpts.MaxPaymentAttempts)
-            return Result<RetryPaymentResponseDto>.BusinessError(
-                $"Exceeded {_sePayOpts.MaxPaymentAttempts} payment attempts for this order.");
-
-        // Cancel các attempt Pending cũ
-        var pendingAttempts = order.PaymentGatewayTransactions
-            .Where(t => t.Status == "Pending").ToList();
-        foreach (var t in pendingAttempts)
-        {
-            t.Status = "Cancelled";
-            t.UpdatedAt = now;
-        }
-
-        // Sinh attempt code mới
-        string? attemptCode = null;
-        for (var retryInsert = 0; retryInsert < 3; retryInsert++)
-        {
-            attemptCode = BuildAttemptCode(order.OrderCode);
-            try
-            {
-                await _db.PaymentGatewayTransactions.AddAsync(new PaymentGatewayTransaction
-                {
-                    OrderId = order.OrderId,
-                    Provider = "SE_PAY",
-                    RequestId = attemptCode,
-                    Amount = order.TotalAmount,
-                    Status = "Pending",
-                    RetryCount = 0,
-                    CreatedAt = now
-                }, cancellationToken);
-                await _db.SaveChangesAsync(cancellationToken);
-                break;
-            }
-            catch (DbUpdateException dex) when (IsUniqueViolation(dex))
-            {
-                _logger.LogWarning("RetryPayment UNIQUE violation for attemptCode {Code}", attemptCode);
-                _db.ChangeTracker.Entries<PaymentGatewayTransaction>()
-                    .Where(e => e.State == EntityState.Added)
-                    .ToList()
-                    .ForEach(e => e.State = EntityState.Detached);
-            }
-        }
-
-        var qrUrl = BuildVietQrUrl(attemptCode!, (long)order.TotalAmount);
-
-        return Result<RetryPaymentResponseDto>.Success(new RetryPaymentResponseDto
-        {
-            PaymentAttemptCode = attemptCode!,
-            QrImageUrl = qrUrl,
-            TotalAmount = order.TotalAmount
-        });
     }
 
     private async Task<Result<decimal>> CalculateVoucherDiscountAsync(
