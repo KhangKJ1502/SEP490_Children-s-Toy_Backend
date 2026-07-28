@@ -31,6 +31,8 @@ public class AdminOrderService : IAdminOrderService
     private readonly IValidator<ShipOrderRequestDto> _shipValidator;
     private readonly IValidator<CancelOrderRequestDto> _cancelValidator;
     private readonly IValidator<AssignOrderRequestDto> _assignValidator;
+    private readonly IValidator<ConfirmOrderRequestDto> _confirmValidator;
+    private readonly IValidator<ProcessOrderRequestDto> _processValidator;
     private readonly IDomainEventPublisher _eventPublisher;
     private readonly ILogger<AdminOrderService> _logger;
     private readonly ITimeProvider _timeProvider;
@@ -52,6 +54,8 @@ public class AdminOrderService : IAdminOrderService
         IValidator<ShipOrderRequestDto> shipValidator,
         IValidator<CancelOrderRequestDto> cancelValidator,
         IValidator<AssignOrderRequestDto> assignValidator,
+        IValidator<ConfirmOrderRequestDto> confirmValidator,
+        IValidator<ProcessOrderRequestDto> processValidator,
         IDomainEventPublisher eventPublisher,
         ILogger<AdminOrderService> logger,
         ITimeProvider timeProvider,
@@ -67,6 +71,8 @@ public class AdminOrderService : IAdminOrderService
         _shipValidator = shipValidator;
         _cancelValidator = cancelValidator;
         _assignValidator = assignValidator;
+        _confirmValidator = confirmValidator;
+        _processValidator = processValidator;
         _eventPublisher = eventPublisher;
         _logger = logger;
         _timeProvider = timeProvider;
@@ -189,8 +195,6 @@ public class AdminOrderService : IAdminOrderService
         return Result<AdminOrderDetailDto>.Success(dto);
     }
 
-    // ── UC3: Staff xac nhan don ───────────────────────────────────────────────
-
     public async Task<Result<ConfirmOrderResponseDto>> ConfirmOrderAsync(
         int orderId,
         ConfirmOrderRequestDto request,
@@ -203,6 +207,10 @@ public class AdminOrderService : IAdminOrderService
         var access = await _orderAccess.EnsureCanMutateAsync(orderId, OrderMutation.Confirm, cancellationToken);
         if (access.IsFailure)
             return Result<ConfirmOrderResponseDto>.Failure(access.ErrorCode!, access.ErrorMessage!);
+
+        var validation = await _confirmValidator.ValidateAsync(request, cancellationToken);
+        if (!validation.IsValid)
+            return validation.ToResult<ConfirmOrderResponseDto>();
 
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
 
@@ -276,6 +284,10 @@ public class AdminOrderService : IAdminOrderService
         var access = await _orderAccess.EnsureCanMutateAsync(orderId, OrderMutation.Process, cancellationToken);
         if (access.IsFailure)
             return Result<ProcessOrderResponseDto>.Failure(access.ErrorCode!, access.ErrorMessage!);
+
+        var validation = await _processValidator.ValidateAsync(request, cancellationToken);
+        if (!validation.IsValid)
+            return validation.ToResult<ProcessOrderResponseDto>();
 
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
 

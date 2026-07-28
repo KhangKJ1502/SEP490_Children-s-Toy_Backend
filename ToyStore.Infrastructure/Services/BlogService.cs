@@ -15,6 +15,7 @@ namespace ToyStore.Infrastructure.Services;
 
 public class BlogService : IBlogService
 {
+    private const int MaxBlogRejectReasonLength = 500;
     private const int MaxReviewCommentLength = 500;
     private const string ReactionLike = "like";
     private const string ReactionLove = "love";
@@ -400,12 +401,23 @@ public class BlogService : IBlogService
         }
         else if (isRejected)
         {
-            if (string.IsNullOrWhiteSpace(dto.Reason))
+            var rejectReason = dto.Reason?.Trim();
+            if (string.IsNullOrWhiteSpace(rejectReason))
             {
-                return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "Reason is required when rejecting a blog.");
+                return Result<BlogDetailDto>.ValidationFailure(new Dictionary<string, string[]>
+                {
+                    ["Reason"] = ["Reason is required when rejecting a blog."]
+                });
+            }
+            if (rejectReason.Length > MaxBlogRejectReasonLength)
+            {
+                return Result<BlogDetailDto>.ValidationFailure(new Dictionary<string, string[]>
+                {
+                    ["Reason"] = [$"Reason must not exceed {MaxBlogRejectReasonLength} characters."]
+                });
             }
             blog.Status = RejectedStatus;
-            blog.Reason = dto.Reason.Trim();
+            blog.Reason = rejectReason;
         }
         else
         {
@@ -1683,6 +1695,17 @@ public class BlogService : IBlogService
                     : $"Your reply has been rejected because: {reason}.";
             }
 
+            var blogPostId = reply.ReviewBlog?.BlogPostId ?? 0;
+            if (blogPostId <= 0 && reply.ReviewBlogId > 0)
+            {
+                var review = await _unitOfWork.Blogs.GetReviewByIdAsync(reply.ReviewBlogId, cancellationToken);
+                blogPostId = review?.BlogPostId ?? 0;
+            }
+
+            var actionTarget = blogPostId > 0
+                ? $"/blog/{blogPostId}#reply-{reply.ReplyBlogId}"
+                : "/blog";
+
             await _notificationDispatcher.DispatchAsync(new NotificationContext
             {
                 RecipientAccountId = reply.AccountId,
@@ -1692,7 +1715,7 @@ public class BlogService : IBlogService
                 Message = message,
                 SendBell = true,
                 SendEmail = false,
-                ActionTarget = $"/blog/{reply.ReviewBlog?.BlogPostId ?? 0}#reply-{reply.ReplyBlogId}",
+                ActionTarget = actionTarget,
                 IdempotencyKey = $"blog-reply-moderation:{reply.ReplyBlogId}:{reply.AccountId}:{moderationStatus}:{DateTime.UtcNow.Ticks}"
             }, cancellationToken);
         }

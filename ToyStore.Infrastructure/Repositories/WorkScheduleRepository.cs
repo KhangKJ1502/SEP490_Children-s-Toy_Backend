@@ -155,11 +155,16 @@ public class WorkScheduleRepository : IWorkScheduleRepository
 
     public Task<int> CountActiveByShiftTemplateAsync(byte shiftTemplateId, CancellationToken cancellationToken = default)
     {
+        var nowVn = DateTime.UtcNow.AddHours(7);
+        var today = nowVn.Date;
+        var nowTime = nowVn.TimeOfDay;
+
         return _context.WorkSchedules
             .AsNoTracking()
             .CountAsync(
                 ws => ws.ShiftTemplateId == shiftTemplateId
-                      && (ws.Status == "Scheduled" || ws.Status == "OnDuty"),
+                      && (ws.Status == "Scheduled" || ws.Status == "OnDuty")
+                      && (ws.WorkDate > today || (ws.WorkDate == today && ws.ShiftTemplate.EndTime >= nowTime)),
                 cancellationToken);
     }
 
@@ -172,10 +177,15 @@ public class WorkScheduleRepository : IWorkScheduleRepository
             return new Dictionary<byte, int>();
         }
 
+        var nowVn = DateTime.UtcNow.AddHours(7);
+        var today = nowVn.Date;
+        var nowTime = nowVn.TimeOfDay;
+
         var counts = await _context.WorkSchedules
             .AsNoTracking()
             .Where(ws => shiftTemplateIds.Contains(ws.ShiftTemplateId)
-                         && (ws.Status == "Scheduled" || ws.Status == "OnDuty"))
+                         && (ws.Status == "Scheduled" || ws.Status == "OnDuty")
+                         && (ws.WorkDate > today || (ws.WorkDate == today && ws.ShiftTemplate.EndTime >= nowTime)))
             .GroupBy(ws => ws.ShiftTemplateId)
             .Select(g => new { ShiftTemplateId = g.Key, Count = g.Count() })
             .ToListAsync(cancellationToken);

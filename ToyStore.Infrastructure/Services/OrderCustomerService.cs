@@ -15,6 +15,8 @@ using ToyStore.Domain.Enums;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Options;
 
+using FluentValidation;
+
 namespace ToyStore.Infrastructure.Services;
 
 /// <summary>
@@ -33,6 +35,7 @@ public class OrderCustomerService : IOrderCustomerService
     private readonly IShippingStatusMapper _statusMapper;
     private readonly SePayOptions _sePayOptions;
     private readonly SEP490ToyStoreContext _db;
+    private readonly IValidator<CancelOrderCustomerRequestDto> _cancelValidator;
 
     private static readonly HashSet<string> NonCancellableGhnStatuses =
         new(StringComparer.OrdinalIgnoreCase)
@@ -48,7 +51,8 @@ public class OrderCustomerService : IOrderCustomerService
         IOrderLifecycleService orderLifecycle,
         IMapper mapper,
         IShippingStatusMapper statusMapper,
-        IOptions<SePayOptions> sePayOptions)
+        IOptions<SePayOptions> sePayOptions,
+        IValidator<CancelOrderCustomerRequestDto> cancelValidator)
     {
         _uow = uow;
         _db = db;
@@ -60,6 +64,7 @@ public class OrderCustomerService : IOrderCustomerService
         _mapper = mapper;
         _statusMapper = statusMapper;
         _sePayOptions = sePayOptions.Value;
+        _cancelValidator = cancelValidator;
     }
 
 
@@ -126,6 +131,10 @@ public class OrderCustomerService : IOrderCustomerService
         bool restoreCart = false,
         CancellationToken cancellationToken = default)
     {
+        var validation = await _cancelValidator.ValidateAsync(new CancelOrderCustomerRequestDto { Reason = reason, RestoreCart = restoreCart }, cancellationToken);
+        if (!validation.IsValid)
+            return validation.ToResult<CancelOrderCustomerResponseDto>();
+
         var order = await _uow.Orders.GetByIdForUpdateAsync(orderId, cancellationToken);
         if (order is null || (!isAdmin && order.AccountId != actorAccountId))
             return Result<CancelOrderCustomerResponseDto>.Failure("NOT_FOUND", "Order not found or you don't have permission to cancel this order.");
@@ -281,29 +290,17 @@ public class OrderCustomerService : IOrderCustomerService
 
     public async Task<Result<string>> CompleteAsync(int orderId, int accountId, CancellationToken cancellationToken = default)
     {
-        var order = await _uow.Orders.GetByIdAsync(orderId, cancellationToken);
-        if (order is null || order.AccountId != accountId)
-            return Result<string>.Failure("NOT_FOUND", "Order not found or you don't have permission to confirm this order.");
-
-        // Chỉ được xác nhận khi đơn ở trạng thái Delivered
-        if (order.StatusId != (byte)OrderStatus.Delivered)
-        {
-            return Result<string>.UnprocessableEntity("Receipt can only be confirmed after the order has been successfully delivered.");
-        }
-
-        var result = await _orderLifecycle.CompleteOrderAsync(orderId, accountId, cancellationToken);
+        var result = await _orderLifecycle.CompleteOrderAsync(orderId, accountId, enforceOwnerCheck: true, cancellationToken);
         if (!result.IsSuccess)
             return Result<string>.Failure(result.ErrorCode!, result.ErrorMessage!);
 
-        // Publish event for notification (if needed, e.g. for points or stats)
+        var order = result.Data!;
         await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), "order.completed",
             new { orderId = order.OrderId, orderCode = order.OrderCode }, CancellationToken.None);
 
         return Result<string>.Success("Order receipt confirmed successfully.");
     }
-
-    // ── Payment Info (secure endpoint, không lộ qua URL) ─────────────────────
-
+    
     public async Task<Result<OrderPaymentInfoDto>> GetPaymentInfoAsync(
         int orderId,
         int accountId,

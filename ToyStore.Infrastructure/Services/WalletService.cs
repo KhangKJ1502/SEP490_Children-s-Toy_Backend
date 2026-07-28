@@ -20,7 +20,6 @@ public class WalletService : IWalletService
 {
     private const string WalletStatusActive = "Active";
     private const string WalletStatusFrozen = "Frozen";
-    private const string WalletStatusClosed = "Closed";
 
     private const int MaxFailedAttempts = 3;
     private const int MaxTotalFailedAttempts = 6;
@@ -258,10 +257,10 @@ public class WalletService : IWalletService
             return Result<VerifyWalletPinResponseDto>.NotFound("Wallet");
         }
 
-        if (IsFrozenOrClosed(wallet.Status))
+        if (IsFrozen(wallet.Status))
         {
             return Result<VerifyWalletPinResponseDto>.BusinessError(
-                "Wallet is not available. Please contact support or reset your PIN.");
+                "Wallet is not available. Please contact support.");
         }
 
         if (!IsWalletActive(wallet.Status))
@@ -361,7 +360,7 @@ public class WalletService : IWalletService
         if (isFrozen)
         {
             return Result<VerifyWalletPinResponseDto>.BusinessError(
-                "Wallet has been frozen due to too many incorrect PIN attempts. Please reset PIN or contact support.");
+                "Wallet has been frozen due to too many incorrect PIN attempts. Please contact support to unfreeze your wallet.");
         }
 
         if (isLocked)
@@ -396,7 +395,7 @@ public class WalletService : IWalletService
             return Result<SePayTopUpQrResponseDto>.NotFound("Wallet");
         }
 
-        if (IsFrozenOrClosed(wallet.Status) || !IsWalletActive(wallet.Status))
+        if (IsFrozen(wallet.Status) || !IsWalletActive(wallet.Status))
         {
             return Result<SePayTopUpQrResponseDto>.BusinessError("Wallet is not available for top-up.");
         }
@@ -524,7 +523,7 @@ public class WalletService : IWalletService
 
         if (!IsWalletActive(wallet.Status))
         {
-            return Result.BusinessError("Wallet is not active. Please reset PIN if your wallet is frozen.");
+            return Result.BusinessError("Wallet is not active. Please contact support if your wallet is frozen.");
         }
 
         var activePin = wallet.WalletPins.FirstOrDefault(x => x.IsActive);
@@ -591,10 +590,11 @@ public class WalletService : IWalletService
             return Result.NotFound("Wallet");
         }
 
-        if (string.Equals(wallet.Status, WalletStatusClosed, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(wallet.Status, WalletStatusFrozen, StringComparison.OrdinalIgnoreCase))
         {
-            return Result.BusinessError("Wallet is closed.");
+            return Result.BusinessError("Wallet is frozen. Please contact support to unfreeze your wallet.");
         }
+
 
         var cooldownKey = $"{ForgotOtpCooldownPrefix}{accountId}";
         var otpKey = $"{ForgotOtpPrefix}{accountId}";
@@ -655,6 +655,12 @@ public class WalletService : IWalletService
             return Result.NotFound("Wallet");
         }
 
+        if (string.Equals(wallet.Status, WalletStatusFrozen, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result.BusinessError("Wallet is frozen. Please contact support to unfreeze your wallet.");
+        }
+
+
         var otpKey = $"{ForgotOtpPrefix}{accountId}";
         var verifiedKey = $"{ForgotOtpVerifiedPrefix}{accountId}";
 
@@ -703,6 +709,12 @@ public class WalletService : IWalletService
             return Result.NotFound("Wallet");
         }
 
+        if (string.Equals(wallet.Status, WalletStatusFrozen, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result.BusinessError("Wallet is frozen. Please contact support to unfreeze your wallet.");
+        }
+
+
         var otpKey = $"{ForgotOtpPrefix}{accountId}";
         var cooldownKey = $"{ForgotOtpCooldownPrefix}{accountId}";
         var verifiedKey = $"{ForgotOtpVerifiedPrefix}{accountId}";
@@ -740,12 +752,7 @@ public class WalletService : IWalletService
                 CreatedAt = now
             }, cancellationToken);
 
-            if (string.Equals(wallet.Status, WalletStatusFrozen, StringComparison.OrdinalIgnoreCase))
-            {
-                wallet.Status = WalletStatusActive;
-                wallet.UpdatedAt = now;
-                _unitOfWork.Wallets.UpdateWallet(wallet);
-            }
+
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
@@ -786,9 +793,8 @@ public class WalletService : IWalletService
     private static bool IsWalletActive(string status) =>
         string.Equals(status, WalletStatusActive, StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsFrozenOrClosed(string status) =>
-        string.Equals(status, WalletStatusFrozen, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(status, WalletStatusClosed, StringComparison.OrdinalIgnoreCase);
+    private static bool IsFrozen(string status) =>
+        string.Equals(status, WalletStatusFrozen, StringComparison.OrdinalIgnoreCase);
 
     private static string HashPin(string pin) => BCryptNet.HashPassword(pin);
 

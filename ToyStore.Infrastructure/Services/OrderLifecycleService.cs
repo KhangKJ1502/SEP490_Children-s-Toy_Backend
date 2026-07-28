@@ -53,41 +53,27 @@ public class OrderLifecycleService : IOrderLifecycleService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            // 1. Restore stock
-            // Stock is always deducted at confirm (COD, SE_PAY reserve, WALLET post-debit)
-            // Restore when order is not PAID (WALLET PAID already handled separately as REFUNDED)
-            bool productsSubtracted = order.PaymentStatus != "PAID";
-
+          
             foreach (var detail in order.OrderDetails)
             {
-                // General Stock restoration
-                if (productsSubtracted)
-                {
-                    await _unitOfWork.Orders.AdjustStockAsync(detail.ProductId, detail.Quantity, cancellationToken);
-                }
-
-                // Flash Sale Stock restoration
+              
+                await _unitOfWork.Orders.AdjustStockAsync(detail.ProductId, detail.Quantity, cancellationToken);
                 if (detail.SlotProductId.HasValue)
                 {
                     if (order.PaymentStatus == "PAID")
                     {
-                        // Deducted from SoldQuantity (webhook moved Reserved→Sold)
                         await _unitOfWork.Orders.AdjustFlashSaleStockAsync(detail.SlotProductId.Value, -detail.Quantity, 0, cancellationToken);
                     }
                     else if (order.PaymentMethod == "SE_PAY")
                     {
-                        // SE_PAY: stock reserved but not yet sold — release ReservedQuantity
                         await _unitOfWork.Orders.AdjustFlashSaleStockAsync(detail.SlotProductId.Value, 0, -detail.Quantity, cancellationToken);
                     }
                     else
                     {
-                        // COD: deducted from SoldQuantity at confirm
                         await _unitOfWork.Orders.AdjustFlashSaleStockAsync(detail.SlotProductId.Value, -detail.Quantity, 0, cancellationToken);
                     }
                 }
             }
-
-            // 2. Restore voucher
             if (restoreVoucher)
             {
                 await _unitOfWork.Orders.RestoreVoucherAsync(order.OrderId, cancellationToken);
@@ -193,16 +179,24 @@ public class OrderLifecycleService : IOrderLifecycleService
         }
     }
 
-    public async Task<Result> CompleteOrderAsync(int orderId, int? changedByAccountId = null, CancellationToken cancellationToken = default)
+    public async Task<Result<Order>> CompleteOrderAsync(int orderId, int? changedByAccountId = null, bool enforceOwnerCheck = false, CancellationToken cancellationToken = default)
     {
         var order = await _unitOfWork.Orders.GetByIdForUpdateAsync(orderId, cancellationToken);
-        if (order is null) return Result.NotFound("Order", orderId);
+        if (order is null) return Result<Order>.NotFound("Order", orderId);
+
+        if (enforceOwnerCheck && changedByAccountId.HasValue && order.AccountId != changedByAccountId.Value)
+            return Result<Order>.Failure("NOT_FOUND", "Order not found or you don't have permission to confirm this order.");
 
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
         if (!statusMap.TryGetValue(OrderStatuses.Completed, out var completedId))
-            return Result.Failure("INTERNAL_ERROR", "Status 'Completed' not found.");
+            return Result<Order>.Failure("INTERNAL_ERROR", "Status 'Completed' not found.");
 
-        if (order.StatusId == completedId) return Result.Success();
+        if (order.StatusId == completedId) return Result<Order>.Success(order);
+
+        if (statusMap.TryGetValue(OrderStatuses.Delivered, out var deliveredId) && order.StatusId != deliveredId)
+        {
+            return Result<Order>.UnprocessableEntity("Receipt can only be confirmed after the order has been successfully delivered.");
+        }
 
         var now = _timeProvider.UtcNow;
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
@@ -235,7 +229,7 @@ public class OrderLifecycleService : IOrderLifecycleService
 
             await TryReleaseCapacityAsync(orderId, cancellationToken);
 
-            return Result.Success();
+            return Result<Order>.Success(order);
         }
         catch (Exception ex)
         {

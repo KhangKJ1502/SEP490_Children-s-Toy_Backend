@@ -18,6 +18,7 @@ using ToyStore.Application.DTOs.Checkouts;
 using ToyStore.Application.Services;
 using ToyStore.Infrastructure.Options;
 using ToyStore.Application.Common.Helpers;
+using FluentValidation;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -32,6 +33,8 @@ public class RefundService : IRefundService
     private readonly IWalletRefundCreditor _walletRefundCreditor;
     private readonly IShiftAssignmentService _shiftAssignmentService;
     private readonly ITimeProvider _timeProvider;
+    private readonly IValidator<CreateRefundDto> _createRefundValidator;
+    private readonly IValidator<UpdateRefundStatusDto> _updateRefundStatusValidator;
 
     public RefundService(
         IUnitOfWork unitOfWork,
@@ -42,7 +45,9 @@ public class RefundService : IRefundService
         IOptions<ShopAddressOptions> shopAddress,
         IWalletRefundCreditor walletRefundCreditor,
         IShiftAssignmentService shiftAssignmentService,
-        ITimeProvider timeProvider)
+        ITimeProvider timeProvider,
+        IValidator<CreateRefundDto> createRefundValidator,
+        IValidator<UpdateRefundStatusDto> updateRefundStatusValidator)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
@@ -53,6 +58,8 @@ public class RefundService : IRefundService
         _walletRefundCreditor = walletRefundCreditor;
         _shiftAssignmentService = shiftAssignmentService;
         _timeProvider = timeProvider;
+        _createRefundValidator = createRefundValidator;
+        _updateRefundStatusValidator = updateRefundStatusValidator;
     }
 
     private byte? MapStatusStringToId(string statusStr)
@@ -87,7 +94,11 @@ public class RefundService : IRefundService
     /// </summary>
     private static decimal ComputeFinalRefundAmount(decimal approvedAmount, decimal returnShippingFee, string returnShippingFeeBy)
     {
-        return approvedAmount; // Khách hàng tự thanh toán tiền mặt chiều đi nên không khấu trừ ví
+        if (string.Equals(returnShippingFeeBy, RefundResponsibleParty.Customer, StringComparison.OrdinalIgnoreCase))
+        {
+            return Math.Max(0m, approvedAmount - returnShippingFee);
+        }
+        return approvedAmount;
     }
 
     private string? NormalizeRefundStatusFilter(string? status)
@@ -141,6 +152,10 @@ public class RefundService : IRefundService
 
     public async Task<Result<RefundDto>> CreateRefundAsync(int customerId, CreateRefundDto dto, CancellationToken cancellationToken = default)
     {
+        var validation = await _createRefundValidator.ValidateAsync(dto, cancellationToken);
+        if (!validation.IsValid)
+            return validation.ToResult<RefundDto>();
+
         var order = await _unitOfWork.Orders.GetByIdForUpdateAsync(dto.OrderId, cancellationToken);
         if (order == null || order.AccountId != customerId)
             return Result<RefundDto>.NotFound("Order", dto.OrderId);
@@ -153,6 +168,12 @@ public class RefundService : IRefundService
             return Result<RefundDto>.BusinessError("Refund requests must be submitted within 3 days of order completion.");
 
         var existingRefunds = await _unitOfWork.Refunds.GetAdminRefundsAsync(new AdminRefundFilterDto { OrderId = dto.OrderId, PageSize = 100 }, cancellationToken);
+
+        // Maximum 2 refund attempts allowed per order
+        if (existingRefunds.Items != null && existingRefunds.Items.Count >= 2)
+        {
+            return Result<RefundDto>.BusinessError("The number of refund requests for this order has exceeded the allowed limit (maximum 2 times)");
+        }
 
         var hasBlockedRefund = false;
         foreach (var rDto in existingRefunds.Items)
@@ -174,7 +195,7 @@ public class RefundService : IRefundService
                     h.StatusId != (byte)RefundStatusEnum.RefundCancelled &&
                     h.StatusId != (byte)RefundStatusEnum.RefundRejected);
 
-                if (wentPastRequested)
+                if (wentPastRequested && rEntity.StatusId != (byte)RefundStatusEnum.RefundRejected && rEntity.StatusId != (byte)RefundStatusEnum.RefundReturnedToCustomer)
                 {
                     hasBlockedRefund = true;
                     break;
@@ -184,7 +205,7 @@ public class RefundService : IRefundService
 
         if (hasBlockedRefund)
         {
-            return Result<RefundDto>.BusinessError("Only 1 active refund request is allowed per order lifecycle, and re-submitting is blocked if the previous request went beyond the initial review stage.");
+            return Result<RefundDto>.BusinessError("This order currently has a refund request being processed.");
         }
 
         // Process return items (support partial returns)
@@ -249,8 +270,12 @@ public class RefundService : IRefundService
             }
         }
 
+        var activeReasons = await _unitOfWork.Refunds.GetActiveReasonsAsync(cancellationToken);
+        var selectedReason = activeReasons.FirstOrDefault(r => r.RefundReasonId == dto.RefundReasonId);
+        var isCustomerFault = selectedReason != null && string.Equals(selectedReason.ResponsibleParty, RefundResponsibleParty.Customer, StringComparison.OrdinalIgnoreCase);
+
         var subTotal = refundDetails.Sum(d => d.RefundAmount);
-        var shippingFeeRefunded = isFullReturn ? (order.ActualShippingFee ?? order.EstimatedShippingFee) : 0m;
+        var shippingFeeRefunded = (isFullReturn && !isCustomerFault) ? (order.ActualShippingFee ?? order.EstimatedShippingFee) : 0m;
         var totalAmount = subTotal + shippingFeeRefunded;
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
@@ -612,6 +637,10 @@ public class RefundService : IRefundService
 
     public async Task<Result<RefundDto>> UpdateRefundStatusAsync(int staffId, byte roleId, int refundId, UpdateRefundStatusDto dto, bool isAdmin = false, CancellationToken cancellationToken = default)
     {
+        var validation = await _updateRefundStatusValidator.ValidateAsync(dto, cancellationToken);
+        if (!validation.IsValid)
+            return validation.ToResult<RefundDto>();
+
         var refund = await _unitOfWork.Refunds.GetByIdAsync(refundId, cancellationToken);
         if (refund == null)
             return Result<RefundDto>.NotFound("Refund", refundId);
@@ -678,9 +707,9 @@ public class RefundService : IRefundService
                 dto.InspectionNote = dto.RejectReason;
             }
 
-            refund.ReasonDetails = string.IsNullOrEmpty(refund.ReasonDetails)
+            refund.AdminNote = string.IsNullOrEmpty(refund.AdminNote)
                 ? $"Reject Reason: {dto.RejectReason}"
-                : $"{refund.ReasonDetails} | Reject Reason: {dto.RejectReason}";
+                : $"{refund.AdminNote} | Reject Reason: {dto.RejectReason}";
         }
 
         // When Merchandise submits inspection results (system return: from Received or legacy Approved)
@@ -1276,9 +1305,9 @@ public class RefundService : IRefundService
                     return Result<RefundDto>.BusinessError("Reject reason is required when rejecting a refund.");
                 }
                 refund.RejectedAt = DateTime.UtcNow;
-                refund.ReasonDetails = string.IsNullOrEmpty(refund.ReasonDetails)
+                refund.AdminNote = string.IsNullOrEmpty(refund.AdminNote)
                     ? $"Reject Reason: {dto.RejectReason}"
-                    : $"{refund.ReasonDetails} | Reject Reason: {dto.RejectReason}";
+                    : $"{refund.AdminNote} | Reject Reason: {dto.RejectReason}";
 
                 // Log a status history entry to the order with the rejection reason
                 var history = new OrderStatusHistory
@@ -1642,137 +1671,6 @@ public class RefundService : IRefundService
                     await _unitOfWork.Orders.AdjustFlashSaleStockAsync(originalDetail.SlotProductId.Value, -restoreQty, 0, cancellationToken);
                 }
             }
-        }
-    }
-
-    public async Task<Result<RefundDto>> CreateAdminRefundAsync(int staffId, CreateAdminRefundDto dto, CancellationToken cancellationToken = default)
-    {
-        var order = await _unitOfWork.Orders.GetByIdForUpdateAsync(dto.OrderId, cancellationToken);
-        if (order == null)
-            return Result<RefundDto>.NotFound("Order", dto.OrderId);
-
-        var existingRefunds = await _unitOfWork.Refunds.GetAdminRefundsAsync(new AdminRefundFilterDto { OrderId = dto.OrderId, PageSize = 100 }, cancellationToken);
-        var hasActiveRefund = existingRefunds.Items.Any(r =>
-            r.RefundStatus is RefundStatuses.Requested or RefundStatuses.Approved or RefundStatuses.Completed);
-
-        if (hasActiveRefund)
-        {
-            return Result<RefundDto>.BusinessError("Only 1 active refund request is allowed per order lifecycle. There is already a pending or completed refund for this order.");
-        }
-
-        // Process return items (support partial returns)
-        var returnItems = new List<CreateRefundItemDto>();
-        if (dto.Items == null || !dto.Items.Any())
-        {
-            // Default to returning all items in the order (Full Refund)
-            returnItems = order.OrderDetails.Select(od => new CreateRefundItemDto
-            {
-                ProductId = od.ProductId,
-                Quantity = od.Quantity
-            }).ToList();
-        }
-        else
-        {
-            returnItems = dto.Items;
-        }
-
-        // Verify items exist and quantities do not exceed original purchased quantities
-        var refundDetails = new List<RefundDetail>();
-        var discountRatio = order.SubTotal > 0 ? (order.VoucherDiscountAmount / order.SubTotal) : 0m;
-
-        foreach (var item in returnItems)
-        {
-            var originalDetail = order.OrderDetails.FirstOrDefault(od => od.ProductId == item.ProductId);
-            if (originalDetail == null)
-            {
-                return Result<RefundDto>.BusinessError($"Product ID {item.ProductId} does not exist in the original order.");
-            }
-
-            if (item.Quantity <= 0)
-            {
-                return Result<RefundDto>.BusinessError($"Returned quantity for Product ID {item.ProductId} must be greater than zero.");
-            }
-
-            if (item.Quantity > originalDetail.Quantity)
-            {
-                return Result<RefundDto>.BusinessError($"Returned quantity ({item.Quantity}) for Product ID {item.ProductId} exceeds purchased quantity ({originalDetail.Quantity}).");
-            }
-
-            var itemRefundAmount = Math.Round(item.Quantity * originalDetail.UnitPrice * (1 - discountRatio), 0);
-
-            refundDetails.Add(new RefundDetail
-            {
-                ProductId = item.ProductId,
-                Quantity = item.Quantity,
-                UnitPrice = originalDetail.UnitPrice,
-                RefundAmount = itemRefundAmount,
-                CreatedAt = DateTime.UtcNow
-            });
-        }
-
-        var subTotal = refundDetails.Sum(d => d.RefundAmount);
-        var shippingFee = order.ActualShippingFee ?? order.EstimatedShippingFee;
-        var calculatedTotal = subTotal + shippingFee;
-        var totalAmount = dto.OverrideAmount ?? calculatedTotal;
-        var now = DateTime.UtcNow;
-
-        await _unitOfWork.BeginTransactionAsync(cancellationToken);
-        try
-        {
-            var refund = new OrderRefund
-            {
-                OrderId = order.OrderId,
-                RefundReasonId = dto.RefundReasonId,
-                ReasonDetails = dto.ReasonDetails ?? "Manually created by Admin",
-                RefundSource = RefundSources.System, // Bypasses customer return restrictions
-                CustomerId = order.AccountId,
-                RequestedBy = staffId,
-                ApprovedAmount = totalAmount,
-                RefundCode = "REF-" + now.ToString("yyyyMMdd") + "-" + Guid.NewGuid().ToString().Substring(0, 8).ToUpper(),
-                SubTotal = subTotal,
-                ShippingFee = dto.OverrideAmount.HasValue ? 0 : shippingFee,
-                TotalAmount = totalAmount,
-                StatusId = (byte)RefundStatusEnum.RefundRequested,
-                IsDeleted = false,
-                CreatedAt = now
-            };
-
-            refund.RefundStatusHistories.Add(new RefundStatusHistory
-            {
-                StatusId = (byte)RefundStatusEnum.RefundRequested,
-                ChangedBy = staffId,
-                Note = "Manual refund request created by Admin.",
-                CreatedAt = now
-            });
-
-            foreach (var detail in refundDetails)
-            {
-                refund.RefundDetails.Add(detail);
-            }
-
-            await _unitOfWork.Refunds.AddAsync(refund, cancellationToken);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-            // Release old assignments to ensure clean state
-            await _shiftAssignmentService.ReleaseCapacityAsync(refund.OrderId, cancellationToken);
-
-            // Auto-assign to active shift staff/merch
-            await _shiftAssignmentService.AutoAssignOrderAsync(refund.OrderId, cancellationToken);
-
-            await _unitOfWork.CommitTransactionAsync(cancellationToken);
-
-            await _eventPublisher.PublishAsync("Refund", refund.RefundId.ToString(),
-                NotificationEventTypes.RefundNewRequest,
-                new { refundId = refund.RefundId, orderId = dto.OrderId, orderCode = order.OrderCode, customerId = order.AccountId },
-                CancellationToken.None);
-
-            var createdRefund = await _unitOfWork.Refunds.GetByIdAsync(refund.RefundId, cancellationToken);
-            return Result<RefundDto>.Success(_mapper.Map<RefundDto>(createdRefund));
-        }
-        catch
-        {
-            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-            throw;
         }
     }
 
