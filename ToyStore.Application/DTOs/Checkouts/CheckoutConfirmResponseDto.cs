@@ -55,11 +55,3 @@ public class CheckoutPreviewItemErrorDto
     public string ProductName { get; set; } = string.Empty;
     public string Error { get; set; } = string.Empty;
 }
-
-/// <summary>Response khi retry QR.</summary>
-public class RetryPaymentResponseDto
-{
-    public string PaymentAttemptCode { get; set; } = string.Empty;
-    public string QrImageUrl { get; set; } = string.Empty;
-    public decimal TotalAmount { get; set; }
-}
