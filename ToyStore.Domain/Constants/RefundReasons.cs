@@ -5,5 +5,5 @@ namespace ToyStore.Domain.Constants;
 /// </summary>
 public static class RefundReasons
 {
-    public const string DeliveryFailedGhn = "Giao hàng thất bại / không giao được";
+    public const string DeliveryFailedGhn = "Delivery failed / unable to deliver";
 }
