@@ -26,6 +26,7 @@ public class ProductService : IProductService
     private readonly IValidator<CreateProductDto> _createProductValidator;
     private readonly IValidator<UpdateProductDto> _updateProductValidator;
     private readonly ITimeProvider _timeProvider;
+    private readonly IProductFollowerService _productFollowerService;
 
     public ProductService(
         IUnitOfWork unitOfWork,
@@ -34,7 +35,8 @@ public class ProductService : IProductService
         ICartService cartService,
         IValidator<CreateProductDto> createProductValidator,
         IValidator<UpdateProductDto> updateProductValidator,
-        ITimeProvider timeProvider)
+        ITimeProvider timeProvider,
+        IProductFollowerService productFollowerService)
     {
         _unitOfWork             = unitOfWork;
         _logger                 = logger;
@@ -43,6 +45,7 @@ public class ProductService : IProductService
         _createProductValidator = createProductValidator;
         _updateProductValidator = updateProductValidator;
         _timeProvider           = timeProvider;
+        _productFollowerService = productFollowerService;
     }
 
     public async Task<Result<PaginatedResponse<ProductListDto>>> GetProductsAsync(
@@ -392,6 +395,15 @@ public class ProductService : IProductService
             if (shouldNotifyCartRealtime)
             {
                 await _cartService.NotifyProductChangedAsync(updated.ProductId, cancellationToken);
+            }
+
+            if (updated.Quantity > 0 && updated.ProductStatus == "Active" && !updated.IsDeleted)
+            {
+                await _productFollowerService.NotifyFollowersIfBackInStockAsync(updated.ProductId, cancellationToken);
+            }
+            else if (updated.Quantity <= 0 || updated.ProductStatus != "Active" || updated.IsDeleted)
+            {
+                await _productFollowerService.ResetFollowerNotificationStateAsync(updated.ProductId, cancellationToken);
             }
 
             var mappedUpdated = _mapper.Map<ProductDto>(updated);
