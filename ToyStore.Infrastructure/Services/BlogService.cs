@@ -52,6 +52,7 @@ public class BlogService : IBlogService
     private readonly IMapper _mapper;
     private readonly INotificationDispatcher _notificationDispatcher;
     private readonly IValidator<UpdateBlogReviewPermissionDto> _permissionValidator;
+    private readonly IValidator<AiBlogGenerateRequest> _aiBlogGenerateRequestValidator;
     private readonly ILogger<BlogService> _logger;
     private readonly ITimeProvider _timeProvider;
     private readonly IBlogCommentModerationGateway _blogCommentModerationGateway;
@@ -65,6 +66,7 @@ public class BlogService : IBlogService
         IMapper mapper,
         INotificationDispatcher notificationDispatcher,
         IValidator<UpdateBlogReviewPermissionDto> permissionValidator,
+        IValidator<AiBlogGenerateRequest> aiBlogGenerateRequestValidator,
         ILogger<BlogService> logger,
         ITimeProvider timeProvider,
         IBlogCommentModerationGateway blogCommentModerationGateway,
@@ -77,6 +79,7 @@ public class BlogService : IBlogService
         _mapper             = mapper;
         _notificationDispatcher = notificationDispatcher;
         _permissionValidator = permissionValidator;
+        _aiBlogGenerateRequestValidator = aiBlogGenerateRequestValidator;
         _logger             = logger;
         _timeProvider       = timeProvider;
         _blogCommentModerationGateway = blogCommentModerationGateway;
@@ -2025,6 +2028,13 @@ public class BlogService : IBlogService
         AiBlogGenerateRequest request,
         CancellationToken cancellationToken = default)
     {
+        // ── Validate cơ bản bằng FluentValidation ──
+        var validationResult = await _aiBlogGenerateRequestValidator.ValidateAsync(request, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            return validationResult.ToResult<AiBlogGenerateResult>();
+        }
+
         // ── Validate đầu vào có ý nghĩa (chống gibberish / keyboard mash) ──
         var meaningfulErrors = BlogMeaningfulInputHelper.ValidateMeaningfulInputs(
             request.Title,
