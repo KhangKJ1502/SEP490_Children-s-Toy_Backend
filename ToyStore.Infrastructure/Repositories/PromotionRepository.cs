@@ -143,9 +143,11 @@ public class PromotionRepository : IPromotionRepository
 
     public async Task<List<ToyStore.Application.DTOs.Promotions.ProductPromotionInfoDto>> GetPromotionsByProductIdAsync(int productId, CancellationToken cancellationToken = default)
     {
+        var now = DateTime.UtcNow;
+
         var discountPromos = await _context.ProductPromotions
             .Include(pp => pp.Promotion)
-            .Where(pp => pp.ProductId == productId && !pp.IsDeleted && !pp.Promotion.IsDeleted)
+            .Where(pp => pp.ProductId == productId && !pp.IsDeleted && !pp.Promotion.IsDeleted && pp.Promotion.Status != "Expired" && pp.Promotion.EndDate >= now)
             .Select(pp => new ToyStore.Application.DTOs.Promotions.ProductPromotionInfoDto
             {
                 PromotionId = pp.PromotionId,
@@ -156,6 +158,7 @@ public class PromotionRepository : IPromotionRepository
                 Status = pp.Promotion.Status,
                 SalePrice = pp.SalePrice,
                 DiscountPercent = pp.DiscountPercent,
+                Priority = pp.Promotion.Priority,
                 SaleQuantity = null,
                 SoldQuantity = null
             })
@@ -164,7 +167,7 @@ public class PromotionRepository : IPromotionRepository
         var flashSalePromos = await _context.PromotionProductSlots
             .Include(pps => pps.TimeSlot)
             .ThenInclude(ts => ts.Promotion)
-            .Where(pps => pps.ProductId == productId && !pps.IsDeleted && !pps.TimeSlot.IsDeleted && !pps.TimeSlot.Promotion.IsDeleted)
+            .Where(pps => pps.ProductId == productId && !pps.IsDeleted && !pps.TimeSlot.IsDeleted && !pps.TimeSlot.Promotion.IsDeleted && pps.TimeSlot.Promotion.Status != "Expired" && pps.TimeSlot.EndAt >= now)
             .Select(pps => new ToyStore.Application.DTOs.Promotions.ProductPromotionInfoDto
             {
                 PromotionId = pps.TimeSlot.PromotionId,
@@ -175,6 +178,7 @@ public class PromotionRepository : IPromotionRepository
                 Status = pps.TimeSlot.Status,
                 SalePrice = pps.SalePrice,
                 DiscountPercent = pps.DiscountPercent,
+                Priority = pps.TimeSlot.Promotion.Priority,
                 SaleQuantity = pps.SaleQuantity,
                 SoldQuantity = pps.SoldQuantity
             })
