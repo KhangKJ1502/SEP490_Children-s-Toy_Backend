@@ -4,7 +4,6 @@ using ToyStore.API.Extensions;
 using ToyStore.Application.DTOs;
 using ToyStore.Application.DTOs.Blogs;
 using ToyStore.Application.Interfaces.Services;
-using ToyStore.Application.Validators.Blogs;
 
 namespace ToyStore.API.Controllers;
 
@@ -177,17 +176,6 @@ public class AdminBlogsController : ControllerBase
         [FromBody] AiBlogGenerateRequest request,
         CancellationToken cancellationToken = default)
     {
-        // Validate cơ bản bằng FluentValidation trước khi vào service
-        var validator = new AiBlogGenerateRequestValidator();
-        var validationResult = await validator.ValidateAsync(request, cancellationToken);
-        if (!validationResult.IsValid)
-        {
-            var fieldErrors = validationResult.Errors
-                .GroupBy(e => e.PropertyName)
-                .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray());
-            return BadRequest(new ValidationErrorResponse("One or more validation errors occurred.", fieldErrors));
-        }
-
         var result = await _blogService.GenerateWithAiAsync(request, cancellationToken);
         return result.ToActionResult();
     }
