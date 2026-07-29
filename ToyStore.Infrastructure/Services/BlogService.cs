@@ -1148,6 +1148,11 @@ public class BlogService : IBlogService
             return Result<ReactionSummaryDto>.NotFound("Review", reviewBlogId);
         }
 
+        if (review.IsDeleted || !string.Equals(review.ModerationStatus, ModerationApproved, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<ReactionSummaryDto>.BusinessError("Cannot react to deleted or unapproved review.");
+        }
+
         var reactionType = await ResolveReactionTypeAsync(dto.ReactionCode, cancellationToken);
         if (reactionType == null)
         {
@@ -1221,6 +1226,11 @@ public class BlogService : IBlogService
         if (reply == null)
         {
             return Result<ReactionSummaryDto>.NotFound("Reply", replyBlogId);
+        }
+
+        if (reply.IsDeleted || !string.Equals(reply.ModerationStatus, ModerationApproved, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<ReactionSummaryDto>.BusinessError("Cannot react to deleted or unapproved reply.");
         }
 
         var reactionType = await ResolveReactionTypeAsync(dto.ReactionCode, cancellationToken);
