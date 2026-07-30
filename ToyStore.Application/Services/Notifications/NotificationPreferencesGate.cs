@@ -65,6 +65,15 @@ public class NotificationPreferencesGate : INotificationPreferencesGate
             return false;
         }
 
+        // WEB_PUSH và WEB_BELL cần thêm cờ WebPushOptIn
+        if ((channel == NotificationChannels.WebPush || channel == NotificationChannels.WebBell) && !prefs.WebPushOptIn)
+        {
+            _logger.LogDebug(
+                "Web push / bell notification suppressed (WebPushOptIn=0). AccountID={Id} Type={Type} Channel={Channel}",
+                accountId, notificationType, channel);
+            return false;
+        }
+
         return true;
     }
 }
