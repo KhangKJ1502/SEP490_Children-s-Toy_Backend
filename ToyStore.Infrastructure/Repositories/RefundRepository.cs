@@ -39,12 +39,12 @@ public class RefundRepository : IRefundRepository
             .AsNoTracking()
             .FirstOrDefaultAsync(r => r.Content == content, cancellationToken);
 
-        if (reason is null && content == "Giao hàng thất bại / không giao được")
+        if (reason is null && content == "Delivery failed / unable to deliver")
         {
             var newReason = new OrderRefundReason
             {
                 Content = content,
-                Description = "Refund tự động khi GHN trả hàng về kho do giao thất bại",
+                Description = "Automatic refund when GHN returns the package to Merchandise due to failed delivery (System-only)",
                 IsDeleted = false,
                 IsSystem = true,
                 CreatedAt = _timeProvider.UtcNow

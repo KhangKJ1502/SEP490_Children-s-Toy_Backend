@@ -1,6 +1,8 @@
+using System.IO;
 using AutoMapper;
 using FluentValidation;
 using Microsoft.Extensions.Logging;
+using ToyStore.Application.Common.Helpers;
 using ToyStore.Application.Common.Models;
 using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs;
@@ -50,9 +52,12 @@ public class BlogService : IBlogService
     private readonly IMapper _mapper;
     private readonly INotificationDispatcher _notificationDispatcher;
     private readonly IValidator<UpdateBlogReviewPermissionDto> _permissionValidator;
+    private readonly IValidator<AiBlogGenerateRequest> _aiBlogGenerateRequestValidator;
     private readonly ILogger<BlogService> _logger;
     private readonly ITimeProvider _timeProvider;
     private readonly IBlogCommentModerationGateway _blogCommentModerationGateway;
+    private readonly IBlogContentGenerationGateway _blogContentGenerationGateway;
+    private readonly IImageUploadService _imageUploadService;
 
     public BlogService(
         IUnitOfWork unitOfWork,
@@ -61,9 +66,12 @@ public class BlogService : IBlogService
         IMapper mapper,
         INotificationDispatcher notificationDispatcher,
         IValidator<UpdateBlogReviewPermissionDto> permissionValidator,
+        IValidator<AiBlogGenerateRequest> aiBlogGenerateRequestValidator,
         ILogger<BlogService> logger,
         ITimeProvider timeProvider,
-        IBlogCommentModerationGateway blogCommentModerationGateway)
+        IBlogCommentModerationGateway blogCommentModerationGateway,
+        IBlogContentGenerationGateway blogContentGenerationGateway,
+        IImageUploadService imageUploadService)
     {
         _unitOfWork         = unitOfWork;
         _currentUserService = currentUserService;
@@ -71,9 +79,12 @@ public class BlogService : IBlogService
         _mapper             = mapper;
         _notificationDispatcher = notificationDispatcher;
         _permissionValidator = permissionValidator;
+        _aiBlogGenerateRequestValidator = aiBlogGenerateRequestValidator;
         _logger             = logger;
         _timeProvider       = timeProvider;
         _blogCommentModerationGateway = blogCommentModerationGateway;
+        _blogContentGenerationGateway = blogContentGenerationGateway;
+        _imageUploadService           = imageUploadService;
     }
 
     public async Task<Result<PaginatedResponse<BlogListDto>>> GetBlogsForAdminAsync(
@@ -1140,6 +1151,11 @@ public class BlogService : IBlogService
             return Result<ReactionSummaryDto>.NotFound("Review", reviewBlogId);
         }
 
+        if (review.IsDeleted || !string.Equals(review.ModerationStatus, ModerationApproved, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<ReactionSummaryDto>.BusinessError("Cannot react to deleted or unapproved review.");
+        }
+
         var reactionType = await ResolveReactionTypeAsync(dto.ReactionCode, cancellationToken);
         if (reactionType == null)
         {
@@ -1213,6 +1229,11 @@ public class BlogService : IBlogService
         if (reply == null)
         {
             return Result<ReactionSummaryDto>.NotFound("Reply", replyBlogId);
+        }
+
+        if (reply.IsDeleted || !string.Equals(reply.ModerationStatus, ModerationApproved, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<ReactionSummaryDto>.BusinessError("Cannot react to deleted or unapproved reply.");
         }
 
         var reactionType = await ResolveReactionTypeAsync(dto.ReactionCode, cancellationToken);
@@ -1994,5 +2015,195 @@ public class BlogService : IBlogService
         }
 
         await _unitOfWork.Blogs.UpdateCommentPermissionStateAsync(state, cancellationToken);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // AI BLOG GENERATION
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Generate nội dung bài blog bằng AI.
+    /// </summary>
+    public async Task<Result<AiBlogGenerateResult>> GenerateWithAiAsync(
+        AiBlogGenerateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        // ── Validate cơ bản bằng FluentValidation ──
+        var validationResult = await _aiBlogGenerateRequestValidator.ValidateAsync(request, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            return validationResult.ToResult<AiBlogGenerateResult>();
+        }
+
+        // ── Validate đầu vào có ý nghĩa (chống gibberish / keyboard mash) ──
+        var meaningfulErrors = BlogMeaningfulInputHelper.ValidateMeaningfulInputs(
+            request.Title,
+            request.PromptStructure,
+            request.Description);
+
+        if (meaningfulErrors.Count > 0)
+        {
+            return Result<AiBlogGenerateResult>.ValidationFailure(meaningfulErrors);
+        }
+
+        var action = string.IsNullOrWhiteSpace(request.Action) ? "Generate" : request.Action.Trim();
+        var tone   = string.IsNullOrWhiteSpace(request.DefaultTone) ? "Friendly" : request.DefaultTone.Trim();
+
+        // ── Lấy source content từ blog có sẵn nếu không có source rờ ──
+        string? sourceContent = string.IsNullOrWhiteSpace(request.SourceContent)
+            ? null
+            : request.SourceContent.Trim();
+
+        if (request.BlogPostId.HasValue && request.BlogPostId.Value > 0 && string.IsNullOrWhiteSpace(sourceContent))
+        {
+            var existingResult = await GetBlogDetailsAsync(request.BlogPostId.Value, cancellationToken);
+            if (!existingResult.IsSuccess || existingResult.Data == null)
+            {
+                return Result<AiBlogGenerateResult>.NotFound("Blog", request.BlogPostId.Value);
+            }
+
+            sourceContent = existingResult.Data.BlogContent;
+        }
+
+        // ── Gọi AI gateway ──
+        var aiResult = await _blogContentGenerationGateway.GenerateAsync(
+            new PythonBlogGenerateRequest
+            {
+                Action            = action,
+                Title             = request.Title.Trim(),
+                Description       = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
+                PromptStructure   = request.PromptStructure.Trim(),
+                DefaultTone       = tone,
+                DefaultCategoryId = request.DefaultCategoryId,
+                SourceContent     = sourceContent
+            },
+            cancellationToken);
+
+        if (!aiResult.IsSuccess)
+        {
+            // AI service trả lỗi có body chi tiết
+            if (aiResult.ErrorBody != null)
+            {
+                _logger.LogWarning("AI generation failed with error body. Status: {Status}", aiResult.StatusCode);
+                return Result<AiBlogGenerateResult>.Failure("AI_GENERATE_ERROR", "AI generation failed.");
+            }
+
+            _logger.LogWarning("AI service unavailable: {Message}", aiResult.ErrorMessage);
+            return Result<AiBlogGenerateResult>.BadGateway(aiResult.ErrorMessage ?? "Unable to call AI service.");
+        }
+
+        var aiGenerated = aiResult.Data;
+
+        // ── AI chủ động block nội dung (nội dung vi phạm) ──
+        if (aiGenerated?.IsBlocked == true)
+        {
+            _logger.LogWarning("AI blocked content generation for title: {Title}", request.Title);
+            return Result<AiBlogGenerateResult>.BusinessError("AI blocked this content due to policy violation.");
+        }
+
+        if (aiGenerated == null || string.IsNullOrWhiteSpace(aiGenerated.Content))
+        {
+            _logger.LogWarning("AI returned empty content for title: {Title}", request.Title);
+            return Result<AiBlogGenerateResult>.Failure("AI_GENERATE_EMPTY", "AI returned empty content.");
+        }
+
+        var generatedTitle = string.IsNullOrWhiteSpace(aiGenerated.Title)
+            ? request.Title.Trim()
+            : aiGenerated.Title.Trim();
+
+        _logger.LogInformation("AI blog generated successfully for title: {Title}", request.Title);
+
+        return Result<AiBlogGenerateResult>.Success(new AiBlogGenerateResult
+        {
+            BlogPostId    = request.BlogPostId.GetValueOrDefault(0),
+            Title         = generatedTitle,
+            BlogContent   = aiGenerated.Content!,
+            BlogCategoryId = request.DefaultCategoryId,
+            PromptData    = request.PromptStructure,
+            AiStatus      = "Success",
+            AiError       = null
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // BLOG THUMBNAIL UPLOAD
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Upload thumbnail blog lên Cloudinary sau khi validate extension và MIME type.
+    /// </summary>
+    public async Task<Result<UploadBlogThumbnailResponse>> UploadBlogThumbnailAsync(
+        Stream fileStream,
+        string fileName,
+        string contentType,
+        CancellationToken cancellationToken = default)
+    {
+        const long MaxFileSizeBytes = 5 * 1024 * 1024; // 5 MB
+        const string ThumbnailFolder = "SEP490_Blogs";
+
+        // ── Validate extension ──
+        var allowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ".jpg", ".jpeg", ".png", ".webp"
+        };
+
+        var extension = Path.GetExtension(fileName);
+        if (string.IsNullOrWhiteSpace(extension) || !allowedExtensions.Contains(extension))
+        {
+            return Result<UploadBlogThumbnailResponse>.ValidationFailure(
+                new Dictionary<string, string[]>
+                {
+                    ["file"] = ["Only JPG, JPEG, PNG, WEBP are supported."]
+                });
+        }
+
+        // ── Validate MIME type ──
+        var allowedMimeTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "image/jpeg", "image/png", "image/webp"
+        };
+
+        if (string.IsNullOrWhiteSpace(contentType) || !allowedMimeTypes.Contains(contentType))
+        {
+            return Result<UploadBlogThumbnailResponse>.ValidationFailure(
+                new Dictionary<string, string[]>
+                {
+                    ["file"] = ["Only image/jpeg, image/png, image/webp are supported."]
+                });
+        }
+
+        // ── Validate kích thước file ──
+        if (fileStream.Length > MaxFileSizeBytes)
+        {
+            return Result<UploadBlogThumbnailResponse>.ValidationFailure(
+                new Dictionary<string, string[]>
+                {
+                    ["file"] = ["File size must not exceed 5 MB."]
+                });
+        }
+
+        // ── Upload lên Cloudinary ──
+        var uploadResult = await _imageUploadService.UploadImageToFolderAsync(
+            fileStream,
+            fileName,
+            ThumbnailFolder,
+            cancellationToken);
+
+        if (!uploadResult.IsSuccess)
+        {
+            _logger.LogWarning(
+                "Upload blog thumbnail failed. Code: {Code}, Message: {Message}",
+                uploadResult.ErrorCode,
+                uploadResult.ErrorMessage);
+
+            return Result<UploadBlogThumbnailResponse>.Failure(
+                uploadResult.ErrorCode ?? "UPLOAD_ERROR",
+                uploadResult.ErrorMessage ?? "Failed to upload thumbnail.");
+        }
+
+        _logger.LogInformation("Blog thumbnail uploaded to Cloudinary: {Url}", uploadResult.Data);
+
+        return Result<UploadBlogThumbnailResponse>.Success(
+            new UploadBlogThumbnailResponse { Url = uploadResult.Data! });
     }
 }

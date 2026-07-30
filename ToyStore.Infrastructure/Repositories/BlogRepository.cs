@@ -486,7 +486,9 @@ public class BlogRepository : IBlogRepository
             .Select(x => new { x.ReviewBlogId, x.ReactionType.Code })
             .ToListAsync(cancellationToken);
 
-        return raw.ToDictionary(x => x.ReviewBlogId, x => x.Code);
+        return raw
+            .GroupBy(x => x.ReviewBlogId)
+            .ToDictionary(g => g.Key, g => g.First().Code);
     }
 
     public async Task<Dictionary<int, string>> GetMyReplyReactionsByIdsAsync(
@@ -505,7 +507,9 @@ public class BlogRepository : IBlogRepository
             .Select(x => new { x.ReplyBlogId, x.ReactionType.Code })
             .ToListAsync(cancellationToken);
 
-        return raw.ToDictionary(x => x.ReplyBlogId, x => x.Code);
+        return raw
+            .GroupBy(x => x.ReplyBlogId)
+            .ToDictionary(g => g.Key, g => g.First().Code);
     }
 
     public async Task<(bool IsLocked, DateTime? LockedUntil)> CheckAndRefreshCommentLockAsync(
