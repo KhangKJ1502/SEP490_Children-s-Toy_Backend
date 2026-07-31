@@ -23,4 +23,23 @@ public interface IWithdrawalRepository
     Task<List<WithdrawalRequest>> GetAdminWithdrawalsAsync(string? keyword, string? status, DateTime? dateFrom, DateTime? dateTo, int page, int pageSize, CancellationToken ct = default);
     Task<int> CountAdminWithdrawalsAsync(string? keyword, string? status, DateTime? dateFrom, DateTime? dateTo, CancellationToken ct = default);
     Task<WithdrawalRequest?> GetWithDetailsByIdAsync(int id, CancellationToken ct = default);
+
+    // ── Withdrawal Ledger Operations ─────────────────────────────────────────
+
+    /// <summary>
+    /// Reads the WithdrawalRequest with a UPDLOCK + ROWLOCK hint to prevent concurrent
+    /// ledger operations on the same row. Must be called inside an open transaction.
+    /// </summary>
+    Task<WithdrawalRequest?> GetForUpdateAsync(int withdrawalId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Marks the entity as modified so EF Core will generate an UPDATE statement
+    /// on the next SaveChangesAsync call.
+    /// </summary>
+    void UpdateAsync(WithdrawalRequest withdrawal);
+
+    /// <summary>
+    /// Adds a status-transition audit record for the given withdrawal.
+    /// </summary>
+    Task AddStatusHistoryAsync(WithdrawalStatusHistory history, CancellationToken ct = default);
 }
