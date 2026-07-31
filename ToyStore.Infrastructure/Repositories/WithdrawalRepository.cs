@@ -132,4 +132,20 @@ public class WithdrawalRepository : IWithdrawalRepository
             .Include(w => w.Account)
             .Include(w => w.WithdrawalStatusHistories)
             .FirstOrDefaultAsync(w => w.WithdrawalId == id, ct);
+
+    // ── Withdrawal Ledger Operations ─────────────────────────────────────────
+
+    public async Task<WithdrawalRequest?> GetForUpdateAsync(int withdrawalId, CancellationToken ct = default)
+    {
+        // Issue UPDLOCK hint to prevent concurrent ledger operations on the same row
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM WithdrawalRequests WITH (UPDLOCK, ROWLOCK) WHERE WithdrawalID = {withdrawalId}", ct);
+        return await _context.WithdrawalRequests.FirstOrDefaultAsync(w => w.WithdrawalId == withdrawalId, ct);
+    }
+
+    public void UpdateAsync(WithdrawalRequest withdrawal)
+        => _context.WithdrawalRequests.Update(withdrawal);
+
+    public async Task AddStatusHistoryAsync(WithdrawalStatusHistory history, CancellationToken ct = default)
+        => await _context.WithdrawalStatusHistories.AddAsync(history, ct);
 }
