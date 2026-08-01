@@ -86,6 +86,21 @@ public interface IBlogService
     /// </summary>
     Task<Result<BlogDetailDto>> HideBlogAsync(int blogPostId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Generate nội dung bài blog bằng AI. Bao gồm validate, lấy source content (nếu cần), gọi AI gateway.
+    /// </summary>
+    Task<Result<AiBlogGenerateResult>> GenerateWithAiAsync(AiBlogGenerateRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Upload thumbnail blog sau khi đã validate loại file và MIME type.
+    /// Controller chỉ truyền stream + filename + contentType.
+    /// </summary>
+    Task<Result<UploadBlogThumbnailResponse>> UploadBlogThumbnailAsync(
+        Stream fileStream,
+        string fileName,
+        string contentType,
+        CancellationToken cancellationToken = default);
+
     Task<Result<List<BlogReviewDto>>> GetBlogReviewsAsync(int blogPostId, CancellationToken cancellationToken = default);
 
     Task<Result<BlogReviewDto>> CreateBlogReviewAsync(int blogPostId, CreateBlogReviewDto dto, CancellationToken cancellationToken = default);

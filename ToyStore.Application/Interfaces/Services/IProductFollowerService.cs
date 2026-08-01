@@ -24,4 +24,14 @@ public interface IProductFollowerService
     /// Lấy danh sách ID các sản phẩm khách hàng đang theo dõi.
     /// </summary>
     Task<Result<List<int>>> GetFollowedProductIdsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gửi thông báo báo hàng về cho tất cả người theo dõi sản phẩm (nếu sản phẩm đủ điều kiện in-stock).
+    /// </summary>
+    Task NotifyFollowersIfBackInStockAsync(int productId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reset trạng thái NotifiedAt = null khi sản phẩm hết hàng để chuẩn bị cho lần báo hàng về tiếp theo.
+    /// </summary>
+    Task ResetFollowerNotificationStateAsync(int productId, CancellationToken cancellationToken = default);
 }

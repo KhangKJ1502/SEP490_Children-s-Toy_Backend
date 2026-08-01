@@ -288,13 +288,18 @@ public class PromotionService : IPromotionService
             var now = _timeProvider.UtcNow;
             bool hasTransactions = existingPromotion.PromotionTimeSlots.Any(ts => ts.PromotionProductSlots.Any(pps => pps.SoldQuantity > 0));
 
+            bool isEmptyActivePromotion = string.Equals(oldStatus, "Active", StringComparison.OrdinalIgnoreCase) &&
+                ((string.Equals(existingPromotion.PromotionType, "FLASH_SALE", StringComparison.OrdinalIgnoreCase) && 
+                  !existingPromotion.PromotionTimeSlots.Any(ts => !ts.IsDeleted && ts.PromotionProductSlots.Any(pps => !pps.IsDeleted))) ||
+                 (string.Equals(existingPromotion.PromotionType, "DISCOUNT", StringComparison.OrdinalIgnoreCase) && !existingPromotion.ProductPromotions.Any(p => !p.IsDeleted)));
+
             if (string.Equals(oldStatus, "Expired", StringComparison.OrdinalIgnoreCase))
             {
                 return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot update an Expired promotion.");
             }
 
             // Enforce edit safeguards on products and time slots if promotion is active or has transactions
-            if (hasTransactions || string.Equals(oldStatus, "Active", StringComparison.OrdinalIgnoreCase))
+            if (hasTransactions || (string.Equals(oldStatus, "Active", StringComparison.OrdinalIgnoreCase) && !isEmptyActivePromotion))
             {
                 if (request.PromotionType is not null && !string.Equals(request.PromotionType, existingPromotion.PromotionType, StringComparison.OrdinalIgnoreCase))
                 {
@@ -417,7 +422,9 @@ public class PromotionService : IPromotionService
             if (string.Equals(targetStatus, "Scheduled", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(targetStatus, "Active", StringComparison.OrdinalIgnoreCase))
             {
-                if (targetStartDate <= now)
+                // Only reset StartDate to now if we are transitioning to Active from Scheduled.
+                // If it is already Active or Inactive, keep the targetStartDate to prevent decoupling slots.
+                if (targetStartDate <= now && string.Equals(oldStatus, "Scheduled", StringComparison.OrdinalIgnoreCase))
                 {
                     existingPromotion.StartDate = now;
                     existingPromotion.Status = "Active";
@@ -425,7 +432,7 @@ public class PromotionService : IPromotionService
                 else
                 {
                     existingPromotion.StartDate = targetStartDate;
-                    existingPromotion.Status = "Scheduled";
+                    existingPromotion.Status = targetStatus;
                 }
             }
             else

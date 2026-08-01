@@ -52,6 +52,18 @@ public class BackInStockJob : BackgroundService
 
         try
         {
+            // Reset NotifiedAt = null for followers whose products are currently out of stock / inactive
+            var outOfStockFollowers = await db.ProductFollowers
+                .Include(f => f.Product)
+                .Where(f => f.NotifiedAt != null
+                         && (f.Product.Quantity <= 0 || f.Product.ProductStatus != "Active" || f.Product.IsDeleted))
+                .ToListAsync(ct);
+
+            foreach (var follower in outOfStockFollowers)
+            {
+                follower.NotifiedAt = null;
+            }
+
             // Followers who have not yet been notified, whose product is now in stock
             var pendingFollowers = await db.ProductFollowers
                 .Include(f => f.Product)

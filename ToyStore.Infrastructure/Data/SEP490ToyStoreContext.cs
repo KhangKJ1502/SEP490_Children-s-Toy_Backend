@@ -2075,6 +2075,8 @@ public partial class SEP490ToyStoreContext : DbContext
 
         modelBuilder.Entity<ReviewBlogReplyReaction>(entity =>
         {
+            entity.ToTable("ReviewBlogReplyReactions", tb => tb.HasTrigger("trg_ReviewBlogReplyReaction"));
+
             entity.HasKey(e => e.ReactionReplyBlogId).HasName("PK_ReviewBlogReplyReactions");
 
             entity.HasIndex(e => new { e.ReplyBlogId, e.ReactionTypeId }, "IX_ReviewBlogReplyReactions_Stats");

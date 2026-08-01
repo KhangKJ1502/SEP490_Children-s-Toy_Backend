@@ -136,19 +136,25 @@ VALUES
     ('ADMIN_SHIFT_FULL', 'SYSTEM', N'Shift capacity reached',
         N'One or both roles in shift {{ShiftName}} reached order capacity on {{WorkDate}}. Please manage manually.');
 
+    -- Birthday Notifications (Automated Background Job)
+    INSERT INTO @Tpl
+VALUES
+    ('BIRTHDAY_CUSTOMER', 'SYSTEM', N'Happy Birthday, {{CustomerName}}!',
+        N'Happy birthday to you! ToyStore has sent you a special gift. Please check your Voucher wallet!'),
+    ('BIRTHDAY_CHILD', 'SYSTEM', N'Happy Birthday, {{ChildName}}!',
+        N'Happy birthday to {{ChildName}}! ToyStore wishes them healthy growth and joy. Parents, pick a favorite toy for them!');
+
     /* ─── ADMIN GROUP: marketing, togglable ─────────────────────── */
     INSERT INTO @Tpl
 VALUES
-    ('FLASH_SALE_STARTED', 'ADMIN', N'{{PromotionName}} Started!',
-        N'The flash sale {{PromotionName}} has officially started from {{StartDate}} to {{EndDate}}. Grab the deals now!'),
-    ('VOUCHER_NEW', 'ADMIN', N'Voucher for you: {{VoucherCode}}',
-        N'You received a voucher {{VoucherCode}} for a discount of {{DiscountValue}} ({{DiscountType}}). Apply it before it expires on {{ExpiryDate}}!'),
-    ('VOUCHER_EXPIRING', 'ADMIN', N'Voucher {{VoucherCode}} is expiring soon!',
-        N'Don''t miss out on voucher {{VoucherCode}} (Discount of {{DiscountValue}}). It expires on {{ExpiryDate}}. Use it now!'),
-    ('BIRTHDAY_CUSTOMER', 'ADMIN', N'Happy Birthday, {{CustomerName}}!',
-        N'Happy birthday to you! ToyStore has sent you a special gift. Please check your Voucher wallet!'),
-    ('BIRTHDAY_CHILD', 'ADMIN', N'Happy Birthday, {{ChildName}}!',
-        N'Happy birthday to {{ChildName}}! ToyStore wishes them healthy growth and joy. Parents, pick a favorite toy for them!');
+    ('FLASH_SALE_STARTED', 'ADMIN', N'🔥 Flash Sale Alert: {{PromotionName}} is NOW LIVE!',
+        N'The wait is over! {{PromotionName}} has officially started ({{StartDate}} – {{EndDate}}). Exclusive deals are waiting — shop your favorites before stock runs out!'),
+    ('VOUCHER_NEW', 'ADMIN', N'🎁 Special Gift For You: Claim {{VoucherCode}} Now!',
+        N'We''ve unlocked an exclusive {{DiscountValue}} voucher (Code: {{VoucherCode}}) just for you! Valid until {{ExpiryDate}}. Tap to claim and treat your little ones today!'),
+    ('VOUCHER_EXPIRING', 'ADMIN', N'⏰ Last Chance: Your {{VoucherCode}} Voucher Expires Soon!',
+        N'Don''t miss out on your {{DiscountValue}} discount! Voucher {{VoucherCode}} will expire on {{ExpiryDate}}. Use it now before it''s gone!'),
+    ('BLOG_NEW', 'ADMIN', N'📖 New Blog Article: {{BlogTitle}}',
+        N'Check out our latest blog post "{{BlogTitle}}"! Discover helpful guides, tips, and fun toy reviews for your family.');
 
     /* ─── MERGE idempotent insertion & update ─────────────────────── */
     MERGE [Notification].[Templates] AS target

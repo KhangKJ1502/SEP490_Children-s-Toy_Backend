@@ -1,26 +1,21 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ToyStore.Application.Common;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
 using ToyStore.Domain.Enums;
-using ToyStore.Infrastructure.Data;
 
 namespace ToyStore.Infrastructure.Services;
 
 public class WithdrawalLedgerService : IWithdrawalLedgerService
 {
-    private readonly SEP490ToyStoreContext _db;
     private readonly IUnitOfWork _uow;
     private readonly ILogger<WithdrawalLedgerService> _logger;
 
     public WithdrawalLedgerService(
-        SEP490ToyStoreContext db,
         IUnitOfWork uow,
         ILogger<WithdrawalLedgerService> logger)
     {
-        _db = db;
         _uow = uow;
         _logger = logger;
     }
@@ -37,7 +32,7 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
         try
         {
             // 1. Read wallet with UPDLOCK to prevent concurrent race conditions
-            var wallet = await GetWalletForUpdateAsync(command.AccountId, ct);
+            var wallet = await _uow.Wallets.GetForUpdateAsync(command.AccountId, ct);
             if (wallet is null)
             {
                 await _uow.RollbackTransactionAsync(ct);
@@ -57,13 +52,10 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
                 return (WithdrawalErrorCode.InsufficientAvailable, null);
             }
 
-            // 2. Reserve funds
+            // 2. Reserve funds atomically
             var referenceId = $"WD{command.AccountId}{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
 
-            var affected = await _db.Database.ExecuteSqlInterpolatedAsync(
-                $"UPDATE Wallets SET LockedBalance = LockedBalance + {command.Amount} WHERE AccountID = {command.AccountId} AND (Balance - LockedBalance) >= {command.Amount}",
-                ct);
-
+            var affected = await _uow.Wallets.IncrementLockedBalanceAsync(command.AccountId, command.Amount, ct);
             if (affected == 0)
             {
                 await _uow.RollbackTransactionAsync(ct);
@@ -85,11 +77,14 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
                 RetryCount = 0,
                 CreatedAt = DateTime.UtcNow,
             };
-            await _db.WithdrawalRequests.AddAsync(withdrawal, ct);
-            await _db.SaveChangesAsync(ct);
+            await _uow.Withdrawals.AddAsync(withdrawal, ct);
+            await _uow.SaveChangesAsync(ct);
 
             // 4. Audit history
-            await AppendStatusHistoryAsync(withdrawal.WithdrawalId, null, WithdrawalStatuses.Pending, WithdrawalHistorySources.User, "Withdrawal requested", ct);
+            await _uow.Withdrawals.AddStatusHistoryAsync(
+                BuildHistory(withdrawal.WithdrawalId, null, WithdrawalStatuses.Pending, WithdrawalHistorySources.User, "Withdrawal requested"),
+                ct);
+            await _uow.SaveChangesAsync(ct);
 
             await _uow.CommitTransactionAsync(ct);
 
@@ -115,7 +110,7 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
         await _uow.BeginTransactionAsync(ct);
         try
         {
-            var withdrawal = await GetWithdrawalForUpdateAsync(command.WithdrawalId, ct);
+            var withdrawal = await _uow.Withdrawals.GetForUpdateAsync(command.WithdrawalId, ct);
             if (withdrawal is null)
             {
                 await _uow.RollbackTransactionAsync(ct);
@@ -135,7 +130,7 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
                 return WithdrawalErrorCode.InvalidStatus;
             }
 
-            var wallet = await GetWalletForUpdateAsync(withdrawal.AccountId, ct);
+            var wallet = await _uow.Wallets.GetForUpdateAsync(withdrawal.AccountId, ct);
             if (wallet is null)
             {
                 await _uow.RollbackTransactionAsync(ct);
@@ -146,10 +141,7 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
             var balanceAfter  = balanceBefore - withdrawal.Amount;
 
             // Deduct Balance and LockedBalance atomically
-            var affected = await _db.Database.ExecuteSqlInterpolatedAsync(
-                $"UPDATE Wallets SET Balance = Balance - {withdrawal.Amount}, LockedBalance = LockedBalance - {withdrawal.Amount} WHERE WalletID = {wallet.WalletId} AND Balance >= {withdrawal.Amount} AND LockedBalance >= {withdrawal.Amount}",
-                ct);
-
+            var affected = await _uow.Wallets.CommitDeductionAsync(wallet.WalletId, withdrawal.Amount, ct);
             if (affected == 0)
             {
                 await _uow.RollbackTransactionAsync(ct);
@@ -174,8 +166,8 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
                 CreatedAt = DateTime.UtcNow,
                 CompletedAt = DateTime.UtcNow,
             };
-            await _db.WalletTransactions.AddAsync(txn, ct);
-            await _db.SaveChangesAsync(ct);
+            await _uow.Wallets.AddTransactionAsync(txn, ct);
+            await _uow.SaveChangesAsync(ct);
 
             // Update withdrawal
             var prevStatus = withdrawal.Status;
@@ -184,9 +176,14 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
             withdrawal.PayosTransactionId = command.PayosTransactionId;
             withdrawal.PayosRawResponse = command.PayosRawResponse;
             withdrawal.CompletedAt = DateTime.UtcNow;
-            await _db.SaveChangesAsync(ct);
+            _uow.Withdrawals.UpdateAsync(withdrawal);
+            await _uow.SaveChangesAsync(ct);
 
-            await AppendStatusHistoryAsync(withdrawal.WithdrawalId, prevStatus, WithdrawalStatuses.Success, WithdrawalHistorySources.Job, null, ct);
+            await _uow.Withdrawals.AddStatusHistoryAsync(
+                BuildHistory(withdrawal.WithdrawalId, prevStatus, WithdrawalStatuses.Success, WithdrawalHistorySources.Job, null),
+                ct);
+            await _uow.SaveChangesAsync(ct);
+
             await _uow.CommitTransactionAsync(ct);
 
             _logger.LogInformation("Withdrawal {Id} committed — balance deducted {Amount}", command.WithdrawalId, withdrawal.Amount);
@@ -211,7 +208,7 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
         await _uow.BeginTransactionAsync(ct);
         try
         {
-            var withdrawal = await GetWithdrawalForUpdateAsync(command.WithdrawalId, ct);
+            var withdrawal = await _uow.Withdrawals.GetForUpdateAsync(command.WithdrawalId, ct);
             if (withdrawal is null)
             {
                 await _uow.RollbackTransactionAsync(ct);
@@ -232,17 +229,20 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
             }
 
             // Release LockedBalance only (Balance unchanged)
-            await _db.Database.ExecuteSqlInterpolatedAsync(
-                $"UPDATE Wallets SET LockedBalance = LockedBalance - {withdrawal.Amount} WHERE AccountID = {withdrawal.AccountId} AND LockedBalance >= {withdrawal.Amount}",
-                ct);
+            await _uow.Wallets.DecrementLockedBalanceAsync(withdrawal.AccountId, withdrawal.Amount, ct);
 
             var prevStatus = withdrawal.Status;
             withdrawal.Status = WithdrawalStatuses.Failed;
             withdrawal.FailReason = command.FailReason;
             withdrawal.CompletedAt = DateTime.UtcNow;
-            await _db.SaveChangesAsync(ct);
+            _uow.Withdrawals.UpdateAsync(withdrawal);
+            await _uow.SaveChangesAsync(ct);
 
-            await AppendStatusHistoryAsync(withdrawal.WithdrawalId, prevStatus, WithdrawalStatuses.Failed, command.Source, command.FailReason, ct);
+            await _uow.Withdrawals.AddStatusHistoryAsync(
+                BuildHistory(withdrawal.WithdrawalId, prevStatus, WithdrawalStatuses.Failed, command.Source, command.FailReason),
+                ct);
+            await _uow.SaveChangesAsync(ct);
+
             await _uow.CommitTransactionAsync(ct);
 
             _logger.LogInformation("Withdrawal {Id} rolled back — {Reason}", command.WithdrawalId, command.FailReason);
@@ -267,7 +267,7 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
         await _uow.BeginTransactionAsync(ct);
         try
         {
-            var withdrawal = await GetWithdrawalForUpdateAsync(command.WithdrawalId, ct);
+            var withdrawal = await _uow.Withdrawals.GetForUpdateAsync(command.WithdrawalId, ct);
             if (withdrawal is null)
             {
                 await _uow.RollbackTransactionAsync(ct);
@@ -287,16 +287,19 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
             }
 
             // Release LockedBalance
-            await _db.Database.ExecuteSqlInterpolatedAsync(
-                $"UPDATE Wallets SET LockedBalance = LockedBalance - {withdrawal.Amount} WHERE AccountID = {withdrawal.AccountId} AND LockedBalance >= {withdrawal.Amount}",
-                ct);
+            await _uow.Wallets.DecrementLockedBalanceAsync(withdrawal.AccountId, withdrawal.Amount, ct);
 
             var prevStatus = withdrawal.Status;
             withdrawal.Status = WithdrawalStatuses.Cancelled;
             withdrawal.CancelledAt = DateTime.UtcNow;
-            await _db.SaveChangesAsync(ct);
+            _uow.Withdrawals.UpdateAsync(withdrawal);
+            await _uow.SaveChangesAsync(ct);
 
-            await AppendStatusHistoryAsync(withdrawal.WithdrawalId, prevStatus, WithdrawalStatuses.Cancelled, WithdrawalHistorySources.User, "Cancelled by user", ct);
+            await _uow.Withdrawals.AddStatusHistoryAsync(
+                BuildHistory(withdrawal.WithdrawalId, prevStatus, WithdrawalStatuses.Cancelled, WithdrawalHistorySources.User, "Cancelled by user"),
+                ct);
+            await _uow.SaveChangesAsync(ct);
+
             await _uow.CommitTransactionAsync(ct);
 
             _logger.LogInformation("Withdrawal {Id} cancelled by account {AccountId}", command.WithdrawalId, command.RequestingAccountId);
@@ -311,44 +314,22 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
     }
 
     // ────────────────────────────────────────────────────────────────────────────
-    // Helpers — UPDLOCK reads
+    // Helpers
     // ────────────────────────────────────────────────────────────────────────────
 
-    private async Task<Wallet?> GetWalletForUpdateAsync(int accountId, CancellationToken ct)
-    {
-        // Issue UPDLOCK hint then read through EF
-        await _db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT 1 FROM Wallets WITH (UPDLOCK, ROWLOCK) WHERE AccountID = {accountId}",
-            ct);
-        return await _db.Wallets.FirstOrDefaultAsync(w => w.AccountId == accountId, ct);
-    }
-
-    private async Task<WithdrawalRequest?> GetWithdrawalForUpdateAsync(int withdrawalId, CancellationToken ct)
-    {
-        await _db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT 1 FROM WithdrawalRequests WITH (UPDLOCK, ROWLOCK) WHERE WithdrawalID = {withdrawalId}",
-            ct);
-        return await _db.WithdrawalRequests.FirstOrDefaultAsync(w => w.WithdrawalId == withdrawalId, ct);
-    }
-
-    private async Task AppendStatusHistoryAsync(
+    private static WithdrawalStatusHistory BuildHistory(
         int withdrawalId,
         string? fromStatus,
         string toStatus,
         string source,
-        string? note,
-        CancellationToken ct)
-    {
-        var entry = new WithdrawalStatusHistory
+        string? note)
+        => new()
         {
             WithdrawalId = withdrawalId,
-            FromStatus = fromStatus,
-            ToStatus = toStatus,
-            Source = source,
-            Note = note,
-            CreatedAt = DateTime.UtcNow,
+            FromStatus   = fromStatus,
+            ToStatus     = toStatus,
+            Source       = source,
+            Note         = note,
+            CreatedAt    = DateTime.UtcNow,
         };
-        await _db.WithdrawalStatusHistories.AddAsync(entry, ct);
-        await _db.SaveChangesAsync(ct);
-    }
 }

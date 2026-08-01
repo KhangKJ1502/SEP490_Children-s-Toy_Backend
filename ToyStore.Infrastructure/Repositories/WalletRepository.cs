@@ -138,6 +138,34 @@ public class WalletRepository : IWalletRepository
         }
     }
 
+    // ── Withdrawal Ledger Operations ─────────────────────────────────────────
+
+    public async Task<Wallet?> GetForUpdateAsync(int accountId, CancellationToken ct = default)
+    {
+        // Issue UPDLOCK hint to prevent concurrent updates during the same transaction
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM Wallets WITH (UPDLOCK, ROWLOCK) WHERE AccountID = {accountId}", ct);
+        return await _context.Wallets.FirstOrDefaultAsync(w => w.AccountId == accountId, ct);
+    }
+
+    public Task<int> IncrementLockedBalanceAsync(int accountId, decimal amount, CancellationToken ct = default)
+        => _context.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE Wallets SET LockedBalance = LockedBalance + {amount} WHERE AccountID = {accountId} AND (Balance - LockedBalance) >= {amount}",
+            ct);
+
+    public Task<int> DecrementLockedBalanceAsync(int accountId, decimal amount, CancellationToken ct = default)
+        => _context.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE Wallets SET LockedBalance = LockedBalance - {amount} WHERE AccountID = {accountId} AND LockedBalance >= {amount}",
+            ct);
+
+    public Task<int> CommitDeductionAsync(int walletId, decimal amount, CancellationToken ct = default)
+        => _context.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE Wallets SET Balance = Balance - {amount}, LockedBalance = LockedBalance - {amount} WHERE WalletID = {walletId} AND Balance >= {amount} AND LockedBalance >= {amount}",
+            ct);
+
+    public async Task AddTransactionAsync(WalletTransaction transaction, CancellationToken ct = default)
+        => await _context.WalletTransactions.AddAsync(transaction, ct);
+
     private IQueryable<Wallet> BuildAdminQuery(string? accountSearchTerm, string? status)
     {
         var query = _context.Wallets
