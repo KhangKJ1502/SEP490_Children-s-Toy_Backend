@@ -15,6 +15,11 @@ public class UpdateProductValidator : AbstractValidator<UpdateProductDto>
         "ComingSoon"
     };
 
+    private static readonly TimeZoneInfo VnTimeZone = 
+        TimeZoneInfo.CreateCustomTimeZone("Vietnam Standard Time", new TimeSpan(7, 0, 0), "Vietnam Time", "Vietnam Time");
+
+    private static DateTime GetTodayVn() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, VnTimeZone).Date;
+
     public UpdateProductValidator()
     {
         RuleFor(x => x.CategoryId)
@@ -30,10 +35,10 @@ public class UpdateProductValidator : AbstractValidator<UpdateProductDto>
             .When(x => x.PriceRangeId.HasValue);
 
         RuleFor(x => x.ProductName)
-            .NotEmpty().WithMessage("Product name must not be empty.")
+            .NotEmpty().WithMessage("Product name is required.")
             .MinimumLength(3).WithMessage("Product name must be at least 3 characters.")
             .MaximumLength(255).WithMessage("Product name must not exceed 255 characters.")
-            .When(x => !string.IsNullOrWhiteSpace(x.ProductName));
+            .When(x => x.ProductName != null);
 
         RuleFor(x => x.Price)
             .GreaterThan(0).WithMessage("Price must be greater than 0.")
@@ -41,7 +46,7 @@ public class UpdateProductValidator : AbstractValidator<UpdateProductDto>
             .When(x => x.Price.HasValue);
 
         RuleFor(x => x.Quantity)
-            .GreaterThanOrEqualTo(0).WithMessage("Quantity must not be negative.")
+            .GreaterThan(0).WithMessage("Quantity is required and must be greater than 0.")
             .LessThanOrEqualTo(1_000_000).WithMessage("Quantity must not exceed 1,000,000.")
             .When(x => x.Quantity.HasValue);
 
@@ -50,13 +55,25 @@ public class UpdateProductValidator : AbstractValidator<UpdateProductDto>
             .WithMessage("Product status is invalid.")
             .When(x => !string.IsNullOrWhiteSpace(x.ProductStatus));
 
+        // Cross-field rule: if LaunchDate is in the future, status must be ComingSoon
+        // Only fires when BOTH ProductStatus and LaunchDate are included in the DTO
+        RuleFor(x => x.ProductStatus)
+            .Must((dto, status) =>
+            {
+                if (!dto.LaunchDate.HasValue) return true;
+                if (dto.LaunchDate.Value.Date <= GetTodayVn()) return true;
+                return status == "ComingSoon";
+            })
+            .WithMessage("Cannot set status to Active before the launch date. The product has not launched yet.")
+            .When(x => !string.IsNullOrWhiteSpace(x.ProductStatus) && x.LaunchDate.HasValue);
+
         RuleFor(x => x.LaunchDate)
             .NotNull().WithMessage("Launch date is required for coming soon products.")
             .When(x => x.ProductStatus == "ComingSoon");
 
         RuleFor(x => x.LaunchDate)
-            .Must(date => date.HasValue && date.Value.Date >= DateTime.UtcNow.Date)
-            .WithMessage("Launch date must be today or later for coming soon products.")
+            .Must(date => date.HasValue && date.Value.Date > GetTodayVn())
+            .WithMessage("Launch date must be a future date for 'Coming Soon' products. Today's date is not allowed.")
             .When(x => x.ProductStatus == "ComingSoon" && x.LaunchDate.HasValue);
 
         RuleFor(x => x.StockThreshold)
