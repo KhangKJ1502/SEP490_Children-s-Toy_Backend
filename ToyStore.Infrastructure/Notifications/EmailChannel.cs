@@ -435,7 +435,7 @@ public class EmailChannel : INotificationChannel
         var discountText = order.VoucherDiscountAmount > 0 ? $"-{order.VoucherDiscountAmount:N0} VND" : "0 VND";
 
         var tx = order.ShippingProviderTransactions.FirstOrDefault();
-        var expectedDeliveryText = tx?.EstimatedDelivery?.ToString("MM/dd/yyyy") ?? "2-5 business days";
+        var expectedDeliveryText = tx?.EstimatedDelivery?.ToString("dd/MM/yyyy") ?? "2-5 business days";
 
         var paymentMethodDetail = order.PaymentMethod == "SHIP_COD" ? "Cash on Delivery (COD)" : 
                                   order.PaymentMethod == "SE_PAY" ? "Bank Transfer" : 
@@ -529,7 +529,7 @@ public class EmailChannel : INotificationChannel
                                                                 </div>
                                                                 <!-- Order Date -->
                                                                 <div style=""font-family:'Onest',Arial,sans-serif; font-size:15px; font-weight:500; color:#6b7280; margin-top:16px;"">
-                                                                    Order Date: {_timeProvider.ToVnTime(order.OrderDate).ToString("MM/dd/yyyy 'at' HH:mm")}
+                                                                    Order Date: {_timeProvider.ToVnTime(order.OrderDate).ToString("dd/MM/yyyy 'at' HH:mm")}
                                                                 </div>
                                                             </td>
                                                         </tr>
