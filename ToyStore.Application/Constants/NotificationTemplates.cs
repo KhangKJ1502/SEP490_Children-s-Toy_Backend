@@ -32,13 +32,13 @@ public static class NotificationTemplates
     // Sản phẩm & Tồn kho
     public const string ProductBackInStock   = "PRODUCT_BACK_IN_STOCK";
     public const string WishlistPriceDrop    = "WISHLIST_PRICE_DROP";
+    public const string BirthdayCustomer     = "BIRTHDAY_CUSTOMER";
+    public const string BirthdayChild        = "BIRTHDAY_CHILD";
 
     // Marketing (ADMIN scope — campaign-only)
     public const string FlashSaleStarted     = "FLASH_SALE_STARTED";
     public const string VoucherNew           = "VOUCHER_NEW";
     public const string VoucherExpiring      = "VOUCHER_EXPIRING";
-    public const string BirthdayCustomer     = "BIRTHDAY_CUSTOMER";
-    public const string BirthdayChild        = "BIRTHDAY_CHILD";
 
     // Review & Blog
     public const string ReviewStaffReplied   = "REVIEW_STAFF_REPLIED";
