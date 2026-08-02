@@ -118,7 +118,10 @@ public class RefundRepository : IRefundRepository
                 ApprovedAmount = r.ApprovedAmount,
                 FinalRefundAmount = r.FinalRefundAmount,
                 RefundStatus = r.Status.StatusName,
-                CreatedAt = r.CreatedAt
+                CreatedAt = r.CreatedAt,
+                ReturnToCustomerFeePaid = r.ReturnToCustomerFeePaid,
+                ReturnToCustomerFee = r.ReturnToCustomerFee,
+                CustomerResponse = r.CustomerResponse
             })
             .ToListAsync(cancellationToken);
 
@@ -240,6 +243,9 @@ public class RefundRepository : IRefundRepository
                 FinalRefundAmount = r.FinalRefundAmount,
                 RefundStatus = r.Status.StatusName,
                 CreatedAt = r.CreatedAt,
+                ReturnToCustomerFeePaid = r.ReturnToCustomerFeePaid,
+                ReturnToCustomerFee = r.ReturnToCustomerFee,
+                CustomerResponse = r.CustomerResponse,
                 AssignedToStaffName = _context.Set<OrderAssignment>()
                     .Where(a => a.OrderId == r.OrderId && a.RoleId == 3 && a.IsActive)
                     .Select(a => a.Account.AccountName)
