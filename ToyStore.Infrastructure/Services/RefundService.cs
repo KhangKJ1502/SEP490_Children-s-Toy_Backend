@@ -1753,30 +1753,10 @@ public class RefundService : IRefundService
             refund.UpdatedAt = DateTime.UtcNow;
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-            // Automatically call UpdateRefundStatusAsync to transition to Completed
-            var completeDto = new UpdateRefundStatusDto
-            {
-                Status = "RefundReturnShipmentCreated",
-                AdminNote = $"Customer paid ReturnShippingFee shortfall of {shortfall:N0} VND via Wallet. Automatically scheduled return shipping."
-            };
-
-            var completeResult = await UpdateRefundStatusAsync(
-                staffId: refund.ApprovedBy ?? customerId,
-                roleId: 2, // Staff role
-                refundId: refund.RefundId,
-                dto: completeDto,
-                isAdmin: true,
-                cancellationToken: cancellationToken);
-
-            if (!completeResult.IsSuccess)
-            {
-                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                return Result<RefundDto>.Failure(completeResult.ErrorCode ?? "COMPLETE_FAILED", completeResult.ErrorMessage ?? "Failed to auto-complete refund after payment.");
-            }
-
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
-            return completeResult;
+
+            var updatedRefund = await _unitOfWork.Refunds.GetByIdAsync(refundId, cancellationToken);
+            return Result<RefundDto>.Success(_mapper.Map<RefundDto>(updatedRefund));
         }
         catch (Exception)
         {
