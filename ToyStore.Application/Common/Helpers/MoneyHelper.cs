@@ -10,7 +10,7 @@ public static class MoneyHelper
     /// </summary>
     public static string FormatVND(decimal amount)
     {
-        return $"{amount:N0} VND";
+        return amount % 1 == 0 ? $"{amount:N0} VND" : $"{amount:#,##0.######} VND";
     }
     
     /// <summary>
@@ -18,7 +18,7 @@ public static class MoneyHelper
     /// </summary>
     public static string FormatWithSeparator(decimal amount)
     {
-        return amount.ToString("N0");
+        return amount % 1 == 0 ? amount.ToString("N0") : amount.ToString("#,##0.######");
     }
     
     /// <summary>
