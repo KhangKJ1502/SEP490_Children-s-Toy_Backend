@@ -1616,7 +1616,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.LastLowStockNotifiedAt).HasPrecision(0);
             entity.Property(e => e.LaunchDate).HasPrecision(0);
             entity.Property(e => e.LowStockNotificationEnabled).HasDefaultValue(true);
-            entity.Property(e => e.Price).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.Price).HasColumnType("decimal(18, 6)");
             entity.Property(e => e.PriceRangeId).HasColumnName("PriceRangeID");
             entity.Property(e => e.ProductName).HasMaxLength(255);
             entity.Property(e => e.ProductStatus)
