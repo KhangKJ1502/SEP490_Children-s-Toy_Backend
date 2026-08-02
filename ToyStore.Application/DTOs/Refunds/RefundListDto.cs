@@ -28,4 +28,8 @@ public class RefundListDto
 
     /// <summary>Số tiền thực tế credit vào ví. 0 nếu chưa Approve (DB default). Dùng cho Customer FE card display.</summary>
     public decimal FinalRefundAmount { get; set; }
+
+    public bool ReturnToCustomerFeePaid { get; set; }
+    public decimal ReturnToCustomerFee { get; set; }
+    public string? CustomerResponse { get; set; }
 }
