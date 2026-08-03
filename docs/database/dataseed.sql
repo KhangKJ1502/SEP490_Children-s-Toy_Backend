@@ -85,11 +85,11 @@ DECLARE @StaffCreated2 DATETIME2(0) = DATEADD(MONTH, -5, @UtcNow3);
 
 IF NOT EXISTS (SELECT 1
 FROM [dbo].[Accounts]
-WHERE Email = 'admin@toyhouse.vn')
+WHERE Email = 'admintoystore@gmail.com')
     INSERT INTO [dbo].[Accounts]
     (RoleID, SexID, EmployeeCode, AccountName, PhoneNumber, Email, DOB, ImageURL, PasswordHash, HasPassword, IsActive, CreatedAt)
 VALUES
-    (2, 1, 'AD001', N'James Admin', '0901000001', 'admin@toyhouse.vn', '1990-03-15', 'https://res.cloudinary.com/datfyxi3f/image/upload/v1780546687/4f2018e8-791f-416c-9bf8-345926edeccd_ytjkb1.jpg', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, 1, @StaffCreated),
+    (2, 1, 'AD001', N'James Admin', '0901000001', 'admintoystore@gmail.com', '1990-03-15', 'https://res.cloudinary.com/datfyxi3f/image/upload/v1780546687/4f2018e8-791f-416c-9bf8-345926edeccd_ytjkb1.jpg', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, 1, @StaffCreated),
     (3, 2, 'ST001', N'Nhung Tran', '0901000002', 'nhung.st@toyhouse.vn', '1995-07-22', 'https://res.cloudinary.com/datfyxi3f/image/upload/v1780546686/9534bc17-de93-49bd-833f-7ae947019fd8_nkgjz9.jpg', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, 1, @StaffCreated),
     (3, 1, 'ST002', N'Dung Le', '0901000003', 'dung.st@toyhouse.vn', '1993-11-08', 'https://res.cloudinary.com/datfyxi3f/image/upload/v1780546686/cce0bdb4-1054-4391-9b11-708fb552ad2b_c2mgro.jpg', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, 1, @StaffCreated2),
     (3, 2, 'ST003', N'Thao Nguyen', '0901000004', 'thao.st@toyhouse.vn', '1997-04-30', 'https://res.cloudinary.com/datfyxi3f/image/upload/v1780546686/26e757ce-03e1-4598-bcfb-bf90d7250672Nu_zecjul.jpg', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, 1, @StaffCreated2),
@@ -100,6 +100,7 @@ GO
 PRINT N'[3] Accounts – Customers (5 users)...';
 DECLARE @UtcNow3b DATETIME2(0) = (SELECT UtcNow
 FROM #SeedTime);
+DECLARE @CustPwdHash VARCHAR(64) = UPPER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'Customer@123456'), 2));
 
 IF NOT EXISTS (SELECT 1
 FROM [dbo].[Accounts]
@@ -107,11 +108,76 @@ WHERE Email = 'lananh.pham@gmail.com')
     INSERT INTO [dbo].[Accounts]
     (RoleID, SexID, AccountName, PhoneNumber, Email, DOB, ImageURL, PasswordHash, HasPassword, IsActive, CreatedAt)
 VALUES
-    (1, 2, N'Lan Anh Pham', '0912001001', 'lananh.pham@gmail.com', '1988-03-12', 'https://i.pravatar.cc/300?img=35', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, 1, DATEADD(MONTH, -4, @UtcNow3b)),
-    (1, 1, N'Hung Nguyen', '0912001002', 'hung.nguyen88@gmail.com', '1988-06-20', 'https://i.pravatar.cc/300?img=68', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, 1, DATEADD(MONTH, -3, @UtcNow3b)),
-    (1, 2, N'Bau Chau Vu', '0912001003', 'bauchau.vu@gmail.com', '1992-01-15', 'https://i.pravatar.cc/300?img=38', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, 1, DATEADD(MONTH, -3, @UtcNow3b)),
-    (1, 1, N'Minh Tuan Do', '0912001004', 'mtuando@outlook.com', '1985-08-10', 'https://i.pravatar.cc/300?img=60', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, 1, DATEADD(MONTH, -2, @UtcNow3b)),
-    (1, 2, N'Thu Ha Hoang', '0912001005', 'thuha.hoang@gmail.com', '1990-12-05', 'https://i.pravatar.cc/300?img=45', '$2a$11$K3u.z94n.5aM/60s07bZyeUv20a1K6u7m2R5YkM10vQh2h2.2H5K.', 1, 1, DATEADD(MONTH, -2, @UtcNow3b));
+    (1, 2, N'Lan Anh Pham', '0912001001', 'lananh.pham@gmail.com', '1988-03-12', 'https://i.pravatar.cc/300?img=35', @CustPwdHash, 1, 1, DATEADD(MONTH, -4, @UtcNow3b)),
+    (1, 1, N'Hung Nguyen', '0912001002', 'hung.nguyen88@gmail.com', '1988-06-20', 'https://i.pravatar.cc/300?img=68', @CustPwdHash, 1, 1, DATEADD(MONTH, -3, @UtcNow3b)),
+    (1, 2, N'Bau Chau Vu', '0912001003', 'bauchau.vu@gmail.com', '1992-01-15', 'https://i.pravatar.cc/300?img=38', @CustPwdHash, 1, 1, DATEADD(MONTH, -3, @UtcNow3b)),
+    (1, 1, N'Minh Tuan Do', '0912001004', 'mtuando@outlook.com', '1985-08-10', 'https://i.pravatar.cc/300?img=60', @CustPwdHash, 1, 1, DATEADD(MONTH, -2, @UtcNow3b)),
+    (1, 2, N'Thu Ha Hoang', '0912001005', 'thuha.hoang@gmail.com', '1990-12-05', 'https://i.pravatar.cc/300?img=45', @CustPwdHash, 1, 1, DATEADD(MONTH, -2, @UtcNow3b));
+
+IF NOT EXISTS (SELECT 1 FROM [dbo].[Accounts] WHERE Email = 'khoalmce181686@fpt.edu.vn')
+    INSERT INTO [dbo].[Accounts]
+    (RoleID, SexID, AccountName, PhoneNumber, Email, DOB, ImageURL, PasswordHash, HasPassword, IsActive, CreatedAt)
+VALUES
+    (1, 1, N'Le Minh Khoa', '0912001999', 'khoalmce181686@fpt.edu.vn', '2000-01-01', 'https://i.pravatar.cc/300?img=12', @CustPwdHash, 1, 1, DATEADD(MONTH, -4, @UtcNow3b));
+GO
+
+PRINT N'[3] Accounts – New Customers (40 users, Jul-Aug 2026)...';
+DECLARE @PwdHash3c VARCHAR(64) = UPPER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'Customer@123456'), 2));
+
+IF NOT EXISTS (SELECT 1
+FROM [dbo].[Accounts]
+WHERE Email = 'quynhanh.le@gmail.com')
+    INSERT INTO [dbo].[Accounts]
+    (RoleID, SexID, AccountName, PhoneNumber, Email, DOB, ImageURL, PasswordHash, HasPassword, IsActive, CreatedAt)
+SELECT
+    1, v.SexID, v.AccountName, v.PhoneNumber, v.Email, v.DOB,
+    'https://i.pravatar.cc/300?img=' + CAST(v.AvatarSeed AS VARCHAR),
+    @PwdHash3c, 1, 1, v.CreatedAt
+FROM (VALUES
+    -- ── July 2026 (20 accounts) ──────────────────────────────────
+    (2, N'Quynh Anh Le',      '0912002001', 'quynhanh.le@gmail.com',      '1996-02-14', 21, CAST('2026-07-01 02:15:00' AS DATETIME2(0))),
+    (1, N'Duc Thanh Pham',    '0912002002', 'ducthanh.pham@gmail.com',    '1991-05-09', 22, CAST('2026-07-02 03:40:00' AS DATETIME2(0))),
+    (2, N'Hai Yen Vu',        '0912002003', 'haiyen.vu@gmail.com',        '1998-11-23', 23, CAST('2026-07-03 07:05:00' AS DATETIME2(0))),
+    (1, N'Van Long Nguyen',   '0912002004', 'vanlong.nguyen@gmail.com',   '1989-08-17', 24, CAST('2026-07-04 09:20:00' AS DATETIME2(0))),
+    (2, N'Thi Mai Tran',      '0912002005', 'thimai.tran@gmail.com',      '1994-01-30', 25, CAST('2026-07-05 11:10:00' AS DATETIME2(0))),
+    (1, N'Quoc Bao Hoang',    '0912002006', 'quocbao.hoang@gmail.com',    '1993-06-12', 26, CAST('2026-07-06 13:45:00' AS DATETIME2(0))),
+    (2, N'Ngoc Han Do',       '0912002007', 'ngochan.do@gmail.com',       '1997-03-25', 27, CAST('2026-07-07 15:00:00' AS DATETIME2(0))),
+    (1, N'Thanh Tung Le',     '0912002008', 'thanhtung.le@gmail.com',     '1990-09-08', 28, CAST('2026-07-08 16:30:00' AS DATETIME2(0))),
+    (2, N'Kim Ngan Vo',       '0912002009', 'kimngan.vo@gmail.com',       '1999-04-19', 29, CAST('2026-07-09 18:50:00' AS DATETIME2(0))),
+    (1, N'Xuan Truong Bui',   '0912002010', 'xuantruong.bui@gmail.com',   '1988-12-05', 30, CAST('2026-07-10 20:10:00' AS DATETIME2(0))),
+    (2, N'Phuong Thao Dang',  '0912002011', 'phuongthao.dang@gmail.com',  '1995-07-27', 31, CAST('2026-07-12 08:05:00' AS DATETIME2(0))),
+    (1, N'Anh Khoa Ly',       '0912002012', 'anhkhoa.ly@gmail.com',       '1992-10-14', 32, CAST('2026-07-13 09:35:00' AS DATETIME2(0))),
+    (2, N'Bich Ngoc Trinh',   '0912002013', 'bichngoc.trinh@gmail.com',   '1996-02-02', 33, CAST('2026-07-14 10:55:00' AS DATETIME2(0))),
+    (1, N'Minh Quan Ta',      '0912002014', 'minhquan.ta@gmail.com',      '1991-11-11', 34, CAST('2026-07-16 12:20:00' AS DATETIME2(0))),
+    (2, N'Thu Trang Chau',    '0912002015', 'thutrang.chau@gmail.com',    '1997-08-06', 35, CAST('2026-07-18 14:00:00' AS DATETIME2(0))),
+    (1, N'Gia Huy Phan',      '0912002016', 'giahuy.phan@gmail.com',      '1990-05-21', 36, CAST('2026-07-20 16:15:00' AS DATETIME2(0))),
+    (2, N'Diem My Huynh',     '0912002017', 'diemmy.huynh@gmail.com',     '1998-01-09', 37, CAST('2026-07-22 17:45:00' AS DATETIME2(0))),
+    (1, N'Cong Danh Vuong',   '0912002018', 'congdanh.vuong@outlook.com', '1989-09-30', 38, CAST('2026-07-25 19:05:00' AS DATETIME2(0))),
+    (2, N'Le Na Duong',       '0912002019', 'lena.duong@gmail.com',       '1994-04-16', 39, CAST('2026-07-28 20:40:00' AS DATETIME2(0))),
+    (1, N'Trong Nhan Mai',    '0912002020', 'trongnhan.mai@outlook.com',  '1993-06-03', 40, CAST('2026-07-31 22:00:00' AS DATETIME2(0))),
+
+    -- ── August 1–7, 2026 (20 accounts, before Aug 8) ─────────────
+    (2, N'Bao Ngoc Nguyen',   '0912002021', 'baongoc.nguyen@gmail.com',   '1997-02-18', 41, CAST('2026-08-01 00:30:00' AS DATETIME2(0))),
+    (1, N'Hoang Yen Pham',    '0912002022', 'hoangyen.pham@gmail.com',    '1992-07-24', 42, CAST('2026-08-01 05:15:00' AS DATETIME2(0))),
+    (2, N'Duy Khang Tran',    '0912002023', 'duykhang.tran@gmail.com',    '1996-03-11', 43, CAST('2026-08-01 10:00:00' AS DATETIME2(0))),
+    (1, N'Thuy Duong Le',     '0912002024', 'thuyduong.le@gmail.com',     '1990-10-05', 44, CAST('2026-08-01 14:45:00' AS DATETIME2(0))),
+    (2, N'Nhat Minh Vo',      '0912002025', 'nhatminh.vo@gmail.com',      '1995-12-27', 45, CAST('2026-08-02 02:20:00' AS DATETIME2(0))),
+    (1, N'Cam Tu Hoang',      '0912002026', 'camtu.hoang@gmail.com',      '1991-04-08', 46, CAST('2026-08-02 07:50:00' AS DATETIME2(0))),
+    (2, N'Viet Anh Do',       '0912002027', 'vietanh.do@gmail.com',       '1998-08-19', 47, CAST('2026-08-02 13:10:00' AS DATETIME2(0))),
+    (1, N'Kieu Trinh Bui',    '0912002028', 'kieutrinh.bui@gmail.com',    '1989-01-22', 48, CAST('2026-08-02 18:30:00' AS DATETIME2(0))),
+    (2, N'Thanh Nhan Dang',   '0912002029', 'thanhnhan.dang@gmail.com',   '1994-05-14', 49, CAST('2026-08-03 03:00:00' AS DATETIME2(0))),
+    (1, N'Huu Phuoc Ly',      '0912002030', 'huuphuoc.ly@outlook.com',    '1993-09-02', 50, CAST('2026-08-03 09:25:00' AS DATETIME2(0))),
+    (2, N'My Linh Trinh',     '0912002031', 'mylinh.trinh@gmail.com',     '1997-11-16', 51, CAST('2026-08-03 15:40:00' AS DATETIME2(0))),
+    (1, N'Dinh Khoi Ta',      '0912002032', 'dinhkhoi.ta@gmail.com',      '1990-06-29', 52, CAST('2026-08-04 01:10:00' AS DATETIME2(0))),
+    (2, N'Ai Nhi Chau',       '0912002033', 'ainhi.chau@gmail.com',       '1999-02-07', 53, CAST('2026-08-04 06:35:00' AS DATETIME2(0))),
+    (1, N'Van Hao Phan',      '0912002034', 'vanhao.phan@gmail.com',      '1988-10-20', 54, CAST('2026-08-04 12:00:00' AS DATETIME2(0))),
+    (2, N'Tuong Vi Huynh',    '0912002035', 'tuongvi.huynh@gmail.com',    '1996-07-13', 55, CAST('2026-08-05 04:20:00' AS DATETIME2(0))),
+    (1, N'Ich Tam Vuong',     '0912002036', 'ichtam.vuong@gmail.com',     '1992-03-04', 56, CAST('2026-08-05 11:45:00' AS DATETIME2(0))),
+    (1, N'Bao Tran Duong',    '0912002037', 'baotran.duong@outlook.com',  '1991-12-31', 57, CAST('2026-08-06 08:15:00' AS DATETIME2(0))),
+    (2, N'Khanh Linh Mai',    '0912002038', 'khanhlinh.mai@gmail.com',    '1995-09-09', 58, CAST('2026-08-06 16:50:00' AS DATETIME2(0))),
+    (1, N'Duc Anh Nguyen',    '0912002039', 'ducanh.nguyen2@gmail.com',   '1990-01-25', 59, CAST('2026-08-07 05:05:00' AS DATETIME2(0))),
+    (2, N'Yen Nhi Pham',      '0912002040', 'yennhi.pham2@gmail.com',     '1997-06-18', 60, CAST('2026-08-07 21:30:00' AS DATETIME2(0)))
+) AS v(SexID, AccountName, PhoneNumber, Email, DOB, AvatarSeed, CreatedAt);
 GO
 
 /* ══════════════════════════════════════════════════════════════
@@ -414,25 +480,9 @@ VALUES
     (27, N'RC Drift Car - 2.4GHz', 680000, 40, 'Active', 12, 3, 3, 6, DATEADD(DAY, 90, @ProductBase)),
     (28, N'Mini Gyro RC Helicopter - 2.4GHz', 1490000, 12, 'Active', 13, 6, 4, 2, DATEADD(DAY, 97, @ProductBase)),
     (29, N'Play-Doh 24-Color Non-Toxic Modeling Clay', 88000, 980, 'Active', 4, 7, 1, 80, DATEADD(DAY, 102, @ProductBase)),
-    (30, N'10-Inch LCD Writing Tablet with Stylus', 175000, 380, 'Active', 4, 2, 1, 40, DATEADD(DAY, 107, @ProductBase)),
-    (31, N'Lego Friends 2026 Beach House - 850 Pieces', 1890000, 0, 'ComingSoon', 1, 1, 4, 5, @UtcNow8),
-    (32, N'Bandai Ultraman New Gen Figure - Limited Edition', 1250000, 0, 'ComingSoon', 10, 6, 4, 3, @UtcNow8),
-    (33, N'Fisher-Price Smart Walker Pro', 890000, 0, 'ComingSoon', 5, 2, 3, 5, @UtcNow8);
+    (30, N'10-Inch LCD Writing Tablet with Stylus', 175000, 380, 'Active', 4, 2, 1, 40, DATEADD(DAY, 107, @ProductBase));
 
 SET IDENTITY_INSERT [dbo].[Products] OFF;
-
--- LaunchDate UTC for ComingSoon products (08:00 UTC launch window)
-UPDATE [dbo].[Products]
-SET LaunchDate = DATEADD(HOUR, 8, CAST(DATEADD(DAY, 14, @UtcToday8) AS DATETIME2(0)))
-WHERE ProductID = 31 AND LaunchDate IS NULL;
-
-UPDATE [dbo].[Products]
-SET LaunchDate = DATEADD(HOUR, 8, CAST(DATEADD(DAY, 30, @UtcToday8) AS DATETIME2(0)))
-WHERE ProductID = 32 AND LaunchDate IS NULL;
-
-UPDATE [dbo].[Products]
-SET LaunchDate = DATEADD(HOUR, 8, CAST(DATEADD(DAY, 45, @UtcToday8) AS DATETIME2(0)))
-WHERE ProductID = 33 AND LaunchDate IS NULL;
 GO
 
 /* ══════════════════════════════════════════════════════════════
@@ -503,12 +553,7 @@ VALUES
 
     -- Clay / drawing board (29-30)
     (29, N'Hasbro Play-Doh set with 24 colors, each jar 85 g. Non-toxic and gluten-free.', 1, 3, 3, 3, 2040, 35, 24, 8),
-    (30, N'10-inch LCD writing and drawing tablet with instant erase. CR2025 battery supports 50,000 uses.', 1, 2, 3, 2, 210, 28, 18, 1),
-
-    -- ComingSoon products (31-33)
-    (31, N'Lego Friends 2026 Beach House with 850 pieces, rooftop terrace, and surf shop. Launching soon.', 1, 4, 2, 5, 1200, 55, 40, 12),
-    (32, N'Bandai Ultraman New Gen limited edition figure with LED chest light. Pre-order opening soon.', 1, 5, 1, 2, 200, 18, 10, 20),
-    (33, N'Fisher-Price Smart Walker Pro with adjustable height and interactive learning panel.', 1, 2, 3, 3, 3500, 55, 45, 50);
+    (30, N'10-inch LCD writing and drawing tablet with instant erase. CR2025 battery supports 50,000 uses.', 1, 2, 3, 2, 210, 28, 18, 1);
 GO
 
 /* ══════════════════════════════════════════════════════════════
@@ -522,7 +567,7 @@ WHERE ProductID = 1 AND IsMain = 1)
 BEGIN
     DECLARE @i INT = 1;
 
-    WHILE @i <= 33
+    WHILE @i <= 30
     BEGIN
         DECLARE @seed VARCHAR(30) = 'toy' + CAST(@i AS VARCHAR);
         DECLARE @ImgCreated DATETIME2(0) = (SELECT UtcNow
@@ -548,7 +593,7 @@ PRINT N'[13] Promotions...';
 DECLARE @admID INT = (SELECT TOP 1
     AccountID
 FROM Accounts
-WHERE Email = 'admin@toyhouse.vn');
+WHERE Email = 'admintoystore@gmail.com');
 DECLARE @UtcNow DATETIME2(0) = (SELECT UtcNow
 FROM #SeedTime);
 DECLARE @UtcToday DATE = (SELECT UtcToday
@@ -842,7 +887,7 @@ PRINT N'[16] PromotionProductSlots...';
 IF NOT EXISTS (SELECT 1
 FROM [dbo].[PromotionProductSlots])
 BEGIN
-    DECLARE @nowPPS DATETIME2(0) = GETUTCDATE();
+    DECLARE @nowPPS DATETIME2(0) = (SELECT UtcNow FROM #SeedTime);
 
     DECLARE @pFlash1Id INT = (
         SELECT TOP 1
@@ -991,7 +1036,7 @@ BEGIN
     DECLARE @creatorID INT = (SELECT TOP 1
         AccountID
     FROM Accounts
-    WHERE Email = 'admin@toyhouse.vn');
+    WHERE Email = 'admintoystore@gmail.com');
 
     INSERT INTO [dbo].[Vouchers]
         (CreatedBy, VoucherCode, VoucherName, VoucherDescription,
@@ -1535,7 +1580,7 @@ DECLARE @endDate DATE = DATEADD(DAY, 24, @startDate);
 DECLARE @currentDate DATE = @startDate;
 DECLARE @dayNum INT = 1;
 
-DECLARE @creatorID INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'admin@toyhouse.vn');
+DECLARE @creatorID INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'admintoystore@gmail.com');
 
 WHILE @currentDate <= @endDate
 BEGIN
@@ -1959,6 +2004,52 @@ BEGIN
     ) AS v(OID, PID)
         JOIN Orders o ON o.OrderID = v.OID
         JOIN Products p ON p.ProductID = v.PID;
+
+    -- Seed 3 failed orders for khoalmce181686@fpt.edu.vn to test Block Customer
+    DECLARE @cust_test INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'khoalmce181686@fpt.edu.vn');
+    IF @cust_test IS NOT NULL
+    BEGIN
+        SET IDENTITY_INSERT [dbo].[Orders] ON;
+        INSERT INTO [dbo].[Orders]
+            (OrderID, AccountID, StatusID, OrderCode,
+            ShippingName, ShippingPhone, ShippingAddress,
+            ShippingWardCode, ShippingWardName, ShippingDistrictId, ShippingDistrictName, ShippingProvinceId, ShippingProvinceName,
+            OrderDate, ConfirmedAt, ShippedAt, FailedDeliveryAt,
+            LastGHNFailCode, DeliveryFailCount,
+            PaymentMethod, PaymentStatus, PaidAt,
+            SubTotal, VoucherDiscountAmount, EstimatedShippingFee, TotalAmount, IsDeleted, CreatedAt)
+        VALUES
+            (15, @cust_test, 12, 'ORD202607150001', N'Le Minh Khoa', '0912001999', N'123 Main St', '20101', N'Phường Bến Nghé', 1442, N'Quận 1', 202, N'Hồ Chí Minh',
+                DATEADD(DAY, -10, @UtcNow28), DATEADD(DAY, -10, DATEADD(HOUR, 2, @UtcNow28)), DATEADD(DAY, -9, @UtcNow28), DATEADD(DAY, -8, @UtcNow28),
+                'GHN-DFC1A2', 3,
+                'SHIP_COD', 'PENDING', NULL, 1290000, 0, 30000, 1320000, 0, DATEADD(DAY, -10, @UtcNow28)),
+            (16, @cust_test, 12, 'ORD202607160001', N'Le Minh Khoa', '0912001999', N'123 Main St', '20101', N'Phường Bến Nghé', 1442, N'Quận 1', 202, N'Hồ Chí Minh',
+                DATEADD(DAY, -8, @UtcNow28), DATEADD(DAY, -8, DATEADD(HOUR, 2, @UtcNow28)), DATEADD(DAY, -7, @UtcNow28), DATEADD(DAY, -6, @UtcNow28),
+                'GHN-DFC1A2', 3,
+                'SHIP_COD', 'PENDING', NULL, 350000, 0, 30000, 380000, 0, DATEADD(DAY, -8, @UtcNow28)),
+            (17, @cust_test, 12, 'ORD202607170001', N'Le Minh Khoa', '0912001999', N'123 Main St', '20101', N'Phường Bến Nghé', 1442, N'Quận 1', 202, N'Hồ Chí Minh',
+                DATEADD(DAY, -5, @UtcNow28), DATEADD(DAY, -5, DATEADD(HOUR, 2, @UtcNow28)), DATEADD(DAY, -4, @UtcNow28), DATEADD(DAY, -3, @UtcNow28),
+                'GHN-DFC1A2', 3,
+                'SHIP_COD', 'PENDING', NULL, 420000, 0, 30000, 450000, 0, DATEADD(DAY, -5, @UtcNow28));
+        SET IDENTITY_INSERT [dbo].[Orders] OFF;
+
+        -- OrderDetails for these 3 orders
+        INSERT INTO [dbo].[OrderDetails]
+            (OrderID, ProductID, ProductName, ProductImage, Quantity, UnitPrice, DiscountAmount, CreatedAt)
+        VALUES
+            (15, 1, N'Lego City Central Police Station - 668 Pieces', 'https://picsum.photos/seed/prod-1/300/300', 1, 1290000, 0, DATEADD(DAY, -10, @UtcNow28)),
+            (16, 5, N'Wooden Alphabet Blocks - 52 Pieces', 'https://picsum.photos/seed/prod-5/300/300', 1, 350000, 0, DATEADD(DAY, -8, @UtcNow28)),
+            (17, 19, N'Pastel Long-Eared Bunny Plush Toy - 45 cm', 'https://picsum.photos/seed/prod-19/300/300', 1, 420000, 0, DATEADD(DAY, -5, @UtcNow28));
+
+        -- Seed CustomerDeliveryAbuseCase for this customer to make it pending admin review immediately
+        IF NOT EXISTS (SELECT 1 FROM [dbo].[CustomerDeliveryAbuseCases] WHERE AccountID = @cust_test)
+        BEGIN
+            INSERT INTO [dbo].[CustomerDeliveryAbuseCases]
+                (AccountID, Status, WarningLevel, SuspiciousOrderCount, CountingFrom, LastGHNFailCode, LastSuspiciousOrderDate, CodRestrictedAt, ReviewRequestedAt, CreatedAt)
+            VALUES
+                (@cust_test, 'PENDING_ADMIN_REVIEW', 3, 3, DATEADD(MONTH, -5, @UtcNow28), 'GHN-DFC1A2', DATEADD(DAY, -5, @UtcNow28), DATEADD(DAY, -5, @UtcNow28), DATEADD(DAY, -5, @UtcNow28), @UtcNow28);
+        END
+    END
 END
 GO
 
@@ -1973,7 +2064,7 @@ PRINT N'[28.1] Dynamic Product Reviews...';
 IF NOT EXISTS (SELECT 1 FROM [dbo].[ReviewProducts])
 BEGIN
     DECLARE @revStaff1 INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'nhung.st@toyhouse.vn');
-    DECLARE @revAdmin  INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'admin@toyhouse.vn');
+    DECLARE @revAdmin  INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'admintoystore@gmail.com');
 
     -- Insert dynamic realistic product reviews for delivered/completed orders in English
     INSERT INTO [dbo].[ReviewProducts]
@@ -1997,7 +2088,7 @@ BEGIN
         -- Moderation Status: Approved (majority) with a few Pending/Flagged for moderation testing
         CASE 
             WHEN (od.ProductID + od.OrderID) % 15 = 0 THEN 'Pending'
-            WHEN (od.ProductID + od.OrderID) % 17 = 0 THEN 'Flagged'
+            WHEN (od.ProductID + od.OrderID) % 17 = 0 THEN 'ManualReview'
             ELSE 'Approved'
         END,
         0, 0,
@@ -2052,7 +2143,7 @@ BEGIN
         NULL,
         'AI',
         NULL,
-        CASE WHEN rp.ModerationStatus = 'Approved' THEN 'Approved' ELSE 'Flagged' END,
+        CASE WHEN rp.ModerationStatus = 'Approved' THEN 'Approved' ELSE 'ManualReview' END,
         'claude-moderation-v1.0',
         N'{"score":0.01,"categories":{"hate":false,"harassment":false,"spam":false},"passed":true}',
         NULL,
@@ -2166,11 +2257,11 @@ BEGIN
         INSERT INTO [dbo].[OrderRefunds]
             (OrderID, RefundReasonID, CustomerID, RequestedBy, RefundCode, SubTotal, TotalAmount, ApprovedAmount, StatusID, CreatedAt)
         VALUES
-            (@o6, @r_wrong, @c_bauchau, @c_bauchau, 'REF202607010004', 1250000, 1250000, 1250000, 5, DATEADD(DAY, -10, @UtcNow282));
+            (@o6, @r_wrong, @c_bauchau, @c_bauchau, 'REF202607010004', 900000, 900000, 900000, 5, DATEADD(DAY, -10, @UtcNow282));
 
         DECLARE @rf4 INT = SCOPE_IDENTITY();
         INSERT INTO [dbo].[RefundDetails] (RefundID, ProductID, Quantity, UnitPrice, RefundAmount, CreatedAt)
-        VALUES (@rf4, 22, 1, 1250000, 1250000, DATEADD(DAY, -10, @UtcNow282));
+        VALUES (@rf4, 22, 1, 900000, 900000, DATEADD(DAY, -10, @UtcNow282));
 
         INSERT INTO [dbo].[RefundImages] (RefundID, ImageURL, CreatedAt)
         VALUES (@rf4, 'https://picsum.photos/seed/refund-shipping-a/400/400', DATEADD(DAY, -10, @UtcNow282));
@@ -2250,7 +2341,7 @@ WHERE Email = 'dung.st@toyhouse.vn');
 DECLARE @badm INT = (SELECT TOP 1
     AccountID
 FROM Accounts
-WHERE Email = 'admin@toyhouse.vn');
+WHERE Email = 'admintoystore@gmail.com');
 
 IF NOT EXISTS (SELECT 1
 FROM [dbo].[BlogPosts])
@@ -2290,7 +2381,7 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[ReviewBlogs])
 BEGIN
     DECLARE @UtcNow31c DATETIME2(0) = (SELECT UtcNow FROM #SeedTime);
     DECLARE @staffRep INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'nhung.st@toyhouse.vn');
-    DECLARE @adminRep INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'admin@toyhouse.vn');
+    DECLARE @adminRep INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'admintoystore@gmail.com');
 
     -- 1. Comments for Post: Summer Sale – Up To 50% Off Official Toys
     INSERT INTO [dbo].[ReviewBlogs]
@@ -2414,7 +2505,7 @@ WHERE Email = 'dung.st@toyhouse.vn');
 DECLARE @adminId INT = (SELECT TOP 1
     AccountID
 FROM Accounts
-WHERE Email = 'admin@toyhouse.vn');
+WHERE Email = 'admintoystore@gmail.com');
 
 -- Get the customer accounts into a table variable for easy indexing
 DECLARE @Customers TABLE (
@@ -2597,7 +2688,7 @@ BEGIN
     DECLARE @admWS INT = (SELECT TOP 1
         AccountID
     FROM Accounts
-    WHERE Email = 'admin@toyhouse.vn');
+    WHERE Email = 'admintoystore@gmail.com');
     DECLARE @st1WS INT = (SELECT TOP 1
         AccountID
     FROM Accounts
@@ -2813,7 +2904,7 @@ BEGIN
     DECLARE @admCamp INT = (SELECT TOP 1
         AccountID
     FROM Accounts
-    WHERE Email = 'admin@toyhouse.vn');
+    WHERE Email = 'admintoystore@gmail.com');
     DECLARE @stfCamp INT = (SELECT TOP 1
         AccountID
     FROM Accounts
@@ -2864,7 +2955,6 @@ BEGIN
         BlogPostID
     FROM BlogPosts
     WHERE BlogTitle = N'Halloween Toy Preview 2026');
-    DECLARE @prodCS INT = 31;
 
     DECLARE @pSummerStart DATETIME2(0) = (SELECT StartDate
     FROM Promotions
@@ -2881,16 +2971,9 @@ BEGIN
     DECLARE @blogHalloweenAt DATETIME2(0) = (SELECT BlogAt
     FROM BlogPosts
     WHERE BlogPostID = @blogHalloween);
-    DECLARE @prodLaunch DATETIME2(0) = (SELECT LaunchDate
-    FROM Products
-    WHERE ProductID = @prodCS);
-    DECLARE @prodCreated DATETIME2(0) = (SELECT CreatedAt
-    FROM Products
-    WHERE ProductID = @prodCS);
 
     DECLARE @schedFreeShip DATETIME2(0) = DATEADD(DAY, 2, @UtcNowC);
     DECLARE @schedHalloween DATETIME2(0) = DATEADD(DAY, 7, @UtcNowC);
-    DECLARE @schedLego DATETIME2(0) = DATEADD(HOUR, -2, @prodLaunch);
     DECLARE @sentSummerAt DATETIME2(0) = DATEADD(DAY, -14, @UtcNowC);
     DECLARE @sentWelcomeAt DATETIME2(0) = DATEADD(DAY, -20, @UtcNowC);
     DECLARE @sentFlashAt DATETIME2(0) = DATEADD(HOUR, -1, @UtcNowC);
@@ -3019,24 +3102,7 @@ BEGIN
             @stfCamp, DATEADD(DAY, -3, @UtcNowC), @admCamp, DATEADD(DAY, -2, @UtcNowC),
             @stfCamp, 0, DATEADD(DAY, -4, @UtcNowC));
 
-    -- 10) Sending – ComingSoon product pre-launch
-    INSERT INTO [Notification].[Campaigns]
-        (CampaignName, TemplateCode, SourceType, TargetType, Status,
-        ReferenceType, ReferenceID, ActionType, ActionTarget,
-        TitleOverride, MessageOverride,
-        ValidFrom, ValidTo, ScheduledAt,
-        SubmittedByAccountID, SubmittedAt, ReviewedByAccountID, ReviewedAt,
-        CreatedByAccountID, IsDeleted, CreatedAt)
-    VALUES
-        (N'Lego Friends Beach House – Pre-Launch Alert', NULL, 'ADMIN', 'ALL', 'Sending',
-            'PRODUCT', @prodCS, 'ROUTE', N'/products/' + CAST(@prodCS AS NVARCHAR(10)),
-            N'🚀 Coming Soon: Lego Friends 2026 Beach House!',
-            N'Pre-orders open soon! Tap to explore the product page, preview exclusive photos, and set your launch reminder.',
-            @prodCreated, @prodLaunch, @schedLego,
-            @stfCamp, DATEADD(DAY, -2, @UtcNowC), @admCamp, DATEADD(DAY, -1, @UtcNowC),
-            @stfCamp, 0, @UtcNowC);
-
-    -- 11) Cancelled – staff cancelled after scheduling UPCOMING20 teaser
+    -- 10) Cancelled – staff cancelled after scheduling UPCOMING20 teaser
     INSERT INTO [Notification].[Campaigns]
         (CampaignName, TemplateCode, SourceType, TargetType, Status,
         ReferenceType, ReferenceID, ActionType, ActionTarget,
@@ -3056,7 +3122,7 @@ BEGIN
             @stfCamp, DATEADD(DAY, -8, @UtcNowC), @admCamp, DATEADD(DAY, -7, @UtcNowC),
             @stfCamp, 0, DATEADD(DAY, -9, @UtcNowC));
 
-    -- 12) Failed – dispatch exhausted retries on EXPIRING48H urgency push
+    -- 11) Failed – dispatch exhausted retries on EXPIRING48H urgency push
     INSERT INTO [Notification].[Campaigns]
         (CampaignName, TemplateCode, SourceType, TargetType, Status,
         ReferenceType, ReferenceID, ActionType, ActionTarget,
@@ -3071,7 +3137,7 @@ BEGIN
             @stfCamp, DATEADD(DAY, -2, @UtcNowC), @admCamp, DATEADD(DAY, -1, @UtcNowC),
             @stfCamp, 0, DATEADD(DAY, -3, @UtcNowC));
 
-    -- 13) Draft – staff saved wizard (ALL customers + voucher reference)
+    -- 12) Draft – staff saved wizard (ALL customers + voucher reference)
     INSERT INTO [Notification].[Campaigns]
         (CampaignName, TemplateCode, SourceType, TargetType, Status,
         ReferenceType, ReferenceID, ActionType, ActionTarget,
@@ -3099,12 +3165,6 @@ BEGIN
     SELECT c.CampaignID, @stfCamp, c.ScheduledAt, 'Waiting', 0, NULL, NULL, @UtcNowC
     FROM [Notification].[Campaigns] c
     WHERE c.Status = 'Scheduled' AND c.ScheduledAt IS NOT NULL;
-
-    INSERT INTO [Notification].[CampaignSchedules]
-        (CampaignID, ScheduledBy, ScheduledAt, ExecutionStatus, AttemptCount, LastError, ExecutedAt, CreatedAt)
-    SELECT c.CampaignID, @stfCamp, c.ScheduledAt, 'Dispatched', 0, NULL, NULL, @UtcNowC
-    FROM [Notification].[Campaigns] c
-    WHERE c.Status = 'Sending' AND c.ScheduledAt IS NOT NULL;
 
     INSERT INTO [Notification].[CampaignSchedules]
         (CampaignID, ScheduledBy, ScheduledAt, ExecutionStatus, AttemptCount, MaxAttemptCount, LastError, ExecutedAt, CreatedAt)
@@ -3142,13 +3202,6 @@ BEGIN
     FROM [Notification].[Campaigns] c
         JOIN [dbo].[BlogPosts] bp ON c.ReferenceType = 'BLOG' AND bp.BlogPostID = c.ReferenceID
     WHERE c.Status = 'Scheduled' AND c.ReferenceType = 'BLOG';
-
-    INSERT INTO [Notification].[CampaignReferenceSnapshots]
-        (CampaignID, ReferenceType, ReferenceID, EntityStatus, EntityStartDate, EntityEndDate, SnapshotAt)
-    SELECT c.CampaignID, c.ReferenceType, c.ReferenceID, pr.ProductStatus, pr.CreatedAt, pr.LaunchDate, @UtcNowC
-    FROM [Notification].[Campaigns] c
-        JOIN [dbo].[Products] pr ON c.ReferenceType = 'PRODUCT' AND pr.ProductID = c.ReferenceID
-    WHERE c.Status IN ('Scheduled', 'Sending') AND c.ReferenceType = 'PRODUCT';
 END
 GO
 
@@ -3343,7 +3396,7 @@ BEGIN
     DECLARE @admAL INT = (SELECT TOP 1
         AccountID
     FROM Accounts
-    WHERE Email = 'admin@toyhouse.vn');
+    WHERE Email = 'admintoystore@gmail.com');
     DECLARE @stfAL INT = (SELECT TOP 1
         AccountID
     FROM Accounts

@@ -93,9 +93,9 @@ public class PromotionStatusJob : BackgroundService
                 v.UpdatedAt = nowUtc;
             }
 
-            // 6. Voucher Active -> Expired when EndDate < nowUtc
+            // 6. Voucher Active or Pending or Scheduled -> Expired when EndDate < nowUtc
             var activeVouchers = await db.Vouchers
-                .Where(v => v.Status == "Active" && !v.IsDeleted && v.EndDate < nowUtc)
+                .Where(v => (v.Status == "Active" || v.Status == "Pending" || v.Status == "Scheduled") && !v.IsDeleted && v.EndDate < nowUtc)
                 .ToListAsync(ct);
             foreach (var v in activeVouchers)
             {

@@ -748,6 +748,33 @@ public class RefundService : IRefundService
         if (transitionError is not null)
             return Result<RefundDto>.BusinessError(transitionError);
 
+        if (!isAdmin)
+        {
+            // Restrict status transitions based on role
+            // roleId == 3 represents Staff; roleId == 4 represents Merchandise
+            if (newStatusId.Value == (byte)RefundStatusEnum.RefundCompleted || newStatusId.Value == (byte)RefundStatusEnum.RefundReturnShipmentCreated)
+            {
+                if (roleId != 3)
+                {
+                    return Result<RefundDto>.BusinessError("Only Staff members are allowed to complete or manage return shipments for refund requests.");
+                }
+            }
+            else if (newStatusId.Value == (byte)RefundStatusEnum.RefundApproved || newStatusId.Value == (byte)RefundStatusEnum.RefundRejected)
+            {
+                if (roleId != 3)
+                {
+                    return Result<RefundDto>.BusinessError("Only Staff members are allowed to approve or reject refund requests.");
+                }
+            }
+            else if (newStatusId.Value == (byte)RefundStatusEnum.RefundReceived || newStatusId.Value == (byte)RefundStatusEnum.RefundInspectionPending)
+            {
+                if (roleId != 4)
+                {
+                    return Result<RefundDto>.BusinessError("Only Merchandise personnel are allowed to confirm receipt or submit inspection results for returned packages.");
+                }
+            }
+        }
+
         if (isSystemReturnRefund)
         {
             // Pickup/shipping không áp dụng cho system return (GHN đã trả hàng về kho rồi)

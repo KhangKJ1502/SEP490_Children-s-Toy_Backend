@@ -310,7 +310,10 @@ public class VoucherService : IVoucherService
                 // If not archiving/deleting, require extending the End Date to a future time
                 var targetEndDate = normalizedRequest.EndDate ?? existingVoucher.EndDate;
                 var targetStatus = normalizedRequest.Status ?? existingVoucher.Status;
-                bool isArchiving = string.Equals(targetStatus, VoucherStatuses.Inactive, StringComparison.OrdinalIgnoreCase) || normalizedRequest.IsDeleted == true;
+                bool isArchiving = string.Equals(targetStatus, VoucherStatuses.Inactive, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(targetStatus, VoucherStatuses.Rejected, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(targetStatus, VoucherStatuses.Expired, StringComparison.OrdinalIgnoreCase)
+                    || normalizedRequest.IsDeleted == true;
 
                 if (!isArchiving && targetEndDate <= now)
                 {
