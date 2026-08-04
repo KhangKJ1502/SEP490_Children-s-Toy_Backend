@@ -3,6 +3,7 @@ using ToyStore.Application.Common.Models;
 using ToyStore.Application.Constants;
 using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
+using ToyStore.Domain.Constants;
 using ToyStore.Domain.Entities;
 using ToyStore.Infrastructure.Data;
 
@@ -74,6 +75,28 @@ public class OrderAccessService : IOrderAccessService
             return Result.Failure("FORBIDDEN", "You are not authorized to view this order.");
         }
 
+        // Bug 2 fix: đơn Cancelled — nếu đã từng được assign thì được xem
+        // (kể cả chưa có milestone, ví dụ đơn bị hủy khi còn Pending)
+        var order = await _unitOfWork.Orders.GetByIdAsync(orderId, cancellationToken);
+        if (order?.Status?.StatusName == OrderStatuses.Cancelled)
+        {
+            return Result.Success();
+        }
+
+        // Bug A fix: đơn đang "treo" (bị deactivate nhưng chưa có người mới nhận)
+        // → nhất quán với EnsureCanMutateAsync: nếu có quyền mutate thì cũng có quyền view
+        var isLatestWithNoSuccessor = await _unitOfWork.OrderAssignments
+            .IsLatestAssigneeWithNoActiveSuccessorAsync(
+                orderId,
+                _currentUser.AccountId,
+                assignmentRoleId,
+                cancellationToken);
+
+        if (isLatestWithNoSuccessor)
+        {
+            return Result.Success();
+        }
+
         var hasProcessed = await _unitOfWork.OrderAssignments.HasProcessedOrderByAssigneeAsync(
             orderId,
             _currentUser.AccountId,
@@ -129,7 +152,19 @@ public class OrderAccessService : IOrderAccessService
 
         if (!hasAssignment)
         {
-            return Result.Failure("FORBIDDEN", "You do not have an active assignment for this order.");
+            // Bug 1 fix: đơn có thể đang "treo" — staff bị absent/deactivate nhưng chưa có người mới nhận.
+            // Cho phép staff là người được assign gần nhất tiếp tục mutate cho đến khi có người mới active.
+            var isLatestWithNoSuccessor = await _unitOfWork.OrderAssignments
+                .IsLatestAssigneeWithNoActiveSuccessorAsync(
+                    orderId,
+                    _currentUser.AccountId,
+                    assignmentRoleId,
+                    cancellationToken);
+
+            if (!isLatestWithNoSuccessor)
+            {
+                return Result.Failure("FORBIDDEN", "You do not have an active assignment for this order.");
+            }
         }
 
         return Result.Success();

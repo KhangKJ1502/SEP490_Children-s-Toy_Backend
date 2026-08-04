@@ -33,4 +33,10 @@ public interface IWorkScheduleRepository
     Task<WorkSchedule> CreateAsync(WorkSchedule schedule, CancellationToken cancellationToken = default);
     Task UpdateAsync(WorkSchedule schedule, CancellationToken cancellationToken = default);
     Task DeleteAsync(WorkSchedule schedule, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Trả về tất cả schedule đang OnDuty hoặc Scheduled của một account.
+    /// Dùng khi cần xử lý batch (ví dụ: deactivate account → MarkAbsent tất cả ca).
+    /// </summary>
+    Task<List<WorkSchedule>> GetActiveByAccountAsync(int accountId, CancellationToken cancellationToken = default);
 }
