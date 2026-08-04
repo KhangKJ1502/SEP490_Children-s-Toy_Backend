@@ -35,16 +35,18 @@ public class AccountsController : ControllerBase
         [FromQuery] bool sortDesc = false,
         [FromQuery] string? searchTerm = null,
         [FromQuery] byte? roleId = null,
+        [FromQuery] bool? isActive = null,
         CancellationToken cancellationToken = default)
     {
         _logger.LogDebug(
-            "Get accounts called with pageNumber {PageNumber}, pageSize {PageSize}, sortBy {SortBy}, sortDesc {SortDesc}, hasSearchTerm {HasSearchTerm}, roleId {RoleId}",
+            "Get accounts called with pageNumber {PageNumber}, pageSize {PageSize}, sortBy {SortBy}, sortDesc {SortDesc}, hasSearchTerm {HasSearchTerm}, roleId {RoleId}, isActive {IsActive}",
             pageNumber,
             pageSize,
             sortBy,
             sortDesc,
             !string.IsNullOrWhiteSpace(searchTerm),
-            roleId);
+            roleId,
+            isActive);
 
         var result = await _accountService.GetAccountsAsync(
             pageNumber,
@@ -53,6 +55,7 @@ public class AccountsController : ControllerBase
             sortDesc,
             searchTerm,
             roleId,
+            isActive,
             cancellationToken);
 
         return result.ToActionResult();

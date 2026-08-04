@@ -27,6 +27,8 @@ public class WorkScheduleRepository : IWorkScheduleRepository
             .Include(x => x.StaffShiftCapacity)
             .AsQueryable();
 
+        query = query.Where(x => x.Account.IsActive && !x.Account.IsDeleted);
+
         if (workDate.HasValue)
         {
             var date = workDate.Value.Date;
@@ -46,6 +48,20 @@ public class WorkScheduleRepository : IWorkScheduleRepository
         return await query
             .OrderBy(x => x.WorkDate)
             .ThenBy(x => x.ShiftTemplateId)
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<List<WorkSchedule>> GetActiveByAccountAsync(
+        int accountId,
+        CancellationToken cancellationToken = default)
+    {
+        return _context.WorkSchedules
+            .AsNoTracking()
+            .Include(x => x.Account)
+            .Include(x => x.ShiftTemplate)
+            .Include(x => x.StaffShiftCapacity)
+            .Where(x => x.AccountId == accountId
+                     && (x.Status == "OnDuty" || x.Status == "Scheduled"))
             .ToListAsync(cancellationToken);
     }
 

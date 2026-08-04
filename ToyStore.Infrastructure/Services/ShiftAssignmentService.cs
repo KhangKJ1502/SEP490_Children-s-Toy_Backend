@@ -453,13 +453,40 @@ public class ShiftAssignmentService : IShiftAssignmentService
             return Result.Failure("BUSINESS_RULE_VIOLATION", "Target schedule is at full capacity.");
         }
 
-        await _unitOfWork.OrderAssignments.ReassignAsync(
-            orderId,
-            dto.RoleId,
-            dto.NewScheduleId,
-            _currentUser.AccountId,
-            dto.Notes,
-            cancellationToken);
+        var activeAssignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(orderId, cancellationToken);
+        var existingForRole = activeAssignments.FirstOrDefault(a => a.RoleId == dto.RoleId);
+
+        if (existingForRole is not null)
+        {
+            await _unitOfWork.OrderAssignments.ReassignAsync(
+                orderId,
+                dto.RoleId,
+                dto.NewScheduleId,
+                _currentUser.AccountId,
+                dto.Notes,
+                cancellationToken);
+        }
+        else
+        {
+            await _unitOfWork.OrderAssignments.AddRangeAsync(new[]
+            {
+                new OrderAssignment
+                {
+                    OrderId = orderId,
+                    ScheduleId = dto.NewScheduleId,
+                    AccountId = schedule.AccountId,
+                    RoleId = dto.RoleId,
+                    IsActive = true,
+                    AssignedBy = _currentUser.AccountId,
+                    Notes = dto.Notes,
+                    AssignedAt = now
+                }
+            }, cancellationToken);
+
+            schedule.StaffShiftCapacity.CurrentLoad++;
+            schedule.StaffShiftCapacity.UpdatedAt = now;
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
 
         if (dto.RoleId is StaffRoleId or MerchRoleId)
         {
@@ -532,6 +559,12 @@ public class ShiftAssignmentService : IShiftAssignmentService
     private bool IsScheduleAvailable(WorkSchedule schedule, byte roleId, DateTime now, TimeSpan nowTime)
     {
         if (schedule.Account.RoleId != roleId)
+        {
+            return false;
+        }
+
+        // Tài khoản bị Inactive hoặc Deleted không được nhận đơn mới
+        if (!schedule.Account.IsActive || schedule.Account.IsDeleted)
         {
             return false;
         }

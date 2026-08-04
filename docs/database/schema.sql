@@ -1,4 +1,7 @@
-
+Trải nghiệm AI ngay trong các ứng dụng bạn yêu thích … Dùng Gemini để tạo bản nháp và tinh chỉnh nội dung, đồng thời sử dụng Gemini Pro để khai thác AI thế hệ mới của Google
+DataBase-Main.sql
+1
+100%
 /* =================================================================
    E-COMMERCE DATABASE SCHEMA (OPTIMIZED FULL VERSION + AI MODERATION)
    Platform: SQL Server | Version: 3.2
@@ -291,7 +294,7 @@ CREATE TABLE [Products] (
     [BrandID]                     SMALLINT      NOT NULL,
     [PriceRangeID]                TINYINT       NOT NULL,
     [ProductName]                 NVARCHAR(255) NOT NULL,
-    [Price]                       DECIMAL(12,0) NOT NULL CHECK ([Price] >= 0),
+    [Price]                       DECIMAL(18,6) NOT NULL CHECK ([Price] >= 0),
     [Quantity]                    INT           NOT NULL CHECK ([Quantity] >= 0),
     [ProductStatus]               VARCHAR(20)   NOT NULL
         CHECK ([ProductStatus] IN ('Active', 'Inactive', 'OutOfStock', 'Discontinued', 'ComingSoon')),
@@ -1656,6 +1659,29 @@ BEGIN
 END;
 GO
 
+CREATE OR ALTER TRIGGER dbo.trg_BlogPostStats_UpdateFeatured
+ON dbo.BlogPostStats
+AFTER INSERT, UPDATE, DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    EXEC dbo.SP_RecomputeFeaturedBlogs;
+END;
+GO
+
+CREATE OR ALTER TRIGGER dbo.trg_BlogPosts_UpdateFeaturedByStatus
+ON dbo.BlogPosts
+AFTER UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF UPDATE(Status) OR UPDATE(IsDeleted)
+    BEGIN
+        EXEC dbo.SP_RecomputeFeaturedBlogs;
+    END
+END;
+GO
+
 -- Index hỗ trợ query "bài nào account này đã react"
 CREATE INDEX [IX_BlogPostReactions_Account]
 ON [BlogPostReactions] ([AccountID])
@@ -2195,7 +2221,7 @@ CREATE TABLE [Notification].[Templates] (
     [TemplateCode]    VARCHAR(50)            NOT NULL,
     [UsageScope]      VARCHAR(10)            NOT NULL DEFAULT 'ADMIN',
     [TitleTemplate]   NVARCHAR(255)          NOT NULL,
-    [MessageTemplate] NVARCHAR(500)          NOT NULL,
+    [MessageTemplate] NVARCHAR(2000)          NOT NULL,
     [IsActive]        BIT                    NOT NULL DEFAULT 1,
     [IsDeleted]       BIT                    NOT NULL DEFAULT 0,
     [CreatedAt]       DATETIME2(0)           NOT NULL DEFAULT GETDATE(),
@@ -2239,7 +2265,7 @@ CREATE TABLE [Notification].[Campaigns] (
     [CampaignName]         NVARCHAR(255) NOT NULL,
     [TemplateCode]         VARCHAR(50)   NULL,
     [TitleOverride]        NVARCHAR(255) NULL,
-    [MessageOverride]      NVARCHAR(500) NULL,
+    [MessageOverride]      NVARCHAR(2000) NULL,
     [SourceType]           VARCHAR(10)   NOT NULL DEFAULT 'ADMIN',
     [TargetType]           VARCHAR(10)   NOT NULL DEFAULT 'ALL',
     [ReferenceType]        VARCHAR(20)   NULL,
@@ -2612,7 +2638,7 @@ CREATE TABLE [Notification].[Deliveries] (
     [ActionType]       NVARCHAR(20)  NULL,
     [ActionTarget]     NVARCHAR(500) NULL,
     [Title]            NVARCHAR(255) NOT NULL,
-    [Message]          NVARCHAR(500) NOT NULL,
+    [Message]          NVARCHAR(2000) NOT NULL,
     [Payload]          NVARCHAR(2000) NOT NULL DEFAULT '{}'
         CONSTRAINT [CK_Deliveries_PayloadIsJson]    CHECK (ISJSON([Payload]) = 1),
     [Status]           VARCHAR(10)   NOT NULL DEFAULT 'Unread'

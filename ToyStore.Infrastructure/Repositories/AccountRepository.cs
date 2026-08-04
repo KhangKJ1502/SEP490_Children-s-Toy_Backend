@@ -33,12 +33,18 @@ public class AccountRepository : IAccountRepository
         bool sortDesc = false,
         string? searchTerm = null,
         byte? roleId = null,
+        bool? isActive = null,
         CancellationToken cancellationToken = default)
     {
         IQueryable<Account> query = _context.Accounts
             .AsNoTracking()
             .Include(x => x.Role)
             .Where(x => !x.IsDeleted);
+
+        if (isActive.HasValue)
+        {
+            query = query.Where(x => x.IsActive == isActive.Value);
+        }
 
         if (roleId.HasValue)
         {
@@ -85,11 +91,17 @@ public class AccountRepository : IAccountRepository
     public Task<int> CountAsync(
         string? searchTerm = null,
         byte? roleId = null,
+        bool? isActive = null,
         CancellationToken cancellationToken = default)
     {
         IQueryable<Account> query = _context.Accounts
             .AsNoTracking()
             .Where(x => !x.IsDeleted);
+
+        if (isActive.HasValue)
+        {
+            query = query.Where(x => x.IsActive == isActive.Value);
+        }
 
         if (roleId.HasValue)
         {

@@ -28,6 +28,17 @@ public interface IOrderAssignmentRepository
         byte assignmentRoleId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// True nếu account là người được assign gần nhất (MAX AssignedAt) cho role này trên order,
+    /// VÀ hiện không có assignment nào IsActive=true cho role đó.
+    /// Dùng để cấp quyền mutate tạm thời khi đơn đang "treo" (bị deactivate nhưng chưa có ai mới nhận).
+    /// </summary>
+    Task<bool> IsLatestAssigneeWithNoActiveSuccessorAsync(
+        int orderId,
+        int accountId,
+        byte roleId,
+        CancellationToken cancellationToken = default);
+
     Task<List<OrderAssignment>> GetActiveAssignmentsAsync(int orderId, CancellationToken cancellationToken = default);
     Task<List<OrderAssignment>> GetAssignmentsByOrderIdAsync(int orderId, CancellationToken cancellationToken = default);
 
