@@ -294,14 +294,21 @@ public class ProductService : IProductService
         var status = dto.ProductStatus?.Trim() ?? existing.ProductStatus;
         var launchDate = dto.LaunchDate ?? existing.LaunchDate;
 
+        // Rule: If LaunchDate (effective) is in the future, status must be ComingSoon.
+        // This handles cases where only one of the two fields is present in the DTO.
+        if (status != "ComingSoon" && launchDate.HasValue && launchDate.Value.Date > _timeProvider.TodayVn.Date)
+        {
+            return Result<ProductDto>.BusinessError("Cannot set status to Active before the launch date. The product has not launched yet.");
+        }
+
         if (status == "ComingSoon" && !launchDate.HasValue)
         {
             return Result<ProductDto>.BusinessError("Launch date is required for coming soon products.");
         }
 
-        if (status == "ComingSoon" && launchDate.HasValue && launchDate.Value.Date < _timeProvider.UtcNow.Date)
+        if (status == "ComingSoon" && launchDate.HasValue && launchDate.Value.Date <= _timeProvider.TodayVn.Date)
         {
-            return Result<ProductDto>.BusinessError("Launch date must be today or later for coming soon products.");
+            return Result<ProductDto>.BusinessError("Launch date must be a future date for 'Coming Soon' products. Today's date is not allowed.");
         }
 
         _mapper.Map(dto, existing);

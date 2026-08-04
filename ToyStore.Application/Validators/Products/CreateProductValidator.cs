@@ -15,6 +15,11 @@ public class CreateProductValidator : AbstractValidator<CreateProductDto>
         "ComingSoon"
     };
 
+    private static readonly TimeZoneInfo VnTimeZone = 
+        TimeZoneInfo.CreateCustomTimeZone("Vietnam Standard Time", new TimeSpan(7, 0, 0), "Vietnam Time", "Vietnam Time");
+
+    private static DateTime GetTodayVn() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, VnTimeZone).Date;
+
     public CreateProductValidator()
     {
         RuleFor(x => x.CategoryId)
@@ -46,12 +51,22 @@ public class CreateProductValidator : AbstractValidator<CreateProductDto>
             .Must(status => AllowedStatuses.Contains(status))
             .WithMessage("Product status is invalid.");
 
+        // Cross-field rule: if LaunchDate is in the future, status must be ComingSoon
+        RuleFor(x => x.ProductStatus)
+            .Must((dto, status) =>
+            {
+                if (!dto.LaunchDate.HasValue) return true;
+                if (dto.LaunchDate.Value.Date <= GetTodayVn()) return true;
+                return status == "ComingSoon";
+            })
+            .WithMessage("Cannot set status to Active before the launch date. The product has not launched yet.");
+
         RuleFor(x => x.LaunchDate)
             .NotNull().WithMessage("Launch date is required.");
 
         RuleFor(x => x.LaunchDate)
-            .Must(date => date.HasValue && date.Value.Date >= DateTime.UtcNow.Date)
-            .WithMessage("Launch date must be today or later for coming soon products.")
+            .Must(date => date.HasValue && date.Value.Date > GetTodayVn())
+            .WithMessage("Launch date must be a future date for 'Coming Soon' products. Today's date is not allowed.")
             .When(x => x.ProductStatus == "ComingSoon" && x.LaunchDate.HasValue);
 
         RuleFor(x => x.StockThreshold)

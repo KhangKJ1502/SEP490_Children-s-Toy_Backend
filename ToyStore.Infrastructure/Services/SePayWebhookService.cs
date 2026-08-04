@@ -297,11 +297,7 @@ public class SePayWebhookService : ISePayWebhookService
 
         // TODO: parse accountId từ idempotencyKey hoặc từ payload.SubAccount / ReferenceCode
         // Khi deploy thật, cần thống nhất format WLT_{AccountId}_{uuid8}
-        // Tạm thời ghi nhận vào outbox để xử lý thủ công nếu không parse được
-        await _eventPublisher.PublishAsync("Wallet", "0",
-            NotificationEventTypes.SystemPaymentGatewayError,
-            new { idempotencyKey, amount, note = "WLT topup received — manual processing if needed" },
-            CancellationToken.None);
+
     }
 
     private static bool IsPrefixed(string content, string prefix)
