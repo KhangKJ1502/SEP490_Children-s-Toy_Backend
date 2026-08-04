@@ -37,6 +37,7 @@ public class AdminDashboardService : IAdminDashboardService
         var baseQuery = _context.Orders
             .AsNoTracking()
             .Where(o => !o.IsDeleted)
+            .Where(o => !(o.PaymentMethod == "SE_PAY" && o.PaymentStatus != "PAID" && o.PaymentStatus != "REFUNDED" && o.PaymentStatus != "PARTIALLY_REFUNDED"))
             .Where(o => o.OrderDate >= ranges.Current.StartUtc && o.OrderDate < ranges.Current.EndUtcExclusive);
 
         var totalOrders = await baseQuery.CountAsync(cancellationToken);
@@ -200,12 +201,14 @@ public class AdminDashboardService : IAdminDashboardService
         var ordersCurrent = await _context.Orders
             .AsNoTracking()
             .Where(o => !o.IsDeleted)
+            .Where(o => !(o.PaymentMethod == "SE_PAY" && o.PaymentStatus != "PAID" && o.PaymentStatus != "REFUNDED" && o.PaymentStatus != "PARTIALLY_REFUNDED"))
             .Where(o => o.OrderDate >= ranges.Current.StartUtc && o.OrderDate < ranges.Current.EndUtcExclusive)
             .CountAsync(cancellationToken);
 
         var ordersPrevious = await _context.Orders
             .AsNoTracking()
             .Where(o => !o.IsDeleted)
+            .Where(o => !(o.PaymentMethod == "SE_PAY" && o.PaymentStatus != "PAID" && o.PaymentStatus != "REFUNDED" && o.PaymentStatus != "PARTIALLY_REFUNDED"))
             .Where(o => o.OrderDate >= ranges.Previous.StartUtc && o.OrderDate < ranges.Previous.EndUtcExclusive)
             .CountAsync(cancellationToken);
 
@@ -242,6 +245,7 @@ public class AdminDashboardService : IAdminDashboardService
         return _context.Orders
             .AsNoTracking()
             .Where(o => !o.IsDeleted)
+            .Where(o => !(o.PaymentMethod == "SE_PAY" && o.PaymentStatus != "PAID" && o.PaymentStatus != "REFUNDED" && o.PaymentStatus != "PARTIALLY_REFUNDED"))
             .Where(o => validRevenueStatuses.Contains(o.Status.StatusName))
             .Where(o => (o.CompletedAt ?? o.DeliveredAt ?? o.PaidAt ?? o.OrderDate) >= range.StartUtc
                 && (o.CompletedAt ?? o.DeliveredAt ?? o.PaidAt ?? o.OrderDate) < range.EndUtcExclusive);

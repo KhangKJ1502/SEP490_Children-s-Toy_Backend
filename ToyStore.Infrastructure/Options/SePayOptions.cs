@@ -29,8 +29,8 @@ public sealed class SePayOptions
 
     // ── Kiểm soát luồng ──────────────────────────────────────────────────────
 
-    /// <summary>Số phút tối đa một đơn SE_PAY được phép chờ thanh toán. Mặc định 30.</summary>
-    public int PaymentTtlMinutes { get; set; } = 30;
+    /// <summary>Số phút tối đa một đơn SE_PAY được phép chờ thanh toán. Mặc định 5.</summary>
+    public int PaymentTtlMinutes { get; set; } = 5;
 
     /// <summary>Số lần retry QR tối đa mỗi đơn. Mặc định 10.</summary>
     public int MaxPaymentAttempts { get; set; } = 10;
