@@ -523,12 +523,9 @@ public class OrderRepository : IOrderRepository
             query = query.Where(o => o.OrderDate < endUtc);
         }
 
-        var hasExplicitStatusFilter = statusId.HasValue || statusIds is { Count: > 0 };
-        if (!hasExplicitStatusFilter && string.IsNullOrWhiteSpace(keyword))
-        {
-            // Chỉ ẩn các đơn SE_PAY chưa thanh toán (rác). Các đơn COD/Wallet dù bị Hủy vẫn hiện để theo dõi.
-            query = query.Where(o => !(o.PaymentMethod == "SE_PAY" && o.PaymentStatus != "PAID"));
-        }
+        // Admin chỉ hiển thị các đơn SE_PAY đã thanh toán (PAID/REFUNDED/PARTIALLY_REFUNDED).
+        // Ẩn hoàn toàn các đơn SE_PAY chưa thanh toán/đã hết hạn (rác) khỏi list của admin.
+        query = query.Where(o => !(o.PaymentMethod == "SE_PAY" && o.PaymentStatus != "PAID" && o.PaymentStatus != "REFUNDED" && o.PaymentStatus != "PARTIALLY_REFUNDED"));
 
         return query;
     }
