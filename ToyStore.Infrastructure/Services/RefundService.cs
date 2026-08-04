@@ -1745,6 +1745,9 @@ public class RefundService : IRefundService
         if (wallet == null)
             return Result<RefundDto>.BusinessError("Wallet not found for this customer.");
 
+        if (string.Equals(wallet.Status, "Frozen", StringComparison.OrdinalIgnoreCase))
+            return Result<RefundDto>.BusinessError("Your wallet is currently frozen. Please contact support to unfreeze your wallet before making payments.");
+
         if (wallet.Balance < shortfall)
             return Result<RefundDto>.BusinessError($"Insufficient wallet balance. You need {shortfall:N0} VND but balance is {wallet.Balance:N0} VND. Please top up your wallet.");
 
