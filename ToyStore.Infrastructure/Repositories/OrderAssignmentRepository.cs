@@ -85,6 +85,37 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
                 cancellationToken);
     }
 
+    public async Task<bool> IsLatestAssigneeWithNoActiveSuccessorAsync(
+        int orderId,
+        int accountId,
+        byte roleId,
+        CancellationToken cancellationToken = default)
+    {
+        // Bước 1: Nếu đang có ai IsActive=true cho role này → có người mới → không được quyền
+        var hasActiveSuccessor = await _context.OrderAssignments
+            .AsNoTracking()
+            .AnyAsync(
+                oa => oa.OrderId == orderId
+                      && oa.RoleId == roleId
+                      && oa.IsActive,
+                cancellationToken);
+
+        if (hasActiveSuccessor)
+        {
+            return false;
+        }
+
+        // Bước 2: Tôi có phải là người được assign gần nhất không?
+        var latestAssigneeId = await _context.OrderAssignments
+            .AsNoTracking()
+            .Where(oa => oa.OrderId == orderId && oa.RoleId == roleId)
+            .OrderByDescending(oa => oa.AssignedAt)
+            .Select(oa => (int?)oa.AccountId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return latestAssigneeId.HasValue && latestAssigneeId.Value == accountId;
+    }
+
     public Task<List<OrderAssignment>> GetActiveAssignmentsAsync(int orderId, CancellationToken cancellationToken = default)
     {
         return _context.OrderAssignments

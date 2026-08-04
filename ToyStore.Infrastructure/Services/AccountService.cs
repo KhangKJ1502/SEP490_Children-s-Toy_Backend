@@ -20,6 +20,7 @@ public class AccountService : IAccountService
     private readonly IMapper _mapper;
     private readonly ICurrentUserService _currentUserService;
     private readonly ILogger<AccountService> _logger;
+    private readonly IWorkScheduleService _workScheduleService;
     private readonly IValidator<CreateAccountDto> _createAccountValidator;
     private readonly IValidator<UpdateAccountInfoDto> _updateAccountInfoValidator;
     private readonly IValidator<UpdateAccountStatusDto> _updateAccountStatusValidator;
@@ -30,6 +31,7 @@ public class AccountService : IAccountService
         IMapper mapper,
         ICurrentUserService currentUserService,
         ILogger<AccountService> logger,
+        IWorkScheduleService workScheduleService,
         IValidator<CreateAccountDto> createAccountValidator,
         IValidator<UpdateAccountInfoDto> updateAccountInfoValidator,
         IValidator<UpdateAccountStatusDto> updateAccountStatusValidator,
@@ -39,6 +41,7 @@ public class AccountService : IAccountService
         _mapper = mapper;
         _currentUserService = currentUserService;
         _logger = logger;
+        _workScheduleService = workScheduleService;
         _createAccountValidator = createAccountValidator;
         _updateAccountInfoValidator = updateAccountInfoValidator;
         _updateAccountStatusValidator = updateAccountStatusValidator;
@@ -52,6 +55,7 @@ public class AccountService : IAccountService
         bool sortDesc = false,
         string? searchTerm = null,
         byte? roleId = null,
+        bool? isActive = null,
         CancellationToken cancellationToken = default)
     {
         if (pageNumber < 1)
@@ -73,11 +77,13 @@ public class AccountService : IAccountService
             sortDesc,
             normalizedSearchTerm,
             roleId,
+            isActive,
             cancellationToken);
 
         var totalCount = await _unitOfWork.Accounts.CountAsync(
             normalizedSearchTerm,
             roleId,
+            isActive,
             cancellationToken);
 
         var mappedItems = _mapper.Map<List<AccountListDto>>(items);
@@ -298,7 +304,40 @@ public class AccountService : IAccountService
                 dto.IsActive.Value,
                 cancellationToken);
 
-            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+            // Khi deactivate: tự động xử lý giống MarkAbsent cho tất cả ca đang OnDuty/Scheduled.
+            // Đảm bảo: (1) OrderAssignment bị deactivate, capacity được release,
+            //           (2) đơn Pending được reassign hoặc vào queue.
+            if (!dto.IsActive.Value)
+            {
+                var onDutySchedules = await _unitOfWork.WorkSchedules
+                    .GetActiveByAccountAsync(accountId, cancellationToken);
+
+                // Commit account status trước rồi MarkAbsent từng ca ra ngoài transaction
+                await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+                foreach (var schedule in onDutySchedules)
+                {
+                    var absentResult = await _workScheduleService.MarkAbsentAsync(
+                        schedule.ScheduleId, cancellationToken);
+
+                    if (absentResult.IsFailure)
+                    {
+                        _logger.LogWarning(
+                            "MarkAbsent failed for schedule {ScheduleId} after deactivating account {AccountId}: {Error}",
+                            schedule.ScheduleId, accountId, absentResult.ErrorMessage);
+                    }
+                    else
+                    {
+                        _logger.LogInformation(
+                            "Auto MarkAbsent for schedule {ScheduleId} after deactivating account {AccountId}.",
+                            schedule.ScheduleId, accountId);
+                    }
+                }
+            }
+            else
+            {
+                await _unitOfWork.CommitTransactionAsync(cancellationToken);
+            }
 
             _logger.LogInformation(
                 "Account {AccountId} status updated to {IsActive}.",

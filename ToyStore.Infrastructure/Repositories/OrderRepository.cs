@@ -130,11 +130,13 @@ public class OrderRepository : IOrderRepository
             .Where(o => o.OrderId == orderId
                         && !o.IsDeleted
                         && (
+                            // Case 1: Đang active — xem bình thường
                             _context.OrderAssignments.Any(oa =>
                                 oa.OrderId == o.OrderId
                                 && oa.AccountId == accountId
                                 && oa.RoleId == assignmentRoleId
                                 && oa.IsActive)
+                            // Case 2: Đã xử lý milestone (Confirmed/Processing/Shipped)
                             || (
                                 _context.OrderAssignments.Any(oa =>
                                     oa.OrderId == o.OrderId
@@ -144,7 +146,16 @@ public class OrderRepository : IOrderRepository
                                     h.OrderId == o.OrderId
                                     && h.ChangedBy == accountId
                                     && h.Status != null
-                                    && processedStatuses.Contains(h.Status.StatusName)))))
+                                    && processedStatuses.Contains(h.Status.StatusName)))
+                            // Case 3 (Bug 2 fix): Đơn bị Cancelled — nếu từng được assign thì được xem
+                            // (kể cả chưa có milestone, ví dụ đơn bị hủy khi còn Pending)
+                            || (
+                                o.Status != null
+                                && o.Status.StatusName == OrderStatuses.Cancelled
+                                && _context.OrderAssignments.Any(oa =>
+                                    oa.OrderId == o.OrderId
+                                    && oa.AccountId == accountId
+                                    && oa.RoleId == assignmentRoleId))))
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -529,37 +540,47 @@ public class OrderRepository : IOrderRepository
         string? assignmentScope)
     {
         var scope = OrderAssignmentScopes.Normalize(assignmentScope);
-        var processedStatuses = OrderStatuses.GetProcessedMilestoneStatuses(assignmentRoleId);
         var completedTabStatuses = OrderStatuses.StaffMerchCompletedTabStatuses;
 
         if (scope == OrderAssignmentScopes.Completed)
         {
+            // Bug 2 fix: Tiêu chí "từng được assign" (không yêu cầu milestone bắt buộc).
+            // Đơn vào tab Completed khi:
+            //   1. Đơn đang ở status cuối (Cancelled, Completed, Refunded, Delivering, v.v.)
+            //   2. Tôi có entry trong OrderAssignments cho order này (dù IsActive hay không)
+            // Hệ quả: đơn qua nhiều tay → tất cả những người từng được assign đều thấy (đúng về audit).
             return query.Where(o =>
+                completedTabStatuses.Contains(o.Status.StatusName)
+                && _context.OrderAssignments.Any(oa =>
+                    oa.OrderId == o.OrderId
+                    && oa.AccountId == currentAccountId
+                    && oa.RoleId == assignmentRoleId));
+        }
+
+        // Scope mặc định (Active): show đơn có IsActive=true HOẶC đơn đang "treo"
+        // "Treo" = assignment bị deactivate nhưng tôi là người được assign gần nhất
+        //          VÀ hiện chưa có ai khác IsActive=true cho role này.
+        // Nhất quán với EnsureCanMutateAsync + EnsureCanViewAsync.
+        return query.Where(o =>
+            o.Status.StatusName != OrderStatuses.Completed
+            && (
+                // Case 1: Đang active bình thường
                 _context.OrderAssignments.Any(oa =>
                     oa.OrderId == o.OrderId
                     && oa.AccountId == currentAccountId
-                    && oa.RoleId == assignmentRoleId)
-                && _context.OrderStatusHistories.Any(h =>
-                    h.OrderId == o.OrderId
-                    && h.ChangedBy == currentAccountId
-                    && h.Status != null
-                    && processedStatuses.Contains(h.Status.StatusName))
-                && (
+                    && oa.RoleId == assignmentRoleId
+                    && oa.IsActive)
+                // Case 2: Đơn "treo" — tôi là người assign gần nhất, chưa có successor
+                || (
                     !_context.OrderAssignments.Any(oa =>
                         oa.OrderId == o.OrderId
-                        && oa.AccountId == currentAccountId
                         && oa.RoleId == assignmentRoleId
                         && oa.IsActive)
-                    || completedTabStatuses.Contains(o.Status.StatusName)));
-        }
-
-        return query.Where(o =>
-            o.Status.StatusName != OrderStatuses.Completed
-            && _context.OrderAssignments.Any(oa =>
-                oa.OrderId == o.OrderId
-                && oa.AccountId == currentAccountId
-                && oa.RoleId == assignmentRoleId
-                && oa.IsActive));
+                    && _context.OrderAssignments
+                        .Where(oa => oa.OrderId == o.OrderId && oa.RoleId == assignmentRoleId)
+                        .OrderByDescending(oa => oa.AssignedAt)
+                        .Select(oa => (int?)oa.AccountId)
+                        .FirstOrDefault() == currentAccountId)));
     }
 
     private IQueryable<Order> ApplyAdminStatusFilter(IQueryable<Order> query, IReadOnlyCollection<int> filterStatusIds)

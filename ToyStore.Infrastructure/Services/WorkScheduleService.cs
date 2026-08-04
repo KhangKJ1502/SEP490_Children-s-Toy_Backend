@@ -224,6 +224,17 @@ public class WorkScheduleService : IWorkScheduleService
             {
                 await _unitOfWork.OrderAssignments.DeactivateAssignmentAsync(row.Assignment, cancellationToken);
                 toReassignOrderIds.Add(row.Assignment.OrderId);
+
+                // Bug C fix: Clear trường denormalized trên Orders để tránh stale data.
+                // RefundRepository và các query khác dựa vào AssignedToStaffId/MerchId để scope đúng nhân viên.
+                var orderForClear = await _unitOfWork.Orders.GetByIdForUpdateAsync(row.Assignment.OrderId, cancellationToken);
+                if (orderForClear is not null)
+                {
+                    if (row.Assignment.RoleId == StaffRoleId)
+                        orderForClear.AssignedToStaffId = null;
+                    else if (row.Assignment.RoleId == MerchRoleId)
+                        orderForClear.AssignedToMerchId = null;
+                }
             }
             else
             {

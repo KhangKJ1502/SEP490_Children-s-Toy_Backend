@@ -81,12 +81,12 @@ public class CustomerService : ICustomerService
             sortDesc,
             normalizedSearchTerm,
             CustomerRoleId,
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
         var totalCount = await _unitOfWork.Accounts.CountAsync(
             normalizedSearchTerm,
             CustomerRoleId,
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
         var mappedItems = _mapper.Map<List<CustomerListDto>>(customers);
         await EnrichDeliveryAbuseSummariesAsync(mappedItems, cancellationToken);
