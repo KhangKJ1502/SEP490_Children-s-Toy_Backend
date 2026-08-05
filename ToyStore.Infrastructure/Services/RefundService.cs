@@ -270,6 +270,17 @@ public class RefundService : IRefundService
             }
         }
 
+        if (isFullReturn && refundDetails.Count > 0)
+        {
+            var targetSubTotal = order.SubTotal - order.VoucherDiscountAmount;
+            var currentSubTotal = refundDetails.Sum(d => d.RefundAmount);
+            var diff = targetSubTotal - currentSubTotal;
+            if (diff != 0)
+            {
+                refundDetails.Last().RefundAmount += diff;
+            }
+        }
+
         var activeReasons = await _unitOfWork.Refunds.GetActiveReasonsAsync(cancellationToken);
         var selectedReason = activeReasons.FirstOrDefault(r => r.RefundReasonId == dto.RefundReasonId);
         var isCustomerFault = selectedReason != null && string.Equals(selectedReason.ResponsibleParty, RefundResponsibleParty.Customer, StringComparison.OrdinalIgnoreCase);
@@ -402,6 +413,17 @@ public class RefundService : IRefundService
             RestorableQuantity = od.Quantity, // default = nguyên vẹn; Merchandise chỉnh khi inspect
             CreatedAt = DateTime.UtcNow
         }).ToList();
+
+        if (!isUnpaid && refundDetails.Count > 0)
+        {
+            var targetSubTotal = refundOrder.SubTotal - refundOrder.VoucherDiscountAmount;
+            var currentSubTotal = refundDetails.Sum(d => d.RefundAmount);
+            var diff = targetSubTotal - currentSubTotal;
+            if (diff != 0)
+            {
+                refundDetails.Last().RefundAmount += diff;
+            }
+        }
 
         var subTotal = isUnpaid ? 0m : refundDetails.Sum(d => d.RefundAmount);
         var shippingFee = isUnpaid ? 0m : (refundOrder.ActualShippingFee ?? refundOrder.EstimatedShippingFee);
@@ -617,7 +639,13 @@ public class RefundService : IRefundService
 
             if (!hasAssignment)
             {
-                return Result<RefundDto>.Failure("FORBIDDEN", "You are not authorized to view this refund request.");
+                var isDirectAssignee = (currentUserRoleId == 3 && refund.Order?.AssignedToStaffId == currentUserId)
+                                    || (currentUserRoleId == 4 && refund.Order?.AssignedToMerchId == currentUserId);
+
+                if (!isDirectAssignee)
+                {
+                    return Result<RefundDto>.Failure("FORBIDDEN", "You are not authorized to view this refund request.");
+                }
             }
         }
 
