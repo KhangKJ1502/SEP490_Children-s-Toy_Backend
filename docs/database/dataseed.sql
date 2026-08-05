@@ -94,7 +94,7 @@ FROM [dbo].[Roles] r WHERE r.RoleName = 'Admin';
 IF NOT EXISTS (SELECT 1 FROM [dbo].[Accounts] WHERE Email = 'khangtvce181852@fpt.edu.vn')
     INSERT INTO [dbo].[Accounts]
     (RoleID, EmployeeCode, AccountName, Email, PasswordHash, ImageURL, HasPassword, IsActive, IsDeleted, CreatedAt)
-SELECT r.RoleID, '0002ST', N'Staff ToyStore', 'khangtvce181852@fpt.edu.vn',
+SELECT r.RoleID, '0002ST', N'Khang TV', 'khangtvce181852@fpt.edu.vn',
        UPPER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'Staff@123'), 2)),
        'https://res.cloudinary.com/datfyxi3f/image/upload/v1780546958/4848b89d-3576-4ec0-9b75-e6aa8f675c81_rrdu9k.jpg',
        1, 1, 0, @UtcNow3
@@ -2708,11 +2708,62 @@ SET IDENTITY_INSERT [dbo].[ShiftTemplates] OFF;
 GO
 
 /* ══════════════════════════════════════════════════════════════
-   SECTION 33.1 – WORK SCHEDULES
-   No Daily Work Schedule is assigned in the seed.
-   Staff/Merchandise accounts are seeded only for order assignment; no Daily Work Schedule is assigned.
+   SECTION 33.1 – WORK SCHEDULES & ORDER ASSIGNMENTS [UPDATED]
+   Seeds WorkSchedules and OrderAssignments for Khang (Staff) & Luan (Merch)
+   for the seeded orders (1-17) so they are authorized in backend access services.
 ══════════════════════════════════════════════════════════════ */
-PRINT N'[33.1] WorkSchedules – No schedules seeded...';
+PRINT N'[33.1] WorkSchedules & OrderAssignments...';
+BEGIN
+    DECLARE @seedStaffID INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'khangtvce181852@fpt.edu.vn' AND RoleID = 3);
+    DECLARE @seedMerchID INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'luanltce181151@fpt.edu.vn' AND RoleID = 4);
+    DECLARE @admWS INT = (SELECT TOP 1 AccountID FROM Accounts WHERE Email = 'admintoystore@gmail.com');
+
+    DECLARE @scheduleStaff INT;
+    DECLARE @scheduleMerch INT;
+
+    IF @seedStaffID IS NOT NULL AND @admWS IS NOT NULL
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM [dbo].[WorkSchedules] WHERE AccountID = @seedStaffID AND WorkDate = '2026-08-04')
+        BEGIN
+            INSERT INTO [dbo].[WorkSchedules] (AccountID, ShiftTemplateID, WorkDate, Status, CreatedBy, CreatedAt)
+            VALUES (@seedStaffID, 1, '2026-08-04', 'Scheduled', @admWS, GETDATE());
+        END
+        SET @scheduleStaff = (SELECT TOP 1 ScheduleID FROM [dbo].[WorkSchedules] WHERE AccountID = @seedStaffID AND WorkDate = '2026-08-04');
+    END
+
+    IF @seedMerchID IS NOT NULL AND @admWS IS NOT NULL
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM [dbo].[WorkSchedules] WHERE AccountID = @seedMerchID AND WorkDate = '2026-08-04')
+        BEGIN
+            INSERT INTO [dbo].[WorkSchedules] (AccountID, ShiftTemplateID, WorkDate, Status, CreatedBy, CreatedAt)
+            VALUES (@seedMerchID, 2, '2026-08-04', 'Scheduled', @admWS, GETDATE());
+        END
+        SET @scheduleMerch = (SELECT TOP 1 ScheduleID FROM [dbo].[WorkSchedules] WHERE AccountID = @seedMerchID AND WorkDate = '2026-08-04');
+    END
+
+    IF @scheduleStaff IS NOT NULL AND @scheduleMerch IS NOT NULL
+    BEGIN
+        DECLARE @oid INT = 1;
+        WHILE @oid <= 17
+        BEGIN
+            IF EXISTS (SELECT 1 FROM [dbo].[Orders] WHERE OrderID = @oid)
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM [dbo].[OrderAssignments] WHERE OrderID = @oid AND AccountID = @seedStaffID AND RoleID = 3)
+                BEGIN
+                    INSERT INTO [dbo].[OrderAssignments] (OrderID, ScheduleID, AccountID, RoleID, IsActive, AssignedAt, AssignedBy, Notes)
+                    VALUES (@oid, @scheduleStaff, @seedStaffID, 3, 1, GETDATE(), @admWS, N'Seeded active staff assignment');
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM [dbo].[OrderAssignments] WHERE OrderID = @oid AND AccountID = @seedMerchID AND RoleID = 4)
+                BEGIN
+                    INSERT INTO [dbo].[OrderAssignments] (OrderID, ScheduleID, AccountID, RoleID, IsActive, AssignedAt, AssignedBy, Notes)
+                    VALUES (@oid, @scheduleMerch, @seedMerchID, 4, 1, GETDATE(), @admWS, N'Seeded active merchandise assignment');
+                END
+            END
+            SET @oid = @oid + 1;
+        END
+    END
+END
 GO
 /* ══════════════════════════════════════════════════════════════
    SECTION 35 – NOTIFICATION TEMPLATES, CAMPAIGNS, DELIVERIES
@@ -2933,10 +2984,6 @@ BEGIN
         VoucherID
     FROM Vouchers
     WHERE VoucherCode = 'WELCOME15');
-    DECLARE @vFree    INT = (SELECT TOP 1
-        VoucherID
-    FROM Vouchers
-    WHERE VoucherCode = 'FREESHIP50');
     DECLARE @vVIP     INT = (SELECT TOP 1
         VoucherID
     FROM Vouchers
@@ -2949,29 +2996,12 @@ BEGIN
         VoucherID
     FROM Vouchers
     WHERE VoucherCode = 'UPCOMING20');
-    DECLARE @blogHalloween INT = (SELECT TOP 1
-        BlogPostID
-    FROM BlogPosts
-    WHERE BlogTitle = N'Halloween Toy Preview 2026');
-
     DECLARE @pSummerStart DATETIME2(0) = (SELECT StartDate
     FROM Promotions
     WHERE PromotionID = @pSummer);
     DECLARE @pSummerEnd   DATETIME2(0) = (SELECT EndDate
     FROM Promotions
     WHERE PromotionID = @pSummer);
-    DECLARE @vFreeStart   DATETIME2(0) = (SELECT StartDate
-    FROM Vouchers
-    WHERE VoucherID = @vFree);
-    DECLARE @vFreeEnd     DATETIME2(0) = (SELECT EndDate
-    FROM Vouchers
-    WHERE VoucherID = @vFree);
-    DECLARE @blogHalloweenAt DATETIME2(0) = (SELECT BlogAt
-    FROM BlogPosts
-    WHERE BlogPostID = @blogHalloween);
-
-    DECLARE @schedFreeShip DATETIME2(0) = DATEADD(DAY, 2, @UtcNowC);
-    DECLARE @schedHalloween DATETIME2(0) = DATEADD(DAY, 7, @UtcNowC);
     DECLARE @sentSummerAt DATETIME2(0) = DATEADD(DAY, -14, @UtcNowC);
     DECLARE @sentWelcomeAt DATETIME2(0) = DATEADD(DAY, -20, @UtcNowC);
     DECLARE @sentFlashAt DATETIME2(0) = DATEADD(HOUR, -1, @UtcNowC);
@@ -3066,39 +3096,7 @@ BEGIN
             N'Rejected: voucher budget exceeds Q3 marketing cap. Please reduce discount or narrow audience.',
             @stfCamp, 0, DATEADD(DAY, -5, @UtcNowC));
 
-    -- 8) Scheduled – FREESHIP50 (ValidFrom/To aligned with voucher entity)
-    INSERT INTO [Notification].[Campaigns]
-        (CampaignName, TemplateCode, SourceType, TargetType, Status,
-        ReferenceType, ReferenceID, ActionType, ActionTarget,
-        ValidFrom, ValidTo, ScheduledAt,
-        SubmittedByAccountID, SubmittedAt, ReviewedByAccountID, ReviewedAt,
-        CreatedByAccountID, IsDeleted, CreatedAt)
-    VALUES
-        (N'FREESHIP50 Free Shipping Reminder', 'VOUCHER_NEW', 'ADMIN', 'ALL', 'Scheduled',
-            'VOUCHER', @vFree, 'ROUTE', N'/profile/vouchers?code=FREESHIP50',
-            @vFreeStart, @vFreeEnd, @schedFreeShip,
-            @stfCamp, DATEADD(DAY, -5, @UtcNowC), @admCamp, DATEADD(DAY, -4, @UtcNowC),
-            @stfCamp, 0, DATEADD(DAY, -6, @UtcNowC));
 
-    -- 9) Scheduled – Halloween blog (custom title/message like Wizard without template)
-    INSERT INTO [Notification].[Campaigns]
-        (CampaignName, TemplateCode, SourceType, TargetType, Status,
-        ReferenceType, ReferenceID, ActionType, ActionTarget, ImageUrl,
-        TitleOverride, MessageOverride,
-        ValidFrom, ValidTo, ScheduledAt,
-        SubmittedByAccountID, SubmittedAt, ReviewedByAccountID, ReviewedAt,
-        CreatedByAccountID, IsDeleted, CreatedAt)
-    VALUES
-        (N'Halloween Toy Preview – Save the Date', NULL, 'ADMIN', 'ALL', 'Scheduled',
-            'BLOG', @blogHalloween, 'ROUTE', N'/blog/' + CAST(@blogHalloween AS NVARCHAR(10)),
-            (SELECT BlogThumbnail
-            FROM BlogPosts
-            WHERE BlogPostID = @blogHalloween),
-            N'📖 Fresh Blog Post: Halloween Toy Preview 2026!',
-            N'Get an exclusive early look at spooky figures, costume sets, and fun activities before the October drop. Tap to read now!',
-            @UtcNowC, @blogHalloweenAt, @schedHalloween,
-            @stfCamp, DATEADD(DAY, -3, @UtcNowC), @admCamp, DATEADD(DAY, -2, @UtcNowC),
-            @stfCamp, 0, DATEADD(DAY, -4, @UtcNowC));
 
     -- 10) Cancelled – staff cancelled after scheduling UPCOMING20 teaser
     INSERT INTO [Notification].[Campaigns]
@@ -3420,10 +3418,6 @@ BEGIN
         CampaignID
     FROM [Notification].[Campaigns]
     WHERE CampaignName = N'Black Friday Preview 2026 – Storewide Push');
-    DECLARE @cmpSched INT = (SELECT TOP 1
-        CampaignID
-    FROM [Notification].[Campaigns]
-    WHERE CampaignName = N'FREESHIP50 Free Shipping Reminder');
     DECLARE @cmpRej INT = (SELECT TOP 1
         CampaignID
     FROM [Notification].[Campaigns]
@@ -3447,9 +3441,6 @@ BEGIN
         (@cmpBF, 'Submitted', @stfAL, N'Black Friday Preview storewide push to all customers', DATEADD(DAY, -1, @UtcNow37)),
         (@cmpRej, 'Submitted', @stfAL, N'VIP300K voucher blast to all customers', DATEADD(DAY, -4, @UtcNow37)),
         (@cmpRej, 'Rejected', @admAL, N'Rejected: voucher budget exceeds Q3 marketing cap', DATEADD(DAY, -3, @UtcNow37)),
-        (@cmpSched, 'Submitted', @stfAL, N'FREESHIP50 reminder linked to active voucher', DATEADD(DAY, -5, @UtcNow37)),
-        (@cmpSched, 'Approved', @admAL, N'Approved – schedule within voucher validity window', DATEADD(DAY, -4, @UtcNow37)),
-        (@cmpSched, 'Scheduled', @stfAL, N'Scheduled FREESHIP50 push for all customers', DATEADD(DAY, -1, @UtcNow37)),
         (@cmpCancel, 'Submitted', @stfAL, N'UPCOMING20 teaser campaign draft', DATEADD(DAY, -8, @UtcNow37)),
         (@cmpCancel, 'Approved', @admAL, N'Approved for scheduling', DATEADD(DAY, -7, @UtcNow37)),
         (@cmpCancel, 'Scheduled', @stfAL, N'Scheduled then cancelled – duplicate with FREESHIP50 week', DATEADD(DAY, -6, @UtcNow37)),
@@ -3458,7 +3449,6 @@ BEGIN
     INSERT INTO [Notification].[CampaignScheduleLogs]
         (CampaignID, ActorID, Action, PreviousScheduledAt, NewScheduledAt, CreatedAt)
     VALUES
-        (@cmpSched, @stfAL, 'Scheduled', NULL, DATEADD(DAY, 2, @UtcNow37), DATEADD(DAY, -1, @UtcNow37)),
         (@cmpCancel, @stfAL, 'Scheduled', NULL, DATEADD(DAY, 10, @UtcNow37), DATEADD(DAY, -6, @UtcNow37));
 END
 GO
