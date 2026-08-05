@@ -559,7 +559,7 @@ public class OrderRepository : IOrderRepository
         //          VÀ hiện chưa có ai khác IsActive=true cho role này.
         // Nhất quán với EnsureCanMutateAsync + EnsureCanViewAsync.
         return query.Where(o =>
-            o.Status.StatusName != OrderStatuses.Completed
+            !completedTabStatuses.Contains(o.Status.StatusName)
             && (
                 // Case 1: Đang active bình thường
                 _context.OrderAssignments.Any(oa =>
