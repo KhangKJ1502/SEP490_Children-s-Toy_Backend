@@ -134,7 +134,7 @@ public class WithdrawalService : IWithdrawalService
             return Result<WithdrawalDto>.BusinessError(WithdrawalErrorMessages.For(lockCode));
 
         // ── 7. Call PayOS ────────────────────────────────────────────────────
-        var description = $"Rut vi {withdrawalRequest.ReferenceId}";
+        var description = withdrawalRequest.ReferenceId;
         var payosResult = await _payos.CreatePayoutAsync(
             withdrawalRequest.ReferenceId,
             dto.Amount,
