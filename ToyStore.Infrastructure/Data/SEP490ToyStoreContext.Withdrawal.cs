@@ -77,7 +77,7 @@ public partial class SEP490ToyStoreContext
             entity.Property(e => e.ReferenceId)
                 .HasMaxLength(100)
                 .IsUnicode(false);
-            entity.Property(e => e.Amount).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.Amount).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.ToBankBin)
                 .HasMaxLength(10)
                 .IsUnicode(false);

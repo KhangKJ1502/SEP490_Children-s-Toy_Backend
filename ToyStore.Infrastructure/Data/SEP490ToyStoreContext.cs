@@ -769,9 +769,9 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
             entity.Property(e => e.CartId).HasColumnName("CartID");
-            entity.Property(e => e.CurrentPrice).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.CurrentPrice).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.IsSelected).HasDefaultValue(true);
-            entity.Property(e => e.PriceAtThatTime).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.PriceAtThatTime).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.ProductId).HasColumnName("ProductID");
             entity.Property(e => e.RemovedAt).HasPrecision(0);
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
@@ -1078,7 +1078,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.Property(e => e.OrderId).HasColumnName("OrderID");
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
-            entity.Property(e => e.ActualShippingFee).HasColumnType("decimal(10, 0)");
+            entity.Property(e => e.ActualShippingFee).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.AssignedToStaffId).HasColumnName("AssignedToStaffID");
             entity.Property(e => e.AssignedToMerchId).HasColumnName("AssignedToMerchID");
             entity.Property(e => e.CancelReason).HasMaxLength(500);
@@ -1089,7 +1089,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
             entity.Property(e => e.DeliveredAt).HasPrecision(0);
-            entity.Property(e => e.EstimatedShippingFee).HasColumnType("decimal(10, 0)");
+            entity.Property(e => e.EstimatedShippingFee).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.Note).HasMaxLength(1000);
             entity.Property(e => e.OrderCode)
                 .HasMaxLength(30)
@@ -1125,10 +1125,10 @@ public partial class SEP490ToyStoreContext : DbContext
                 .IsUnicode(false);
             entity.Property(e => e.ShippingWardName).HasMaxLength(100);
             entity.Property(e => e.StatusId).HasColumnName("StatusID");
-            entity.Property(e => e.SubTotal).HasColumnType("decimal(12, 0)");
-            entity.Property(e => e.TotalAmount).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.SubTotal).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.TotalAmount).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
-            entity.Property(e => e.VoucherDiscountAmount).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.VoucherDiscountAmount).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.FailedDeliveryAt).HasPrecision(0);
             entity.Property(e => e.ReturnedAt).HasPrecision(0);
             entity.Property(e => e.LastGHNFailCode)
@@ -1171,7 +1171,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
-            entity.Property(e => e.DiscountAmount).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.DiscountAmount).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.LineTotal)
                 .HasComputedColumnSql("(case when ([Quantity]*[UnitPrice]-[DiscountAmount])<(0) then (0) else [Quantity]*[UnitPrice]-[DiscountAmount] end)", true)
                 .HasColumnType("decimal(19, 0)");
@@ -1181,7 +1181,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasMaxLength(500)
                 .IsUnicode(false);
             entity.Property(e => e.ProductName).HasMaxLength(255);
-            entity.Property(e => e.UnitPrice).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.UnitPrice).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
             entity.HasOne(d => d.Order).WithMany(p => p.OrderDetails)
@@ -1221,7 +1221,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .IsUnique();
 
             entity.Property(e => e.RefundId).HasColumnName("RefundID");
-            entity.Property(e => e.ApprovedAmount).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.ApprovedAmount).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
@@ -1244,18 +1244,18 @@ public partial class SEP490ToyStoreContext : DbContext
                 .IsUnicode(false);
             entity.Property(e => e.InspectionNote).HasMaxLength(500);
             entity.Property(e => e.InspectionPassed);
-            entity.Property(e => e.CustomerShippingPaid).HasColumnType("decimal(12, 0)").HasDefaultValue(0m);
+            entity.Property(e => e.CustomerShippingPaid).HasColumnType("decimal(18, 2)").HasDefaultValue(0m);
             entity.Property(e => e.IncludeShippingInRefund);
 
-            entity.Property(e => e.ItemApprovedSubTotal).HasColumnType("decimal(12, 0)").HasDefaultValue(0m);
-            entity.Property(e => e.ItemRejectedSubTotal).HasColumnType("decimal(12, 0)").HasDefaultValue(0m);
-            entity.Property(e => e.ReturnToCustomerFee).HasColumnType("decimal(12, 0)").HasDefaultValue(0m);
+            entity.Property(e => e.ItemApprovedSubTotal).HasColumnType("decimal(18, 2)").HasDefaultValue(0m);
+            entity.Property(e => e.ItemRejectedSubTotal).HasColumnType("decimal(18, 2)").HasDefaultValue(0m);
+            entity.Property(e => e.ReturnToCustomerFee).HasColumnType("decimal(18, 2)").HasDefaultValue(0m);
             entity.Property(e => e.CustomerResponseDeadline).HasColumnType("datetime");
             entity.Property(e => e.CustomerResponse).HasMaxLength(50);
             entity.Property(e => e.ReturnToCustomerFeePaid).HasDefaultValue(false);
-            entity.Property(e => e.ShippingFee).HasColumnType("decimal(10, 0)");
-            entity.Property(e => e.SubTotal).HasColumnType("decimal(12, 0)");
-            entity.Property(e => e.TotalAmount).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.ShippingFee).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.SubTotal).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.TotalAmount).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.AdminNote).HasMaxLength(1000);
             entity.Property(e => e.ReturnShippingFeeNote).HasMaxLength(500);
             entity.Property(e => e.ApprovedAt).HasPrecision(0);
@@ -1355,8 +1355,8 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.RestorableQuantity);
             entity.Property(e => e.FailedCustomerQty);
             entity.Property(e => e.FailedCarrierQty);
-            entity.Property(e => e.UnitPrice).HasColumnType("decimal(12, 0)");
-            entity.Property(e => e.RefundAmount).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.UnitPrice).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.RefundAmount).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
@@ -1454,7 +1454,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.Property(e => e.OrderId).HasColumnName("OrderID");
             entity.Property(e => e.VoucherId).HasColumnName("VoucherID");
-            entity.Property(e => e.DiscountAmountApplied).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.DiscountAmountApplied).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.VoucherTarget)
                 .HasMaxLength(20)
                 .IsUnicode(false);
@@ -1498,7 +1498,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.HasIndex(e => e.RequestId, "UQ__PaymentG__33A8519B13DA0886").IsUnique();
 
             entity.Property(e => e.PaymentGatewayTxnId).HasColumnName("PaymentGatewayTxnID");
-            entity.Property(e => e.Amount).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.Amount).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
@@ -1544,7 +1544,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.Property(e => e.PaymentHistoryId).HasColumnName("PaymentHistoryID");
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
-            entity.Property(e => e.Amount).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.Amount).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
@@ -1585,8 +1585,8 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
-            entity.Property(e => e.PriceRangeMax).HasColumnType("decimal(12, 0)");
-            entity.Property(e => e.PriceRangeMin).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.PriceRangeMax).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.PriceRangeMin).HasColumnType("decimal(18, 2)");
         });
 
         modelBuilder.Entity<Product>(entity =>
@@ -1748,7 +1748,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasDefaultValueSql("(getdate())");
             entity.Property(e => e.DiscountPercent).HasColumnType("decimal(5, 2)");
             entity.Property(e => e.IsDeleted).HasDefaultValue(false);
-            entity.Property(e => e.SalePrice).HasColumnType("decimal(12, 2)");
+            entity.Property(e => e.SalePrice).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.UpdatedAt).HasPrecision(0);
 
             entity.HasOne(d => d.Product).WithMany(p => p.ProductPromotions)
@@ -1851,7 +1851,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.SlotProductId).HasColumnName("SlotProductID");
             entity.Property(e => e.TimeSlotId).HasColumnName("TimeSlotID");
             entity.Property(e => e.ProductId).HasColumnName("ProductID");
-            entity.Property(e => e.SalePrice).HasColumnType("decimal(12, 2)");
+            entity.Property(e => e.SalePrice).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.DiscountPercent).HasColumnType("decimal(5, 2)");
             entity.Property(e => e.IsDeleted).HasDefaultValue(false);
             entity.Property(e => e.SoldQuantity).HasDefaultValue(0);
@@ -2356,7 +2356,7 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.Property(e => e.ShippingTransactionId).HasColumnName("ShippingTransactionID");
             entity.Property(e => e.ActualDelivery).HasPrecision(0);
-            entity.Property(e => e.CodAmount).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.CodAmount).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
@@ -2374,7 +2374,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .IsRowVersion()
                 .IsConcurrencyToken();
             entity.Property(e => e.ServiceType).HasMaxLength(100);
-            entity.Property(e => e.ShippingFee).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.ShippingFee).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.Status)
                 .HasMaxLength(50)
                 .IsUnicode(false);
@@ -2573,11 +2573,11 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.DiscountType)
                 .HasMaxLength(10)
                 .IsUnicode(false);
-            entity.Property(e => e.DiscountValue).HasColumnType("decimal(12, 2)");
+            entity.Property(e => e.DiscountValue).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.EndDate).HasPrecision(0);
-            entity.Property(e => e.MaxDiscountCap).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.MaxDiscountCap).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.MaxUsagePerUser).HasDefaultValue((short)1);
-            entity.Property(e => e.MinOrderAmount).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.MinOrderAmount).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.StartDate).HasPrecision(0);
             entity.Property(e => e.Status)
                 .HasMaxLength(15)
@@ -2637,9 +2637,9 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.Property(e => e.WalletId).HasColumnName("WalletID");
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
-            entity.Property(e => e.Balance).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.Balance).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.LockedBalance)
-                .HasColumnType("decimal(12, 0)")
+                .HasColumnType("decimal(18, 2)")
                 .HasDefaultValue(0m);
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
@@ -2736,9 +2736,9 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.Property(e => e.WalletTransactionId).HasColumnName("WalletTransactionID");
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
-            entity.Property(e => e.Amount).HasColumnType("decimal(12, 0)");
-            entity.Property(e => e.BalanceAfter).HasColumnType("decimal(12, 0)");
-            entity.Property(e => e.BalanceBefore).HasColumnType("decimal(12, 0)");
+            entity.Property(e => e.Amount).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.BalanceAfter).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.BalanceBefore).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.CompletedAt).HasPrecision(0);
             entity.Property(e => e.CreatedAt)
                 .HasPrecision(0)
