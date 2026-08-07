@@ -44,6 +44,8 @@ public class EventTrackingConsumer : BackgroundService
 
     private void InitRabbitMq()
     {
+        CleanupRabbitMq();
+
         var host = _configuration["RabbitMq:Host"] ?? "localhost";
         var port = int.Parse(_configuration["RabbitMq:Port"] ?? "5672");
         var username = _configuration["RabbitMq:UserName"] ?? "guest";
@@ -65,36 +67,58 @@ public class EventTrackingConsumer : BackgroundService
             _channel.QueueDeclare(queue: QueueName, durable: true, exclusive: false, autoDelete: false, arguments: null);
             // QoS: Lấy tối đa BatchSize tin nhắn cùng lúc (chưa ACK)
             _channel.BasicQos(prefetchSize: 0, prefetchCount: (ushort)_batchSize, global: false);
+            _logger.LogInformation("Successfully initialized RabbitMQ connection in EventTrackingConsumer.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to initialize RabbitMQ connection in Consumer.");
+            CleanupRabbitMq();
+            _logger.LogWarning(ex, "Failed to initialize RabbitMQ connection in Consumer. Will retry later.");
         }
+    }
+
+    private void CleanupRabbitMq()
+    {
+        try { _channel?.Dispose(); } catch { }
+        try { _connection?.Dispose(); } catch { }
+        _channel = null;
+        _connection = null;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (_channel == null) return;
-
         while (!stoppingToken.IsCancellationRequested)
         {
+            if (_channel == null || !_channel.IsOpen)
+            {
+                InitRabbitMq();
+                if (_channel == null || !_channel.IsOpen)
+                {
+                    await Task.Delay(5000, stoppingToken);
+                    continue;
+                }
+            }
+
             try
             {
                 await ProcessBatchAsync(stoppingToken);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing event batch. Requeuing messages.");
-                // NACK all if batch failed
-                if (_batch.Count > 0 && _channel.IsOpen)
+                _logger.LogError(ex, "Error processing event batch in EventTrackingConsumer. Requeuing messages.");
+                if (_batch.Count > 0 && _channel != null && _channel.IsOpen)
                 {
                     foreach (var msg in _batch)
                     {
-                        _channel.BasicNack(msg.DeliveryTag, false, requeue: true);
+                        try
+                        {
+                            _channel.BasicNack(msg.DeliveryTag, false, requeue: true);
+                        }
+                        catch { }
                     }
                 }
                 _batch.Clear();
-                await Task.Delay(2000, stoppingToken); // delay on error
+                CleanupRabbitMq();
+                await Task.Delay(3000, stoppingToken);
             }
         }
     }
@@ -158,9 +182,34 @@ public class EventTrackingConsumer : BackgroundService
 
             if (entities.Count > 0)
             {
-                await db.Events.AddRangeAsync(entities, ct);
-                await db.SaveChangesAsync(ct);
-                _logger.LogInformation("EventTrackingConsumer: Saved {Count} new events to SQL Server.", entities.Count);
+                try
+                {
+                    await db.Events.AddRangeAsync(entities, ct);
+                    await db.SaveChangesAsync(ct);
+                    _logger.LogInformation("EventTrackingConsumer: Saved {Count} new events to SQL Server.", entities.Count);
+                }
+                catch (DbUpdateException ex)
+                {
+                    _logger.LogWarning(ex, "Batch save failed for events. Retrying entities individually...");
+                    db.ChangeTracker.Clear();
+
+                    int savedCount = 0;
+                    foreach (var entity in entities)
+                    {
+                        try
+                        {
+                            await db.Events.AddAsync(entity, ct);
+                            await db.SaveChangesAsync(ct);
+                            savedCount++;
+                        }
+                        catch (Exception itemEx)
+                        {
+                            _logger.LogError(itemEx, "Failed to save individual event with IdempotencyKey={Key}, EntityId={EntityId}", entity.IdempotencyKey, entity.EntityId);
+                            db.ChangeTracker.Clear();
+                        }
+                    }
+                    _logger.LogInformation("EventTrackingConsumer: Saved {SavedCount}/{TotalCount} events after individual retries.", savedCount, entities.Count);
+                }
             }
         }
 
@@ -176,19 +225,25 @@ public class EventTrackingConsumer : BackgroundService
     {
         IdempotencyKey = doc.IdempotencyKey,
         AccountId = doc.AccountId,
-        SessionId = string.IsNullOrWhiteSpace(doc.SessionId) ? "unknown" : doc.SessionId,
-        EventType = doc.EventType ?? string.Empty,
-        EntityId = string.IsNullOrWhiteSpace(doc.EntityId) ? "0" : doc.EntityId,
-        EntityType = doc.EntityType ?? string.Empty,
-        Source = doc.Source,
-        Referrer = doc.Referrer,
-        DeviceType = doc.DeviceType,
+        SessionId = Truncate(string.IsNullOrWhiteSpace(doc.SessionId) ? "unknown" : doc.SessionId, 100)!,
+        EventType = Truncate(doc.EventType ?? string.Empty, 50)!,
+        EntityId = Truncate(string.IsNullOrWhiteSpace(doc.EntityId) ? "0" : doc.EntityId, 50)!,
+        EntityType = Truncate(doc.EntityType ?? string.Empty, 30)!,
+        Source = Truncate(doc.Source, 30),
+        Referrer = Truncate(doc.Referrer, 200),
+        DeviceType = Truncate(doc.DeviceType, 15),
         DurationMs = doc.DurationMs,
         ScrollDepth = doc.ScrollDepth,
-        ClickPosition = doc.ClickPosition,
-        Metadata = doc.Metadata,
+        ClickPosition = Truncate(doc.ClickPosition, 30),
+        Metadata = Truncate(doc.Metadata, 500),
         CreatedAt = doc.OccurredAt == default ? doc.CreatedAt : doc.OccurredAt,
     };
+
+    private static string? Truncate(string? value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+        return value.Length <= maxLength ? value : value[..maxLength];
+    }
 
     public override void Dispose()
     {
