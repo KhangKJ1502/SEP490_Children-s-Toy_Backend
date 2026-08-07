@@ -346,12 +346,23 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
 
         try
         {
+            // Always resolve any pending OrderQueue entry when order capacity is released (order cancelled/terminated)
+            var pendingQueue = await _context.OrderQueues
+                .FirstOrDefaultAsync(oq => oq.OrderId == orderId && !oq.IsResolved, cancellationToken);
+            if (pendingQueue is not null)
+            {
+                pendingQueue.IsResolved = true;
+                pendingQueue.ResolvedAt = _timeProvider.UtcNow;
+            }
+
             var activeAssignments = await _context.OrderAssignments
                 .Where(oa => oa.OrderId == orderId && oa.IsActive)
                 .ToListAsync(cancellationToken);
 
             if (activeAssignments.Count == 0)
             {
+                await _context.SaveChangesAsync(cancellationToken);
+
                 if (ownsTransaction)
                 {
                     await transaction!.CommitAsync(cancellationToken);

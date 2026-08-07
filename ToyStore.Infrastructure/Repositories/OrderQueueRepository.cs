@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ToyStore.Application.Interfaces.Repositories;
+using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Entities;
 using ToyStore.Infrastructure.Data;
 
@@ -8,10 +9,12 @@ namespace ToyStore.Infrastructure.Repositories;
 public class OrderQueueRepository : IOrderQueueRepository
 {
     private readonly SEP490ToyStoreContext _context;
+    private readonly ITimeProvider _timeProvider;
 
-    public OrderQueueRepository(SEP490ToyStoreContext context)
+    public OrderQueueRepository(SEP490ToyStoreContext context, ITimeProvider timeProvider)
     {
         _context = context;
+        _timeProvider = timeProvider;
     }
 
     public Task<List<OrderQueue>> GetPendingAsync(CancellationToken cancellationToken = default)
@@ -20,7 +23,7 @@ public class OrderQueueRepository : IOrderQueueRepository
             .AsNoTracking()
             .Include(x => x.Order)
                 .ThenInclude(o => o.Status)
-            .Where(x => !x.IsResolved)
+            .Where(x => !x.IsResolved && !x.Order.IsDeleted && x.Order.CancelledAt == null)
             .OrderBy(x => x.QueuedAt)
             .ToListAsync(cancellationToken);
     }
@@ -29,6 +32,7 @@ public class OrderQueueRepository : IOrderQueueRepository
     {
         return _context.OrderQueues
             .Include(x => x.Order)
+                .ThenInclude(o => o.Status)
             .FirstOrDefaultAsync(x => x.QueueId == queueId, cancellationToken);
     }
 
@@ -36,7 +40,7 @@ public class OrderQueueRepository : IOrderQueueRepository
     {
         return _context.OrderQueues
             .Include(x => x.Order)
-            .Where(x => !x.IsResolved)
+            .Where(x => !x.IsResolved && !x.Order.IsDeleted && x.Order.CancelledAt == null)
             .OrderBy(x => x.QueuedAt)
             .FirstOrDefaultAsync(cancellationToken);
     }
@@ -63,7 +67,7 @@ public class OrderQueueRepository : IOrderQueueRepository
 
         entry.IsResolved = true;
         entry.AssignedBy = assignedBy;
-        entry.ResolvedAt = DateTime.UtcNow;
+        entry.ResolvedAt = _timeProvider.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);
     }

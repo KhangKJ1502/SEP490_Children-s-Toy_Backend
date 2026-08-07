@@ -180,13 +180,15 @@ public class OrderQueuedDigestJob : BackgroundService
             return;
         }
 
-        // ── 1. Đơn mới trong window vừa qua (chưa resolved) ──────────────
+        // ── 1. Đơn mới trong window vừa qua (chưa resolved, không bị hủy) ──────────────
         var newEntries = await db.OrderQueues
             .AsNoTracking()
             .Include(x => x.Order)
             .Where(x => x.QueuedAt >= windowStart
                      && x.QueuedAt <  windowEnd
-                     && !x.IsResolved)
+                     && !x.IsResolved
+                     && !x.Order.IsDeleted
+                     && x.Order.CancelledAt == null)
             .OrderBy(x => x.QueuedAt)
             .Take(MaxEntriesPerDigest)          // cap: tối đa 50 đơn
             .ToListAsync(ct);
@@ -194,14 +196,16 @@ public class OrderQueuedDigestJob : BackgroundService
         // phần còn lại để dành slot cho escalated
         var remainingSlots = MaxEntriesPerDigest - newEntries.Count;
 
-        // ── 2. Đơn escalation: pending lâu quá ngưỡng, chưa resolved ────────
+        // ── 2. Đơn escalation: pending lâu quá ngưỡng, chưa resolved, không bị hủy ────────
         var escalateCutoff = windowEnd - TimeSpan.FromMinutes(_escalateAfterMinutes);
         var escalatedEntries = await db.OrderQueues
             .AsNoTracking()
             .Include(x => x.Order)
             .Where(x => x.QueuedAt <  escalateCutoff
                      && x.QueuedAt <  windowStart
-                     && !x.IsResolved)
+                     && !x.IsResolved
+                     && !x.Order.IsDeleted
+                     && x.Order.CancelledAt == null)
             .OrderBy(x => x.QueuedAt)
             .Take(remainingSlots > 0 ? remainingSlots : 0)  // dùng slot còn lại
             .ToListAsync(ct);
@@ -319,7 +323,7 @@ public class OrderQueuedDigestJob : BackgroundService
 
             var count = await db.OrderQueues
                 .AsNoTracking()
-                .CountAsync(x => x.QueuedAt >= windowStart && !x.IsResolved, ct);
+                .CountAsync(x => x.QueuedAt >= windowStart && !x.IsResolved && !x.Order.IsDeleted && x.Order.CancelledAt == null, ct);
 
             if (count >= _urgentThreshold)
             {
