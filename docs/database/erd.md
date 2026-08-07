@@ -147,8 +147,8 @@ erDiagram
 
     PriceRanges {
         tinyint      PriceRangeID  PK
-        decimal12_0  PriceRangeMin
-        decimal12_0  PriceRangeMax
+        decimal18_2  PriceRangeMin
+        decimal18_2  PriceRangeMax
         bit          IsDeleted
         datetime2    CreatedAt
         datetime2    UpdatedAt     "nullable"
@@ -170,7 +170,7 @@ erDiagram
     Products {
         int         ProductID      PK
         nvarchar255 ProductName
-        decimal12_0 Price
+        decimal18_6 Price
         int         Quantity       "CHECK >= 0"
         varchar20   ProductStatus  "Active|Inactive|OutOfStock|Discontinued"
         bit         IsDeleted
@@ -231,11 +231,11 @@ erDiagram
         varchar20    PaymentStatus        "PENDING|PAID|FAILED|EXPIRED"
         varchar50    PaymentCode
         datetime2    PaidAt               "nullable"
-        decimal12_0  SubTotal             "auto-sync by trigger"
-        decimal12_0  VoucherDiscountAmount "auto-sync by trigger"
-        decimal10_0  EstimatedShippingFee
-        decimal10_0  ActualShippingFee    "nullable"
-        decimal12_0  TotalAmount          "auto-calc by trigger"
+        decimal18_2  SubTotal             "auto-sync by trigger"
+        decimal18_2  VoucherDiscountAmount "auto-sync by trigger"
+        decimal18_2  EstimatedShippingFee
+        decimal18_2  ActualShippingFee    "nullable"
+        decimal18_2  TotalAmount          "auto-calc by trigger"
         nvarchar500  CancelReason         "nullable"
         int          CancelledBy          FK  "nullable"
         bit          IsDeleted
@@ -250,9 +250,9 @@ erDiagram
         nvarchar255  ProductName       "snapshot"
         varchar500   ProductImage      "nullable, snapshot"
         smallint     Quantity          "CHECK > 0"
-        decimal12_0  UnitPrice
-        decimal12_0  DiscountAmount    "default 0"
-        decimal12_0  LineTotal         "COMPUTED PERSISTED"
+        decimal18_2  UnitPrice
+        decimal18_2  DiscountAmount    "default 0"
+        decimal18_2  LineTotal         "COMPUTED PERSISTED"
         datetime2    CreatedAt
     }
 
@@ -336,8 +336,8 @@ erDiagram
         int         CartID          FK
         int         ProductID       FK
         smallint    Quantity            "CHECK 1-999"
-        decimal12_0 PriceAtThatTime     "giá lúc thêm vào giỏ"
-        decimal12_0 CurrentPrice        "giá hiện tại"
+        decimal18_2 PriceAtThatTime     "giá lúc thêm vào giỏ"
+        decimal18_2 CurrentPrice        "giá hiện tại"
         bit         IsSelected
         datetime2   AddedAt
         datetime2   RemovedAt           "nullable — soft remove"
@@ -366,9 +366,9 @@ erDiagram
         int          CreatedBy       FK  "nullable"
         varchar30    VoucherCode     UK
         nvarchar255  VoucherName
-        decimal12_0  DiscountAmount      "CHECK > 0"
+        decimal18_2  DiscountAmount      "CHECK > 0"
         varchar10    VoucherScope        "Product|Shipping"
-        decimal12_0  MinOrderAmount      "nullable"
+        decimal18_2  MinOrderAmount      "nullable"
         int          Quantity            "CHECK >= 0"
         smallint     MaxUsagePerUser     "nullable"
         varchar15    Status              "Scheduled|Active|Inactive|Expired"
@@ -382,7 +382,7 @@ erDiagram
     OrderVouchers {
         int         OrderID              FK  PK
         int         VoucherID            FK  PK
-        decimal12_0 DiscountAmountApplied
+        decimal18_2 DiscountAmountApplied
     }
 
     VoucherUsageLogs {
@@ -489,7 +489,7 @@ erDiagram
         int         WalletID   PK
         int         AccountID  FK  UK  "1 wallet per user"
         char3       Currency       "VND"
-        decimal12_0 Balance        "CHECK >= 0"
+        decimal18_2 Balance        "CHECK >= 0"
         varchar10   Status         "Active|Frozen|Closed"
         datetime2   LastTransactionAt "nullable"
         datetime2   CreatedAt
@@ -503,9 +503,9 @@ erDiagram
         int         RelatedOrderID      FK  "nullable"
         varchar10   TxnType                 "TopUp|Payment|Refund"
         char2       Direction               "CR|DR"
-        decimal12_0 Amount                  "CHECK > 0"
-        decimal12_0 BalanceBefore
-        decimal12_0 BalanceAfter
+        decimal18_2 Amount                  "CHECK > 0"
+        decimal18_2 BalanceBefore
+        decimal18_2 BalanceAfter
         varchar10   Method                  "Bank|EWallet|Cash|Wallet"
         varchar100  IdempotencyKey      UK  "nullable"
         varchar15   Status                  "Pending|Completed|Failed|Cancelled"
@@ -522,7 +522,7 @@ erDiagram
         varchar20   PaymentStatus
         varchar20   PaymentMethod
         varchar100  TransactionCode         "nullable"
-        decimal12_0 Amount
+        decimal18_2 Amount
         datetime2   CreatedAt
     }
 
@@ -547,7 +547,7 @@ erDiagram
         int         AccountID           FK
         int         WalletTransactionID FK "nullable"
         varchar100  ReferenceId         UK
-        decimal12_0 Amount
+        decimal18_2 Amount
         varchar10   ToBankBin
         nvarchar100 ToBankName
         varchar50   ToAccountNumber
@@ -583,10 +583,10 @@ erDiagram
         varchar30   RefundCode        UK
         varchar50   ShippingOrderCode "nullable — GHN reverse shipping code"
         nvarchar500 ReasonDetails     "nullable"
-        decimal12_0 SubTotal          "nullable"
-        decimal10_0 ShippingFee
-        decimal12_0 TotalAmount       "nullable"
-        decimal12_0 ApprovedAmount
+        decimal18_2 SubTotal          "nullable"
+        decimal18_2 ShippingFee
+        decimal18_2 TotalAmount       "nullable"
+        decimal18_2 ApprovedAmount
         tinyint     StatusID          FK
         nvarchar1000 AdminNote        "nullable"
         datetime2   ApprovedAt        "nullable"
@@ -603,8 +603,8 @@ erDiagram
         int         RefundID        FK
         int         ProductID       FK
         smallint    Quantity        "CHECK > 0"
-        decimal12_0 UnitPrice
-        decimal12_0 RefundAmount
+        decimal18_2 UnitPrice
+        decimal18_2 RefundAmount
         datetime2   CreatedAt
     }
 
