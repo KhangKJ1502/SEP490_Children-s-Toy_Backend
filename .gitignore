@@ -33,6 +33,7 @@ Thumbs.db
 desktop.ini
 
 ## Secrets
+appsettings.json
 appsettings.Development.json
 appsettings.Local.json
 *.pfx

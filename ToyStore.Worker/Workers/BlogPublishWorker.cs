@@ -3,12 +3,15 @@ using ToyStore.Application.Interfaces.Services;
 
 namespace ToyStore.Worker.Workers;
 
+/// <summary>
+/// Worker chạy nền định kỳ (mỗi 1 phút) để xuất bản tự động các bài viết Blog đã lên lịch công bố (Scheduled Publish Time).
+/// </summary>
 public class BlogPublishWorker : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<BlogPublishWorker> _logger;
     private readonly ITimeProvider _timeProvider;
-    private readonly TimeSpan _interval = TimeSpan.FromMinutes(1);
+    private readonly TimeSpan _interval = TimeSpan.FromMinutes(1); // Chu kỳ chạy: 1 phút
 
     public BlogPublishWorker(
         IServiceProvider serviceProvider, 
@@ -23,6 +26,7 @@ public class BlogPublishWorker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("Blog Publish Worker starting");
+
 
         while (!stoppingToken.IsCancellationRequested)
         {

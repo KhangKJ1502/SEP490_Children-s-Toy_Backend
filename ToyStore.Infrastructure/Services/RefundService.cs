@@ -507,11 +507,15 @@ public class RefundService : IRefundService
         await _unitOfWork.Refunds.AddAsync(refund, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        // Release old assignments to ensure clean state
-        await _shiftAssignmentService.ReleaseCapacityAsync(refund.OrderId, cancellationToken);
+        // Check if active assignments already exist for the order. If so, preserve them; otherwise auto-assign missing roles.
+        var activeAssignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(refund.OrderId, cancellationToken);
+        var hasStaff = activeAssignments.Any(a => a.RoleId == 3);
+        var hasMerch = activeAssignments.Any(a => a.RoleId == 4);
 
-        // Auto-assign to active shift staff/merch
-        await _shiftAssignmentService.AutoAssignOrderAsync(refund.OrderId, cancellationToken);
+        if (!hasStaff || !hasMerch)
+        {
+            await _shiftAssignmentService.AutoAssignOrderAsync(refund.OrderId, cancellationToken);
+        }
 
         return refund;
     }
@@ -694,6 +698,15 @@ public class RefundService : IRefundService
                 staffId,
                 roleId,
                 cancellationToken);
+
+            if (!hasAssignment)
+            {
+                hasAssignment = await _unitOfWork.OrderAssignments.IsLatestAssigneeWithNoActiveSuccessorAsync(
+                    refund.OrderId,
+                    staffId,
+                    roleId,
+                    cancellationToken);
+            }
 
             if (!hasAssignment)
             {

@@ -9,15 +9,15 @@ using ToyStore.Infrastructure.Notifications;
 namespace ToyStore.Worker.Workers;
 
 /// <summary>
-/// Restores blog comment permission when a temporary comment ban expires.
-/// Runs every 1 hour.
+/// Worker chạy nền định kỳ (mỗi 1 giờ) để mở lại quyền gửi bình luận Blog cho người dùng
+/// khi thời gian khóa phạt tạm thời (banned period) đã hết hạn.
 /// </summary>
 public class BlogCommentPermissionUnlockJob : BackgroundService
 {
     private readonly IServiceProvider _services;
     private readonly ILogger<BlogCommentPermissionUnlockJob> _logger;
     private readonly ITimeProvider _timeProvider;
-    private readonly TimeSpan _interval = TimeSpan.FromHours(1);
+    private readonly TimeSpan _interval = TimeSpan.FromHours(1); // Chu kỳ chạy: 1 giờ
 
     public BlogCommentPermissionUnlockJob(
         IServiceProvider services,
@@ -39,6 +39,7 @@ public class BlogCommentPermissionUnlockJob : BackgroundService
             await Task.Delay(_interval, stoppingToken);
         }
     }
+
 
     private async Task RunAsync(CancellationToken ct)
     {
