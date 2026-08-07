@@ -77,12 +77,6 @@ public class ShiftAssignmentService : IShiftAssignmentService
             return Result<AssignmentResultDto>.Success(result);
         }
 
-        var alreadyQueued = await _unitOfWork.OrderQueues.ExistsPendingForOrderAsync(orderId, cancellationToken);
-        if (alreadyQueued)
-        {
-            return Result<AssignmentResultDto>.Success(new AssignmentResultDto { Result = "QUEUED" });
-        }
-
         var assignResult = await _unitOfWork.OrderAssignments.AutoAssignAsync(orderId, null, cancellationToken);
 
         if (string.Equals(assignResult.Result, "ASSIGNED", StringComparison.OrdinalIgnoreCase))

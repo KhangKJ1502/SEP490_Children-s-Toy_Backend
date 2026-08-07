@@ -42,7 +42,7 @@ public class UpdateProductValidator : AbstractValidator<UpdateProductDto>
 
         RuleFor(x => x.Price)
             .GreaterThan(0).WithMessage("Price must be greater than 0.")
-            .LessThanOrEqualTo(100_000_000).WithMessage("Price must not exceed 100,000,000 VND.")
+            .LessThanOrEqualTo(999_999_999).WithMessage("Price must not exceed 999,999,999 VND.")
             .When(x => x.Price.HasValue);
 
         RuleFor(x => x.Quantity)
@@ -127,15 +127,16 @@ public class UpdateProductValidator : AbstractValidator<UpdateProductDto>
             .When(x => x.HeightCm.HasValue);
 
         RuleFor(x => x.MainImageUrl)
+            .NotEmpty().WithMessage("Main image is required.")
             .Must(ProductValidationRules.HasValidImageUrlLength)
             .WithMessage("Main image URL must not exceed 500 characters.")
             .Must(url => Uri.IsWellFormedUriString(url, UriKind.Absolute))
             .WithMessage("Main image URL is not valid.")
-            .When(x => !string.IsNullOrWhiteSpace(x.MainImageUrl));
+            .When(x => x.MainImageUrl != null);
 
         RuleFor(x => x.AdditionalImageUrls)
-            .Must(urls => urls == null || urls.Count <= 6)
-            .WithMessage("Additional images must not exceed 6.")
+            .Must(urls => urls == null || (urls.Count >= 4 && urls.Count <= 6))
+            .WithMessage("Additional images must be between 4 and 6.")
             .Must(ProductValidationRules.HasUniqueNormalizedUrls)
             .WithMessage("Additional images must be unique.");
 

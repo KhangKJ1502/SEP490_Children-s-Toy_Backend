@@ -6,16 +6,16 @@ using ToyStore.Infrastructure.Notifications;
 namespace ToyStore.Worker.Workers;
 
 /// <summary>
-/// Polls pending blog comments/replies and asks the AI sidecar to moderate them.
-/// Runs every 30 seconds.
+/// Worker chạy nền định kỳ (mỗi 30 giây) để quét các bình luận/phản hồi Blog ở trạng thái Pending
+/// và gửi tới Python AI Sidecar service để thực hiện kiểm duyệt tự động.
 /// </summary>
 public class BlogCommentModerationPollJob : BackgroundService
 {
     private readonly IServiceProvider _services;
     private readonly ILogger<BlogCommentModerationPollJob> _logger;
-    private readonly TimeSpan _interval = TimeSpan.FromSeconds(30);
-    private const int BatchSize = 20;
-    private const int RetryIntervalMinutes = 5;
+    private readonly TimeSpan _interval = TimeSpan.FromSeconds(30); // Chu kỳ quét: 30 giây
+    private const int BatchSize = 20; // Số lượng bản ghi kiểm duyệt tối đa trong 1 đợt
+    private const int RetryIntervalMinutes = 5; // Khoảng thời gian giãn cách trước khi thử lại bản ghi bị lỗi (5 phút)
 
     public BlogCommentModerationPollJob(
         IServiceProvider services,
@@ -27,6 +27,7 @@ public class BlogCommentModerationPollJob : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Vòng lặp liên tục chạy background task đến khi hệ thống phát tín hiệu dừng
         while (!stoppingToken.IsCancellationRequested)
         {
             try { await RunAsync(stoppingToken); }
@@ -35,6 +36,7 @@ public class BlogCommentModerationPollJob : BackgroundService
             await Task.Delay(_interval, stoppingToken);
         }
     }
+
 
     private async Task RunAsync(CancellationToken ct)
     {
