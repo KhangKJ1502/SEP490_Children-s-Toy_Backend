@@ -130,18 +130,43 @@ public class ComputeScoresJob : BackgroundService
         }
 
         // 3. Upsert vào Recommendation.UserProductScores
-        //    Strategy: load existing trong batch → update / insert → SaveChanges 1 lần
+        // Lọc chỉ giữ AccountID và ProductID thực sự tồn tại trong DB (tránh lỗi FK Error 547)
         var accountIds = aggregates.Keys.Select(k => k.AccountId).Distinct().ToList();
         var productIds = aggregates.Keys.Select(k => k.ProductId).Distinct().ToList();
 
+        var validAccountIds = await db.Accounts
+            .AsNoTracking()
+            .Where(a => accountIds.Contains(a.AccountId) && !a.IsDeleted)
+            .Select(a => a.AccountId)
+            .ToListAsync(ct);
+
+        var validProductIds = await db.Products
+            .AsNoTracking()
+            .Where(p => productIds.Contains(p.ProductId) && !p.IsDeleted)
+            .Select(p => p.ProductId)
+            .ToListAsync(ct);
+
+        var validAccountSet = validAccountIds.ToHashSet();
+        var validProductSet = validProductIds.ToHashSet();
+
+        var validAggregates = aggregates
+            .Where(kv => validAccountSet.Contains(kv.Key.AccountId) && validProductSet.Contains(kv.Key.ProductId))
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
+
+        if (validAggregates.Count == 0)
+        {
+            _logger.LogInformation("ComputeScoresJob: no valid aggregates matching existing accounts and products");
+            return;
+        }
+
         var existing = await db.UserProductScores
-            .Where(x => accountIds.Contains(x.AccountId) && productIds.Contains(x.ProductId))
+            .Where(x => validAccountIds.Contains(x.AccountId) && validProductIds.Contains(x.ProductId))
             .ToListAsync(ct);
 
         var existingMap = existing.ToDictionary(x => (x.AccountId, x.ProductId));
 
         var toAdd = new List<UserProductScore>();
-        foreach (var ((accId, prodId), agg) in aggregates)
+        foreach (var ((accId, prodId), agg) in validAggregates)
         {
             // Cap counters về byte/short để không tràn datatype (CartCount byte → 255)
             var viewCount = (short)Math.Min(agg.ViewCount, short.MaxValue);
