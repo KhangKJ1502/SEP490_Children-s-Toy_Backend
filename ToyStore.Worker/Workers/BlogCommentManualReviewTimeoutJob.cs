@@ -11,20 +11,20 @@ using ToyStore.Infrastructure.Notifications;
 namespace ToyStore.Worker.Workers;
 
 /// <summary>
-/// Rejects blog comments/replies left in manual review after their deadline.
-/// Runs every 1 hour.
+/// Worker chạy nền định kỳ (mỗi 1 giờ) để tự động từ chối (Auto Reject) các bình luận / phản hồi Blog
+/// bị tồn đọng ở trạng thái Chờ duyệt tay (ManualReview) quá 24 giờ mà Admin chưa kịp xử lý.
 /// </summary>
 public class BlogCommentManualReviewTimeoutJob : BackgroundService
 {
     private readonly IServiceProvider _services;
     private readonly ILogger<BlogCommentManualReviewTimeoutJob> _logger;
     private readonly ITimeProvider _timeProvider;
-    private readonly TimeSpan _interval = TimeSpan.FromHours(1);
+    private readonly TimeSpan _interval = TimeSpan.FromHours(1); // Chu kỳ chạy: 1 giờ
     private const string TimeoutBanReasonContent =
         "Manual review was not completed within 24 hours, so the comment was automatically rejected";
     private const string TimeoutBanReasonPrefix = "Manual review was not completed within 24 hours";
-    private const int ViolationThreshold = 20;
-    private const int CommentBanDurationDays = 7;
+    private const int ViolationThreshold = 20; // Ngưỡng vi phạm quá hạn để tính khóa tài khoản
+    private const int CommentBanDurationDays = 7; // Thời hạn khóa phạt 7 ngày
 
     public BlogCommentManualReviewTimeoutJob(
         IServiceProvider services,
@@ -46,6 +46,7 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
             await Task.Delay(_interval, stoppingToken);
         }
     }
+
 
     private async Task RunAsync(CancellationToken ct)
     {

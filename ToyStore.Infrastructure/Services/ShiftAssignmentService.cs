@@ -77,12 +77,6 @@ public class ShiftAssignmentService : IShiftAssignmentService
             return Result<AssignmentResultDto>.Success(result);
         }
 
-        var alreadyQueued = await _unitOfWork.OrderQueues.ExistsPendingForOrderAsync(orderId, cancellationToken);
-        if (alreadyQueued)
-        {
-            return Result<AssignmentResultDto>.Success(new AssignmentResultDto { Result = "QUEUED" });
-        }
-
         var assignResult = await _unitOfWork.OrderAssignments.AutoAssignAsync(orderId, null, cancellationToken);
 
         if (string.Equals(assignResult.Result, "ASSIGNED", StringComparison.OrdinalIgnoreCase))
@@ -201,15 +195,14 @@ public class ShiftAssignmentService : IShiftAssignmentService
             // BUG FIX: Re-check IsResolved từ DB trước khi xử lý.
             // Tránh race condition: admin có thể đã assign thủ công (IsResolved=true)
             // trong khoảng thời gian kể từ lúc GetPendingAsync() load batch này.
-            // Nếu đã resolved → bỏ qua hoàn toàn, không gọi AutoAssign thừa,
-            // không ghi đè ResolvedAt/AssignedBy mà admin đã set.
+            // freshEntry được load tracked qua GetByIdAsync() -> cho phép SaveChangesAsync persist thay đổi IsResolved.
             var freshEntry = await _unitOfWork.OrderQueues.GetByIdAsync(queueEntry.QueueId, cancellationToken);
             if (freshEntry is null || freshEntry.IsResolved)
             {
                 continue;
             }
 
-            var order = queueEntry.Order;
+            var order = freshEntry.Order ?? queueEntry.Order;
 
             // Check if there is an active refund request for this order.
             // If so, the queue entry is still operational even if the order status is Completed/Cancelled/Refunded.
@@ -239,33 +232,52 @@ public class ShiftAssignmentService : IShiftAssignmentService
             // thì tự động đánh dấu giải quyết (resolve) hàng đợi này để tránh làm kẹt hàng đợi của các đơn hàng khác!
             if (order is null || order.IsDeleted || order.Status is null || (!operationalStatuses.Contains(order.Status.StatusName) && !hasActiveRefund))
             {
-                queueEntry.IsResolved = true;
-                queueEntry.ResolvedAt = now;
+                freshEntry.IsResolved = true;
+                freshEntry.ResolvedAt = now;
                 anyResolved = true;
                 continue;
             }
 
-            var assignResult = await _unitOfWork.OrderAssignments.AutoAssignAsync(queueEntry.OrderId, null, cancellationToken);
+            var assignResult = await _unitOfWork.OrderAssignments.AutoAssignAsync(freshEntry.OrderId, null, cancellationToken);
 
             // Kiểm tra xem đơn hàng đã được phân công đầy đủ cả 2 vai trò chưa
-            var activeAssignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(queueEntry.OrderId, cancellationToken);
+            var activeAssignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(freshEntry.OrderId, cancellationToken);
             var hasStaff = activeAssignments.Any(x => x.RoleId == StaffRoleId);
             var hasMerch = activeAssignments.Any(x => x.RoleId == MerchRoleId);
 
             if (hasStaff && hasMerch)
             {
-                queueEntry.IsResolved = true;
-                queueEntry.ResolvedAt = now;
+                freshEntry.IsResolved = true;
+                freshEntry.ResolvedAt = now;
                 anyResolved = true;
+
+                if (assignResult.StaffAccountId.HasValue || assignResult.MerchAccountId.HasValue)
+                {
+                    var orderForUpdate = await _unitOfWork.Orders.GetByIdForUpdateAsync(freshEntry.OrderId, cancellationToken);
+                    if (orderForUpdate is not null)
+                    {
+                        if (assignResult.StaffAccountId.HasValue)
+                        {
+                            orderForUpdate.AssignedToStaffId = assignResult.StaffAccountId.Value;
+                        }
+
+                        if (assignResult.MerchAccountId.HasValue)
+                        {
+                            orderForUpdate.AssignedToMerchId = assignResult.MerchAccountId.Value;
+                        }
+
+                        orderForUpdate.UpdatedAt = now;
+                    }
+                }
 
                 await _eventPublisher.PublishAsync(
                     "Order",
-                    queueEntry.OrderId.ToString(),
+                    freshEntry.OrderId.ToString(),
                     ShiftEventTypes.OrderAssigned,
                     new
                     {
-                        orderId = queueEntry.OrderId,
-                        orderCode = queueEntry.Order?.OrderCode,
+                        orderId = freshEntry.OrderId,
+                        orderCode = order?.OrderCode,
                         staffAccountId = assignResult.StaffAccountId,
                         merchAccountId = assignResult.MerchAccountId
                     },
