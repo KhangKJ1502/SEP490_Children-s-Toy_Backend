@@ -128,23 +128,20 @@ public class CampaignRepository : ICampaignRepository
                 cancellationToken);
 
         // Step 2: campaigns stuck in "Sending" whose schedule is now Waiting can be retried
-        if (recovered > 0)
-        {
-            var stuckCampaignIds = await _context.CampaignSchedules
-                .Where(s => s.ExecutionStatus == "Waiting")
-                .Select(s => s.CampaignId)
-                .ToListAsync(cancellationToken);
+        var stuckCampaignIds = await _context.CampaignSchedules
+            .Where(s => s.ExecutionStatus == "Waiting")
+            .Select(s => s.CampaignId)
+            .ToListAsync(cancellationToken);
 
-            if (stuckCampaignIds.Count > 0)
-            {
-                await _context.Campaigns
-                    .Where(c => stuckCampaignIds.Contains(c.CampaignId) && c.Status == "Sending")
-                    .ExecuteUpdateAsync(
-                        s => s
-                            .SetProperty(x => x.Status, "Scheduled")
-                            .SetProperty(x => x.UpdatedAt, utcNow),
-                        cancellationToken);
-            }
+        if (stuckCampaignIds.Count > 0)
+        {
+            await _context.Campaigns
+                .Where(c => stuckCampaignIds.Contains(c.CampaignId) && c.Status == "Sending")
+                .ExecuteUpdateAsync(
+                    s => s
+                        .SetProperty(x => x.Status, "Scheduled")
+                        .SetProperty(x => x.UpdatedAt, utcNow),
+                    cancellationToken);
         }
 
         return recovered;
@@ -209,13 +206,14 @@ public class CampaignRepository : ICampaignRepository
         schedule.AttemptCount++;
         schedule.UpdatedAt = utcNow;
 
+        var campaign = await _context.Campaigns.FirstOrDefaultAsync(c => c.CampaignId == campaignId, cancellationToken);
+
         if (schedule.AttemptCount >= schedule.MaxAttemptCount)
         {
             schedule.ExecutionStatus = "Failed";
             schedule.LockedByJobId = null;
             schedule.LockedAt = null;
 
-            var campaign = await _context.Campaigns.FirstOrDefaultAsync(c => c.CampaignId == campaignId, cancellationToken);
             if (campaign is not null)
             {
                 campaign.Status = "Failed";
@@ -227,6 +225,12 @@ public class CampaignRepository : ICampaignRepository
             schedule.ExecutionStatus = "Waiting";
             schedule.LockedByJobId = null;
             schedule.LockedAt = null;
+
+            if (campaign is not null)
+            {
+                campaign.Status = "Scheduled";
+                campaign.UpdatedAt = utcNow;
+            }
         }
 
         await _context.SaveChangesAsync(cancellationToken);
