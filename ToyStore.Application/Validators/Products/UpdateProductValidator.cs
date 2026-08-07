@@ -42,7 +42,7 @@ public class UpdateProductValidator : AbstractValidator<UpdateProductDto>
 
         RuleFor(x => x.Price)
             .GreaterThan(0).WithMessage("Price must be greater than 0.")
-            .LessThanOrEqualTo(100_000_000).WithMessage("Price must not exceed 100,000,000 VND.")
+            .LessThanOrEqualTo(999_999_999).WithMessage("Price must not exceed 999,999,999 VND.")
             .When(x => x.Price.HasValue);
 
         RuleFor(x => x.Quantity)
