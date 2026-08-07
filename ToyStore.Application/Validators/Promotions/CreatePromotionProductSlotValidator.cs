@@ -18,7 +18,7 @@ public class CreatePromotionProductSlotValidator : AbstractValidator<CreatePromo
         // Giá sale phải dương
         RuleFor(x => x.SalePrice)
             .GreaterThan(0).WithMessage("Sale price must be greater than 0.")
-            .LessThanOrEqualTo(100_000_000).WithMessage("Sale price must not exceed 100,000,000 VND.");
+            .LessThanOrEqualTo(999_999_999).WithMessage("Sale price must not exceed 999,999,999 VND.");
 
         // DiscountPercent — nếu có, phải từ 1–99
         RuleFor(x => x.DiscountPercent)
