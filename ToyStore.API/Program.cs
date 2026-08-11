@@ -63,12 +63,15 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddRecommendation(builder.Configuration);
-builder.Services.AddSignalR();
-builder.Services.AddSingleton<Microsoft.AspNetCore.SignalR.IUserIdProvider, AccountIdProvider>();
+        // 1. Cấu hình dịch vụ SignalR
+        builder.Services.AddSignalR();
+        // Cấu hình Custom IUserIdProvider để giải quyết định danh user kết nối bằng AccountId
+        builder.Services.AddSingleton<Microsoft.AspNetCore.SignalR.IUserIdProvider, AccountIdProvider>();
 
-// Override NoOp hub service (registered by Infrastructure) with real SignalR implementation
-builder.Services.AddScoped<INotificationHubService, NotificationHubService>();
-builder.Services.AddScoped<ToyStore.Application.Interfaces.Services.ICartRealtimeService, CartRealtimeService>();
+        // Override NoOp hub service (registered by Infrastructure) with real SignalR implementation
+        // Thay thế các dịch vụ Hub giả (No-Op) bằng dịch vụ SignalR thật để truyền tải dữ liệu thời gian thực
+        builder.Services.AddScoped<INotificationHubService, NotificationHubService>();
+        builder.Services.AddScoped<ToyStore.Application.Interfaces.Services.ICartRealtimeService, CartRealtimeService>();
 
 var jwtSecretKey = builder.Configuration["Jwt:SecretKey"]!;
 var jwtIssuer = builder.Configuration["Jwt:Issuer"]!;
@@ -97,6 +100,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                     context.HttpContext.Request.Path, context.Exception.Message);
                 return Task.CompletedTask;
             },
+            // Cấu hình bắt Token JWT từ Query String cho các kết nối WebSocket của SignalR
             OnMessageReceived = context =>
             {
                 var accessToken = context.Request.Query["access_token"];
@@ -125,6 +129,7 @@ builder.Services.AddCors(options =>
         policy.SetIsOriginAllowed(_ => true)
               .AllowAnyMethod()
               .AllowAnyHeader()
+              // Cho phép truyền tải thông tin xác thực (Credentials) - Bắt buộc cho kết nối SignalR
               .AllowCredentials();
     });
 });
@@ -150,6 +155,7 @@ app.UseAuthentication();
 app.UseAccountStatusGuard();
 app.UseAuthorization();
 app.MapControllers();
+// 2. Cấu hình định tuyến (Routing) đường dẫn Endpoint cho các Hubs SignalR
 app.MapHub<CartHub>("/hubs/cart");
 app.MapHub<NotificationHub>("/hubs/notifications");
 

@@ -5,17 +5,26 @@ using ToyStore.Application.Interfaces.Services;
 
 namespace ToyStore.API.Hubs;
 
+/// <summary>
+/// Dịch vụ xử lý gửi sự kiện giỏ hàng thời gian thực đến khách hàng qua SignalR Hub.
+/// </summary>
 public class CartRealtimeService : ICartRealtimeService
 {
     private readonly IHubContext<CartHub> _hubContext;
     private readonly ILogger<CartRealtimeService> _logger;
 
+    /// <summary>
+    /// Khởi tạo dịch vụ CartRealtimeService với SignalR Hub Context và Logger.
+    /// </summary>
     public CartRealtimeService(IHubContext<CartHub> hubContext, ILogger<CartRealtimeService> logger)
     {
         _hubContext = hubContext;
         _logger = logger;
     }
 
+    /// <summary>
+    /// Gửi một sự kiện giỏ hàng thời gian thực đến người dùng (AccountId) cụ thể thông qua SignalR.
+    /// </summary>
     public Task PublishAsync(
         int accountId,
         string eventName,

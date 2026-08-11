@@ -5,11 +5,13 @@ using Microsoft.AspNetCore.SignalR;
 namespace ToyStore.API.Hubs;
 
 /// <summary>
-/// Resolves the SignalR user identifier from JWT claims (AccountID, NameIdentifier, or Sub).
-/// This ensures consistent user tracking across different hub types.
+/// Trích xuất và giải quyết định danh người dùng (AccountId) từ các Claims trong JWT Token để gán ID người dùng cho kết nối SignalR.
 /// </summary>
 public sealed class AccountIdProvider : IUserIdProvider
 {
+    /// <summary>
+    /// Lấy ID người dùng từ thông tin xác thực của kết nối SignalR dựa trên các Claim (AccountID, NameIdentifier, hoặc Sub).
+    /// </summary>
     public string? GetUserId(HubConnectionContext connection)
     {
         var user = connection.User;
