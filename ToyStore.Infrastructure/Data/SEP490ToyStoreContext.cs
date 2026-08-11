@@ -1089,6 +1089,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
             entity.Property(e => e.DeliveredAt).HasPrecision(0);
+            entity.Property(e => e.DeliveryImageUrl).HasMaxLength(500);
             entity.Property(e => e.EstimatedShippingFee).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.Note).HasMaxLength(1000);
             entity.Property(e => e.OrderCode)

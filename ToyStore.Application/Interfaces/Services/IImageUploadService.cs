@@ -23,4 +23,14 @@ public interface IImageUploadService
         string fileName,
         string folder,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Uploads an image directly from a source URL to Cloudinary (no local download required).
+    /// </summary>
+    Task<Result<string>> UploadImageFromUrlAsync(
+        string sourceUrl,
+        string folder,
+        string? publicId = null,
+        CancellationToken cancellationToken = default);
 }
+

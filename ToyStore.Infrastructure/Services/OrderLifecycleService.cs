@@ -155,6 +155,7 @@ public class OrderLifecycleService : IOrderLifecycleService
             }, cancellationToken);
 
             await _unitOfWork.OrderAssignments.ReleaseCapacityAsync(order.OrderId, cancellationToken);
+            await _unitOfWork.OrderQueues.ResolveByOrderIdAsync(order.OrderId, cancellationToken);
 
             if (hasCreatedSystemRefund)
             {
@@ -223,6 +224,7 @@ public class OrderLifecycleService : IOrderLifecycleService
             }, cancellationToken);
 
             await _unitOfWork.OrderAssignments.ReleaseCapacityAsync(orderId, cancellationToken);
+            await _unitOfWork.OrderQueues.ResolveByOrderIdAsync(orderId, cancellationToken);
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
@@ -273,6 +275,8 @@ public class OrderLifecycleService : IOrderLifecycleService
                 Note = "Order marked as delivered",
                 CreatedAt = now
             }, cancellationToken);
+
+            await _unitOfWork.OrderQueues.ResolveByOrderIdAsync(orderId, cancellationToken);
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);

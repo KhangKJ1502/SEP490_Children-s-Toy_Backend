@@ -15,6 +15,7 @@ public class CustomerOrderDetailDto
     public DateTime? CompletedAt { get; set; }
     public DateTime? CancelledAt { get; set; }
     public string? CancelReason { get; set; }
+    public string? DeliveryImageUrl { get; set; }
 
     public string ShippingName { get; set; } = string.Empty;
     public string ShippingPhone { get; set; } = string.Empty;

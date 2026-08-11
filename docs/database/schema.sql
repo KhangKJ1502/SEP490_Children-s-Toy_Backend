@@ -480,7 +480,9 @@ CREATE TABLE [Orders] (
     [ReturnedAt]         DATETIME2(0) NULL,
     [LastGHNFailCode]    VARCHAR(20)  NULL,
     [DeliveryFailCount]  TINYINT      NOT NULL DEFAULT 0,
+    [DeliveryImageUrl]   NVARCHAR(500) NULL,
     [CancelledAt]           DATETIME2(0)  NULL,
+
     [PaymentMethod] VARCHAR(20) NOT NULL DEFAULT 'SHIP_COD'
              CHECK ([PaymentMethod] IN ('SHIP_COD', 'SE_PAY', 'WALLET')),
     [PaymentStatus]         VARCHAR(20)   NOT NULL DEFAULT 'PENDING'

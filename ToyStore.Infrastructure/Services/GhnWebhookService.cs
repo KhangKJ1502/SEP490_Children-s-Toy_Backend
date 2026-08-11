@@ -16,6 +16,8 @@ using ToyStore.Domain.Enums;
 using ToyStore.Application.Services;
 using ToyStore.Infrastructure.Mappers;
 
+using System.Net.Http;
+
 namespace ToyStore.Infrastructure.Services;
 
 public class GhnWebhookService : IGhnWebhookService
@@ -31,6 +33,8 @@ public class GhnWebhookService : IGhnWebhookService
     private readonly IShiftAssignmentService _shiftAssignmentService;
     private readonly IShippingStatusMapper _statusMapper;
     private readonly IShippingWebhookService _shippingWebhookService;
+    private readonly IImageUploadService _imageUploadService;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     public GhnWebhookService(
         IUnitOfWork unitOfWork,
@@ -41,7 +45,9 @@ public class GhnWebhookService : IGhnWebhookService
         IShippingReturnFlowService returnFlow,
         IShiftAssignmentService shiftAssignmentService,
         IShippingStatusMapper statusMapper,
-        IShippingWebhookService shippingWebhookService)
+        IShippingWebhookService shippingWebhookService,
+        IImageUploadService imageUploadService,
+        IHttpClientFactory httpClientFactory)
     {
         _unitOfWork = unitOfWork;
         _eventPublisher = eventPublisher;
@@ -52,24 +58,35 @@ public class GhnWebhookService : IGhnWebhookService
         _shiftAssignmentService = shiftAssignmentService;
         _statusMapper = statusMapper;
         _shippingWebhookService = shippingWebhookService;
+        _imageUploadService = imageUploadService;
+        _httpClientFactory = httpClientFactory;
     }
 
-    public async Task ProcessAsync(GhnWebhookPayload payload, CancellationToken cancellationToken = default)
+
+    public Task ProcessAsync(GhnWebhookPayload payload, CancellationToken cancellationToken = default)
     {
-        if (payload == null || string.IsNullOrWhiteSpace(payload.OrderCode))
+        return ProcessAsync(payload, imageStream: null, fileName: null, cancellationToken);
+    }
+
+    public async Task ProcessAsync(
+        GhnWebhookPayload payload, 
+        Stream? imageStream, 
+        string? fileName, 
+        CancellationToken cancellationToken = default)
+    {
+        if (payload == null)
+        {
+            _logger.LogWarning("GHN Webhook: Null payload received.");
+            return;
+        }
+
+        var orderCode = (payload.EffectiveOrderCode ?? payload.EffectiveClientOrderCode)?.Trim();
+        if (string.IsNullOrWhiteSpace(orderCode))
         {
             _logger.LogWarning("GHN Webhook: Invalid payload or empty OrderCode.");
             return;
         }
 
-        var status = payload.Status?.Trim();
-        if (string.IsNullOrWhiteSpace(status))
-        {
-            _logger.LogWarning("GHN Webhook: Empty status in payload.");
-            return;
-        }
-
-        var orderCode = payload.OrderCode.Trim();
         var refund = await _unitOfWork.Refunds.GetByShippingOrReturnOrderCodeAsync(orderCode, cancellationToken);
         if (refund is not null)
         {
@@ -78,11 +95,40 @@ public class GhnWebhookService : IGhnWebhookService
             return;
         }
 
-        // Fetch transaction by provider code (which is OrderCode)
-        var tx = await _unitOfWork.Orders.GetShippingTransactionByProviderCodeAsync(payload.OrderCode, cancellationToken);
+        // Fetch transaction by provider code (OrderCode) or fallback to ClientOrderCode
+        var tx = await _unitOfWork.Orders.GetShippingTransactionByProviderCodeAsync(orderCode, cancellationToken);
+        if (tx == null && !string.IsNullOrWhiteSpace(payload.EffectiveClientOrderCode))
+        {
+            tx = await _unitOfWork.Orders.GetShippingTransactionByProviderCodeAsync(payload.EffectiveClientOrderCode.Trim(), cancellationToken);
+        }
+
         if (tx == null)
         {
-            _logger.LogWarning("GHN Webhook: Transaction not found for provider OrderCode '{Code}'", payload.OrderCode);
+            _logger.LogWarning("GHN Webhook: Transaction not found for OrderCode '{Code}'", orderCode);
+            return;
+        }
+
+        var status = payload.EffectiveStatus?.Trim();
+
+        // If status is empty but delivery image is provided (either binary stream or payload string), handle image upload directly
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            if (imageStream != null)
+            {
+                await UploadDeliveryImageStreamToCloudinaryAsync(tx.Order, imageStream, fileName, cancellationToken);
+            }
+            else
+            {
+                var podImageUrl = payload.GetDeliveryImageUrl();
+                if (!string.IsNullOrWhiteSpace(podImageUrl))
+                {
+                    await ProcessDeliveryImageOnlyAsync(tx.Order, podImageUrl, cancellationToken);
+                }
+                else
+                {
+                    _logger.LogWarning("GHN Webhook: Empty status and no delivery image in payload for OrderCode '{Code}'.", orderCode);
+                }
+            }
             return;
         }
 
@@ -91,12 +137,13 @@ public class GhnWebhookService : IGhnWebhookService
         // Idempotency check:
         if (await _unitOfWork.Orders.ExistsShippingStatusHistoryAsync(tx.ShippingTransactionId, status, rawPayload, cancellationToken))
         {
-            _logger.LogInformation("GHN Webhook duplicate skipped: code={Code}, status={Status}", payload.OrderCode, status);
+            _logger.LogInformation("GHN Webhook duplicate skipped: code={Code}, status={Status}", orderCode, status);
             return;
         }
 
         var previousStatus = tx.Status ?? string.Empty;
         var now = _timeProvider.UtcNow;
+
         var pendingNotifications = new List<PendingShippingNotification>();
         var releaseCapacity = false;
         var orderIdForCapacity = tx.OrderId;
@@ -119,20 +166,43 @@ public class GhnWebhookService : IGhnWebhookService
             // 2. Update transaction status
             tx.Status = status;
             tx.UpdatedAt = now;
-            if (payload.TotalFee > 0)
+            if (payload.EffectiveTotalFee > 0)
             {
-                tx.ShippingFee = payload.TotalFee;
+                tx.ShippingFee = payload.EffectiveTotalFee.Value;
             }
-            if (payload.CODAmount >= 0)
+            if (payload.EffectiveCODAmount >= 0)
             {
-                tx.CodAmount = payload.CODAmount;
+                tx.CodAmount = payload.EffectiveCODAmount.Value;
             }
 
             // 3. Handle Order entity columns & flow based on status
             var statusLower = status.ToLowerInvariant();
 
-            // A. Update direct tracking columns on the Order
+
+            // A. Update POD delivery image: Prefer direct binary stream if available, otherwise check payload string (URL or Base64)
+            if (imageStream != null)
+            {
+                await UploadDeliveryImageStreamToCloudinaryAsync(tx.Order, imageStream, fileName, cancellationToken);
+            }
+            else
+            {
+                var ghnImageUrl = payload.GetDeliveryImageUrl();
+                if (!string.IsNullOrWhiteSpace(ghnImageUrl))
+                {
+                    if (Uri.IsWellFormedUriString(ghnImageUrl, UriKind.Absolute))
+                    {
+                        tx.Order.DeliveryImageUrl = ghnImageUrl;
+                    }
+
+                    await UploadDeliveryImageToCloudinaryAsync(tx.Order, ghnImageUrl, cancellationToken);
+                }
+            }
+
+
+
+            // A2. Update direct tracking columns on the Order
             if (statusLower == "delivery_fail")
+
             {
                 tx.Order.FailedDeliveryAt = now;
                 tx.Order.LastGHNFailCode = payload.ReasonCode;
@@ -193,10 +263,19 @@ public class GhnWebhookService : IGhnWebhookService
                                 Note = $"Auto-updated from GHN webhook: {targetStatusName}",
                                 CreatedAt = now
                             }, cancellationToken);
+
+                            if (targetStatusId == (byte)OrderStatus.Delivered ||
+                                targetStatusId == (byte)OrderStatus.Cancelled ||
+                                targetStatusId == (byte)OrderStatus.Completed)
+                            {
+                                await _unitOfWork.OrderQueues.ResolveByOrderIdAsync(tx.OrderId, cancellationToken);
+                            }
                         }
                     }
                 }
             }
+
+
             else if (action != ShippingWebhookAction.Unknown)
             {
                 // Process return flow using the standard Return Flow service
@@ -306,4 +385,102 @@ public class GhnWebhookService : IGhnWebhookService
             _                   => null
         };
     }
+
+    private async Task ProcessDeliveryImageOnlyAsync(Order order, string ghnImageUrl, CancellationToken cancellationToken)
+    {
+        await UploadDeliveryImageToCloudinaryAsync(order, ghnImageUrl, cancellationToken);
+    }
+
+    private async Task UploadDeliveryImageToCloudinaryAsync(Order order, string imageInput, CancellationToken cancellationToken)
+    {
+        try
+        {
+            Result<string> uploadResult;
+
+            if (imageInput.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase) && imageInput.Contains(";base64,"))
+            {
+                var base64Data = imageInput.Substring(imageInput.IndexOf(";base64,", StringComparison.OrdinalIgnoreCase) + 8);
+                var imageBytes = Convert.FromBase64String(base64Data);
+                await using var stream = new MemoryStream(imageBytes);
+
+                uploadResult = await _imageUploadService.UploadImageToFolderAsync(
+                    stream,
+                    $"pod_{order.OrderCode}_{DateTime.UtcNow.Ticks}.jpg",
+                    "order_pods",
+                    cancellationToken);
+            }
+            else if (Uri.IsWellFormedUriString(imageInput, UriKind.Absolute))
+            {
+                // Direct server-to-server Cloudinary upload from source URL
+                uploadResult = await _imageUploadService.UploadImageFromUrlAsync(
+                    imageInput,
+                    folder: "order_pods",
+                    publicId: order.OrderCode,
+                    cancellationToken);
+            }
+            else
+            {
+                _logger.LogWarning("Invalid POD image input format for order {OrderCode}", order.OrderCode);
+                return;
+            }
+
+            if (uploadResult.IsSuccess && !string.IsNullOrEmpty(uploadResult.Data))
+            {
+                order.DeliveryImageUrl = uploadResult.Data;
+                order.UpdatedAt = _timeProvider.UtcNow;
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                _logger.LogInformation("GHN Webhook POD image uploaded to Cloudinary: {Url} for order {OrderCode}",
+                    uploadResult.Data, order.OrderCode);
+            }
+            else
+            {
+                _logger.LogWarning("Failed to upload GHN POD image to Cloudinary for order {OrderCode}: {Error}",
+                    order.OrderCode, uploadResult.ErrorMessage);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error uploading GHN POD image to Cloudinary for order {OrderCode}", order.OrderCode);
+        }
+    }
+
+
+    private async Task UploadDeliveryImageStreamToCloudinaryAsync(Order order, Stream imageStream, string? fileName, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var name = string.IsNullOrWhiteSpace(fileName) 
+                ? $"pod_{order.OrderCode}_{DateTime.UtcNow.Ticks}.jpg" 
+                : $"pod_{order.OrderCode}_{Path.GetFileName(fileName)}";
+
+            var uploadResult = await _imageUploadService.UploadImageToFolderAsync(
+                imageStream,
+                name,
+                "delivery-proofs",
+                cancellationToken);
+
+            if (uploadResult.IsSuccess && !string.IsNullOrEmpty(uploadResult.Data))
+            {
+                order.DeliveryImageUrl = uploadResult.Data;
+                order.UpdatedAt = _timeProvider.UtcNow;
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                _logger.LogInformation("GHN Webhook binary POD image stream uploaded to Cloudinary: {Url} for order {OrderCode}",
+                    uploadResult.Data, order.OrderCode);
+            }
+            else
+            {
+                _logger.LogWarning("Failed to upload binary GHN POD image stream to Cloudinary for order {OrderCode}: {Error}",
+                    order.OrderCode, uploadResult.ErrorMessage);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception while uploading binary POD image stream to Cloudinary for order {OrderCode}", order.OrderCode);
+        }
+    }
 }
+
+
+
