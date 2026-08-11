@@ -366,53 +366,68 @@ public class BlogService : IBlogService
         return Result<BlogDetailDto>.Success(_mapper.Map<BlogDetailDto>(updated!));
     }
 
+    /// <summary>
+    /// Thực hiện phê duyệt hoặc từ chối một bài viết Blog đang chờ kiểm duyệt (Pending).
+    /// </summary>
     public async Task<Result<BlogDetailDto>> ApproveBlogAsync(int blogPostId, ApproveBlogDto dto, CancellationToken cancellationToken = default)
     {
+        // 1. Kiểm tra xác thực người dùng (phải là Quản trị viên/Người kiểm duyệt đã đăng nhập)
         if (_currentUserService.AccountId <= 0)
         {
             return Result<BlogDetailDto>.Unauthorized();
         }
 
+        // 2. Tìm kiếm bài viết Blog trong cơ sở dữ liệu
         var blog = await _unitOfWork.Blogs.GetByIdAsync(blogPostId, cancellationToken);
         if (blog == null)
         {
             return Result<BlogDetailDto>.NotFound("Blog", blogPostId);
         }
 
+        // 3. Đảm bảo bài viết đang ở trạng thái Chờ duyệt (Pending). Trạng thái khác không được duyệt.
         if (!string.Equals(blog.Status, PendingStatus, StringComparison.OrdinalIgnoreCase))
         {
             return Result<BlogDetailDto>.BusinessError("Only Pending blog can be approved or rejected.");
         }
 
+        // 4. Lấy quyết định duyệt bài viết từ Client gửi lên
         var decision = dto.Decision?.Trim() ?? string.Empty;
         var isApprovePublishNow = string.Equals(decision, ApprovePublishNowDecision, StringComparison.OrdinalIgnoreCase);
         var isApproveKeepSchedule = string.Equals(decision, ApproveKeepScheduleDecision, StringComparison.OrdinalIgnoreCase);
         var isApprovedLegacy = string.Equals(decision, "Approved", StringComparison.OrdinalIgnoreCase);
         var isRejected = string.Equals(decision, "Rejected", StringComparison.OrdinalIgnoreCase);
 
+        // NHÓM 1: Nếu quyết định là Chấp thuận duyệt đăng bài viết (Approve)
         if (isApprovePublishNow || isApproveKeepSchedule || isApprovedLegacy)
         {
-            blog.Reason = null;
+            blog.Reason = null; // Xóa bỏ lý do từ chối cũ nếu có
+            
+            // Nhánh 1.1: Duyệt và xuất bản ngay lập tức
             if (isApprovePublishNow || (isApprovedLegacy && dto.PublishNow == true))
             {
-                blog.Status = PublishedStatus;
-                blog.BlogAt = _timeProvider.UtcNow;
+                blog.Status = PublishedStatus; // Trạng thái: Đã xuất bản
+                blog.BlogAt = _timeProvider.UtcNow; // Gán ngày xuất bản bằng thời điểm hiện tại
                 _logger.LogInformation("Blog {BlogId} approved and published immediately by account {AccountId}.", blogPostId, _currentUserService.AccountId);
             }
+            // Nhánh 1.2: Duyệt bài viết và giữ nguyên lịch hẹn giờ ở tương lai
             else if (blog.BlogAt.HasValue && blog.BlogAt.Value > _timeProvider.UtcNow)
             {
-                blog.Status = ScheduledStatus;
+                blog.Status = ScheduledStatus; // Trạng thái: Hẹn giờ xuất bản
             }
+            // Nhánh 1.3: Duyệt bài viết nhưng ngày hẹn giờ đã qua hoặc trùng hiện tại -> xuất bản ngay
             else
             {
-                blog.Status = PublishedStatus;
-                blog.BlogAt ??= _timeProvider.UtcNow;
+                blog.Status = PublishedStatus; // Trạng thái: Đã xuất bản
+                blog.BlogAt ??= _timeProvider.UtcNow; // Gán thời gian xuất bản nếu chưa có
                 _logger.LogInformation("Blog {BlogId} approved and published immediately (BlogAt <= now).", blogPostId);
             }
         }
+        // NHÓM 2: Nếu quyết định là Từ chối bài viết (Reject)
         else if (isRejected)
         {
             var rejectReason = dto.Reason?.Trim();
+            
+            // Kiểm tra lý do từ chối không được rỗng
             if (string.IsNullOrWhiteSpace(rejectReason))
             {
                 return Result<BlogDetailDto>.ValidationFailure(new Dictionary<string, string[]>
@@ -420,6 +435,8 @@ public class BlogService : IBlogService
                     ["Reason"] = ["Reason is required when rejecting a blog."]
                 });
             }
+            
+            // Kiểm tra lý do từ chối không vượt quá độ dài quy định
             if (rejectReason.Length > MaxBlogRejectReasonLength)
             {
                 return Result<BlogDetailDto>.ValidationFailure(new Dictionary<string, string[]>
@@ -427,9 +444,11 @@ public class BlogService : IBlogService
                     ["Reason"] = [$"Reason must not exceed {MaxBlogRejectReasonLength} characters."]
                 });
             }
-            blog.Status = RejectedStatus;
-            blog.Reason = rejectReason;
+            
+            blog.Status = RejectedStatus; // Trạng thái: Đã bị từ chối
+            blog.Reason = rejectReason; // Lưu lý do từ chối
         }
+        // NHÓM 3: Quyết định gửi lên không hợp lệ
         else
         {
             return Result<BlogDetailDto>.Failure("VALIDATION_ERROR", "Decision must be ApprovePublishNow, ApproveKeepSchedule, Approved, or Rejected.");
@@ -742,6 +761,9 @@ public class BlogService : IBlogService
         return Result<bool>.Success(true);
     }
 
+    /// <summary>
+    /// Lấy danh sách phân trang các bình luận (Reviews) và phản hồi (Replies) bài viết Blog phục vụ cho trang quản trị (Admin/Moderator Moderation).
+    /// </summary>
     public async Task<Result<PaginatedResponse<BlogReviewDto>>> GetBlogReviewsForManagementAsync(
         int pageNumber = 1,
         int pageSize = 10,
@@ -749,21 +771,28 @@ public class BlogService : IBlogService
         string? status = null,
         CancellationToken cancellationToken = default)
     {
+        // 1. Kiểm tra phân quyền: Chỉ cho phép tài khoản Admin hoặc Staff truy cập quản lý
         if (!IsPrivilegedUser())
         {
             return Result<PaginatedResponse<BlogReviewDto>>.Unauthorized();
         }
 
+        // 2. Validate giá trị phân trang đầu vào
         if (pageNumber < 1 || pageSize < 1 || pageSize > 100)
         {
             return Result<PaginatedResponse<BlogReviewDto>>.Failure("VALIDATION_ERROR", "Invalid pagination values.");
         }
 
+        // 3. Truy xuất danh sách bình luận (Review) phân trang từ cơ sở dữ liệu dựa theo từ khóa và trạng thái kiểm duyệt
         var reviews = await _unitOfWork.Blogs.GetPagedReviewsForManagementAsync(pageNumber, pageSize, searchTerm, status, cancellationToken);
         var reviewIds = reviews.Select(x => x.ReviewBlogId).ToList();
+        
+        // 4. Truy xuất tất cả phản hồi (Reply) liên quan đến các bình luận trên
         var allReplies = reviewIds.Count == 0
             ? new List<ReviewBlogReply>()
             : await _unitOfWork.Blogs.GetRepliesByReviewIdsAsync(reviewIds, includeHidden: true, cancellationToken);
+            
+        // Lọc danh sách phản hồi: Chỉ lấy phản hồi chưa bị xóa, không bị ẩn và có trạng thái là chờ duyệt thủ công hoặc đã duyệt
         var replies = allReplies
             .Where(x =>
                 !x.IsDeleted &&
@@ -771,9 +800,13 @@ public class BlogService : IBlogService
                 (string.Equals(x.ModerationStatus, ManualReviewStatus, StringComparison.OrdinalIgnoreCase)
                  || string.Equals(x.ModerationStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase)))
             .ToList();
+            
+        // 5. Truy xuất thông tin số lượng Like/Reaction của các bình luận và phản hồi tương ứng
         var reviewCounts = await _unitOfWork.Blogs.GetReviewReactionCountsByIdsAsync(reviewIds, cancellationToken);
         var replyIds = replies.Select(x => x.ReplyBlogId).ToList();
         var replyCounts = await _unitOfWork.Blogs.GetReplyReactionCountsByIdsAsync(replyIds, cancellationToken);
+        
+        // 6. Ánh xạ (Map) danh sách bình luận và phản hồi phẳng thành cấu trúc hình cây phân cấp
         var mapped = MapReviewThreads(
             reviews,
             replies,
@@ -783,38 +816,49 @@ public class BlogService : IBlogService
             new Dictionary<int, string>(),
             new Dictionary<int, string>());
 
+        // 7. Duyệt qua từng bình luận và phản hồi trong danh sách kết quả để đính kèm lý do bị từ chối/bị cấm hiển thị (nếu có)
         foreach (var reviewDto in mapped)
         {
+            // Lấy nhật ký từ chối duyệt bình luận gần nhất của bình luận này
             var latestRejectedLog = await _unitOfWork.Blogs.GetLatestRejectedCommentLogAsync(reviewDto.ReviewBlogId, cancellationToken);
             reviewDto.BanReasonId = latestRejectedLog?.BanReasonId;
             reviewDto.BanReasonContent = latestRejectedLog?.BanReason?.Content;
 
+            // Làm phẳng tất cả các cấp phản hồi của bình luận này để duyệt tìm lý do từ chối tương ứng
             var replyDtos = FlattenReplies(reviewDto.Replies);
             foreach (var replyDto in replyDtos)
             {
+                // Lấy nhật ký từ chối duyệt phản hồi gần nhất của phản hồi con này
                 var latestRejectedReplyLog = await _unitOfWork.Blogs.GetLatestRejectedReplyLogAsync(replyDto.ReplyBlogId, cancellationToken);
                 replyDto.BanReasonId = latestRejectedReplyLog?.BanReasonId;
                 replyDto.BanReasonContent = latestRejectedReplyLog?.BanReason?.Content;
             }
         }
 
+        // 8. Đếm tổng số lượng bản ghi để phân trang và trả về đối tượng kết quả hoàn chỉnh
         var totalCount = await _unitOfWork.Blogs.CountReviewsForManagementAsync(searchTerm, status, cancellationToken);
         return Result<PaginatedResponse<BlogReviewDto>>.Success(new PaginatedResponse<BlogReviewDto>(mapped, totalCount, pageNumber, pageSize));
     }
 
+    /// <summary>
+    /// Cập nhật trạng thái kiểm duyệt (Approved, Rejected, ManualReview) của một bình luận Blog (Review/Comment).
+    /// </summary>
     public async Task<Result<BlogReviewDto>> UpdateBlogReviewStatusAsync(int reviewBlogId, UpdateBlogReviewStatusDto dto, CancellationToken cancellationToken = default)
     {
+        // 1. Kiểm tra quyền hạn: Chỉ Admin hoặc Staff có quyền kiểm duyệt bình luận
         if (!IsPrivilegedUser())
         {
             return Result<BlogReviewDto>.Unauthorized();
         }
 
+        // 2. Tìm kiếm bình luận trong cơ sở dữ liệu
         var review = await _unitOfWork.Blogs.GetReviewByIdAsync(reviewBlogId, cancellationToken);
         if (review == null)
         {
             return Result<BlogReviewDto>.NotFound("Review", reviewBlogId);
         }
 
+        // 3. Kiểm tra tính hợp lệ của trạng thái duyệt mới yêu cầu
         var nextStatus = dto.ModerationStatus?.Trim() ?? string.Empty;
         var isAllowedStatus =
             string.Equals(nextStatus, ManualReviewStatus, StringComparison.OrdinalIgnoreCase)
@@ -827,16 +871,19 @@ public class BlogService : IBlogService
         }
 
         var isRejecting = string.Equals(nextStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase);
+        // 4. Ràng buộc bảo mật: Staff không thể từ chối bình luận của các tài khoản Staff/Admin khác (chỉ được từ chối bình luận của Khách hàng)
         if (isRejecting && IsStaffUser() && !IsCustomerAccount(review.Account))
         {
             return Result<BlogReviewDto>.Forbidden("You do not have permission to reject this blog review.");
         }
 
+        // 5. Nếu từ chối bình luận, bắt buộc phải cung cấp mã lý do cấm (BanReasonId)
         if (isRejecting && !dto.BanReasonId.HasValue)
         {
             return Result<BlogReviewDto>.Failure("VALIDATION_ERROR", "BanReasonId is required when ModerationStatus is Rejected.");
         }
 
+        // Kiểm tra mã lý do cấm có tồn tại trong danh sách lý do hợp lệ của hệ thống hay không
         if (dto.BanReasonId.HasValue)
         {
             var banReasons = await _unitOfWork.Blogs.GetBlogCommentBanReasonsAsync(cancellationToken);
@@ -846,6 +893,7 @@ public class BlogService : IBlogService
             }
         }
 
+        // 6. Ràng buộc luồng: Một bình luận đã được duyệt hiển thị (Approved) không thể đổi trạng thái ngược về Chờ duyệt (ManualReview)
         if (string.Equals(review.ModerationStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase)
             && string.Equals(nextStatus, ManualReviewStatus, StringComparison.OrdinalIgnoreCase))
         {
@@ -856,13 +904,15 @@ public class BlogService : IBlogService
         var now = _timeProvider.UtcNow;
         review.ModerationStatus = nextStatus;
         review.UpdatedAt = now;
+        
+        // 7. Cập nhật trạng thái bình luận vào DB
         await _unitOfWork.Blogs.UpdateReviewAsync(review, cancellationToken);
 
+        // 8. Lưu lịch sử/nhật ký hoạt động kiểm duyệt bình luận (BlogCommentModerationLog)
         await _unitOfWork.Blogs.AddCommentModerationLogAsync(new BlogCommentModerationLog
         {
             TargetType = "Comment",
             CommentId = review.ReviewBlogId,
-            // Current schema CK_BCML_ModeratorConsistency only allows Admin with non-null ModeratedBy.
             ModeratorType = "Admin",
             ModeratedBy = _currentUserService.AccountId > 0 ? _currentUserService.AccountId : null,
             Action = string.Equals(nextStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase) ? "Overridden" : nextStatus,
@@ -870,30 +920,38 @@ public class BlogService : IBlogService
             CreatedAt = now
         }, cancellationToken);
 
+        // 9. Nếu chuyển trạng thái từ bình thường sang Bị từ chối (Rejected): Áp dụng điểm vi phạm bình luận cho tài khoản người dùng
         if (!wasRejected && isRejecting)
         {
             await ApplyCommentViolationAsync(review.AccountId, now, cancellationToken);
         }
 
+        // 10. Gửi thông báo hệ thống/Email về trạng thái duyệt bình luận mới đến tác giả bình luận
         await SendReviewStatusNotificationAsync(review, nextStatus, dto.BanReasonId, cancellationToken);
 
         var updated = await _unitOfWork.Blogs.GetReviewByIdAsync(reviewBlogId, cancellationToken);
         return Result<BlogReviewDto>.Success(await MapReviewAsync(updated!, cancellationToken));
     }
 
+    /// <summary>
+    /// Cập nhật trạng thái kiểm duyệt (Approved, Rejected, ManualReview) của một phản hồi bình luận Blog (Reply).
+    /// </summary>
     public async Task<Result<BlogReviewReplyDto>> UpdateBlogReplyStatusAsync(int replyBlogId, UpdateBlogReviewStatusDto dto, CancellationToken cancellationToken = default)
     {
+        // 1. Kiểm tra quyền hạn: Chỉ Admin hoặc Staff có quyền kiểm duyệt phản hồi bình luận
         if (!IsPrivilegedUser())
         {
             return Result<BlogReviewReplyDto>.Unauthorized();
         }
 
+        // 2. Tìm kiếm phản hồi bình luận trong cơ sở dữ liệu
         var reply = await _unitOfWork.Blogs.GetReplyByIdAsync(replyBlogId, cancellationToken);
         if (reply == null)
         {
             return Result<BlogReviewReplyDto>.NotFound("Reply", replyBlogId);
         }
 
+        // 3. Kiểm tra tính hợp lệ của trạng thái duyệt mới yêu cầu
         var nextStatus = dto.ModerationStatus?.Trim() ?? string.Empty;
         var isAllowedStatus =
             string.Equals(nextStatus, ManualReviewStatus, StringComparison.OrdinalIgnoreCase)
@@ -906,16 +964,19 @@ public class BlogService : IBlogService
         }
 
         var isRejecting = string.Equals(nextStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase);
+        // 4. Ràng buộc bảo mật: Staff không thể từ chối phản hồi của các tài khoản Staff/Admin khác (chỉ được từ chối phản hồi của Khách hàng)
         if (isRejecting && IsStaffUser() && !IsCustomerAccount(reply.Account))
         {
             return Result<BlogReviewReplyDto>.Forbidden("You do not have permission to reject this blog review reply.");
         }
 
+        // 5. Nếu từ chối phản hồi, bắt buộc phải cung cấp mã lý do cấm (BanReasonId)
         if (isRejecting && !dto.BanReasonId.HasValue)
         {
             return Result<BlogReviewReplyDto>.Failure("VALIDATION_ERROR", "BanReasonId is required when ModerationStatus is Rejected.");
         }
 
+        // Kiểm tra mã lý do cấm có tồn tại trong danh sách lý do hợp lệ của hệ thống hay không
         if (dto.BanReasonId.HasValue)
         {
             var banReasons = await _unitOfWork.Blogs.GetBlogCommentBanReasonsAsync(cancellationToken);
@@ -925,6 +986,7 @@ public class BlogService : IBlogService
             }
         }
 
+        // 6. Ràng buộc luồng: Một phản hồi đã được duyệt hiển thị (Approved) không thể đổi trạng thái ngược về Chờ duyệt (ManualReview)
         if (string.Equals(reply.ModerationStatus, ApprovedStatus, StringComparison.OrdinalIgnoreCase)
             && string.Equals(nextStatus, ManualReviewStatus, StringComparison.OrdinalIgnoreCase))
         {
@@ -935,8 +997,11 @@ public class BlogService : IBlogService
         var now = _timeProvider.UtcNow;
         reply.ModerationStatus = nextStatus;
         reply.UpdatedAt = now;
+        
+        // 7. Cập nhật trạng thái phản hồi vào DB
         await _unitOfWork.Blogs.UpdateReplyAsync(reply, cancellationToken);
 
+        // 8. Lưu lịch sử/nhật ký hoạt động kiểm duyệt phản hồi (BlogCommentModerationLog)
         await _unitOfWork.Blogs.AddCommentModerationLogAsync(new BlogCommentModerationLog
         {
             TargetType = "Reply",
@@ -948,11 +1013,13 @@ public class BlogService : IBlogService
             CreatedAt = now
         }, cancellationToken);
 
+        // 9. Nếu chuyển trạng thái từ bình thường sang Bị từ chối (Rejected): Áp dụng điểm vi phạm bình luận cho tài khoản người dùng
         if (!wasRejected && isRejecting)
         {
             await ApplyCommentViolationAsync(reply.AccountId, now, cancellationToken);
         }
 
+        // 10. Gửi thông báo hệ thống/Email về trạng thái duyệt phản hồi mới đến tác giả phản hồi
         await SendReplyStatusNotificationAsync(reply, nextStatus, dto.BanReasonId, cancellationToken);
 
         var updated = await _unitOfWork.Blogs.GetReplyByIdAsync(replyBlogId, cancellationToken);
@@ -1637,6 +1704,9 @@ public class BlogService : IBlogService
         return dto;
     }
 
+    /// <summary>
+    /// Gửi thông báo hệ thống đến tác giả bình luận (Review) khi trạng thái duyệt thay đổi.
+    /// </summary>
     private async Task SendReviewStatusNotificationAsync(
         ReviewBlog review,
         string moderationStatus,
@@ -1645,6 +1715,7 @@ public class BlogService : IBlogService
     {
         try
         {
+            // Bỏ qua nếu tác giả bình luận không hợp lệ
             if (review.AccountId <= 0)
             {
                 return;
@@ -1652,6 +1723,8 @@ public class BlogService : IBlogService
 
             var title = "Comment status updated";
             var message = $"Your comment status has been updated to {moderationStatus}.";
+            
+            // Nếu bình luận bị từ chối (Rejected), tìm lý do cấm tương ứng để gửi kèm thông báo
             if (string.Equals(moderationStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase))
             {
                 var reason = string.Empty;
@@ -1667,6 +1740,7 @@ public class BlogService : IBlogService
                     : $"Your comment has been rejected because: {reason}.";
             }
 
+            // Thực hiện điều phối thông báo chuông (Bell) đến tài khoản người dùng
             await _notificationDispatcher.DispatchAsync(new NotificationContext
             {
                 RecipientAccountId = review.AccountId,
@@ -1674,18 +1748,22 @@ public class BlogService : IBlogService
                 NotificationType = NotificationTypes.System,
                 Title = title,
                 Message = message,
-                SendBell = true,
+                SendBell = true, // Gửi chuông thông báo trên website
                 SendEmail = false,
-                ActionTarget = $"/blog/{review.BlogPostId}",
+                ActionTarget = $"/blog/{review.BlogPostId}", // Đường dẫn điều hướng đến bài viết khi click thông báo
                 IdempotencyKey = $"blog-review-moderation:{review.ReviewBlogId}:{review.AccountId}:{moderationStatus}:{DateTime.UtcNow.Ticks}"
             }, cancellationToken);
         }
         catch (Exception ex)
         {
+            // Bọc try-catch tránh làm lỗi luồng nghiệp vụ duyệt nếu hệ thống thông báo lỗi kết nối
             _logger.LogWarning(ex, "Failed to send blog review moderation notification for review {ReviewBlogId}", review.ReviewBlogId);
         }
     }
 
+    /// <summary>
+    /// Gửi thông báo hệ thống đến tác giả phản hồi bình luận (Reply) khi trạng thái duyệt thay đổi.
+    /// </summary>
     private async Task SendReplyStatusNotificationAsync(
         ReviewBlogReply reply,
         string moderationStatus,
@@ -1694,6 +1772,7 @@ public class BlogService : IBlogService
     {
         try
         {
+            // Bỏ qua nếu tác giả phản hồi không hợp lệ
             if (reply.AccountId <= 0)
             {
                 return;
@@ -1701,6 +1780,8 @@ public class BlogService : IBlogService
 
             var title = "Reply status updated";
             var message = $"Your reply status has been updated to {moderationStatus}.";
+            
+            // Nếu phản hồi bị từ chối, lấy lý do cấm tương ứng
             if (string.Equals(moderationStatus, RejectedStatus, StringComparison.OrdinalIgnoreCase))
             {
                 var reason = string.Empty;
@@ -1716,6 +1797,7 @@ public class BlogService : IBlogService
                     : $"Your reply has been rejected because: {reason}.";
             }
 
+            // Tìm BlogPostId tương ứng để định tuyến chính xác
             var blogPostId = reply.ReviewBlog?.BlogPostId ?? 0;
             if (blogPostId <= 0 && reply.ReviewBlogId > 0)
             {
@@ -1723,10 +1805,12 @@ public class BlogService : IBlogService
                 blogPostId = review?.BlogPostId ?? 0;
             }
 
+            // Tạo thẻ neo để trình duyệt tự động scroll đến đúng vị trí phản hồi trên giao diện khi người dùng nhấp vào thông báo
             var actionTarget = blogPostId > 0
                 ? $"/blog/{blogPostId}#reply-{reply.ReplyBlogId}"
                 : "/blog";
 
+            // Thực hiện điều phối thông báo chuông
             await _notificationDispatcher.DispatchAsync(new NotificationContext
             {
                 RecipientAccountId = reply.AccountId,
@@ -1746,6 +1830,9 @@ public class BlogService : IBlogService
         }
     }
 
+    /// <summary>
+    /// Gửi thông báo hệ thống đến người dùng khi quyền bình luận của họ được khôi phục thành công.
+    /// </summary>
     private async Task SendBlogCommentPermissionRestoredNotificationAsync(int accountId, CancellationToken cancellationToken)
     {
         try
@@ -1755,6 +1842,7 @@ public class BlogService : IBlogService
                 return;
             }
 
+            // Gửi thông báo dạng chuông để người dùng biết họ đã có thể bình luận lại
             await _notificationDispatcher.DispatchAsync(new NotificationContext
             {
                 RecipientAccountId = accountId,
@@ -2022,20 +2110,20 @@ public class BlogService : IBlogService
     // ═══════════════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Generate nội dung bài blog bằng AI.
+    /// Gửi yêu cầu sinh tự động nội dung bài viết Blog bằng AI tích hợp.
     /// </summary>
     public async Task<Result<AiBlogGenerateResult>> GenerateWithAiAsync(
         AiBlogGenerateRequest request,
         CancellationToken cancellationToken = default)
     {
-        // ── Validate cơ bản bằng FluentValidation ──
+        // 1. Validate định dạng cú pháp cơ bản đầu vào của request bằng FluentValidation
         var validationResult = await _aiBlogGenerateRequestValidator.ValidateAsync(request, cancellationToken);
         if (!validationResult.IsValid)
         {
             return validationResult.ToResult<AiBlogGenerateResult>();
         }
 
-        // ── Validate đầu vào có ý nghĩa (chống gibberish / keyboard mash) ──
+        // 2. Validate nội dung có ý nghĩa (chống spam văn bản vô nghĩa hoặc gõ phím linh tinh)
         var meaningfulErrors = BlogMeaningfulInputHelper.ValidateMeaningfulInputs(
             request.Title,
             request.PromptStructure,
@@ -2049,11 +2137,12 @@ public class BlogService : IBlogService
         var action = string.IsNullOrWhiteSpace(request.Action) ? "Generate" : request.Action.Trim();
         var tone   = string.IsNullOrWhiteSpace(request.DefaultTone) ? "Friendly" : request.DefaultTone.Trim();
 
-        // ── Lấy source content từ blog có sẵn nếu không có source rờ ──
+        // 3. Chuẩn bị nội dung bài viết nguồn (Source Content) để làm ngữ cảnh tham khảo cho AI
         string? sourceContent = string.IsNullOrWhiteSpace(request.SourceContent)
             ? null
             : request.SourceContent.Trim();
 
+        // Nếu client cung cấp ID bài viết cũ và không truyền text nguồn trực tiếp, tự động tải nội dung cũ từ DB làm context nguồn
         if (request.BlogPostId.HasValue && request.BlogPostId.Value > 0 && string.IsNullOrWhiteSpace(sourceContent))
         {
             var existingResult = await GetBlogDetailsAsync(request.BlogPostId.Value, cancellationToken);
@@ -2065,7 +2154,7 @@ public class BlogService : IBlogService
             sourceContent = existingResult.Data.BlogContent;
         }
 
-        // ── Gọi AI gateway ──
+        // 4. Gửi yêu cầu sinh nội dung qua AI Content Generation Gateway (đóng vai trò Client gọi API Python AI)
         var aiResult = await _blogContentGenerationGateway.GenerateAsync(
             new PythonBlogGenerateRequest
             {
@@ -2079,9 +2168,10 @@ public class BlogService : IBlogService
             },
             cancellationToken);
 
+        // KIỂM TRA 1: Trường hợp API AI trả về lỗi
         if (!aiResult.IsSuccess)
         {
-            // AI service trả lỗi có body chi tiết
+            // Trả lỗi chi tiết nếu gateway nhận diện thân lỗi cụ thể từ Server AI
             if (aiResult.ErrorBody != null)
             {
                 _logger.LogWarning("AI generation failed with error body. Status: {Status}", aiResult.StatusCode);
@@ -2094,25 +2184,28 @@ public class BlogService : IBlogService
 
         var aiGenerated = aiResult.Data;
 
-        // ── AI chủ động block nội dung (nội dung vi phạm) ──
+        // KIỂM TRA 2: Trường hợp AI phát hiện và chặn nội dung do vi phạm quy tắc chính sách
         if (aiGenerated?.IsBlocked == true)
         {
             _logger.LogWarning("AI blocked content generation for title: {Title}", request.Title);
             return Result<AiBlogGenerateResult>.BusinessError("AI blocked this content due to policy violation.");
         }
 
+        // KIỂMTRA 3: Trường hợp AI trả về nội dung trống
         if (aiGenerated == null || string.IsNullOrWhiteSpace(aiGenerated.Content))
         {
             _logger.LogWarning("AI returned empty content for title: {Title}", request.Title);
             return Result<AiBlogGenerateResult>.Failure("AI_GENERATE_EMPTY", "AI returned empty content.");
         }
 
+        // Lấy tiêu đề sinh ra từ AI, nếu AI không cập nhật tiêu đề mới thì giữ nguyên tiêu đề ban đầu
         var generatedTitle = string.IsNullOrWhiteSpace(aiGenerated.Title)
             ? request.Title.Trim()
             : aiGenerated.Title.Trim();
 
         _logger.LogInformation("AI blog generated successfully for title: {Title}", request.Title);
 
+        // Trả về DTO kết quả sinh nội dung bài viết thành công
         return Result<AiBlogGenerateResult>.Success(new AiBlogGenerateResult
         {
             BlogPostId    = request.BlogPostId.GetValueOrDefault(0),

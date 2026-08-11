@@ -7,6 +7,9 @@ using ToyStore.Infrastructure.Data;
 
 namespace ToyStore.Infrastructure.Services;
 
+/// <summary>
+/// Dịch vụ quản lý và thống kê báo cáo cho trang Dashboard của Admin.
+/// </summary>
 public class AdminDashboardService : IAdminDashboardService
 {
     private const byte CustomerRoleId = 1;
@@ -14,6 +17,9 @@ public class AdminDashboardService : IAdminDashboardService
     private readonly SEP490ToyStoreContext _context;
     private readonly ITimeProvider _timeProvider;
 
+    /// <summary>
+    /// Khởi tạo dịch vụ AdminDashboardService với DbContext và TimeProvider.
+    /// </summary>
     public AdminDashboardService(
         SEP490ToyStoreContext context,
         ITimeProvider timeProvider)
@@ -22,10 +28,14 @@ public class AdminDashboardService : IAdminDashboardService
         _timeProvider = timeProvider;
     }
 
+    /// <summary>
+    /// Thống kê tỷ lệ và số lượng đơn hàng theo từng trạng thái (ví dụ: Đã giao, Chờ xử lý, Đã hủy...) trong khoảng thời gian bộ lọc.
+    /// </summary>
     public async Task<Result<DashboardOrderStatusStatisticsDto>> GetOrderStatusStatisticsAsync(
         DashboardTimeFilterDto filter,
         CancellationToken cancellationToken = default)
     {
+        // 1. Phân tích khoảng thời gian truy vấn (Kỳ này & Kỳ trước) từ bộ lọc của client gửi lên
         var resolved = ResolveRangePair(filter);
         if (resolved.IsFailure)
         {
@@ -34,19 +44,26 @@ public class AdminDashboardService : IAdminDashboardService
 
         var ranges = resolved.Data!;
 
+        // 2. Xây dựng truy vấn cơ sở lấy các đơn hàng hợp lệ trong kỳ hiện tại:
+        // - Đơn hàng chưa bị xóa (IsDeleted = false)
+        // - Không tính các đơn hàng sử dụng cổng SE_PAY nhưng chưa thanh toán thành công (để tránh nhiễu dữ liệu)
+        // - Ngày đặt hàng nằm trong khoảng thời gian của kỳ hiện tại
         var baseQuery = _context.Orders
             .AsNoTracking()
             .Where(o => !o.IsDeleted)
             .Where(o => !(o.PaymentMethod == "SE_PAY" && o.PaymentStatus != "PAID" && o.PaymentStatus != "REFUNDED" && o.PaymentStatus != "PARTIALLY_REFUNDED"))
             .Where(o => o.OrderDate >= ranges.Current.StartUtc && o.OrderDate < ranges.Current.EndUtcExclusive);
 
+        // 3. Đếm tổng số lượng đơn hàng hợp lệ
         var totalOrders = await baseQuery.CountAsync(cancellationToken);
 
+        // 4. Gom nhóm đơn hàng theo trạng thái và đếm số lượng của từng trạng thái trong DB
         var groupedStatusRows = await baseQuery
             .GroupBy(o => o.Status.StatusName)
             .Select(g => new { Status = g.Key, Value = g.Count() })
             .ToListAsync(cancellationToken);
 
+        // 5. Lấy danh sách tất cả các trạng thái đơn hàng hiện có để đảm bảo thống kê đầy đủ (kể cả trạng thái có 0 đơn hàng)
         var allStatuses = await _context.StatusOrders
             .AsNoTracking()
             .OrderBy(x => x.StatusId)
@@ -54,6 +71,8 @@ public class AdminDashboardService : IAdminDashboardService
             .ToListAsync(cancellationToken);
 
         var statusValueMap = groupedStatusRows.ToDictionary(x => x.Status, x => x.Value);
+        
+        // 6. Ánh xạ danh sách trạng thái kèm số lượng và tính phần trăm tỷ lệ tương ứng trên tổng đơn hàng
         var statuses = allStatuses
             .Select(statusName =>
             {
@@ -67,6 +86,7 @@ public class AdminDashboardService : IAdminDashboardService
             })
             .ToList();
 
+        // 7. Lấy danh sách thô ngày đặt hàng và trạng thái của các đơn hàng để phân bổ vào biểu đồ timeline
         var timelineRows = await baseQuery
             .Select(o => new DashboardOrderStatusEventRowDto
             {
@@ -75,8 +95,11 @@ public class AdminDashboardService : IAdminDashboardService
             })
             .ToListAsync(cancellationToken);
 
+        // 8. Phân chia kỳ hiện tại thành các phân đoạn (buckets) nhỏ (theo Ngày, Tuần, Tháng) để làm mốc trục X biểu đồ
         var buckets = BuildBuckets(ranges.Current);
         var timelineCountMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        
+        // 9. Duyệt qua từng đơn hàng để đếm phân bổ số lượng vào từng phân đoạn thời gian và trạng thái tương ứng
         foreach (var row in timelineRows)
         {
             var localOrderDate = _timeProvider.ToVnTime(row.OrderDateUtc);
@@ -91,6 +114,7 @@ public class AdminDashboardService : IAdminDashboardService
             timelineCountMap[key] = currentCount + 1;
         }
 
+        // 10. Khởi dựng chi tiết biểu đồ đảm bảo hiển thị đầy đủ mọi trạng thái ở từng mốc thời gian (nếu không có đơn hàng thì số lượng mặc định là 0)
         var details = new List<DashboardOrderStatusTimelinePointDto>();
         foreach (var bucket in buckets)
         {
@@ -117,10 +141,14 @@ public class AdminDashboardService : IAdminDashboardService
         });
     }
 
+    /// <summary>
+    /// Thống kê số lượng khách hàng đăng ký mới và tính phần trăm tăng trưởng so với kỳ trước.
+    /// </summary>
     public async Task<Result<DashboardNewCustomerStatisticsDto>> GetNewCustomerStatisticsAsync(
         DashboardTimeFilterDto filter,
         CancellationToken cancellationToken = default)
     {
+        // 1. Phân tích khoảng thời gian truy vấn (Kỳ này & Kỳ trước) từ bộ lọc của client
         var resolved = ResolveRangePair(filter);
         if (resolved.IsFailure)
         {
@@ -129,6 +157,7 @@ public class AdminDashboardService : IAdminDashboardService
 
         var ranges = resolved.Data!;
 
+        // 2. Truy xuất danh sách thời gian tạo tài khoản của khách hàng mới đăng ký trong kỳ hiện tại
         var currentRows = await _context.Accounts
             .AsNoTracking()
             .Where(a => !a.IsDeleted && a.RoleId == CustomerRoleId)
@@ -136,15 +165,20 @@ public class AdminDashboardService : IAdminDashboardService
             .Select(a => a.CreatedAt)
             .ToListAsync(cancellationToken);
 
+        // 3. Đếm số lượng khách hàng mới đăng ký trong kỳ trước đó để so sánh đối chứng
         var previousTotal = await _context.Accounts
             .AsNoTracking()
             .Where(a => !a.IsDeleted && a.RoleId == CustomerRoleId)
             .Where(a => a.CreatedAt >= ranges.Previous.StartUtc && a.CreatedAt < ranges.Previous.EndUtcExclusive)
             .CountAsync(cancellationToken);
 
+        // 4. Chia khoảng thời gian truy vấn thành các phân đoạn (buckets) để hiển thị trục X biểu đồ
         var buckets = BuildBuckets(ranges.Current);
+        
+        // 5. Đếm số lượng khách hàng đăng ký mới tương ứng rơi vào từng phân đoạn thời gian
         var valueByBucket = CountByBucket(currentRows, ranges.Current, buckets);
 
+        // 6. Ánh xạ dữ liệu biểu đồ chi tiết gửi về client
         var details = buckets
             .Select(b => new DashboardCountChartPointDto
             {
@@ -156,6 +190,7 @@ public class AdminDashboardService : IAdminDashboardService
 
         var currentTotal = currentRows.Count;
 
+        // 7. Trả về thống kê tổng hợp kèm theo tỷ lệ tăng trưởng so với kỳ trước
         return Result<DashboardNewCustomerStatisticsDto>.Success(new DashboardNewCustomerStatisticsDto
         {
             Range = ToRangeDto(ranges.Current),
@@ -166,6 +201,9 @@ public class AdminDashboardService : IAdminDashboardService
         });
     }
 
+    /// <summary>
+    /// Thống kê chỉ số doanh thu (trừ đi tiền hoàn trả đơn hàng), số lượng đơn hàng và tỷ lệ tăng trưởng so với kỳ trước.
+    /// </summary>
     public async Task<Result<DashboardGrowthStatisticsDto>> GetGrowthStatisticsAsync(
         DashboardTimeFilterDto filter,
         CancellationToken cancellationToken = default)
@@ -224,6 +262,9 @@ public class AdminDashboardService : IAdminDashboardService
         });
     }
 
+    /// <summary>
+    /// Thống kê tổng số lượng sản phẩm đang hoạt động trên hệ thống (chưa bị xóa).
+    /// </summary>
     public async Task<Result<DashboardTotalProductsDto>> GetTotalProductsAsync(
         CancellationToken cancellationToken = default)
     {
@@ -238,6 +279,9 @@ public class AdminDashboardService : IAdminDashboardService
         });
     }
 
+    /// <summary>
+    /// Xây dựng truy vấn để tính toán doanh thu thực tế (chỉ tính các đơn hàng có trạng thái Đã giao, Hoàn thành và đã thanh toán hợp lệ).
+    /// </summary>
     private IQueryable<Order> BuildRevenueQuery(DashboardTimeRangeInternalDto range)
     {
         string[] validRevenueStatuses = [OrderStatuses.Delivered, OrderStatuses.Completed];
@@ -251,6 +295,9 @@ public class AdminDashboardService : IAdminDashboardService
                 && (o.CompletedAt ?? o.DeliveredAt ?? o.PaidAt ?? o.OrderDate) < range.EndUtcExclusive);
     }
 
+    /// <summary>
+    /// Phân tích và chuyển đổi bộ lọc thời gian của Client thành cặp mốc thời gian (Kỳ hiện tại và Kỳ trước) theo giờ Việt Nam và UTC.
+    /// </summary>
     private Result<DashboardTimeRangePairDto> ResolveRangePair(DashboardTimeFilterDto filter)
     {
         var normalizedPeriod = NormalizePeriod(filter.Period);
@@ -338,6 +385,9 @@ public class AdminDashboardService : IAdminDashboardService
         return Result<DashboardTimeRangePairDto>.Success(new DashboardTimeRangePairDto(currentRange, previousRange));
     }
 
+    /// <summary>
+    /// Khởi tạo cấu trúc mốc thời gian đồng bộ giữa giờ Việt Nam và giờ UTC quốc tế.
+    /// </summary>
     private DashboardTimeRangeInternalDto BuildTimeRange(
         string period,
         string groupBy,
@@ -355,11 +405,17 @@ public class AdminDashboardService : IAdminDashboardService
         };
     }
 
+    /// <summary>
+    /// Chuẩn hóa định dạng chuỗi của mốc thời gian (mặc định là Tháng hiện tại nếu rỗng).
+    /// </summary>
     private static string NormalizePeriod(string? period)
     {
         return (period ?? DashboardTimePeriods.CurrentMonth).Trim().ToLowerInvariant();
     }
 
+    /// <summary>
+    /// Xác định chế độ gom nhóm dữ liệu (theo Ngày, Tuần, Tháng) tương ứng với khoảng thời gian truy vấn.
+    /// </summary>
     private static string ResolveGroupBy(
         string? requestedGroupBy,
         string period,
@@ -390,12 +446,18 @@ public class AdminDashboardService : IAdminDashboardService
         return DashboardGroupByModes.Month;
     }
 
+    /// <summary>
+    /// Lấy ngày đầu tuần (Thứ hai) của một ngày bất kỳ.
+    /// </summary>
     private static DateTime StartOfWeek(DateTime date)
     {
         var diff = ((int)date.DayOfWeek + 6) % 7;
         return date.Date.AddDays(-diff);
     }
 
+    /// <summary>
+    /// Lấy ngày đầu tiên của Quý chứa ngày bất kỳ.
+    /// </summary>
     private static DateTime StartOfQuarter(DateTime date)
     {
         var quarterIndex = (date.Month - 1) / 3;
@@ -403,6 +465,9 @@ public class AdminDashboardService : IAdminDashboardService
         return new DateTime(date.Year, startMonth, 1);
     }
 
+    /// <summary>
+    /// Chuyển đổi khoảng thời gian nội bộ sang định dạng DTO gửi về Client.
+    /// </summary>
     private static DashboardTimeRangeDto ToRangeDto(DashboardTimeRangeInternalDto range)
     {
         return new DashboardTimeRangeDto
@@ -414,6 +479,9 @@ public class AdminDashboardService : IAdminDashboardService
         };
     }
 
+    /// <summary>
+    /// Tính toán phần trăm tăng trưởng giữa kỳ hiện tại và kỳ trước (hỗ trợ kiểu decimal).
+    /// </summary>
     private static decimal CalculateGrowthPercentage(decimal current, decimal previous)
     {
         if (previous == 0)
@@ -424,6 +492,9 @@ public class AdminDashboardService : IAdminDashboardService
         return Math.Round(((current - previous) / previous) * 100m, 2);
     }
 
+    /// <summary>
+    /// Tính toán phần trăm tăng trưởng giữa kỳ hiện tại và kỳ trước (hỗ trợ kiểu int).
+    /// </summary>
     private static decimal CalculateGrowthPercentage(int current, int previous)
     {
         if (previous == 0)
@@ -434,6 +505,9 @@ public class AdminDashboardService : IAdminDashboardService
         return Math.Round(((decimal)(current - previous) / previous) * 100m, 2);
     }
 
+    /// <summary>
+    /// Tính toán tỷ lệ phần trăm (phép chia có làm tròn).
+    /// </summary>
     private static decimal CalculatePercentage(int numerator, int denominator)
     {
         if (denominator <= 0)
@@ -444,6 +518,9 @@ public class AdminDashboardService : IAdminDashboardService
         return Math.Round((decimal)numerator * 100m / denominator, 2);
     }
 
+    /// <summary>
+    /// Helper đóng gói thông báo lỗi khi phân tích mốc thời gian thất bại.
+    /// </summary>
     private static Result<T> ToRangeFailure<T>(Result<DashboardTimeRangePairDto> resolved)
     {
         return Result<T>.Failure(
@@ -451,6 +528,9 @@ public class AdminDashboardService : IAdminDashboardService
             resolved.ErrorMessage!);
     }
 
+    /// <summary>
+    /// Gom nhóm và đếm số lượng bản ghi rơi vào từng khoảng (bucket) thời gian của biểu đồ.
+    /// </summary>
     private Dictionary<int, int> CountByBucket(
         IEnumerable<DateTime> utcTimes,
         DashboardTimeRangeInternalDto range,
@@ -469,6 +549,9 @@ public class AdminDashboardService : IAdminDashboardService
         return valueByBucket;
     }
 
+    /// <summary>
+    /// Phân chia khoảng thời gian truy vấn thành các phân đoạn (buckets) nhỏ theo chế độ gom nhóm (Ngày, Tuần, Tháng) để vẽ biểu đồ.
+    /// </summary>
     private static List<DashboardBucketDto> BuildBuckets(DashboardTimeRangeInternalDto range)
     {
         var buckets = new List<DashboardBucketDto>();
@@ -516,6 +599,9 @@ public class AdminDashboardService : IAdminDashboardService
         return buckets;
     }
 
+    /// <summary>
+    /// Xác định xem một mốc thời gian cụ thể rơi vào phân đoạn (bucket) thứ mấy trong danh sách.
+    /// </summary>
     private static int ResolveBucketIndex(DateTime localTime, DashboardTimeRangeInternalDto range)
     {
         if (localTime < range.StartVn || localTime >= range.EndVnExclusive)
