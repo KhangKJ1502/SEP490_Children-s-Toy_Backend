@@ -289,14 +289,38 @@ public class SePayWebhookService : ISePayWebhookService
             return;
         }
 
-        // Trích AccountId từ key: WLT_{AccountId}_{uuid} hoặc tìm theo nội dung
-        // Format mong đợi: WLT_{anything} — cần lookup ví theo số tài khoản nhận
-        // Vì SE_PAY không truyền AccountId trực tiếp, dùng SubAccount nếu có hoặc content parse
-        // Tạm thời log warning và skip nếu không xác định được account
-        _logger.LogInformation("WLT webhook received with key '{Key}', amount {Amt}", idempotencyKey, amount);
+        // Trích AccountId từ key: WLT_{AccountId}_{uuid} hoặc WLT{AccountId}{uuid}
+        int? resolvedAccountId = null;
+        if (idempotencyKey.Contains('_'))
+        {
+            var parts = idempotencyKey.Split('_');
+            if (parts.Length >= 2 && string.Equals(parts[0], "WLT", StringComparison.OrdinalIgnoreCase))
+            {
+                if (int.TryParse(parts[1], out var accId))
+                {
+                    resolvedAccountId = accId;
+                }
+            }
+        }
+        else if (idempotencyKey.StartsWith("WLT", StringComparison.OrdinalIgnoreCase) && idempotencyKey.Length > 11)
+        {
+            // Định dạng không dấu gạch dưới: WLT (3 kí tự) + AccountId + UUID (8 kí tự của 4 bytes hex)
+            var accIdStr = idempotencyKey[3..^8];
+            if (int.TryParse(accIdStr, out var accId))
+            {
+                resolvedAccountId = accId;
+            }
+        }
 
-        // TODO: parse accountId từ idempotencyKey hoặc từ payload.SubAccount / ReferenceCode
-        // Khi deploy thật, cần thống nhất format WLT_{AccountId}_{uuid8}
+        if (resolvedAccountId.HasValue)
+        {
+            if (await TryHandleWalletTopUpFallbackAsync(resolvedAccountId.Value, idempotencyKey, payload, ct))
+            {
+                return;
+            }
+        }
+
+        _logger.LogWarning("WLT webhook fallback: unable to resolve AccountId from key '{Key}', amount {Amt}", idempotencyKey, amount);
 
     }
 
@@ -799,6 +823,141 @@ public class SePayWebhookService : ISePayWebhookService
             cartItem.RemovedAt = now;
             cartItem.UpdatedAt = now;
             remainingByProductId[cartItem.ProductId] = remainingQty - cartQty;
+        }
+    }
+
+    private async Task<bool> TryHandleWalletTopUpFallbackAsync(
+        int accountId,
+        string idempotencyKey,
+        SePayWebhookPayload payload,
+        CancellationToken ct)
+    {
+        var amount = payload.TransferAmount;
+        var now = _timeProvider.UtcNow;
+        var rawCallback = JsonSerializer.Serialize(payload);
+        var webhookTxnNo = ResolveWebhookTransactionNo(payload);
+
+        // 1. Kiểm tra ví của tài khoản
+        var wallet = await _uow.Orders.GetWalletByAccountIdAsync(accountId, ct);
+        if (wallet == null)
+        {
+            _logger.LogWarning("WLT fallback: wallet not found for AccountId {AccountId}, key '{Key}'", accountId, idempotencyKey);
+            return false;
+        }
+
+        await _uow.BeginTransactionAsync(ct);
+        try
+        {
+            // 2. Chống lặp (Idempotency) - Kiểm tra xem giao dịch ví đã tồn tại chưa
+            var existingWalletTransaction = await _db.WalletTransactions
+                .FirstOrDefaultAsync(wt => wt.IdempotencyKey == idempotencyKey, ct);
+
+            var paymentGatewayTxn = await _uow.Orders.GetPaymentTransactionByRequestIdAsync(idempotencyKey, ct);
+            if (paymentGatewayTxn == null)
+            {
+                // Vì không có cache trong Redis, ta dùng WalletTopUpAttemptCache tạm thời để tạo Shadow Order
+                var tempAttempt = new WalletTopUpAttemptCache
+                {
+                    AttemptCode = idempotencyKey,
+                    AccountId = accountId,
+                    WalletId = wallet.WalletId,
+                    Amount = amount,
+                    Status = "PAID",
+                    CreatedAt = now,
+                    CompletedAt = now
+                };
+
+                var topUpOrder = await GetOrCreateWalletTopUpShadowOrderAsync(tempAttempt, idempotencyKey, now, ct);
+                paymentGatewayTxn = new PaymentGatewayTransaction
+                {
+                    OrderId = topUpOrder.OrderId,
+                    Provider = "SE_PAY",
+                    RequestId = idempotencyKey,
+                    Amount = amount,
+                    Status = "Pending",
+                    RetryCount = 0,
+                    CreatedAt = now
+                };
+                await _db.PaymentGatewayTransactions.AddAsync(paymentGatewayTxn, ct);
+            }
+
+            WalletTransaction? walletTransaction = existingWalletTransaction;
+            var balanceAfter = wallet.Balance;
+            var createdWalletTransaction = false;
+
+            if (existingWalletTransaction == null)
+            {
+                var balanceBefore = wallet.Balance;
+                wallet.Balance += amount;
+                balanceAfter = wallet.Balance;
+
+                walletTransaction = new WalletTransaction
+                {
+                    WalletId = wallet.WalletId,
+                    AccountId = accountId,
+                    TxnType = "TopUp",
+                    Direction = "CR",
+                    Amount = amount,
+                    BalanceBefore = balanceBefore,
+                    BalanceAfter = balanceAfter,
+                    Method = "BankTransfer",
+                    Reason = "Top up via Bank Transfer (SePay fallback)",
+                    IdempotencyKey = idempotencyKey,
+                    Status = "Completed",
+                    CreatedAt = now,
+                    CompletedAt = now
+                };
+
+                await _uow.Orders.AddWalletTransactionAsync(walletTransaction, ct);
+                createdWalletTransaction = true;
+            }
+
+            paymentGatewayTxn.TransactionNo = paymentGatewayTxn.TransactionNo ?? webhookTxnNo;
+            paymentGatewayTxn.ResponseCode = "00";
+            paymentGatewayTxn.ResponseMessage = "Transaction Success";
+            paymentGatewayTxn.Status = "Paid";
+            paymentGatewayTxn.RawCallback = rawCallback;
+            paymentGatewayTxn.UpdatedAt = now;
+
+            await _uow.SaveChangesAsync(ct);
+            await _uow.CommitTransactionAsync(ct);
+
+            // 3. Gửi thông báo / Publish event nếu giao dịch ví mới được tạo
+            if (createdWalletTransaction && walletTransaction != null)
+            {
+                await _eventPublisher.PublishAsync(
+                    "Wallet",
+                    walletTransaction.WalletTransactionId.ToString(),
+                    NotificationEventTypes.WalletTopup,
+                    new
+                    {
+                        accountId = accountId,
+                        amount = amount,
+                        balanceAfter,
+                        walletTransactionId = walletTransaction.WalletTransactionId
+                    },
+                    CancellationToken.None);
+            }
+
+            _logger.LogInformation(
+                "WLT fallback processed: key='{Key}', walletTxnId={WalletTxnId}, amount={Amount}",
+                idempotencyKey,
+                walletTransaction?.WalletTransactionId,
+                amount);
+
+            return true;
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            await _uow.RollbackTransactionAsync(ct);
+            _logger.LogWarning("WLT fallback: unique constraint violation for key '{Key}'", idempotencyKey);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            await _uow.RollbackTransactionAsync(ct);
+            _logger.LogError(ex, "WLT fallback: failed to process fallback top-up for key '{Key}'", idempotencyKey);
+            throw;
         }
     }
 
