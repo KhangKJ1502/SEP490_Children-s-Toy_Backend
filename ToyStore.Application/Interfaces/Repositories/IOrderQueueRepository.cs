@@ -19,6 +19,10 @@ public interface IOrderQueueRepository
     /// <summary>
     /// Lấy tất cả OrderQueue được tạo trong khoảng [fromUtc, toUtc] để dùng cho digest email.
     /// </summary>
-    Task<List<OrderQueue>> GetInWindowAsync(DateTime fromUtc, DateTime toUtc, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Tự động đánh dấu IsResolved = true cho tất cả hàng đợi của một đơn hàng khi đơn hàng hoàn thành/giao xong/bị hủy.
+    /// </summary>
+    Task ResolveByOrderIdAsync(int orderId, CancellationToken cancellationToken = default);
 }
+
 

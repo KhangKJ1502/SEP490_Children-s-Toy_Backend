@@ -87,6 +87,8 @@ public partial class Order
 
     public byte DeliveryFailCount { get; set; }
 
+    public string? DeliveryImageUrl { get; set; }
+
     public virtual Account Account { get; set; } = null!;
 
     public virtual Account? AssignedToStaff { get; set; }

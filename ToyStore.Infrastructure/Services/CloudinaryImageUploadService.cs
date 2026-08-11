@@ -100,4 +100,43 @@ public class CloudinaryImageUploadService : IImageUploadService
             return Result<string>.Failure("UPLOAD_ERROR", "An unexpected error occurred during image upload.");
         }
     }
+
+    public async Task<Result<string>> UploadImageFromUrlAsync(
+        string sourceUrl,
+        string folder,
+        string? publicId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(sourceUrl))
+        {
+            return Result<string>.Failure("VALIDATION_ERROR", "Source URL is empty.");
+        }
+
+        try
+        {
+            var uploadParams = new ImageUploadParams
+            {
+                File = new FileDescription(sourceUrl),
+                Folder = folder,
+                PublicId = publicId,
+                Transformation = new Transformation().Quality("auto").FetchFormat("auto")
+            };
+
+            var uploadResult = await _cloudinary.UploadAsync(uploadParams);
+
+            if (uploadResult.Error != null)
+            {
+                _logger.LogError("Cloudinary upload from URL error: {Message}", uploadResult.Error.Message);
+                return Result<string>.Failure("UPLOAD_ERROR", uploadResult.Error.Message);
+            }
+
+            return Result<string>.Success(uploadResult.SecureUrl.ToString());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error uploading image from URL '{Url}' to Cloudinary.", sourceUrl);
+            return Result<string>.Failure("UPLOAD_ERROR", "An unexpected error occurred during image upload from URL.");
+        }
+    }
 }
+

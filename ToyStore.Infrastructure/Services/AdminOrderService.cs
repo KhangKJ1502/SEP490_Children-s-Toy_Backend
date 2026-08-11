@@ -80,6 +80,8 @@ public class AdminOrderService : IAdminOrderService
         _orderAccess = orderAccess;
     }
 
+
+
     // ── UC1: Danh sach don hang ───────────────────────────────────────────────
 
     public async Task<Result<PaginatedResponse<AdminOrderListItemDto>>> GetListAsync(
@@ -1053,3 +1055,5 @@ public class AdminOrderService : IAdminOrderService
         return $"Order in status '{statusName}' cannot be reassigned.";
     }
 }
+
+

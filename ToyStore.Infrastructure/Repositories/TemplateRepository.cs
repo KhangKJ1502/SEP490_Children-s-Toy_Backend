@@ -178,6 +178,22 @@ public class TemplateRepository : ITemplateRepository
         bool isActive,
         CancellationToken cancellationToken = default)
     {
+        var normalized = templateCode.Trim().ToLower();
+        var existingDeleted = await _context.Templates
+            .FirstOrDefaultAsync(x => x.TemplateCode.ToLower() == normalized && x.IsDeleted, cancellationToken);
+
+        if (existingDeleted != null)
+        {
+            existingDeleted.TitleTemplate = titleTemplate;
+            existingDeleted.MessageTemplate = messageTemplate;
+            existingDeleted.IsActive = isActive;
+            existingDeleted.IsDeleted = false;
+            existingDeleted.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync(cancellationToken);
+            return existingDeleted;
+        }
+
         var entity = new Template
         {
             TemplateCode = templateCode,
