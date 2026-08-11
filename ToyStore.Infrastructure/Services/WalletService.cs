@@ -811,10 +811,9 @@ public class WalletService : IWalletService
 
     private static string BuildTopUpAttemptCode(int accountId)
     {
-        _ = accountId;
-        var bytes = RandomNumberGenerator.GetBytes(6);
+        var bytes = RandomNumberGenerator.GetBytes(4);
         var uid = Convert.ToHexString(bytes).ToLowerInvariant();
-        return $"WLT{uid}";
+        return $"WLT{accountId}{uid}";
     }
 
     private string BuildVietQrUrl(string attemptCode, long amount)
