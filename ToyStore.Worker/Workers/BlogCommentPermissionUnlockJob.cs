@@ -41,6 +41,9 @@ public class BlogCommentPermissionUnlockJob : BackgroundService
     }
 
 
+    /// <summary>
+    /// Thực hiện quét cơ sở dữ liệu để tự động mở khóa các tài khoản bị phạt tạm thời đã hết hạn.
+    /// </summary>
     private async Task RunAsync(CancellationToken ct)
     {
         using var scope = _services.CreateScope();
@@ -53,30 +56,35 @@ public class BlogCommentPermissionUnlockJob : BackgroundService
         try
         {
             var nowUtc = _timeProvider.UtcNow;
+            
+            // 1. Tìm các tài khoản đang bị cấm bình luận (IsCommentBanned = true) mà thời gian hết hạn cấm đã trôi qua
             var expiredBans = await db.BlogCommentViolationCounts
                 .Where(x => x.IsCommentBanned
                          && x.BanExpiresAt != null
                          && x.BanExpiresAt <= nowUtc)
                 .ToListAsync(ct);
 
+            // 2. Lặp qua các tài khoản đã hết hạn cấm để phục hồi lại trạng thái bình thường
             foreach (var state in expiredBans)
             {
-                state.IsCommentBanned = false;
-                state.BannedAt = null;
-                state.BanExpiresAt = null;
-                state.ViolationCount = 0;
-                state.LastViolatedAt = null;
-                state.UnbannedAt = nowUtc;
-                state.UnbannedBy = null;
-                state.UpdatedAt = nowUtc;
+                state.IsCommentBanned = false; // Bỏ cờ bị cấm bình luận
+                state.BannedAt = null;         // Xóa ngày bắt đầu cấm
+                state.BanExpiresAt = null;     // Xóa ngày hết hạn cấm
+                state.ViolationCount = 0;      // Reset điểm số lần vi phạm về 0
+                state.LastViolatedAt = null;   // Xóa mốc thời gian vi phạm cuối cùng
+                state.UnbannedAt = nowUtc;     // Lưu mốc thời gian mở khóa tự động
+                state.UnbannedBy = null;       // Được mở khóa tự động bởi hệ thống (null)
+                state.UpdatedAt = nowUtc;      // Cập nhật ngày sửa đổi trạng thái
             }
 
+            // 3. Nếu có tài khoản được mở khóa, lưu thay đổi vào Database và gửi thông báo hệ thống cho người dùng
             if (expiredBans.Count > 0)
             {
                 await db.SaveChangesAsync(ct);
 
                 foreach (var state in expiredBans)
                 {
+                    // Gửi thông báo dạng chuông để thông báo cho khách hàng biết quyền bình luận đã được phục hồi
                     await dispatcher.DispatchAsync(new NotificationContext
                     {
                         RecipientAccountId = state.AccountId,
@@ -108,6 +116,7 @@ public class BlogCommentPermissionUnlockJob : BackgroundService
             _logger.LogError(ex, "BlogCommentPermissionUnlockJob failed");
         }
 
+        // 4. Lưu vết hoạt động chạy Job nền vào bảng đo lường (Telemetry)
         await BackgroundJobTelemetry.RecordAsync(
             scope.ServiceProvider.GetRequiredService<SEP490ToyStoreContext>(),
             "BlogCommentPermissionUnlockJob", success, message, _logger, ct);
