@@ -273,6 +273,9 @@ public class SePayWebhookService : ISePayWebhookService
 
     // ── WLT_: Nạp ví ─────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Hàm điều hướng xử lý webhook nạp tiền ví từ SePay (WLT).
+    /// </summary>
     private async Task HandleWalletTopUpAsync(string idempotencyKey, SePayWebhookPayload payload, CancellationToken ct)
     {
         var amount = payload.TransferAmount;
@@ -411,6 +414,9 @@ public class SePayWebhookService : ISePayWebhookService
         return NormalizeAttemptCode(token);
     }
 
+    /// <summary>
+    /// Xử lý giao dịch nạp tiền ví dựa trên thông tin yêu cầu nạp tiền còn lưu trong Redis cache (xảy ra trong vòng 24h).
+    /// </summary>
     private async Task<bool> TryHandleWalletTopUpFromAttemptCacheAsync(
         string idempotencyKey,
         SePayWebhookPayload payload,
@@ -593,6 +599,9 @@ public class SePayWebhookService : ISePayWebhookService
         return true;
     }
 
+    /// <summary>
+    /// Bổ sung (backfill) thông tin giao dịch cổng thanh toán nếu giao dịch ví đã được xử lý nhưng lịch sử cổng thanh toán chưa được ghi nhận.
+    /// </summary>
     private async Task<bool> TryBackfillWalletTopUpGatewayTransactionAsync(
         string idempotencyKey,
         SePayWebhookPayload payload,
@@ -661,6 +670,9 @@ public class SePayWebhookService : ISePayWebhookService
         }
     }
 
+    /// <summary>
+    /// Tạo mới hoặc lấy đơn hàng bóng (Shadow Order - dùng làm trung gian liên kết) để quản lý lịch sử giao dịch nạp tiền ví trên cổng thanh toán.
+    /// </summary>
     private async Task<Order> GetOrCreateWalletTopUpShadowOrderAsync(
         WalletTopUpAttemptCache topUpAttempt,
         string idempotencyKey,
@@ -826,6 +838,9 @@ public class SePayWebhookService : ISePayWebhookService
         }
     }
 
+    /// <summary>
+    /// Luồng dự phòng khi Redis cache đã hết hạn (quá 24h): Giải mã AccountId trực tiếp từ nội dung chuyển khoản để tự động cộng tiền và lưu thông tin nạp tiền ví vào cơ sở dữ liệu.
+    /// </summary>
     private async Task<bool> TryHandleWalletTopUpFallbackAsync(
         int accountId,
         string idempotencyKey,
