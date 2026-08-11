@@ -306,6 +306,11 @@ public class WalletService : IWalletService
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
+            // KIỂM TRA & TẠO TOKEN NẠP TIỀN:
+            // Nếu hành động là nạp tiền ví (TOP_UP), hệ thống sẽ sinh ra một chuỗi token ngẫu nhiên gọi là topUpToken 
+            // (có thời gian sống ngắn, thường là 10 phút - TopUpVerifyExpiry) và lưu vào Redis kèm theo ID ví.
+            // Điều này đóng vai trò là bằng chứng xác thực hợp lệ: "Người dùng này đã nhập đúng mã PIN và có quyền nạp tiền".
+            // Frontend sẽ dùng topUpToken này ở bước tiếp theo để gọi API tạo mã QR nạp tiền. Hàm này chưa tạo mã QR.
             string? topUpToken = null;
             if (string.Equals(actionType, "TOP_UP", StringComparison.OrdinalIgnoreCase))
             {
@@ -373,69 +378,87 @@ public class WalletService : IWalletService
             $"Incorrect PIN. You have {remainingAttempts} attempt(s) remaining before temporary lock.");
     }
 
+    /// <summary>
+    /// Tạo mã QR VietQR (SePay) phục vụ cho việc nạp tiền vào ví của khách hàng.
+    /// </summary>
     public async Task<Result<SePayTopUpQrResponseDto>> CreateSePayTopUpQrAsync(
         CreateSePayTopUpQrRequestDto dto,
         CancellationToken cancellationToken = default)
     {
+        // 1. Kiểm tra tính hợp lệ của DTO đầu vào (Validate số tiền nạp hợp lệ)
         var validation = await _createSePayTopUpQrValidator.ValidateAsync(dto, cancellationToken);
         if (!validation.IsValid)
         {
             return validation.ToResult<SePayTopUpQrResponseDto>();
         }
 
+        // 2. Xác định AccountID của khách hàng đang đăng nhập từ Session/JWT Token
         var accountId = _currentUserService.AccountId;
         if (accountId <= 0)
         {
             return Result<SePayTopUpQrResponseDto>.Unauthorized("User is not authenticated.");
         }
 
+        // 3. Truy xuất thông tin ví của khách hàng từ Database
         var wallet = await _unitOfWork.Wallets.GetByAccountIdAsync(accountId, cancellationToken);
         if (wallet == null)
         {
             return Result<SePayTopUpQrResponseDto>.NotFound("Wallet");
         }
 
+        // 4. KIỂM TRA TRẠNG THÁI VÍ: Ví phải ở trạng thái hoạt động (Active) và không bị đóng băng (Frozen)
         if (IsFrozen(wallet.Status) || !IsWalletActive(wallet.Status))
         {
             return Result<SePayTopUpQrResponseDto>.BusinessError("Wallet is not available for top-up.");
         }
 
+        // 5. XÁC THỰC MÃ PIN: Kiểm tra xem token xác nhận PIN thành công (TopUpToken) còn hạn và hợp lệ trên Redis hay không
         var verifyKey = BuildTopUpVerifyKey(accountId, dto.TopUpToken.Trim());
         var verifyValue = await _redisService.GetAsync(verifyKey);
         if (string.IsNullOrWhiteSpace(verifyValue))
         {
+            // Nếu token đã hết hạn (sau 10 phút) hoặc không hợp lệ, yêu cầu người dùng xác thực lại mã PIN của ví
             return Result<SePayTopUpQrResponseDto>.BusinessError("Top-up PIN verification has expired. Please verify PIN again.");
         }
 
+        // Đảm bảo token ví trùng khớp chính xác với WalletId của ví người dùng
         if (!string.Equals(verifyValue, wallet.WalletId.ToString(), StringComparison.Ordinal))
         {
             return Result<SePayTopUpQrResponseDto>.Unauthorized("Invalid top-up verification token.");
         }
 
+        // 6. KHỞI TẠO YÊU CẦU NẠP TIỀN:
+        // Làm tròn số tiền cần nạp thành số nguyên (đồng VND không có phần thập phân)
         var amount = decimal.Round(dto.Amount, 0, MidpointRounding.AwayFromZero);
+        // Tạo mã giao dịch nạp ví ngẫu nhiên không chứa gạch dưới (WLT{AccountId}{randomHex})
         var attemptCode = BuildTopUpAttemptCode(accountId);
         var now = DateTime.UtcNow;
+        // Tính toán thời gian hết hạn của yêu cầu quét mã QR nạp tiền (thời gian sống - TTL cấu hình qua SePay)
         var expiresAt = now.AddMinutes(Math.Max(1, _sePayOptions.PaymentTtlMinutes));
 
+        // Khởi tạo đối tượng cache biểu thị thông tin chi tiết của đợt nạp tiền
         var topUpAttempt = new WalletTopUpAttemptCache
         {
             AttemptCode = attemptCode,
             AccountId = accountId,
             WalletId = wallet.WalletId,
             Amount = amount,
-            Status = "PENDING",
+            Status = "PENDING", // Trạng thái ban đầu chờ chuyển tiền
             CreatedAt = now,
             CompletedAt = null,
             WalletTransactionId = null
         };
 
+        // 7. LƯU THÔNG TIN VÀO REDIS: Lưu cache giao dịch PENDING trong vòng 24h để chờ đối soát từ webhook SePay gửi về
         await _redisService.SetAsync(
             BuildTopUpAttemptKey(attemptCode),
             JsonSerializer.Serialize(topUpAttempt),
             TimeSpan.FromHours(24));
 
+        // 8. TẠO MÃ QR: Tạo liên kết gọi đến cổng VietQR/SePay tự động điền thông tin (Số tài khoản nhận, Ngân hàng, Số tiền, Mã giao dịch làm nội dung)
         var qrImageUrl = BuildVietQrUrl(attemptCode, (long)amount);
 
+        // 9. Trả về phản hồi chứa mã QR và thông tin tài khoản nhận tiền để Client hiển thị lên giao diện quét mã
         return Result<SePayTopUpQrResponseDto>.Success(new SePayTopUpQrResponseDto
         {
             AttemptCode = attemptCode,
@@ -449,16 +472,21 @@ public class WalletService : IWalletService
         });
     }
 
+    /// <summary>
+    /// Truy vấn trạng thái giao dịch nạp tiền vào ví (PENDING, PAID, FAILED) từ bộ nhớ đệm Redis.
+    /// </summary>
     public async Task<Result<SePayTopUpStatusResponseDto>> GetSePayTopUpStatusAsync(
         string attemptCode,
         CancellationToken cancellationToken = default)
     {
+        // 1. Kiểm tra xác thực người dùng đăng nhập
         var accountId = _currentUserService.AccountId;
         if (accountId <= 0)
         {
             return Result<SePayTopUpStatusResponseDto>.Unauthorized("User is not authenticated.");
         }
 
+        // 2. Chuẩn hóa mã giao dịch nạp tiền và kiểm tra xem có hợp lệ (phải bắt đầu bằng WLT) hay không
         var normalizedAttemptCode = (attemptCode ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(normalizedAttemptCode)
             || !normalizedAttemptCode.StartsWith("WLT", StringComparison.OrdinalIgnoreCase))
@@ -466,12 +494,15 @@ public class WalletService : IWalletService
             return Result<SePayTopUpStatusResponseDto>.BusinessError("Invalid top-up attempt code.");
         }
 
+        // 3. Truy vấn thông tin giao dịch nạp tiền từ Redis Cache
         var raw = await _redisService.GetAsync(BuildTopUpAttemptKey(normalizedAttemptCode));
         if (string.IsNullOrWhiteSpace(raw))
         {
+            // Trả về NotFound nếu không tìm thấy giao dịch (đã quá 24h hoặc mã không đúng)
             return Result<SePayTopUpStatusResponseDto>.NotFound("Top-up attempt");
         }
 
+        // 4. Giải mã (Deserialize) dữ liệu JSON từ Redis sang đối tượng C#
         WalletTopUpAttemptCache? topUpAttempt;
         try
         {
@@ -483,11 +514,13 @@ public class WalletService : IWalletService
             return Result<SePayTopUpStatusResponseDto>.Failure("INTERNAL_ERROR", "Top-up status data is invalid.");
         }
 
+        // 5. Kiểm tra bảo mật: Đảm bảo giao dịch nạp tiền này thuộc về chính khách hàng đang đăng nhập
         if (topUpAttempt == null || topUpAttempt.AccountId != accountId)
         {
             return Result<SePayTopUpStatusResponseDto>.NotFound("Top-up attempt");
         }
 
+        // 6. Trả về thông tin trạng thái nạp tiền mới nhất (PENDING, PAID, FAILED,...)
         return Result<SePayTopUpStatusResponseDto>.Success(new SePayTopUpStatusResponseDto
         {
             AttemptCode = topUpAttempt.AttemptCode,
@@ -809,24 +842,39 @@ public class WalletService : IWalletService
     private static string BuildTopUpAttemptKey(string attemptCode)
         => $"{TopUpAttemptPrefix}{attemptCode.ToUpperInvariant()}";
 
+    /// <summary>
+    /// Sinh mã giao dịch nạp tiền ví ngẫu nhiên và an toàn:
+    /// - Không chứa ký tự gạch dưới để tránh bị ngân hàng tự động loại bỏ.
+    /// - Cấu trúc: WLT + {AccountId} + {8 ký tự Hex ngẫu nhiên}.
+    /// </summary>
     private static string BuildTopUpAttemptCode(int accountId)
     {
+        // Sinh ngẫu nhiên 4 bytes bảo mật
         var bytes = RandomNumberGenerator.GetBytes(4);
+        // Chuyển sang dạng Hex (8 ký tự)
         var uid = Convert.ToHexString(bytes).ToLowerInvariant();
+        // Trả về mã giao dịch dạng không dấu gạch dưới (VD: WLT1013e488064b)
         return $"WLT{accountId}{uid}";
     }
 
+    /// <summary>
+    /// Xây dựng đường dẫn URL hiển thị ảnh mã QR thanh toán (VietQR) qua cổng SePay:
+    /// Tự động điền tài khoản ngân hàng đích, mã ngân hàng, số tiền và nội dung chuyển khoản là mã giao dịch.
+    /// </summary>
     private string BuildVietQrUrl(string attemptCode, long amount)
     {
+        // Thu thập các tham số cần thiết cho VietQR
         var p = new System.Collections.Specialized.NameValueCollection
         {
-            ["acc"] = _sePayOptions.AccountNumber,
-            ["bank"] = _sePayOptions.BankCode,
-            ["amount"] = amount.ToString(),
-            ["des"] = attemptCode
+            ["acc"] = _sePayOptions.AccountNumber, // Số tài khoản thụ hưởng
+            ["bank"] = _sePayOptions.BankCode,     // Mã định danh ngân hàng (VD: MBBank, Vietcombank...)
+            ["amount"] = amount.ToString(),        // Số tiền chuyển khoản
+            ["des"] = attemptCode                  // Nội dung chuyển khoản bắt buộc (Mã attemptCode để webhook đối soát)
         };
 
+        // Ghép các tham số thành chuỗi Query String được URL-encode
         var qs = string.Join("&", p.AllKeys.Select(k => $"{k}={Uri.EscapeDataString(p[k]!)}"));
+        // Trả về đường dẫn API tạo ảnh QR của SePay
         return $"https://qr.sepay.vn/img?{qs}";
     }
 
