@@ -48,6 +48,9 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
     }
 
 
+    /// <summary>
+    /// Thực hiện quét và tự động xử lý từ chối các bình luận/phản hồi chờ duyệt tay quá 24h.
+    /// </summary>
     private async Task RunAsync(CancellationToken ct)
     {
         using var scope = _services.CreateScope();
@@ -60,6 +63,8 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
         try
         {
             var nowUtc = _timeProvider.UtcNow;
+            
+            // 1. Tìm các bình luận (Comments) chưa xóa, ở trạng thái Chờ duyệt tay (ManualReview) và đã quá hạn duyệt deadline
             var comments = await db.ReviewBlogs
                 .Where(x => !x.IsDeleted
                          && x.ModerationStatus == "ManualReview"
@@ -67,6 +72,7 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
                          && x.ManualReviewDeadline <= nowUtc)
                 .ToListAsync(ct);
 
+            // 2. Tìm các phản hồi bình luận (Replies) chưa xóa, ở trạng thái Chờ duyệt tay (ManualReview) và đã quá hạn duyệt
             var replies = await db.ReviewBlogReplies
                 .Where(x => !x.IsDeleted
                          && x.ModerationStatus == "ManualReview"
@@ -74,33 +80,46 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
                          && x.ManualReviewDeadline <= nowUtc)
                 .ToListAsync(ct);
 
+            // 3. Lấy hoặc khởi tạo ID lý do cấm tự động do hệ thống hết hạn duyệt 24 giờ
             var timeoutBanReasonId = comments.Count + replies.Count > 0
                 ? await GetOrCreateTimeoutBanReasonIdAsync(db, nowUtc, ct)
                 : (byte?)null;
 
+            // 4. Xử lý từ chối tự động cho các bình luận quá hạn
             foreach (var comment in comments)
             {
-                comment.ModerationStatus = "Rejected";
-                comment.ManualReviewDeadline = null;
+                comment.ModerationStatus = "Rejected"; // Đổi trạng thái sang Rejected
+                comment.ManualReviewDeadline = null;   // Xóa deadline chờ duyệt tay
                 comment.UpdatedAt = nowUtc;
 
+                // Thêm bản ghi nhật ký kiểm duyệt tự động bởi hệ thống
                 db.BlogCommentModerationLogs.Add(CreateTimeoutLog(
                     "Comment", comment.ReviewBlogId, null, timeoutBanReasonId!.Value, nowUtc));
                 await db.SaveChangesAsync(ct);
+                
+                // Gửi thông báo đến tài khoản người dùng báo tin nhắn bị từ chối do quá hạn duyệt
                 await NotifyAutoRejectedAsync(dispatcher, comment.AccountId, "Comment", comment.ReviewBlogId, ct);
+                
+                // Tính điểm phạt vi phạm và tiến hành khóa tạm thời nếu đạt ngưỡng
                 await RegisterViolationAndLockIfNeededAsync(db, dispatcher, comment.AccountId, nowUtc, ct);
             }
 
+            // 5. Xử lý từ chối tự động cho các phản hồi bình luận quá hạn
             foreach (var reply in replies)
             {
-                reply.ModerationStatus = "Rejected";
-                reply.ManualReviewDeadline = null;
+                reply.ModerationStatus = "Rejected"; // Đổi trạng thái sang Rejected
+                reply.ManualReviewDeadline = null;   // Xóa deadline chờ duyệt
                 reply.UpdatedAt = nowUtc;
 
+                // Thêm bản ghi nhật ký kiểm duyệt tự động bởi hệ thống
                 db.BlogCommentModerationLogs.Add(CreateTimeoutLog(
                     "Reply", null, reply.ReplyBlogId, timeoutBanReasonId!.Value, nowUtc));
                 await db.SaveChangesAsync(ct);
+                
+                // Gửi thông báo đến tài khoản người dùng
                 await NotifyAutoRejectedAsync(dispatcher, reply.AccountId, "Reply", reply.ReplyBlogId, ct);
+                
+                // Tính điểm phạt vi phạm
                 await RegisterViolationAndLockIfNeededAsync(db, dispatcher, reply.AccountId, nowUtc, ct);
             }
 
@@ -126,11 +145,15 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
             _logger.LogError(ex, "BlogCommentManualReviewTimeoutJob failed");
         }
 
+        // 6. Ghi nhận Telemetry đo lường hoạt động của background job
         await BackgroundJobTelemetry.RecordAsync(
             scope.ServiceProvider.GetRequiredService<SEP490ToyStoreContext>(),
             "BlogCommentManualReviewTimeoutJob", success, message, _logger, ct);
     }
 
+    /// <summary>
+    /// Lấy hoặc tạo mới lý do cấm tự động liên quan đến lỗi quá hạn duyệt 24 giờ của Admin.
+    /// </summary>
     private static async Task<byte> GetOrCreateTimeoutBanReasonIdAsync(
         SEP490ToyStoreContext db,
         DateTime nowUtc,
@@ -157,6 +180,9 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
         return reason.BanReasonId;
     }
 
+    /// <summary>
+    /// Tạo đối tượng nhật ký kiểm duyệt tự động do quá hạn 24 giờ.
+    /// </summary>
     private static BlogCommentModerationLog CreateTimeoutLog(
         string targetType,
         int? commentId,
@@ -169,7 +195,7 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
             TargetType = targetType,
             CommentId = commentId,
             ReplyId = replyId,
-            ModeratorType = "System",
+            ModeratorType = "System", // Thực hiện tự động bởi hệ thống
             ModeratedBy = null,
             Action = "Rejected",
             BanReasonId = banReasonId,
@@ -178,6 +204,9 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
         };
     }
 
+    /// <summary>
+    /// Gửi thông báo hệ thống tự động từ chối bình luận do hết hạn duyệt tay.
+    /// </summary>
     private static Task NotifyAutoRejectedAsync(
         INotificationDispatcher dispatcher,
         int accountId,
@@ -199,6 +228,9 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
         }, ct);
     }
 
+    /// <summary>
+    /// Ghi nhận điểm vi phạm vào tài khoản người dùng và tự động khóa tính năng comment nếu đạt ngưỡng quy định.
+    /// </summary>
     private async Task RegisterViolationAndLockIfNeededAsync(
         SEP490ToyStoreContext db,
         INotificationDispatcher dispatcher,
@@ -206,9 +238,11 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
         DateTime nowUtc,
         CancellationToken ct)
     {
+        // Lấy thông tin vi phạm của người dùng từ Database
         var state = await db.BlogCommentViolationCounts
             .FirstOrDefaultAsync(x => x.AccountId == accountId, ct);
 
+        // Khởi tạo mới nếu người dùng chưa có dòng vi phạm nào
         if (state == null)
         {
             state = new BlogCommentViolationCount
@@ -222,6 +256,7 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
             await db.BlogCommentViolationCounts.AddAsync(state, ct);
         }
 
+        // Tăng số lần vi phạm lên 1 (tối đa là byte.MaxValue)
         if (state.ViolationCount < byte.MaxValue)
         {
             state.ViolationCount++;
@@ -230,23 +265,27 @@ public class BlogCommentManualReviewTimeoutJob : BackgroundService
         state.LastViolatedAt = nowUtc;
         state.UpdatedAt = nowUtc;
 
+        // Nếu số lần vi phạm chưa vượt quá ngưỡng khóa phạt (threshold = 20), lưu và thoát
         if (state.ViolationCount < ViolationThreshold)
         {
             await db.SaveChangesAsync(ct);
             return;
         }
 
+        // Nếu đạt ngưỡng, tiến hành khóa quyền bình luận
         if (!state.IsCommentBanned)
         {
             state.IsCommentBanned = true;
             state.BannedAt = nowUtc;
         }
 
+        // Đặt hạn cấm bình luận trong 7 ngày
         state.BanExpiresAt = nowUtc.AddDays(CommentBanDurationDays);
         state.UpdatedAt = nowUtc;
 
         await db.SaveChangesAsync(ct);
 
+        // Gửi thông báo đến tài khoản người dùng báo tin đã bị khóa quyền bình luận
         await dispatcher.DispatchAsync(new NotificationContext
         {
             RecipientAccountId = accountId,
