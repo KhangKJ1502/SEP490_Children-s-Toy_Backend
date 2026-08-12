@@ -1993,6 +1993,8 @@ CREATE TABLE [OrderRefunds] (
     [CustomerResponseDeadline] DATETIME NULL,
     [CustomerResponse] NVARCHAR(50) NULL,
     [ReturnToCustomerFeePaid] BIT NOT NULL DEFAULT 0,
+    [ReturnDeliveryImageUrl] NVARCHAR(500) NULL,
+    [ReturnToCustomerImageUrl] NVARCHAR(500) NULL,
     [AdminNote]           NVARCHAR(1000) NULL,
     [ApprovedAt]          DATETIME2(0) NULL,
     [RejectedAt]          DATETIME2(0) NULL,

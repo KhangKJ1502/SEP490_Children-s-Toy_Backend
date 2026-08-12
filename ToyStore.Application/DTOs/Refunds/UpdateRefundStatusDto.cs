@@ -8,6 +8,8 @@ public class UpdateRefundStatusDto
     public string? RejectReason { get; set; }
     public string? ShippingOrderCode { get; set; }
     public string? ReturnShippingOrderCode { get; set; }
+    public string? ReturnDeliveryImageUrl { get; set; }
+    public string? ReturnToCustomerImageUrl { get; set; }
     public bool? InspectionPassed { get; set; }
     public string? InspectionNote { get; set; }
     public string? AdminNote { get; set; }
