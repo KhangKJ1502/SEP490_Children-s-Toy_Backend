@@ -8,6 +8,7 @@ using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
 using ToyStore.Domain.Entities;
 using ToyStore.Domain.Enums;
+using ToyStore.Application.DTOs.Orders;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -27,6 +28,7 @@ public class ShippingWebhookService : IShippingWebhookService
     private readonly IShippingReturnFlowService _returnFlow;
     private readonly IShippingStatusMapper _statusMapper;
     private readonly IShiftAssignmentService _shiftAssignmentService;
+    private readonly IImageUploadService _imageUploadService;
 
     public ShippingWebhookService(
         IUnitOfWork unitOfWork,
@@ -36,7 +38,8 @@ public class ShippingWebhookService : IShippingWebhookService
         IOrderLifecycleService orderLifecycle,
         IShippingReturnFlowService returnFlow,
         IShippingStatusMapper statusMapper,
-        IShiftAssignmentService shiftAssignmentService)
+        IShiftAssignmentService shiftAssignmentService,
+        IImageUploadService imageUploadService)
     {
         _unitOfWork = unitOfWork;
         _eventPublisher = eventPublisher;
@@ -46,6 +49,7 @@ public class ShippingWebhookService : IShippingWebhookService
         _returnFlow = returnFlow;
         _statusMapper = statusMapper;
         _shiftAssignmentService = shiftAssignmentService;
+        _imageUploadService = imageUploadService;
     }
 
     public async Task HandleAsync(
@@ -284,6 +288,36 @@ public class ShippingWebhookService : IShippingWebhookService
         {
             bool isReturnToCustomer = string.Equals(providerOrderCode, refund.ReturnShippingOrderCode, StringComparison.OrdinalIgnoreCase);
 
+            var now = _timeProvider.UtcNow;
+
+            string? uploadedImageUrl = null;
+            var ghnImageUrl = TryGetGhnImageUrl(rawPayload);
+            if (!string.IsNullOrWhiteSpace(ghnImageUrl) && Uri.IsWellFormedUriString(ghnImageUrl, UriKind.Absolute))
+            {
+                var folderName = isReturnToCustomer ? "refund-to-customer-proofs" : "refund-to-shop-proofs";
+                var publicId = isReturnToCustomer 
+                    ? $"refund_to_customer_{refund.RefundCode ?? refund.RefundId.ToString()}_{now.Ticks}"
+                    : $"refund_to_shop_{refund.RefundCode ?? refund.RefundId.ToString()}_{now.Ticks}";
+
+                var uploadResult = await _imageUploadService.UploadImageFromUrlAsync(
+                    ghnImageUrl,
+                    folderName,
+                    publicId,
+                    cancellationToken);
+
+                if (uploadResult.IsSuccess && !string.IsNullOrEmpty(uploadResult.Data))
+                {
+                    uploadedImageUrl = uploadResult.Data;
+                    _logger.LogInformation("GHN Webhook POD image uploaded to Cloudinary: {Url} for refund ID {RefundId}",
+                        uploadedImageUrl, refund.RefundId);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to upload GHN POD image to Cloudinary for refund ID {RefundId}: {Error}",
+                        refund.RefundId, uploadResult.ErrorMessage);
+                }
+            }
+
             byte? targetRefundStatusId;
             if (isReturnToCustomer)
             {
@@ -327,7 +361,6 @@ public class ShippingWebhookService : IShippingWebhookService
                 };
             }
 
-            var now = _timeProvider.UtcNow;
             var tx = await _unitOfWork.Orders.GetShippingTransactionByProviderCodeAsync(providerOrderCode, cancellationToken);
             var previousStatus = tx?.Status ?? string.Empty;
 
@@ -425,6 +458,20 @@ public class ShippingWebhookService : IShippingWebhookService
                     }
                 }
 
+                if (uploadedImageUrl != null)
+                {
+                    if (isReturnToCustomer)
+                    {
+                        refund.ReturnToCustomerImageUrl = uploadedImageUrl;
+                    }
+                    else
+                    {
+                        refund.ReturnDeliveryImageUrl = uploadedImageUrl;
+                    }
+                    refund.UpdatedAt = now;
+                    _unitOfWork.Refunds.Update(refund);
+                }
+
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
@@ -442,6 +489,20 @@ public class ShippingWebhookService : IShippingWebhookService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing Refund webhook for code {Code}", providerOrderCode);
+        }
+    }
+
+    private string? TryGetGhnImageUrl(string rawPayload)
+    {
+        try
+        {
+            var ghnPayload = JsonSerializer.Deserialize<GhnWebhookPayload>(rawPayload);
+            return ghnPayload?.GetDeliveryImageUrl();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to deserialize GHN payload for image extraction on refund webhook.");
+            return null;
         }
     }
 }
