@@ -128,6 +128,10 @@ public partial class OrderRefund
     public string? CustomerResponse { get; set; }
     public bool ReturnToCustomerFeePaid { get; set; } = false;
 
+    public string? ReturnDeliveryImageUrl { get; set; }
+
+    public string? ReturnToCustomerImageUrl { get; set; }
+
     public virtual Account? ApprovedByNavigation { get; set; }
 
     public virtual Account Customer { get; set; } = null!;

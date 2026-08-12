@@ -480,7 +480,9 @@ CREATE TABLE [Orders] (
     [ReturnedAt]         DATETIME2(0) NULL,
     [LastGHNFailCode]    VARCHAR(20)  NULL,
     [DeliveryFailCount]  TINYINT      NOT NULL DEFAULT 0,
+    [DeliveryImageUrl]   NVARCHAR(500) NULL,
     [CancelledAt]           DATETIME2(0)  NULL,
+
     [PaymentMethod] VARCHAR(20) NOT NULL DEFAULT 'SHIP_COD'
              CHECK ([PaymentMethod] IN ('SHIP_COD', 'SE_PAY', 'WALLET')),
     [PaymentStatus]         VARCHAR(20)   NOT NULL DEFAULT 'PENDING'
@@ -1991,6 +1993,8 @@ CREATE TABLE [OrderRefunds] (
     [CustomerResponseDeadline] DATETIME NULL,
     [CustomerResponse] NVARCHAR(50) NULL,
     [ReturnToCustomerFeePaid] BIT NOT NULL DEFAULT 0,
+    [ReturnDeliveryImageUrl] NVARCHAR(500) NULL,
+    [ReturnToCustomerImageUrl] NVARCHAR(500) NULL,
     [AdminNote]           NVARCHAR(1000) NULL,
     [ApprovedAt]          DATETIME2(0) NULL,
     [RejectedAt]          DATETIME2(0) NULL,

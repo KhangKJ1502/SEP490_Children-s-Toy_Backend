@@ -1089,6 +1089,7 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasPrecision(0)
                 .HasDefaultValueSql("(getdate())");
             entity.Property(e => e.DeliveredAt).HasPrecision(0);
+            entity.Property(e => e.DeliveryImageUrl).HasMaxLength(500);
             entity.Property(e => e.EstimatedShippingFee).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.Note).HasMaxLength(1000);
             entity.Property(e => e.OrderCode)
@@ -1253,6 +1254,8 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.CustomerResponseDeadline).HasColumnType("datetime");
             entity.Property(e => e.CustomerResponse).HasMaxLength(50);
             entity.Property(e => e.ReturnToCustomerFeePaid).HasDefaultValue(false);
+            entity.Property(e => e.ReturnDeliveryImageUrl).HasMaxLength(500);
+            entity.Property(e => e.ReturnToCustomerImageUrl).HasMaxLength(500);
             entity.Property(e => e.ShippingFee).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.SubTotal).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.TotalAmount).HasColumnType("decimal(18, 2)");

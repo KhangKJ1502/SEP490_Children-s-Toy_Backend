@@ -27,15 +27,18 @@ public class BlogPublishWorker : BackgroundService
     {
         _logger.LogInformation("Blog Publish Worker starting");
 
-
+        // Vòng lặp chạy vô hạn ở nền cho đến khi ứng dụng bị tắt/dừng
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
                 using var scope = _serviceProvider.CreateScope();
                 var blogRepository = scope.ServiceProvider.GetRequiredService<IBlogRepository>();
+                
+                // 1. Thực thi cập nhật các bài viết Blog đã lên lịch xuất bản (Scheduled) có ngày hẹn bé hơn hoặc bằng thời gian hiện tại
                 var updatedCount = await blogRepository.PublishDueScheduledBlogsAsync(_timeProvider.UtcNow, stoppingToken);
 
+                // 2. Ghi nhận log nếu có bài viết nào được xuất bản thành công tự động
                 if (updatedCount > 0)
                 {
                     _logger.LogInformation("Auto-published {Count} scheduled blog(s).", updatedCount);
@@ -46,6 +49,7 @@ public class BlogPublishWorker : BackgroundService
                 _logger.LogError(ex, "Error when auto-publishing scheduled blogs.");
             }
 
+            // 3. Nghỉ ngơi theo chu kỳ (mỗi 1 phút) trước khi thực hiện lần quét tiếp theo
             await Task.Delay(_interval, stoppingToken);
         }
 

@@ -185,9 +185,7 @@ public class ShiftAssignmentService : IShiftAssignmentService
             OrderStatuses.Confirmed,
             OrderStatuses.Processing,
             OrderStatuses.Shipped,
-            OrderStatuses.Delivering,
-            OrderStatuses.Delivered,
-            OrderStatuses.DeliveryFailed
+            OrderStatuses.Delivering
         };
 
         foreach (var queueEntry in batch)
@@ -227,16 +225,23 @@ public class ShiftAssignmentService : IShiftAssignmentService
                 }
             }
 
-            // Nếu đơn hàng không tồn tại, đã bị xóa, hoặc đã chuyển sang các trạng thái không hoạt động (đã Hủy, đã Hoàn thành,...)
+            // Nếu đơn hàng không tồn tại, đã bị xóa, hoặc đã giao xong, hoàn thành, bị hủy,...
             // và không có refund nào đang hoạt động
             // thì tự động đánh dấu giải quyết (resolve) hàng đợi này để tránh làm kẹt hàng đợi của các đơn hàng khác!
-            if (order is null || order.IsDeleted || order.Status is null || (!operationalStatuses.Contains(order.Status.StatusName) && !hasActiveRefund))
+            if (order is null 
+                || order.IsDeleted 
+                || order.Status is null 
+                || order.DeliveredAt != null 
+                || order.CompletedAt != null 
+                || order.CancelledAt != null 
+                || (!operationalStatuses.Contains(order.Status.StatusName) && !hasActiveRefund))
             {
                 freshEntry.IsResolved = true;
                 freshEntry.ResolvedAt = now;
                 anyResolved = true;
                 continue;
             }
+
 
             var assignResult = await _unitOfWork.OrderAssignments.AutoAssignAsync(freshEntry.OrderId, null, cancellationToken);
 

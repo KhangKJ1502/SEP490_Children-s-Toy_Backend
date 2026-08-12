@@ -1213,6 +1213,16 @@ public class RefundService : IRefundService
             refund.StatusId = newStatusId.Value;
             refund.UpdatedAt = DateTime.UtcNow;
 
+            if (!string.IsNullOrWhiteSpace(dto.ReturnDeliveryImageUrl))
+            {
+                refund.ReturnDeliveryImageUrl = dto.ReturnDeliveryImageUrl;
+            }
+
+            if (!string.IsNullOrWhiteSpace(dto.ReturnToCustomerImageUrl))
+            {
+                refund.ReturnToCustomerImageUrl = dto.ReturnToCustomerImageUrl;
+            }
+
             if (!string.IsNullOrWhiteSpace(dto.ShippingOrderCode))
             {
                 refund.ShippingOrderCode = dto.ShippingOrderCode;

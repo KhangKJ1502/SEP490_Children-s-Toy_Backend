@@ -73,6 +73,8 @@ public class RefundDto
     public DateTime? CustomerResponseDeadline { get; set; }
     public string? CustomerResponse { get; set; }
     public bool ReturnToCustomerFeePaid { get; set; }
+    public string? ReturnDeliveryImageUrl { get; set; }
+    public string? ReturnToCustomerImageUrl { get; set; }
 
     /// <summary>Voucher discount amount từ đơn hàng gốc (display only, voucher không được trả lại).</summary>
     public decimal VoucherDiscountAmount { get; set; }
