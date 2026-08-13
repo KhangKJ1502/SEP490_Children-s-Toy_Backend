@@ -101,17 +101,27 @@ public class WebBellChannel : INotificationChannel
             NotificationStatuses.Unread,
             ct);
 
-        _ = _hub.PushToUserAsync(request.AccountId, new BellNotificationDto
+        _ = Task.Run(async () =>
         {
-            DeliveryId       = delivery.DeliveryId,
-            NotificationType = request.NotificationType,
-            Title            = request.Title,
-            Message          = request.Message,
-            ImageUrl         = request.ImageUrl,
-            ActionType       = request.ActionType,
-            ActionTarget     = request.ActionTarget,
-            CreatedAt        = delivery.CreatedAt,
-            UnreadCount      = unreadCount,
+            try
+            {
+                await _hub.PushToUserAsync(request.AccountId, new BellNotificationDto
+                {
+                    DeliveryId       = delivery.DeliveryId,
+                    NotificationType = request.NotificationType,
+                    Title            = request.Title,
+                    Message          = request.Message,
+                    ImageUrl         = request.ImageUrl,
+                    ActionType       = request.ActionType,
+                    ActionTarget     = request.ActionTarget,
+                    CreatedAt        = delivery.CreatedAt,
+                    UnreadCount      = unreadCount,
+                }, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to push realtime bell notification to AccountID={Id}", request.AccountId);
+            }
         }, ct);
     }
 }

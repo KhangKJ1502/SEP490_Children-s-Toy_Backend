@@ -2903,8 +2903,8 @@ public partial class SEP490ToyStoreContext : DbContext
 
             entity.Property(e => e.PreferenceId).HasColumnName("PreferenceID");
             entity.Property(e => e.AccountId).HasColumnName("AccountID");
-            entity.Property(e => e.EmailOptIn).HasDefaultValue(true);
-            entity.Property(e => e.WebPushOptIn).HasDefaultValue(false);
+            entity.Property(e => e.EmailOptIn).HasDefaultValue(false);
+            entity.Property(e => e.WebPushOptIn).HasDefaultValue(true);
             entity.Property(e => e.OrderUpdates).HasDefaultValue(true);
             entity.Property(e => e.Promotions).HasDefaultValue(true);
             entity.Property(e => e.StockAlerts).HasDefaultValue(true);

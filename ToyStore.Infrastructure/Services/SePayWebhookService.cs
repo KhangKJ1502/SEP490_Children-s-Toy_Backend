@@ -90,7 +90,7 @@ public class SePayWebhookService : ISePayWebhookService
         SePayWebhookPayload payload,
         CancellationToken ct)
     {
-        // 1. Lookup
+        // BƯỚC 1: Tìm kiếm giao dịch thanh toán trong hệ thống theo mã đối chiếu (attemptCode)
         var txn = await _uow.Orders.GetPaymentTransactionByRequestIdAsync(attemptCode, ct);
 
         if (txn is null)
@@ -105,7 +105,8 @@ public class SePayWebhookService : ISePayWebhookService
 
         txn.RawCallback = JsonSerializer.Serialize(payload);
 
-        // 2. Idempotency
+        // BƯỚC 2: Kiểm tra tính trùng lặp (Idempotency Check)
+        // Nếu giao dịch này đã được ghi nhận thành công từ trước, bỏ qua để tránh cộng tiền hay xử lý lại.
         if (txn.Status == "Paid")
         {
             _logger.LogInformation("SPX webhook: attempt '{Code}' already Paid — skip", attemptCode);
@@ -114,7 +115,8 @@ public class SePayWebhookService : ISePayWebhookService
 
         var order = txn.Order;
 
-        // 3. Đơn đã cancel — late payment: auto wallet refund + alert CS
+        // BƯỚC 3: Xử lý Late Payment (Thanh toán trễ khi đơn hàng đã bị hủy do timeout)
+        // Nếu đơn hàng đã bị hủy, hệ thống tự động hoàn tiền tương ứng vào ví điện tử của khách hàng và cảnh báo CS.
         if (order.CancelledAt.HasValue)
         {
             _logger.LogWarning(
@@ -127,7 +129,8 @@ public class SePayWebhookService : ISePayWebhookService
 
         var now = _timeProvider.UtcNow;
 
-        // 4. Verify amount
+        // BƯỚC 4: Kiểm tra số tiền chuyển khoản (Verify amount)
+        // Nếu số tiền khách chuyển nhỏ hơn tổng số tiền đơn hàng (cho phép lệch tối đa 1đ), đánh dấu giao dịch thất bại.
         var diff = Math.Abs(amount - order.TotalAmount);
         if (diff > 1 && amount < order.TotalAmount)
         {
@@ -140,32 +143,36 @@ public class SePayWebhookService : ISePayWebhookService
             return;
         }
 
+        // Kiểm tra xem khách có thanh toán dư tiền (overpay) không
         bool isOverpay = amount > order.TotalAmount + 1;
 
-        // 5. Lấy statusId Confirmed
+        // BƯỚC 5: Lấy ID trạng thái 'Confirmed' để cập nhật cho đơn hàng
         var statusMap = await _uow.Orders.GetStatusMapAsync(ct);
         statusMap.TryGetValue("Confirmed", out var confirmedStatusId);
 
+        // ── KHỞI ĐẦU DATABASE TRANSACTION ──────────────────────────────────────────
         await _uow.BeginTransactionAsync(ct);
         try
         {
-            // 5a. Stock đã được trừ khi tạo đơn (SE_PAY reserve tại confirm); chỉ cần chuyển Flash Sale Reserved → Sold
+            // BƯỚC 5a: Chuyển đổi tồn kho Flash Sale từ trạng thái tạm giữ (Reserved) sang thực bán (Sold).
+            // Do kho chung đã bị trừ và kho Flash sale đã được tạm giữ lúc tạo đơn (CheckoutService.ConfirmAsync),
+            // nên lúc này chỉ cần cập nhật kho Flash Sale.
             foreach (var detail in order.OrderDetails)
             {
                 if (detail.SlotProductId.HasValue)
                 {
-                    // Chuyển từ ReservedQuantity sang SoldQuantity
+                    // Trừ ReservedQuantity và cộng vào SoldQuantity tương ứng
                     await _uow.Orders.AdjustFlashSaleStockAsync(detail.SlotProductId.Value, (int)detail.Quantity, -(int)detail.Quantity, ct);
                 }
             }
 
-            // 5b. Update gateway txn
+            // BƯỚC 5b: Cập nhật trạng thái giao dịch cổng thanh toán thành công
             txn.Status = "Paid";
             txn.UpdatedAt = now;
             txn.ResponseCode = "00";
             txn.ResponseMessage = "Success";
 
-            // 5c. Update order
+            // BƯỚC 5c: Cập nhật trạng thái đơn hàng thành PAID và CONFIRMED
             order.PaymentStatus = "PAID";
             order.PaidAt = now;
             order.UpdatedAt = now;
@@ -175,7 +182,7 @@ public class SePayWebhookService : ISePayWebhookService
                 order.ConfirmedAt = now;
             }
 
-            // 5d. Insert PaymentHistory
+            // BƯỚC 5d: Ghi nhận lịch sử thanh toán thành công (PaymentHistory)
             var payHistory = new PaymentHistory
             {
                 AccountId = order.AccountId,
@@ -187,11 +194,11 @@ public class SePayWebhookService : ISePayWebhookService
                 CreatedAt = now
             };
             await _uow.Orders.AddPaymentHistoryAsync(payHistory, ct);
-            await _uow.SaveChangesAsync(ct); // get PaymentHistoryId
+            await _uow.SaveChangesAsync(ct); // Lấy PaymentHistoryId
 
             txn.PaymentHistoryId = payHistory.PaymentHistoryId;
 
-            // 5e. OrderStatusHistory
+            // BƯỚC 5e: Ghi nhận lịch sử chuyển trạng thái đơn hàng
             if (confirmedStatusId > 0)
             {
                 await _uow.Orders.AddStatusHistoryAsync(new OrderStatusHistory
@@ -204,7 +211,7 @@ public class SePayWebhookService : ISePayWebhookService
                 }, ct);
             }
 
-            // 5f. Overpay → ghi vào ví
+            // BƯỚC 5f: Cộng tiền thừa (Overpay) vào ví điện tử khách hàng nếu có
             if (isOverpay)
             {
                 var overpayAmount = amount - order.TotalAmount;
@@ -222,7 +229,7 @@ public class SePayWebhookService : ISePayWebhookService
                             WalletId = wallet.WalletId,
                             AccountId = order.AccountId,
                             TxnType = "TopUp",
-                            Direction = "CR",
+                            Direction = "CR", // Credit (Cộng tiền)
                             Amount = overpayAmount,
                             BalanceBefore = balanceBefore,
                             BalanceAfter = wallet.Balance,
@@ -239,7 +246,9 @@ public class SePayWebhookService : ISePayWebhookService
                 }
             }
 
-            // 5g. Xử lý CartItems đã thanh toán (SE_PAY giữ cart đến webhook PAID)
+            // BƯỚC 5g: Xử lý giỏ hàng.
+            // Do SE_PAY giữ nguyên giỏ hàng lúc tạo đơn (phòng trường hợp quét QR thất bại hoặc bỏ dở thanh toán),
+            // nên bây giờ mới tiến hành xóa các mặt hàng đã mua khỏi giỏ hàng.
             var cart = await _uow.Carts.GetByAccountIdWithItemsAsync(order.AccountId, ct);
             if (cart is not null)
             {
@@ -255,16 +264,15 @@ public class SePayWebhookService : ISePayWebhookService
             throw;
         }
 
-
         _logger.LogInformation("SPX webhook processed: Order {Code} PAID", order.OrderCode);
 
+        // Phát sự kiện xác nhận và sẵn sàng đóng gói đơn hàng
         var orderPayload = new { orderId = order.OrderId, orderCode = order.OrderCode };
         await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(),
             NotificationEventTypes.OrderConfirmed,
             orderPayload,
             CancellationToken.None);
 
-        // Also notify Merchandise team to start packing
         await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(),
             NotificationEventTypes.MerchReadyToPack,
             orderPayload,

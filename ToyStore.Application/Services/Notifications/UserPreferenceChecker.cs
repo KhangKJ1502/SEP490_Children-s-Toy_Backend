@@ -26,7 +26,7 @@ public class UserPreferenceChecker : IUserPreferenceChecker
 
         var allowed = preferenceKey switch
         {
-            PreferenceKeys.OrderUpdates => prefs.OrderUpdates && prefs.EmailOptIn,
+            PreferenceKeys.OrderUpdates => prefs.OrderUpdates,
             PreferenceKeys.Promotions   => prefs.Promotions,
             PreferenceKeys.StockAlerts  => prefs.StockAlerts,
             PreferenceKeys.BlogAlerts   => prefs.BlogAlerts,
@@ -44,7 +44,7 @@ public class UserPreferenceChecker : IUserPreferenceChecker
     public async Task<bool> CanReceiveEmailAsync(int accountId, CancellationToken ct = default)
     {
         var prefs = await _unitOfWork.UserPreferences.GetByAccountIdAsync(accountId, ct);
-        return prefs is null || prefs.EmailOptIn;
+        return prefs is not null && prefs.EmailOptIn;
     }
 
     public async Task<bool> CanReceiveWebPushAsync(int accountId, CancellationToken ct = default)

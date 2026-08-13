@@ -99,7 +99,10 @@ public class ShiftLifecycleJob : BackgroundService
 
         foreach (var schedule in toClose)
         {
-            schedule.Status = "Completed";
+            // Bug fix: Scheduled shifts that never transitioned to OnDuty 
+            // should be marked Absent (employee never showed up), not Completed.
+            // Only OnDuty shifts that ran their full duration are truly Completed.
+            schedule.Status = schedule.Status == "OnDuty" ? "Completed" : "Absent";
             schedule.UpdatedAt = utcNow;
         }
 

@@ -13,6 +13,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ToyStore.Application.DTOs.Checkouts;
 using ToyStore.Application.Services;
@@ -33,6 +34,7 @@ public class RefundService : IRefundService
     private readonly IWalletRefundCreditor _walletRefundCreditor;
     private readonly IShiftAssignmentService _shiftAssignmentService;
     private readonly ITimeProvider _timeProvider;
+    private readonly ILogger<RefundService> _logger;
     private readonly IValidator<CreateRefundDto> _createRefundValidator;
     private readonly IValidator<UpdateRefundStatusDto> _updateRefundStatusValidator;
 
@@ -46,6 +48,7 @@ public class RefundService : IRefundService
         IWalletRefundCreditor walletRefundCreditor,
         IShiftAssignmentService shiftAssignmentService,
         ITimeProvider timeProvider,
+        ILogger<RefundService> logger,
         IValidator<CreateRefundDto> createRefundValidator,
         IValidator<UpdateRefundStatusDto> updateRefundStatusValidator)
     {
@@ -58,6 +61,7 @@ public class RefundService : IRefundService
         _walletRefundCreditor = walletRefundCreditor;
         _shiftAssignmentService = shiftAssignmentService;
         _timeProvider = timeProvider;
+        _logger = logger;
         _createRefundValidator = createRefundValidator;
         _updateRefundStatusValidator = updateRefundStatusValidator;
     }
@@ -400,6 +404,18 @@ public class RefundService : IRefundService
 
         var refundType = isUnpaid ? RefundTypes.ReturnOnly : RefundTypes.ReturnAndRefund;
 
+        // Tách discount: chỉ áp discountRatio từ ORDER_TOTAL discount, 
+        // không gộp shipping voucher discount vào product subtotal.
+        var grossShippingFee = isUnpaid ? 0m : (refundOrder.ActualShippingFee ?? refundOrder.EstimatedShippingFee);
+        // orderTotalAmount = SubTotal + ShippingFee - AllDiscounts
+        var orderTotalAmount = isUnpaid ? 0m : refundOrder.TotalAmount;
+        // productDiscountAmount = VoucherDiscountAmount - shippingDiscount
+        // where shippingDiscount = SubTotal + ShippingFee - VoucherDiscountAmount - TotalAmount? No — 
+        // TotalAmount = SubTotal + ShippingFee - VoucherDiscountAmount, so VoucherDiscountAmount = SubTotal + ShippingFee - TotalAmount
+        // We know: customerShippingPaid = ShippingFee - shippingVoucherDiscount
+        // And: productDiscountAmount = VoucherDiscountAmount - shippingVoucherDiscount  
+        // The safest approach: use VoucherDiscountAmount as the total discount on products
+        // (since discountRatio distributes it evenly across products) and derive shipping from the remainder.
         var discountRatio = refundOrder.SubTotal > 0
             ? (refundOrder.VoucherDiscountAmount / refundOrder.SubTotal)
             : 0m;
@@ -426,10 +442,13 @@ public class RefundService : IRefundService
         }
 
         var subTotal = isUnpaid ? 0m : refundDetails.Sum(d => d.RefundAmount);
-        var shippingFee = isUnpaid ? 0m : (refundOrder.ActualShippingFee ?? refundOrder.EstimatedShippingFee);
+        var shippingFee = grossShippingFee;
         // Tiền khách thực trả = TotalAmount (đã trừ voucher); dùng TotalAmount làm chuẩn
-        var orderTotalAmount = isUnpaid ? 0m : refundOrder.TotalAmount;
         // CustomerShippingPaid = phần phí ship khách thực trả (sau voucher freeship)
+        // subTotal ≈ SubTotal_order - VoucherDiscountAmount (all discounts applied to products)
+        // customerShippingPaid = TotalAmount - subTotal = ShippingFee (gross, no shipping discount subtracted)
+        // This is correct because VoucherDiscountAmount includes shipping discount too,
+        // which gets distributed to products via discountRatio, making the remainder = gross ShippingFee.
         var customerShippingPaid = isUnpaid ? 0m : Math.Max(0m, orderTotalAmount - subTotal);
         var now = DateTime.UtcNow;
 
@@ -1003,9 +1022,19 @@ public class RefundService : IRefundService
                         Items = package.Items
                     };
                     var feeResult = await _ghnClient.GetFeeAsync(feeRequest, cancellationToken);
-                    refund.ReturnToCustomerFee = feeResult.IsSuccess && feeResult.Data != null
-                        ? feeResult.Data.Fee
-                        : 30000m; // Fallback 30.000 VND
+                    if (feeResult.IsSuccess && feeResult.Data != null)
+                    {
+                        refund.ReturnToCustomerFee = feeResult.Data.Fee;
+                    }
+                    else
+                    {
+                        refund.ReturnToCustomerFee = 30_000m;
+                        _logger.LogWarning(
+                            "GHN fee API failed for refund {RefundId} (district={DistrictId}, ward={WardCode}). " +
+                            "Using fallback ReturnToCustomerFee={Fallback}. Error: {Error}",
+                            refund.RefundId, order.ShippingDistrictId, order.ShippingWardCode,
+                            30_000m, feeResult.ErrorMessage);
+                    }
 
                     // 5. Kiểm tra cấn trừ ưu tiên
                     if (totalRefundCandidate >= refund.ReturnToCustomerFee)

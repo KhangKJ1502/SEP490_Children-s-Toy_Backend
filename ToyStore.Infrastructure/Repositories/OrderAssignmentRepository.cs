@@ -158,6 +158,7 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
         var todayVn = _timeProvider.TodayVn;
         var timeVn = _timeProvider.VnNow.TimeOfDay;
 
+        // Quản lý Transaction: Nếu chưa có transaction bên ngoài gọi vào, tự tạo mới một transaction để bảo đảm tính nguyên tử.
         var ownsTransaction = _context.Database.CurrentTransaction is null;
         IDbContextTransaction? transaction = null;
         if (ownsTransaction)
@@ -167,7 +168,9 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
 
         try
         {
-            // Acquire exclusive update lock on the order row to prevent concurrent assignment race conditions
+            // THUẬT TOÁN BẢO MẬT & ĐỒNG THỜI (Concurrency Lock):
+            // Thực hiện khóa dòng dữ liệu của đơn hàng (UPDLOCK, ROWLOCK) để tránh trường hợp nhiều tiến trình nền
+            // hoặc thao tác của Admin phân ca cùng lúc vào cùng một đơn hàng gây xung đột Race Condition.
             await _context.Database.ExecuteSqlInterpolatedAsync(
                 $"SELECT 1 FROM [Orders] WITH (UPDLOCK, ROWLOCK) WHERE [OrderID] = {orderId}",
                 cancellationToken);
@@ -179,6 +182,7 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
             var hasStaff = activeAssignments.Any(a => a.RoleId == StaffRoleId);
             var hasMerch = activeAssignments.Any(a => a.RoleId == MerchRoleId);
 
+            // Nếu đơn hàng đã có đủ nhân viên cho cả 2 vai trò rồi, lập tức trả về kết quả
             if (hasStaff && hasMerch)
             {
                 if (ownsTransaction)
@@ -197,6 +201,7 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
             StaffShiftCapacity? staffCapacity = null;
             StaffShiftCapacity? merchCapacity = null;
 
+            // Tiến hành tìm và chiếm dụng vị trí ca trực còn trống (claim capacity) cho từng vai trò còn thiếu
             if (!hasStaff)
             {
                 staffCapacity = await FindAndClaimCapacityAsync(StaffRoleId, todayVn, timeVn, now, cancellationToken);
@@ -740,6 +745,10 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
             .ToListAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// THUẬT TOÁN TÌM VÀ CHIẾM DỤNG CA TRỰC KHẢ DỤNG (Load Balancing & Concurrency Claim)
+    /// Tìm nhân viên phù hợp đang làm việc (OnDuty), trong khung giờ hiện tại, và chưa vượt quá tải trọng (ssc.CurrentLoad < ssc.MaxLoad).
+    /// </summary>
     private async Task<StaffShiftCapacity?> FindAndClaimCapacityAsync(
         byte roleId,
         DateTime todayVn,
@@ -747,6 +756,13 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
         DateTime now,
         CancellationToken cancellationToken)
     {
+        // THUẬT TOÁN PHÂN PHỐI TẢI (Least Connection / Min Load Balancing):
+        // 1. Chỉ tìm kiếm các nhân viên đang trong ca trực hoạt động (ws.Status == "OnDuty")
+        // 2. Ngày trực phải là ngày hôm nay theo múi giờ Việt Nam.
+        // 3. Khung giờ hiện tại nằm giữa StartTime và EndTime của ca trực.
+        // 4. Vai trò (Role) khớp với yêu cầu và tài khoản phải đang Active/không bị xóa.
+        // 5. Số đơn hàng nhân viên đang xử lý (CurrentLoad) phải nhỏ hơn giới hạn tối đa cho phép (MaxLoad).
+        // 6. SẮP XẾP: Thứ tự ưu tiên tăng dần theo CurrentLoad (nhân viên có ít đơn nhất được ưu tiên nhận trước để tránh lệch tải).
         var candidateScheduleIds = await (
             from ssc in _context.StaffShiftCapacities.AsNoTracking()
             join ws in _context.WorkSchedules.AsNoTracking() on ssc.ScheduleId equals ws.ScheduleId
@@ -764,6 +780,10 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
             select ssc.ScheduleId
         ).ToListAsync(cancellationToken);
 
+        // BƯỚC KHÓA LỌC & CHIẾM DỤNG (Lock & Double-Check):
+        // Duyệt qua từng ứng viên sáng giá. Để chống tranh chấp tài nguyên (Race Condition) khi có nhiều đơn phân bổ đồng thời,
+        // hệ thống sẽ thực hiện khóa độc quyền dòng dữ liệu của ứng viên (`LockCapacityRowAsync`),
+        // sau đó kiểm tra lại tải trọng (Double-Check) trước khi thực hiện cộng tải `CurrentLoad++`.
         foreach (var scheduleId in candidateScheduleIds)
         {
             await LockCapacityRowAsync(scheduleId, cancellationToken);
@@ -784,6 +804,9 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
         return null;
     }
 
+    /// <summary>
+    /// Hoàn trả lại dung lượng ca trực (decrement capacity) trong trường hợp quá trình phân bổ bị lỗi hoặc rollback.
+    /// </summary>
     private async Task RollbackCapacityClaimAsync(int scheduleId, DateTime now, CancellationToken cancellationToken)
     {
         await LockCapacityRowAsync(scheduleId, cancellationToken);
@@ -800,6 +823,10 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
         capacity.UpdatedAt = now;
     }
 
+    /// <summary>
+    /// Thực hiện khóa dòng dữ liệu (Row Lock) cho bản ghi dung lượng ca trực [StaffShiftCapacity]
+    /// nhằm đảm bảo tính đồng nhất dữ liệu và chống Race Condition khi cập nhật số đơn đang xử lý.
+    /// </summary>
     private async Task LockCapacityRowAsync(int scheduleId, CancellationToken cancellationToken)
     {
         await _context.Database.ExecuteSqlInterpolatedAsync(
@@ -807,6 +834,10 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
             cancellationToken);
     }
 
+    /// <summary>
+    /// Phân tích và xây dựng lý do đơn hàng bị đưa vào hàng đợi phân ca trực (Queue).
+    /// Các lý do bao gồm: Cả hai bên đều quá tải, Thiếu sales staff hoặc merchandise staff (đang bận / không có ai trực ca).
+    /// </summary>
     private async Task<string> BuildQueueReasonAsync(
         bool needStaff,
         StaffShiftCapacity? staffCapacity,
@@ -814,23 +845,32 @@ public class OrderAssignmentRepository : IOrderAssignmentRepository
         StaffShiftCapacity? merchCapacity,
         CancellationToken cancellationToken)
     {
+        // Trường hợp cả vai trò bán hàng và kho đều quá tải hoặc không có ai trực ca
         if (needStaff && staffCapacity is null && needMerch && merchCapacity is null)
         {
             return "BOTH_FULL";
         }
 
+        // Trường hợp thiếu vai trò nhân viên bán hàng (Staff)
         if (needStaff && staffCapacity is null)
         {
+            // Kiểm tra xem có nhân viên bán hàng nào đang trực ca không
             var staffOnDuty = await _context.WorkSchedules
                 .AnyAsync(ws => ws.Status == "OnDuty" && ws.Account.RoleId == StaffRoleId, cancellationToken);
             return staffOnDuty ? "ALL_STAFF_FULL" : "NO_STAFF_ON_DUTY";
         }
 
+        // Trường hợp thiếu vai trò nhân viên kho (Merchandise)
         var merchOnDuty = await _context.WorkSchedules
             .AnyAsync(ws => ws.Status == "OnDuty" && ws.Account.RoleId == MerchRoleId, cancellationToken);
         return merchOnDuty ? "ALL_MERCH_FULL" : "NO_MERCH_ON_DUTY";
     }
 
+    /// <summary>
+    /// Thêm mới hoặc cập nhật thông tin hàng đợi phân ca của đơn hàng (Upsert Queue Entry).
+    /// Nếu đơn hàng đã có trong hàng đợi và chưa được giải quyết, chỉ cập nhật lý do mới.
+    /// Nếu chưa có, tạo bản ghi hàng đợi mới.
+    /// </summary>
     private async Task UpsertQueueEntryAsync(int orderId, string reason, DateTime now, CancellationToken cancellationToken)
     {
         var existing = await _context.OrderQueues

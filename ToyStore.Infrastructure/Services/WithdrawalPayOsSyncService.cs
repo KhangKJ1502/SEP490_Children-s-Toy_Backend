@@ -47,6 +47,7 @@ public class WithdrawalPayOsSyncService : IWithdrawalPayOsSyncService
             return false;
         }
 
+        // BƯỚC 1: Bỏ qua nếu lệnh rút tiền không ở trạng thái PROCESSING (đã kết thúc thành công/thất bại/hủy trước đó)
         if (withdrawal.Status != WithdrawalStatuses.Processing)
         {
             _logger.LogDebug("WithdrawalPayOsSyncService: withdrawal {Id} is already in terminal status {Status} — skipping", withdrawalId, withdrawal.Status);
@@ -59,6 +60,7 @@ public class WithdrawalPayOsSyncService : IWithdrawalPayOsSyncService
             return false;
         }
 
+        // BƯỚC 2: Gọi API cổng PayOS để truy vấn thông tin chi tiết của lệnh chuyển tiền (Payout Detail)
         var detail = await _payos.GetPayoutAsync(withdrawal.PayosPayoutId, ct);
 
         if (!detail.Success)
@@ -71,8 +73,10 @@ public class WithdrawalPayOsSyncService : IWithdrawalPayOsSyncService
         var approvalState = detail.ApprovalState?.ToUpperInvariant();
         _logger.LogInformation("WithdrawalPayOsSyncService: withdrawal {Id} approvalState={State}", withdrawalId, approvalState);
 
+        // BƯỚC 3: Đối chiếu trạng thái phê duyệt từ PayOS
         switch (approvalState)
         {
+            // A. TRƯỜNG HỢP THÀNH CÔNG: Commit trừ tiền thực tế trong ví, tạo lịch sử giao dịch và gửi thông báo thành công.
             case "SUCCEEDED":
             case "COMPLETED":
             case "SUCCESS":
@@ -94,6 +98,7 @@ public class WithdrawalPayOsSyncService : IWithdrawalPayOsSyncService
                 }
                 return true;
 
+            // B. TRƯỜNG HỢP THẤT BẠI/HỦY: Giải phóng số tiền bị khóa (Rollback) trả lại ví khách hàng và gửi thông báo lỗi.
             case "FAILED":
             case "CANCELLED":
             case "REJECTED":
@@ -117,7 +122,7 @@ public class WithdrawalPayOsSyncService : IWithdrawalPayOsSyncService
                 return true;
 
             default:
-                // PROCESSING or unknown — poll again later
+                // C. TRẠNG THÁI KHÁC (PROCESSING hoặc đang chờ): Giữ trạng thái cũ, job quét tự động sẽ kiểm tra lại ở chu kỳ tiếp theo
                 return false;
         }
     }

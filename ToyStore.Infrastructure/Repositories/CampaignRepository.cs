@@ -147,6 +147,19 @@ public class CampaignRepository : ICampaignRepository
         return recovered;
     }
 
+    public Task ReleaseDispatchLockAsync(int campaignId, CancellationToken cancellationToken = default)
+    {
+        // Reset the schedule lock back to Waiting so it can be picked up again or cancelled cleanly.
+        return _context.CampaignSchedules
+            .Where(s => s.CampaignId == campaignId && s.ExecutionStatus == "Dispatched")
+            .ExecuteUpdateAsync(
+                s => s
+                    .SetProperty(x => x.ExecutionStatus, "Waiting")
+                    .SetProperty(x => x.LockedByJobId, (int?)null)
+                    .SetProperty(x => x.LockedAt, (DateTime?)null),
+                cancellationToken);
+    }
+
     public Task MarkLiveReferenceSnapshotsStaleAsync(
         int campaignId,
         string reason,
