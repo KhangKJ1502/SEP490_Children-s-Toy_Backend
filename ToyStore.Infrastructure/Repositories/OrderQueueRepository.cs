@@ -42,6 +42,9 @@ public class OrderQueueRepository : IOrderQueueRepository
                      && x.Order.DeliveredAt == null
                      && x.Order.CompletedAt == null
                      && (x.Order.Status == null || !NonOperationalStatusNames.Contains(x.Order.Status.StatusName)))
+            // CƠ CHẾ FIFO (First-In, First-Out): 
+            // Sắp xếp thời gian xếp hàng tăng dần (OrderBy QueuedAt) để đơn hàng nào bị nghẽn
+            // và đưa vào hàng đợi trước (cũ nhất) sẽ luôn được ưu tiên lấy ra phân ca trước.
             .OrderBy(x => x.QueuedAt)
             .ToListAsync(cancellationToken);
     }

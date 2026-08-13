@@ -60,7 +60,7 @@ public class WithdrawalService : IWithdrawalService
         if (accountId <= 0)
             return Result<WithdrawalDto>.Unauthorized();
 
-        // ── 1. Pre-checks: wallet must be Active and have a PIN ──────────────
+        // ── 1. Kiểm tra ví: Ví phải hoạt động (Active), có mã PIN và không bị phong tỏa (Frozen) ──────────────
         var walletResult = await _walletService.GetMyWalletAsync(ct);
         if (walletResult.IsFailure)
             return Result<WithdrawalDto>.Failure(walletResult.ErrorCode!, walletResult.ErrorMessage!);
@@ -73,12 +73,12 @@ public class WithdrawalService : IWithdrawalService
         if (wallet.Status == "Frozen")
             return Result<WithdrawalDto>.BusinessError(WithdrawalErrorMessages.For(WithdrawalErrorCode.WalletFrozen));
 
-        // ── 2. One-at-a-time rule: block new request if one is already in-flight ──
+        // ── 2. Quy tắc giao dịch đơn lẻ (One-at-a-time): Chặn yêu cầu rút tiền mới nếu có yêu cầu cũ đang xử lý ──
         var hasActive = await _uow.Withdrawals.HasActivePendingAsync(accountId, ct);
         if (hasActive)
             return Result<WithdrawalDto>.BusinessError(WithdrawalErrorMessages.For(WithdrawalErrorCode.WithdrawalInProgress));
 
-        // ── 3. Amount validation ─────────────────────────────────────────────
+        // ── 3. Kiểm tra số tiền rút: Phải lớn hơn mức tối thiểu, nhỏ hơn mức tối đa mỗi giao dịch, và nhỏ hơn số dư khả dụng ──
         if (dto.Amount < _limits.MinAmount)
             return Result<WithdrawalDto>.BusinessError(WithdrawalErrorMessages.For(WithdrawalErrorCode.AmountBelowMinimum));
         if (dto.Amount > _limits.MaxAmountPerTransaction)
@@ -86,14 +86,14 @@ public class WithdrawalService : IWithdrawalService
         if (dto.Amount > wallet.AvailableBalance)
             return Result<WithdrawalDto>.BusinessError(WithdrawalErrorMessages.For(WithdrawalErrorCode.InsufficientAvailable));
 
-        // ── 3. Daily limits ──────────────────────────────────────────────────
+        // ── 3. Kiểm tra các hạn mức giao dịch trong ngày (Daily Limits) ───────────────────────────────────
         var (dailyAmount, dailyCount) = await _uow.Withdrawals.GetDailyStatsAsync(accountId, DateTime.UtcNow, ct);
         if (dailyCount >= _limits.MaxCountPerDay)
             return Result<WithdrawalDto>.BusinessError(WithdrawalErrorMessages.For(WithdrawalErrorCode.DailyCountExceeded));
         if (dailyAmount + dto.Amount > _limits.MaxAmountPerDay)
             return Result<WithdrawalDto>.BusinessError(WithdrawalErrorMessages.For(WithdrawalErrorCode.DailyAmountExceeded));
 
-        // ── 4. Resolve bank account ──────────────────────────────────────────
+        // ── 4. Phân giải thông tin tài khoản ngân hàng chuyển tiền đến (Saved Bank hoặc Input Manual) ─────
         string bankBin, bankName, accountNumber, accountName;
 
         if (dto.SavedBankAccountId.HasValue)
@@ -118,14 +118,14 @@ public class WithdrawalService : IWithdrawalService
             accountName = dto.ToAccountName!;
         }
 
-        // ── 5. Verify wallet PIN ─────────────────────────────────────────────
+        // ── 5. Xác thực mã PIN ví của người dùng trước khi tiến hành chuyển tiền ─────────────────────────────
         var pinResult = await _walletService.VerifyWalletPinAsync(
             new VerifyWalletPinRequestDto { Pin = dto.Pin, ActionType = WalletPinActions.Withdrawal },
             ct);
         if (pinResult.IsFailure)
             return Result<WithdrawalDto>.Failure(pinResult.ErrorCode!, pinResult.ErrorMessage!);
 
-        // ── 6. Lock funds ────────────────────────────────────────────────────
+        // ── 6. Tạm khóa số tiền rút (Lock Funds): Tăng LockedBalance của ví trong DB atomically ────────────
         var (lockCode, withdrawalRequest) = await _ledger.LockAsync(
             new LockWithdrawalCommand(accountId, dto.Amount, bankBin, bankName, accountNumber, accountName),
             ct);
@@ -133,7 +133,7 @@ public class WithdrawalService : IWithdrawalService
         if (lockCode != WithdrawalErrorCode.Success || withdrawalRequest is null)
             return Result<WithdrawalDto>.BusinessError(WithdrawalErrorMessages.For(lockCode));
 
-        // ── 7. Call PayOS ────────────────────────────────────────────────────
+        // ── 7. Gọi API chuyển khoản thực tế của cổng PayOS (Create Outgoing Payout) ───────────────────────
         var description = withdrawalRequest.ReferenceId;
         var payosResult = await _payos.CreatePayoutAsync(
             withdrawalRequest.ReferenceId,
@@ -146,9 +146,9 @@ public class WithdrawalService : IWithdrawalService
 
         if (!payosResult.Success)
         {
-            // Rollback locked funds immediately on PayOS failure.
-            // Use CancellationToken.None: the request ct may already be cancelled at this point
-            // (e.g. client disconnect or response already sent), but we MUST persist the rollback.
+            // NẾU PAYOS LỖI: Hoàn trả lại số tiền vừa bị khóa trong ví của khách hàng ngay lập tức (Rollback).
+            // Sử dụng CancellationToken.None để đảm bảo giao dịch rollback được hoàn thành bền vững 
+            // kể cả khi client đã ngắt kết nối HTTP hoặc hủy request.
             await _ledger.RollbackAsync(
                 new RollbackWithdrawalCommand(withdrawalRequest.WithdrawalId, payosResult.ErrorMessage ?? "PayOS payout failed", WithdrawalHistorySources.System),
                 CancellationToken.None);
@@ -156,9 +156,9 @@ public class WithdrawalService : IWithdrawalService
             return Result<WithdrawalDto>.BadGateway("Unable to connect to the payment gateway. Your balance has been restored. Please try again.");
         }
 
-        // ── 8. Update to PROCESSING + store PayOS IDs ────────────────────────
-        // Use CancellationToken.None: PayOS accepted the payout, so this DB write MUST succeed
-        // even if the originating HTTP request was already cancelled/disconnected.
+        // ── 8. NẾU THÀNH CÔNG: Cập nhật trạng thái thành PROCESSING và lưu các ID phản hồi từ PayOS ───────
+        // Sử dụng CancellationToken.None để đảm bảo cập nhật trạng thái này được lưu thành công vào DB, 
+        // tránh mất dấu giao dịch đã được PayOS chấp nhận chi tiền.
         withdrawalRequest.Status = WithdrawalStatuses.Processing;
         withdrawalRequest.PayosPayoutId = payosResult.PayoutId;
         withdrawalRequest.PayosTransactionId = payosResult.TransactionId;

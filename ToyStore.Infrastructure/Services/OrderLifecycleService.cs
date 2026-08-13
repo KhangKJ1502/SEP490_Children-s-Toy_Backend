@@ -53,37 +53,46 @@ public class OrderLifecycleService : IOrderLifecycleService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-          
+            // BƯỚC 1: Hoàn trả lại số lượng tồn kho (stock refund)
             foreach (var detail in order.OrderDetails)
             {
-              
+                // Cộng lại số lượng tồn kho chung của sản phẩm
                 await _unitOfWork.Orders.AdjustStockAsync(detail.ProductId, detail.Quantity, cancellationToken);
+                
+                // Cộng lại số lượng tồn kho Flash Sale (nếu có áp dụng Flash Sale)
                 if (detail.SlotProductId.HasValue)
                 {
                     if (order.PaymentStatus == "PAID")
                     {
+                        // Nếu đơn đã thanh toán: hoàn trả từ SoldQuantity về lại kho sale khả dụng
                         await _unitOfWork.Orders.AdjustFlashSaleStockAsync(detail.SlotProductId.Value, -detail.Quantity, 0, cancellationToken);
                     }
                     else if (order.PaymentMethod == "SE_PAY")
                     {
+                        // Nếu đơn SE_PAY chưa thanh toán (PENDING): hoàn trả từ ReservedQuantity tạm giữ
                         await _unitOfWork.Orders.AdjustFlashSaleStockAsync(detail.SlotProductId.Value, 0, -detail.Quantity, cancellationToken);
                     }
                     else
                     {
+                        // Trường hợp khác: giảm lượng bán (SoldQuantity)
                         await _unitOfWork.Orders.AdjustFlashSaleStockAsync(detail.SlotProductId.Value, -detail.Quantity, 0, cancellationToken);
                     }
                 }
             }
+            
+            // BƯỚC 2: Khôi phục Voucher nếu yêu cầu (restoreVoucher = true)
             if (restoreVoucher)
             {
                 await _unitOfWork.Orders.RestoreVoucherAsync(order.OrderId, cancellationToken);
             }
 
-            // 3. Prepaid PAID: auto wallet only before Shipped; one credit per order lifetime.
+            // BƯỚC 3: Xử lý hoàn tiền cho các đơn hàng đã thanh toán trước (Prepaid PAID: SE_PAY / WALLET)
             bool hasCreatedSystemRefund = false;
             if (string.Equals(order.PaymentStatus, PaymentStatuses.Paid, StringComparison.OrdinalIgnoreCase)
                 && PrepaidPaymentMethods.Contains(order.PaymentMethod))
             {
+                // Nếu trạng thái đơn hàng đã tiến xa (ví dụ: đã gán shipper/đang giao hàng), 
+                // không tự động hoàn vào ví nữa mà phải tạo phiếu yêu cầu hoàn tiền thủ công (manual refund request) để admin duyệt.
                 if (OrderStatuses.PrepaidCancelRequiresManualRefund(order.StatusId))
                 {
                     _logger.LogInformation(
@@ -92,6 +101,7 @@ public class OrderLifecycleService : IOrderLifecycleService
                     await CreateCancelledOrderSystemRefundAsync(order, cancelledByAccountId, reason, cancellationToken);
                     hasCreatedSystemRefund = true;
                 }
+                // Phòng tránh hoàn tiền trùng lặp (Idempotency Check) bằng cách check lịch sử hoàn tiền hoặc giao dịch ví trùng mã.
                 else if (await _unitOfWork.Orders.HasCompletedRefundWalletCreditForOrderAsync(order.OrderId, cancellationToken)
                          || await _unitOfWork.Orders.ExistsWalletTransactionByIdempotencyKeyAsync(
                              WalletRefundKeys.ForOrder(order.OrderCode), cancellationToken))
@@ -101,6 +111,7 @@ public class OrderLifecycleService : IOrderLifecycleService
                         order.OrderCode);
                     order.PaymentStatus = PaymentStatuses.Refunded;
                 }
+                // Nếu đơn hàng ở trạng thái mới đặt (ví dụ: Confirmed/Processing), tự động hoàn tiền trực tiếp vào Ví điện tử của khách hàng.
                 else
                 {
                     await _walletRefundCreditor.CreditRefundAsync(
@@ -110,15 +121,15 @@ public class OrderLifecycleService : IOrderLifecycleService
             }
             else if (order.PaymentMethod == "SE_PAY" && order.PaymentStatus == "PENDING")
             {
-                // System auto-cancel (timeout job) → EXPIRED; user/admin cancel → CANCELLED
+                // Cập nhật trạng thái thanh toán của SE_PAY: 
+                // Nếu do hệ thống tự hủy (timeout job, accountId = 0) -> EXPIRED. 
+                // Nếu do User/Admin chủ động hủy -> CANCELLED.
                 order.PaymentStatus = cancelledByAccountId == 0 ? PaymentStatuses.Expired : PaymentStatuses.Cancelled;
             }
 
-            // 4. Restore cart items only when explicitly requested (QR payment cancel flow).
-            // - Payment QR cancel (restoreCart=true): SE_PAY never removed cart at confirm,
-            //   COD/WALLET cart was removed at confirm so we restore if unpaid.
-            // - Order Detail / Order History cancel (restoreCart=false): intentional cancel by the user,
-            //   we intentionally do NOT put items back into the cart.
+            // BƯỚC 4: Khôi phục lại giỏ hàng (chỉ áp dụng khi người dùng hủy luồng thanh toán QR)
+            // - Đơn hàng COD/WALLET khi nhấn confirm đã bị xóa giỏ hàng, nếu hủy lúc chưa thanh toán thì khôi phục lại các mặt hàng.
+            // - Đơn hàng SE_PAY không bị xóa giỏ hàng lúc confirm nên không cần khôi phục.
             if (restoreCart)
             {
                 bool cartWasRemovedAtConfirm = order.PaymentMethod != "SE_PAY";
@@ -130,6 +141,7 @@ public class OrderLifecycleService : IOrderLifecycleService
                         var productIdsInOrder = order.OrderDetails.Select(d => d.ProductId).ToHashSet();
                         foreach (var ci in cart.CartItems.Where(i => i.RemovedAt.HasValue && productIdsInOrder.Contains(i.ProductId)))
                         {
+                            // Chỉ phục hồi các mặt hàng vừa mới bị xóa khỏi giỏ trong vòng 5 phút đổ lại để khớp với thời gian tạo đơn
                             if (ci.RemovedAt >= order.CreatedAt.AddMinutes(-5))
                             {
                                 ci.RemovedAt = null;
@@ -349,7 +361,9 @@ public class OrderLifecycleService : IOrderLifecycleService
 
         var subTotal = refundDetails.Sum(d => d.RefundAmount);
         var shippingFee = refundOrder.ActualShippingFee ?? refundOrder.EstimatedShippingFee;
-        var totalAmount = subTotal + shippingFee;
+        // Use the order's TotalAmount (already includes shipping and deducts voucher discount)
+        // instead of manually computing subTotal + shippingFee which ignores VoucherDiscountAmount.
+        var totalAmount = refundOrder.TotalAmount;
         var now = _timeProvider.UtcNow;
 
         // 4. Construct OrderRefund entity

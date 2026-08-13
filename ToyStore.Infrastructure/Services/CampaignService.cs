@@ -341,6 +341,7 @@ public class CampaignService : ICampaignService
             existing.ReviewNote = null;
             existing.ReviewedByAccountId = null;
             existing.ReviewedAt = null;
+            existing.ApprovedExpireAt = null;
         }
 
         existing.CampaignName = dto.CampaignName.Trim();

@@ -74,9 +74,11 @@ public sealed class CampaignReferenceRevalidationJob : BackgroundService
                 var check = await lifecycle.ValidateDispatchAsync(campaign, ct);
                 if (check.IsSuccess) continue;
 
+                // Bug fix: Use SystemActorId=0 sentinel instead of hardcoded AccountId=1.
+                const int SystemActorId = 0;
                 var actor = campaign.CreatedByAccountId
                          ?? campaign.SubmittedByAccountId
-                         ?? 1;
+                         ?? SystemActorId;
 
                 var note = check.ErrorMessage ?? check.ErrorCode ?? "Reference revalidation failed";
                 await uow.Campaigns.SystemCancelWithAuditAsync(campaignId, note, actor, now, ct);

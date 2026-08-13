@@ -220,6 +220,7 @@ public class AdminOrderService : IAdminOrderService
         if (order is null)
             return Result<ConfirmOrderResponseDto>.NotFound("Order", orderId);
 
+        // BƯỚC 1: Chỉ cho phép xác nhận các đơn hàng đang ở trạng thái chờ xử lý (Pending)
         if (order.Status.StatusName != OrderStatuses.Pending)
             return Result<ConfirmOrderResponseDto>.UnprocessableEntity(
                 $"Order is in status '{order.Status.StatusName}'; cannot transition to '{OrderStatuses.Confirmed}'.");
@@ -233,11 +234,14 @@ public class AdminOrderService : IAdminOrderService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
+            // BƯỚC 2: Cập nhật trạng thái đơn hàng thành Confirmed (Đã xác nhận)
+            // Gán Staff chịu trách nhiệm xử lý đơn hàng này (AssignedToStaffId) là tài khoản hiện tại.
             order.AssignedToStaffId = _currentUser.AccountId;
             order.StatusId = confirmedId;
             order.ConfirmedAt = now;
             order.UpdatedAt = now;
 
+            // BƯỚC 3: Ghi nhận lịch sử thay đổi trạng thái đơn hàng
             await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
             {
                 OrderId = order.OrderId,
@@ -253,7 +257,7 @@ public class AdminOrderService : IAdminOrderService
             _logger.LogInformation("Order {OrderId} confirmed by account {AccountId}",
                 orderId, _currentUser.AccountId);
 
-            // Publish: customer notification + merchandise ready-to-pack
+            // BƯỚC 4: Phát event để gửi thông báo cho khách hàng và đẩy đơn hàng sang cho bộ phận Kho (Merchandise) chuẩn bị đóng gói
             var orderPayload = new { orderId = order.OrderId, orderCode = order.OrderCode };
             await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderConfirmed, orderPayload, CancellationToken.None);
             await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.MerchReadyToPack, orderPayload, CancellationToken.None);
@@ -297,6 +301,7 @@ public class AdminOrderService : IAdminOrderService
         if (order is null)
             return Result<ProcessOrderResponseDto>.NotFound("Order", orderId);
 
+        // BƯỚC 1: Chỉ cho phép chuyển trạng thái đóng gói (Processing) đối với các đơn hàng đã được xác nhận (Confirmed) trước đó
         if (order.Status.StatusName != OrderStatuses.Confirmed)
             return Result<ProcessOrderResponseDto>.UnprocessableEntity(
                 $"Order is in status '{order.Status.StatusName}'; cannot transition to '{OrderStatuses.Processing}'.");
@@ -310,6 +315,8 @@ public class AdminOrderService : IAdminOrderService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
+            // BƯỚC 2: Cập nhật trạng thái đơn hàng thành Processing (Đang xử lý / Đóng gói)
+            // Gán mã nhân viên Kho chịu trách nhiệm đóng gói đơn hàng này (AssignedToMerchId)
             order.StatusId = processingId;
             order.UpdatedAt = now;
             if (IsMerchandiseOrAdmin())
@@ -317,6 +324,7 @@ public class AdminOrderService : IAdminOrderService
                 order.AssignedToMerchId = _currentUser.AccountId;
             }
 
+            // BƯỚC 3: Ghi nhận lịch sử trạng thái đóng gói
             await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
             {
                 OrderId = order.OrderId,
@@ -332,6 +340,7 @@ public class AdminOrderService : IAdminOrderService
             _logger.LogInformation("Order {OrderId} moved to Processing by account {AccountId}",
                 orderId, _currentUser.AccountId);
 
+            // BƯỚC 4: Phát event để cập nhật trên UI hoặc gửi thông báo cho khách hàng biết đơn hàng đang được đóng gói
             await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderPacking,
                 new { orderId = order.OrderId, orderCode = order.OrderCode }, CancellationToken.None);
 
@@ -382,7 +391,7 @@ public class AdminOrderService : IAdminOrderService
             return Result<ShipOrderResponseDto>.Failure("CONFIGURATION_ERROR",
                 "Status 'Shipped' not found in database.");
 
-        // Lấy chi tiết các item kèm kích thước, cân nặng thực tế cho don hang
+        // BƯỚC 1: Lấy chi tiết các sản phẩm trong đơn và chuẩn hóa kích thước, cân nặng thực tế bằng GhnPackageCalculator
         var shippingItems = await _unitOfWork.Orders.GetShippingItemsForOrderAsync(orderId, cancellationToken);
         var sanitizedShippingItems = GhnPackageCalculator.SanitizeItems(
             shippingItems,
@@ -391,7 +400,8 @@ public class AdminOrderService : IAdminOrderService
             _ghnOptions.DefaultWidth,
             _ghnOptions.DefaultHeight);
 
-        // Guard: nếu dimension vượt giới hạn tuyệt đối của GHN (>200cm Type5)
+        // BƯỚC 2: Kiểm soát giới hạn kích thước tuyệt đối (Bulky Limit Guard). 
+        // Nếu kích thước đóng gói vượt quá 200cm, chặn tạo đơn hàng và yêu cầu chỉnh sửa lại
         if (GhnShippingLimits.HasUnshippableDimensions(sanitizedShippingItems))
         {
             var violations = GhnShippingLimits.GetViolations(
@@ -401,17 +411,16 @@ public class AdminOrderService : IAdminOrderService
                 GhnShippingLimits.FormatViolationMessage(violations));
         }
 
-        // Lấy service type từ request (nếu có), không dùng để validate trước
-        // vì CalculateForServiceType sẽ tự upgrade lên Type5 khi cần
         var requestedServiceTypeId = GhnShippingLimits.Type2ServiceId;
         if (int.TryParse(request.ServiceType, out var parsedServiceTypeId) && parsedServiceTypeId > 0)
             requestedServiceTypeId = parsedServiceTypeId;
 
+        // BƯỚC 3: Thiết lập số tiền COD (nếu phương thức thanh toán là COD thì thu hộ COD, ngược lại đã thanh toán online COD = 0)
         var codAmount = string.Equals(order.PaymentMethod, "SHIP_COD", StringComparison.OrdinalIgnoreCase)
             ? order.TotalAmount
             : 0m;
 
-        // CalculateForServiceType tự chọn serviceTypeId phù hợp (upgrade lên Type5 nếu bulky/heavy)
+        // Tự động phân cấp gói dịch vụ giao nhận (Ví dụ: tự nâng cấp lên hàng cồng kềnh Type 5 khi vượt hạn mức Type 2)
         var package = GhnPackageCalculator.CalculateForServiceType(
             shippingItems,
             requestedServiceTypeId,
@@ -471,7 +480,9 @@ public class AdminOrderService : IAdminOrderService
             }).ToList()
         };
 
-        // Goi GHN truoc transaction — rollback DB neu loi
+        // BƯỚC 4: THIẾT KẾ AN TOÀN NGOÀI TRANSACTION (Out-of-transaction API Call):
+        // Gọi API của bên thứ 3 (GHN) ngoài database transaction để tránh chiếm giữ kết nối DB (connection pool)
+        // và giữ các khóa dòng lâu trong trường hợp mạng trễ/nghẽn.
         var ghnResult = await _ghnClient.CreateOrderAsync(ghnRequest, cancellationToken);
         if (!ghnResult.IsSuccess)
         {
@@ -481,14 +492,13 @@ public class AdminOrderService : IAdminOrderService
             if (string.Equals(ghnResult.ErrorCode, "GHN_DIMENSION_ERROR", StringComparison.Ordinal))
                 return Result<ShipOrderResponseDto>.UnprocessableEntity(ghnResult.ErrorMessage!);
 
-
             return Result<ShipOrderResponseDto>.BadGateway(
                 $"Shipping provider error: {ghnResult.ErrorMessage}");
         }
 
         var ghnData = ghnResult.Data!;
 
-        // Lay leadtime (khong bat buoc, neu loi thi bo qua)
+        // Lấy thời gian dự kiến giao hàng từ GHN (nếu cổng không có sẵn thì gọi lấy leadtime bổ sung)
         DateTime? estimatedDelivery = ghnData.ExpectedDeliveryTime;
         if (estimatedDelivery is null)
         {
@@ -505,7 +515,7 @@ public class AdminOrderService : IAdminOrderService
                 estimatedDelivery = leadtimeResult.Data!.EstimatedDeliveryTime;
         }
 
-        // Fetch the actual fee
+        // Lấy phí giao hàng thực tế từ phản hồi GHN
         decimal actualFee = ghnData.TotalFee;
         if (actualFee <= 0)
         {
@@ -530,10 +540,12 @@ public class AdminOrderService : IAdminOrderService
 
         var now = _timeProvider.UtcNow;
 
+        // BƯỚC 5: GHI NHẬN THÔNG TIN VẬN ĐƠN VÀO CƠ SỞ DỮ LIỆU (Database Transaction)
+        // Khi API đã xử lý thành công, tiến hành ghi bản ghi lịch sử vận đơn và chuyển đơn hàng sang trạng thái Shipped.
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            // INSERT ShippingProviderTransaction
+            // A. Ghi log lịch sử vận dịch giao nhận (ShippingProviderTransaction)
             await _unitOfWork.Orders.AddShippingTransactionAsync(new ShippingProviderTransaction
             {
                 OrderId = order.OrderId,
@@ -549,16 +561,16 @@ public class AdminOrderService : IAdminOrderService
                 RowVersion = []
             }, cancellationToken);
 
-            // UPDATE Order
+            // B. Cập nhật mã vận đơn và phí vận chuyển thực tế lên đơn hàng
             order.StatusId = shippedId;
             order.ShippedAt = now;
             order.ActualShippingFee = actualFee > 0 ? actualFee : null;
-            // Sync EstimatedShippingFee with the real GHN fee so customers see the accurate price
             if (actualFee > 0)
                 order.EstimatedShippingFee = actualFee;
             order.ShippingOrderCode = ghnData.OrderCode;
             order.UpdatedAt = now;
 
+            // C. Ghi nhận nhật ký trạng thái Shipped
             await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
             {
                 OrderId = order.OrderId,
@@ -575,6 +587,7 @@ public class AdminOrderService : IAdminOrderService
                 "Order {OrderId} shipped via {Provider}, tracking={Tracking}",
                 orderId, request.Provider, ghnData.OrderCode);
 
+            // D. Phát event báo tin cho khách hàng mã vận đơn để theo dõi đơn hàng
             await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.OrderShipped,
                 new { orderId = order.OrderId, orderCode = order.OrderCode, trackingNumber = ghnData.OrderCode }, CancellationToken.None);
 
@@ -618,11 +631,14 @@ public class AdminOrderService : IAdminOrderService
         if (order is null)
             return Result<CancelOrderResponseDto>.NotFound("Order", orderId);
 
+        // BƯỚC 1: Kiểm soát trạng thái cuối (Terminal Status Guard). Không cho phép hủy đơn nếu đã Completed, Cancelled, hoặc Refunded.
         bool isTerminal = order.Status.StatusName is OrderStatuses.Cancelled or OrderStatuses.Refunded or OrderStatuses.Completed;
         if (isTerminal)
             return Result<CancelOrderResponseDto>.UnprocessableEntity(
-                $"Order is in terminal status '{order.Status.StatusName}'; cancellation is not allowed.");
+                $"Order is in status '{order.Status.StatusName}'; cancellation is not allowed.");
 
+        // BƯỚC 2: Chỉ Admin mới có quyền tối cao hủy đơn ở mọi trạng thái trung gian, 
+        // Staff chỉ được hủy đơn hàng ở giai đoạn Pending hoặc Confirmed.
         if (!IsAdmin() && !OrderStatuses.CancellableStatuses.Contains(order.Status.StatusName))
             return Result<CancelOrderResponseDto>.UnprocessableEntity(
                 $"Order is in status '{order.Status.StatusName}'; cancellation is only allowed for Pending or Confirmed orders.");
@@ -631,6 +647,8 @@ public class AdminOrderService : IAdminOrderService
             return Result<CancelOrderResponseDto>.Failure("CONFIGURATION_ERROR",
                 "Status 'Cancelled' not found in database.");
 
+        // BƯỚC 3: Nếu đơn hàng đã có mã vận đơn gửi đi của GHN, gọi API GHN hủy vận đơn trước.
+        // Điều này phòng tránh việc đơn hàng bị hủy trên hệ thống nhưng shipper vẫn đi giao hàng.
         if (!string.IsNullOrEmpty(order.ShippingOrderCode))
         {
             var ghnCancel = await _ghnClient.CancelOrderAsync(order.ShippingOrderCode, cancellationToken);
@@ -645,6 +663,7 @@ public class AdminOrderService : IAdminOrderService
             }
         }
 
+        // BƯỚC 4: Thực thi hủy đơn và thực hiện nghiệp vụ nghiệp vụ hoàn trả kho, hoàn ví tự động, khôi phục voucher thông qua OrderLifecycleService.
         var result = await _orderLifecycle.CancelOrderInternalAsync(
             order,
             request.Reason ?? "Admin cancelled",
@@ -690,13 +709,14 @@ public class AdminOrderService : IAdminOrderService
         if (order is null)
             return Result.NotFound("Order", orderId);
 
-        // Validate tai khoan dich ton tai va hop le
+        // BƯỚC 1: Xác thực tài khoản nhân viên đích nhận phân công phải tồn tại và đang hoạt động (Active)
         var targetAccount = await _unitOfWork.Accounts.GetByIdAsync(request.TargetAccountId, cancellationToken);
         if (targetAccount is null || targetAccount.IsDeleted || !targetAccount.IsActive)
             return Result.Failure("NOT_FOUND",
                 $"Account with ID '{request.TargetAccountId}' was not found or is inactive.");
 
-        // Kiem tra role phu hop voi giai doan don hang
+        // BƯỚC 2: Kiểm tra vai trò của nhân viên được phân công có phù hợp với giai đoạn hiện tại của đơn hàng không
+        // (Ví dụ: Không được gán nhân viên Bán hàng xử lý khâu Đóng gói ở Kho).
         var validationError = ValidateAssigneeRoleForOrderStage(
             order.Status.StatusName, targetAccount.Role?.RoleName ?? string.Empty);
         if (validationError is not null)
@@ -709,6 +729,7 @@ public class AdminOrderService : IAdminOrderService
                 "Cannot determine assignment role for the target account and order status.");
         }
 
+        // BƯỚC 3: Xác định ca trực ngày hôm nay của nhân viên đích và kiểm tra xem họ có đang trong ca trực hoạt động (OnDuty) không
         var todayVn = _timeProvider.UtcNow.AddHours(7).Date;
         var schedules = await _unitOfWork.WorkSchedules.GetByAccountAndDateAsync(
             request.TargetAccountId, todayVn, cancellationToken);
@@ -737,6 +758,8 @@ public class AdminOrderService : IAdminOrderService
         {
             if (hasExistingForRole)
             {
+                // BƯỚC 4A: Nếu vai trò này đã được gán trước đó, thực hiện chuyển giao/phân công lại (Reassign)
+                // Hàm này sẽ hủy kích hoạt phân công cũ và gán phân công mới an toàn.
                 await _unitOfWork.OrderAssignments.ReassignAsync(
                     orderId,
                     assignmentRoleId.Value,
@@ -747,6 +770,8 @@ public class AdminOrderService : IAdminOrderService
             }
             else
             {
+                // BƯỚC 4B: Nếu vai trò này chưa được gán, kiểm tra tải trọng ca trực mới (CurrentLoad vs MaxLoad)
+                // và tạo bản ghi phân công mới (OrderAssignment), đồng thời tăng tải trọng ca trực lên 1.
                 var schedule = await _unitOfWork.WorkSchedules.GetByIdForUpdateAsync(
                     onDutySchedule.ScheduleId, cancellationToken);
                 if (schedule?.StaffShiftCapacity is null)
@@ -779,6 +804,7 @@ public class AdminOrderService : IAdminOrderService
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
 
+            // BƯỚC 5: Cập nhật trường denormalized tương ứng trên Orders (AssignedToStaffId hoặc AssignedToMerchId)
             if (assignmentRoleId == OrderAccessRoles.AssignmentStaff)
             {
                 order.AssignedToStaffId = request.TargetAccountId;
@@ -806,6 +832,7 @@ public class AdminOrderService : IAdminOrderService
                 "Order {OrderId} assigned to account {TargetId} (OA role {RoleId}) by Admin {AdminId}",
                 orderId, request.TargetAccountId, assignmentRoleId, _currentUser.AccountId);
 
+            // BƯỚC 6: Phát event báo nhân viên mới được giao việc để hiển thị thông báo
             await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(), NotificationEventTypes.StaffOrderAssigned,
                 new { orderId = order.OrderId, orderCode = order.OrderCode, targetAccountId = request.TargetAccountId }, CancellationToken.None);
 
@@ -829,10 +856,12 @@ public class AdminOrderService : IAdminOrderService
         int orderId,
         CancellationToken cancellationToken = default)
     {
-        // NOTE cho payment handler:
-        // Goi method nay NGAY SAU KHI commit PaymentStatus = 'PAID'.
-        // Neu method nay that bai, chi ghi log — KHONG rollback payment.
-        // Thanh toan da thanh cong la thuc te; Staff co the confirm thu cong.
+        // ── THIẾT KẾ AN TOÀN (Safe-fail): ──────────────────────────────────────────────────────────
+        // Gọi hàm này NGAY SAU KHI nhận được webhook báo thanh toán thành công (PAID).
+        // Nếu việc tự động xác nhận đơn hàng (Pending -> Confirmed) bị thất bại, chỉ ghi nhận log lỗi 
+        // và KHÔNG rollback giao dịch thanh toán. Thanh toán thành công là thực tế tiền đã vào tài khoản,
+        // nếu hệ thống không tự động confirm được thì nhân viên/admin vẫn có thể nhấn nút xác nhận thủ công.
+        // ───────────────────────────────────────────────────────────────────────────────────────────
 
         try
         {
@@ -845,6 +874,7 @@ public class AdminOrderService : IAdminOrderService
                 return;
             }
 
+            // Chỉ xác nhận tự động khi đơn hàng đã thanh toán thành công (PAID) và trạng thái hiện tại là Pending (Chờ xác nhận)
             if (order.PaymentStatus != "PAID" || order.Status.StatusName != OrderStatuses.Pending)
             {
                 _logger.LogInformation(
@@ -864,6 +894,7 @@ public class AdminOrderService : IAdminOrderService
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
             try
             {
+                // Cập nhật trạng thái đơn hàng thành Confirmed
                 order.StatusId = confirmedId;
                 order.ConfirmedAt = now;
                 order.UpdatedAt = now;
@@ -886,7 +917,7 @@ public class AdminOrderService : IAdminOrderService
 
                 _logger.LogInformation("Order {OrderId} auto-confirmed after payment", orderId);
 
-                // Notify customer + merchandise team
+                // Gửi tin nhắn thông báo cho khách hàng và đẩy đơn sang bộ phận kho để chuẩn bị đóng gói
                 var autoConfirmPayload = new { orderId = order.OrderId, orderCode = order.OrderCode };
                 await _eventPublisher.PublishAsync("Order", order.OrderId.ToString(),
                     NotificationEventTypes.OrderConfirmed, autoConfirmPayload, CancellationToken.None);

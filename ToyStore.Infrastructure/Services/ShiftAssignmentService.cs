@@ -63,6 +63,8 @@ public class ShiftAssignmentService : IShiftAssignmentService
             return Result<AssignmentResultDto>.NotFound("Order", orderId);
         }
 
+        // BƯỚC A.1: Đối soát xem đơn hàng đã được phân công cho các vai trò cần thiết chưa.
+        // Một đơn hàng hợp lệ cần có cả nhân viên bán hàng (StaffRoleId - 3) và nhân viên kho (MerchRoleId - 4).
         var activeAssignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(orderId, cancellationToken);
         var hasStaff = activeAssignments.Any(x => x.RoleId == StaffRoleId);
         var hasMerch = activeAssignments.Any(x => x.RoleId == MerchRoleId);
@@ -77,12 +79,18 @@ public class ShiftAssignmentService : IShiftAssignmentService
             return Result<AssignmentResultDto>.Success(result);
         }
 
+        // BƯỚC A.2: Tiến hành phân ca tự động dựa trên thuật toán phân bổ tải trọng (CurrentLoad vs MaxLoad)
+        // và ca trực đang diễn ra (OnDuty) của các nhân viên.
         var assignResult = await _unitOfWork.OrderAssignments.AutoAssignAsync(orderId, null, cancellationToken);
 
+        // BƯỚC A.3: Xử lý kết quả phân công ca trực tự động
         if (string.Equals(assignResult.Result, "ASSIGNED", StringComparison.OrdinalIgnoreCase))
         {
+            // Nếu phân công thành công cho ít nhất một vai trò:
             if (assignResult.StaffAccountId.HasValue || assignResult.MerchAccountId.HasValue)
             {
+                // Cập nhật các trường denormalized (AssignedToStaffId / AssignedToMerchId) trực tiếp trên bảng Orders
+                // để phục vụ tìm kiếm nhanh và gán quyền thao tác đơn hàng.
                 var orderForUpdate = await _unitOfWork.Orders.GetByIdForUpdateAsync(orderId, cancellationToken);
                 if (orderForUpdate is not null)
                 {
@@ -101,6 +109,7 @@ public class ShiftAssignmentService : IShiftAssignmentService
                 }
             }
 
+            // Phát event báo đơn hàng đã được phân ca thành công
             await _eventPublisher.PublishAsync(
                 "Order",
                 orderId.ToString(),
@@ -116,6 +125,8 @@ public class ShiftAssignmentService : IShiftAssignmentService
         }
         else if (string.Equals(assignResult.Result, "QUEUED", StringComparison.OrdinalIgnoreCase))
         {
+            // Nếu không tìm được nhân viên khả dụng (do hết ca hoặc quá tải), đưa đơn hàng vào Hàng đợi phân ca (Queue)
+            // và phát event cảnh báo đơn hàng bị nghẽn trong Queue.
             await _eventPublisher.PublishAsync(
                 "Order",
                 orderId.ToString(),
@@ -173,12 +184,11 @@ public class ShiftAssignmentService : IShiftAssignmentService
             return Result.Success();
         }
 
-        // Xử lý hàng loạt lên đến 10 đơn hàng cũ nhất trong Queue
+        // BƯỚC B.1: Xử lý hàng loạt (batching) tối đa 10 đơn hàng cũ nhất trong hàng đợi để tối ưu hiệu năng
         var batch = pendingQueue.Take(10).ToList();
         var now = _timeProvider.UtcNow;
-        bool anyResolved = false;
 
-        // Các trạng thái đơn hàng còn đang hoạt động cần phân công ca trực
+        // Các trạng thái đơn hàng còn đang hoạt động cần phân công nhân viên
         var operationalStatuses = new[]
         {
             OrderStatuses.Pending,
@@ -190,10 +200,9 @@ public class ShiftAssignmentService : IShiftAssignmentService
 
         foreach (var queueEntry in batch)
         {
-            // BUG FIX: Re-check IsResolved từ DB trước khi xử lý.
-            // Tránh race condition: admin có thể đã assign thủ công (IsResolved=true)
-            // trong khoảng thời gian kể từ lúc GetPendingAsync() load batch này.
-            // freshEntry được load tracked qua GetByIdAsync() -> cho phép SaveChangesAsync persist thay đổi IsResolved.
+            // BƯỚC B.2: PHÒNG TRÁNH RACE CONDITION
+            // Truy vấn lại từ DB trạng thái mới nhất của queue entry này.
+            // Admin có thể đã phân công thủ công qua giao diện trong khi job tự động đang chạy.
             var freshEntry = await _unitOfWork.OrderQueues.GetByIdAsync(queueEntry.QueueId, cancellationToken);
             if (freshEntry is null || freshEntry.IsResolved)
             {
@@ -202,8 +211,9 @@ public class ShiftAssignmentService : IShiftAssignmentService
 
             var order = freshEntry.Order ?? queueEntry.Order;
 
-            // Check if there is an active refund request for this order.
-            // If so, the queue entry is still operational even if the order status is Completed/Cancelled/Refunded.
+            // BƯỚC B.3: KIỂM TRA ĐƠN HÀNG HOÀN TRẢ ĐANG HOẠT ĐỘNG
+            // Nếu đơn hàng đang trong luồng xử lý hoàn tiền (Refund), hàng đợi phân ca vẫn được coi là cần xử lý
+            // ngay cả khi trạng thái đơn hàng đã là Cancelled/Completed/Refunded.
             var hasActiveRefund = false;
             if (order is not null)
             {
@@ -225,9 +235,9 @@ public class ShiftAssignmentService : IShiftAssignmentService
                 }
             }
 
-            // Nếu đơn hàng không tồn tại, đã bị xóa, hoặc đã giao xong, hoàn thành, bị hủy,...
-            // và không có refund nào đang hoạt động
-            // thì tự động đánh dấu giải quyết (resolve) hàng đợi này để tránh làm kẹt hàng đợi của các đơn hàng khác!
+            // BƯỚC B.4: TỰ ĐỘNG GIẢI QUYẾT ĐƠN HÀNG RÁC/ĐÃ HOÀN TẤT
+            // Nếu đơn hàng không tồn tại, đã bị xóa, đã giao xong/hủy/hoàn thành và không có luồng hoàn trả nào đang hoạt động,
+            // thì tự động giải quyết (resolve) hàng đợi này để tránh nghẽn hàng đợi cho các đơn hàng tiếp theo.
             if (order is null 
                 || order.IsDeleted 
                 || order.Status is null 
@@ -238,14 +248,13 @@ public class ShiftAssignmentService : IShiftAssignmentService
             {
                 freshEntry.IsResolved = true;
                 freshEntry.ResolvedAt = now;
-                anyResolved = true;
                 continue;
             }
 
-
+            // BƯỚC B.5: Thực hiện phân ca tự động cho đơn hàng trong hàng đợi
             var assignResult = await _unitOfWork.OrderAssignments.AutoAssignAsync(freshEntry.OrderId, null, cancellationToken);
 
-            // Kiểm tra xem đơn hàng đã được phân công đầy đủ cả 2 vai trò chưa
+            // BƯỚC B.6: Kiểm tra xem đơn hàng đã được phân công đầy đủ cả 2 vai trò Staff và Merchandiser chưa
             var activeAssignments = await _unitOfWork.OrderAssignments.GetActiveAssignmentsAsync(freshEntry.OrderId, cancellationToken);
             var hasStaff = activeAssignments.Any(x => x.RoleId == StaffRoleId);
             var hasMerch = activeAssignments.Any(x => x.RoleId == MerchRoleId);
@@ -254,10 +263,10 @@ public class ShiftAssignmentService : IShiftAssignmentService
             {
                 freshEntry.IsResolved = true;
                 freshEntry.ResolvedAt = now;
-                anyResolved = true;
 
                 if (assignResult.StaffAccountId.HasValue || assignResult.MerchAccountId.HasValue)
                 {
+                    // Cập nhật các ID nhân viên được gán trực tiếp lên Orders
                     var orderForUpdate = await _unitOfWork.Orders.GetByIdForUpdateAsync(freshEntry.OrderId, cancellationToken);
                     if (orderForUpdate is not null)
                     {
@@ -288,10 +297,10 @@ public class ShiftAssignmentService : IShiftAssignmentService
                     },
                     CancellationToken.None);
             }
-        }
 
-        if (anyResolved)
-        {
+            // BƯỚC B.7: LƯU TỪNG MỤC (Per-item Save Changes)
+            // Lưu thay đổi ngay lập tức sau mỗi lần xử lý xong 1 đơn hàng trong hàng đợi.
+            // Điều này đảm bảo nếu có lỗi xảy ra ở đơn hàng thứ N, các đơn từ 1 đến N-1 đã phân ca thành công vẫn được lưu lại.
             await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
@@ -388,6 +397,23 @@ public class ShiftAssignmentService : IShiftAssignmentService
             queueEntry.AssignedBy = _currentUser.AccountId;
             queueEntry.ResolvedAt = now;
 
+            // Bug fix: Update denormalized fields INSIDE transaction to guarantee atomicity
+            var orderForUpdate = await _unitOfWork.Orders.GetByIdForUpdateAsync(queueEntry.OrderId, cancellationToken);
+            if (orderForUpdate is not null)
+            {
+                if (staffSchedule.AccountId > 0)
+                {
+                    orderForUpdate.AssignedToStaffId = staffSchedule.AccountId;
+                }
+
+                if (merchSchedule.AccountId > 0)
+                {
+                    orderForUpdate.AssignedToMerchId = merchSchedule.AccountId;
+                }
+
+                orderForUpdate.UpdatedAt = now;
+            }
+
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _shiftCapacityMonitor.TryNotifyShiftFullAsync(staffSchedule.ScheduleId, cancellationToken);
             await _shiftCapacityMonitor.TryNotifyShiftFullAsync(merchSchedule.ScheduleId, cancellationToken);
@@ -411,26 +437,6 @@ public class ShiftAssignmentService : IShiftAssignmentService
                 merchAccountId = merchSchedule.AccountId
             },
             CancellationToken.None);
-
-        if (staffSchedule.AccountId > 0 || merchSchedule.AccountId > 0)
-        {
-            var orderForUpdate = await _unitOfWork.Orders.GetByIdForUpdateAsync(queueEntry.OrderId, cancellationToken);
-            if (orderForUpdate is not null)
-            {
-                if (staffSchedule.AccountId > 0)
-                {
-                    orderForUpdate.AssignedToStaffId = staffSchedule.AccountId;
-                }
-
-                if (merchSchedule.AccountId > 0)
-                {
-                    orderForUpdate.AssignedToMerchId = merchSchedule.AccountId;
-                }
-
-                orderForUpdate.UpdatedAt = _timeProvider.UtcNow;
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-            }
-        }
 
         return Result.Success();
     }

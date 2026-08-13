@@ -2902,7 +2902,7 @@ VALUES
     INSERT INTO @Tpl
 VALUES
     ('BIRTHDAY_CUSTOMER', 'SYSTEM', N'Happy Birthday, {{CustomerName}}!',
-        N'Happy birthday to you! ToyStore has sent you a special gift. Please check your Voucher wallet!'),
+        N'Happy birthday to you! ToyStore wishes you a wonderful day filled with joy, health, and happiness!'),
     ('BIRTHDAY_CHILD', 'SYSTEM', N'Happy Birthday, {{ChildName}}!',
         N'Happy birthday to {{ChildName}}! ToyStore wishes them healthy growth and joy. Parents, pick a favorite toy for them!');
 

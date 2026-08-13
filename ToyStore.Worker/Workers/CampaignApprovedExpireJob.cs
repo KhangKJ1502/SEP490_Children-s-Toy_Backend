@@ -59,7 +59,12 @@ public sealed class CampaignApprovedExpireJob : BackgroundService
             foreach (var id in ids)
             {
                 var preview = await uow.Campaigns.GetByIdAsync(id, ct);
-                var actor = preview?.CreatedByAccountId ?? preview?.SubmittedByAccountId ?? 1;
+
+                // Bug fix: don't fallback to hardcoded AccountId=1.
+                // Use 0 as a SYSTEM sentinel — audit log will clearly show this was an automated action,
+                // not tied to any real account.
+                const int SystemActorId = 0;
+                var actor = preview?.CreatedByAccountId ?? preview?.SubmittedByAccountId ?? SystemActorId;
 
                 await uow.Campaigns.SystemCancelWithAuditAsync(
                     id,

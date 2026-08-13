@@ -131,7 +131,6 @@ public class GhnShippingRetryJob : BackgroundService
                     {
                         txn.ShippingFee            = actualFee;
                         order.ActualShippingFee    = actualFee;
-                        order.EstimatedShippingFee = actualFee;
                     }
                     _logger.LogInformation("GHN retry success for Order {Code}: {GhnCode}",
                         order.OrderCode, result.Data.OrderCode);

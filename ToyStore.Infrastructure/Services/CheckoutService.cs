@@ -89,16 +89,21 @@ public class CheckoutService : ICheckoutService
         IReadOnlyList<CheckoutConfirmItemDto>? itemsSubset,
         CancellationToken cancellationToken = default)
     {
+        // BƯỚC 1: Lấy giỏ hàng của người dùng và kiểm tra tính hợp lệ (giỏ hàng có trống không)
         var cart = await _uow.Carts.GetByAccountIdWithItemsAsync(accountId, cancellationToken);
         if (cart is null || !cart.CartItems.Any(i => i.RemovedAt == null))
             return Result<CheckoutPreviewResponseDto>.BusinessError("Cart is empty.");
 
+        // BƯỚC 2: Kiểm tra địa chỉ giao hàng của người dùng
         var address = await _uow.Addresses.GetActiveByIdAsync(addressId, cancellationToken);
         if (address is null)
             return Result<CheckoutPreviewResponseDto>.NotFound("Address", addressId);
 
         var activeAll = cart.CartItems.Where(i => i.RemovedAt == null).ToList();
         List<CartItem> activeItems;
+        
+        // BƯỚC 3: Nếu chỉ checkout một tập hợp con các mặt hàng trong giỏ (itemsSubset), 
+        // tiến hành kiểm tra xem các mặt hàng đó có tồn tại trong giỏ hàng và đúng số lượng hiện tại không.
         if (itemsSubset is { Count: > 0 })
         {
             activeItems = [];
@@ -139,6 +144,7 @@ public class CheckoutService : ICheckoutService
                 "Cart total must be below 100,000,000 VND to proceed to checkout.");
         }
 
+        // BƯỚC 4: Chuẩn hóa phương thức thanh toán và kiểm tra chính sách hạn chế COD (Delivery Abuse Policy)
         var normalizedPaymentMethod = string.IsNullOrWhiteSpace(paymentMethod) ? PayMethodCod : paymentMethod;
         normalizedPaymentMethod = normalizedPaymentMethod.Trim().ToUpperInvariant();
         if (normalizedPaymentMethod == PayMethodCod
@@ -148,6 +154,7 @@ public class CheckoutService : ICheckoutService
                 "Cash on Delivery is temporarily unavailable for your account due to repeated failed COD deliveries. Please choose QR bank transfer or wallet payment.");
         }
 
+        // BƯỚC 5: Kiểm tra ràng buộc Voucher. Không cho phép dùng cùng một mã voucher cho cả đơn hàng và phí vận chuyển.
         if (!string.IsNullOrWhiteSpace(orderVoucherCode)
             && !string.IsNullOrWhiteSpace(shippingVoucherCode)
             && orderVoucherCode.Equals(shippingVoucherCode, StringComparison.OrdinalIgnoreCase))
@@ -156,7 +163,7 @@ public class CheckoutService : ICheckoutService
                 "Cannot apply the same voucher code for both order and shipping.");
         }
 
-        // Lấy chi tiết cân nặng, chiều dài, rộng, cao thực tế của sản phẩm
+        // BƯỚC 6: Lấy thông tin kích thước và trọng lượng thực tế của sản phẩm từ database
         var activeCartItems = activeItems
             .Where(ci => ci.Product.ProductStatus == "Active" && ci.Product.Quantity >= ci.Quantity)
             .ToList();
@@ -186,6 +193,7 @@ public class CheckoutService : ICheckoutService
             }
         }
 
+        // BƯỚC 7: Tính toán kích thước đóng gói tối ưu cho toàn bộ gói hàng (package) dựa trên các mặt hàng
         var package = GhnPackageCalculator.Calculate(
             shippingItems,
             _ghnOpts.DefaultItemWeight,
@@ -210,7 +218,8 @@ public class CheckoutService : ICheckoutService
             Items = package.Items
         };
 
-        // For COD orders pass subTotal so GHN applies the discounted COD shipping rate
+        // Với đơn hàng COD, truyền subTotal làm CodValue để GHN áp dụng mức phí bảo hiểm hoặc giảm giá COD thích hợp.
+        // Lưu ý: Cuộc gọi HTTP đến API GHN được thực hiện ngoài Database Transaction để tránh block DB connection.
         feeReq.CodValue = normalizedPaymentMethod == PayMethodCod ? subTotal : 0m;
 
         var feeResult = await _ghnClient.GetFeeAsync(feeReq, cancellationToken);
@@ -295,48 +304,7 @@ public class CheckoutService : ICheckoutService
         var discountAmount = Math.Min(orderDiscount + shippingDiscount, totalBeforeDiscount);
         var totalAmount = Math.Max(totalBeforeDiscount - discountAmount, 0m);
 
-        if (normalizedPaymentMethod == PayMethodCod && shippingFee > 0)
-        {
-            feeReq.CodValue = subTotal;
-            feeResult = await _ghnClient.GetFeeAsync(feeReq, cancellationToken);
-            if (feeResult.IsSuccess && feeResult.Data!.Fee > 0 && feeResult.Data!.Fee != shippingFee)
-            {
-                shippingFee = feeResult.Data.Fee;
 
-                if (!string.IsNullOrWhiteSpace(shippingVoucherCode))
-                {
-                    var voucherResult = await CalculateVoucherDiscountAsync(
-                        shippingVoucherCode,
-                        accountId,
-                        subTotal,
-                        shippingFee,
-                        "SHIPPING_FEE",
-                        cancellationToken);
-                    if (!voucherResult.IsSuccess)
-                        return Result<CheckoutPreviewResponseDto>.BusinessError(voucherResult.ErrorMessage ?? "Invalid voucher.");
-                    shippingDiscount = voucherResult.Data;
-                }
-
-                if (!string.IsNullOrWhiteSpace(orderVoucherCode) && orderVoucher is not null && string.Equals(orderVoucher.DiscountTarget, "FINAL_PRICE", StringComparison.OrdinalIgnoreCase))
-                {
-                    decimal baseAmount = subTotal + shippingFee;
-                    var voucherResult = await CalculateVoucherDiscountAsync(
-                        orderVoucherCode,
-                        accountId,
-                        subTotal,
-                        baseAmount,
-                        "FINAL_PRICE",
-                        cancellationToken);
-                    if (!voucherResult.IsSuccess)
-                        return Result<CheckoutPreviewResponseDto>.BusinessError(voucherResult.ErrorMessage ?? "Invalid voucher.");
-                    orderDiscount = voucherResult.Data;
-                }
-
-                totalBeforeDiscount = subTotal + shippingFee;
-                discountAmount = Math.Min(orderDiscount + shippingDiscount, totalBeforeDiscount);
-                totalAmount = Math.Max(totalBeforeDiscount - discountAmount, 0m);
-            }
-        }
 
         return Result<CheckoutPreviewResponseDto>.Success(new CheckoutPreviewResponseDto
         {
@@ -406,11 +374,14 @@ public class CheckoutService : ICheckoutService
 
             if (existingPending is not null)
             {
+                // Kiểm tra xem đơn hàng PENDING hiện tại đã hết hạn thanh toán (TTL) chưa.
                 var ttl = TimeSpan.FromMinutes(_sePayOpts.PaymentTtlMinutes);
                 var isExpired = existingPending.CreatedAt + ttl < _timeProvider.UtcNow;
 
                 if (isExpired)
                 {
+                    // Nếu đã hết hạn, tiến hành hủy đơn hàng cũ của hệ thống một cách tự động, 
+                    // hoàn lại voucher cho người dùng để họ có thể tiến hành checkout đơn mới.
                     _logger.LogInformation("ConfirmAsync: Auto-cancelling expired SE_PAY order {OrderId} for account {AccountId}",
                         existingPending.OrderId, accountId);
 
@@ -433,6 +404,8 @@ public class CheckoutService : ICheckoutService
                 }
                 else
                 {
+                    // Nếu đơn PENDING cũ vẫn còn hạn thanh toán, chặn không cho tạo đơn mới
+                    // và trả về OrderId/OrderCode hiện tại để Frontend chuyển hướng sang trang thanh toán QR.
                     return Result<CheckoutConfirmResponseDto>.Success(new CheckoutConfirmResponseDto
                     {
                         OrderId = existingPending.OrderId,
@@ -487,7 +460,9 @@ public class CheckoutService : ICheckoutService
                 "Cart total must be below 100,000,000 VND to proceed to checkout.");
         }
 
-        // Validate confirm items against active cart (phòng client gửi items không có trong giỏ)
+        // BƯỚC C.2: Đối soát danh sách sản phẩm yêu cầu checkout với giỏ hàng thực tế trong database.
+        // Biện pháp bảo mật này giúp ngăn chặn kẻ xấu thao túng request checkout để mua mặt hàng không có trong giỏ 
+        // hoặc đặt mua số lượng vượt quá số lượng hợp lệ trong giỏ hàng.
         var activeCart = await _uow.Carts.GetByAccountIdWithItemsAsync(accountId, cancellationToken);
         if (activeCart is not null)
         {
@@ -653,24 +628,8 @@ public class CheckoutService : ICheckoutService
             shippingDiscount = Math.Min(CalculateDiscount(shippingVoucher, shippingFee), shippingFee);
         }
 
-        if (payMethodNorm == PayMethodCod && shippingFee > 0)
-        {
-            feeReq.CodValue = subTotal;
-            var feeRetryResult = await _ghnClient.GetFeeAsync(feeReq, cancellationToken);
-            if (feeRetryResult.IsSuccess && feeRetryResult.Data!.Fee > 0 && feeRetryResult.Data.Fee != shippingFee)
-            {
-                shippingFee = feeRetryResult.Data.Fee;
 
-                if (!string.IsNullOrWhiteSpace(shippingVoucherCode) && shippingVoucher is not null)
-                    shippingDiscount = Math.Min(CalculateDiscount(shippingVoucher, shippingFee), shippingFee);
 
-                if (!string.IsNullOrWhiteSpace(orderVoucherCode) && orderVoucher is not null && string.Equals(orderVoucher.DiscountTarget, "FINAL_PRICE", StringComparison.OrdinalIgnoreCase))
-                {
-                    decimal baseAmount = subTotal + shippingFee;
-                    orderDiscount = Math.Min(CalculateDiscount(orderVoucher, baseAmount), baseAmount);
-                }
-            }
-        }
 
         var discountAmount = orderDiscount + shippingDiscount;
 
@@ -681,7 +640,9 @@ public class CheckoutService : ICheckoutService
 
         var payMethod = payMethodNorm;
 
-        // ── Trong transaction ─────────────────────────────────────────────────
+        // ── KHỞI ĐẦU DATABASE TRANSACTION ──────────────────────────────────────────
+        // Bắt đầu Transaction để đảm bảo tính nguyên tử (Atomicity): 
+        // Hoặc tất cả ghi nhận đơn hàng, trừ kho, áp dụng voucher đều thành công, hoặc sẽ rollback toàn bộ.
         await _uow.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -713,7 +674,7 @@ public class CheckoutService : ICheckoutService
             await _db.SaveChangesAsync(cancellationToken); // lấy OrderId
 
 
-            // Insert OrderDetails and handle stock
+            // BƯỚC C.3: Tạo thông tin chi tiết đơn hàng (OrderDetails) và xử lý trừ kho (stock reservation)
             foreach (var item in request.Items)
             {
                 var p = productMap[item.ProductId];
@@ -732,8 +693,10 @@ public class CheckoutService : ICheckoutService
                     CreatedAt = now
                 }, cancellationToken);
 
-                // Trừ stock chung ngay lúc tạo đơn cho cả COD và SE_PAY (reserve tránh oversell)
-                // WALLET trừ sau khi kiểm tra số dư ví thành công (bên dưới)
+                // QUY TẮC TRỪ KHO CHUNG (General Stock):
+                // - COD và SE_PAY: Trừ kho chung ngay lúc tạo đơn hàng (đưa vào trạng thái tạm giữ/reserve) 
+                //   để tránh tình trạng oversell khi nhiều người thanh toán cùng lúc.
+                // - WALLET: Chỉ thực hiện trừ kho chung sau khi trừ tiền ví thành công (xem ở nhánh WALLET bên dưới).
                 if (payMethod == PayMethodCod || payMethod == PayMethodSepay)
                 {
                     var success = await _uow.Orders.UpdateProductQuantityAsync(item.ProductId, (int)item.Quantity, cancellationToken);
@@ -745,19 +708,22 @@ public class CheckoutService : ICheckoutService
                     }
                 }
 
-                // Trừ stock Flash Sale (nếu có)
+                // QUY TẮC TRỪ KHO FLASH SALE (Slot Promotion Product Stock):
+                // Nếu sản phẩm nằm trong chương trình Flash Sale:
+                // - SE_PAY: Tăng ReservedQuantity tạm giữ. Khi có Webhook PAID chính thức mới chuyển từ Reserved sang Sold.
+                // - COD/Wallet: Tăng trực tiếp SoldQuantity do các giao dịch này hoàn thành hoặc được duyệt ngay.
                 if (flashSaleSlot != null)
                 {
                     string sql;
                     if (payMethod == PayMethodSepay)
                     {
-                        // SE_PAY: Tăng ReservedQuantity
+                        // SE_PAY: Tăng ReservedQuantity tạm giữ để chống quá bán Flash Sale
                         sql = "UPDATE PromotionProductSlots SET ReservedQuantity = ReservedQuantity + {0} " +
                               "WHERE SlotProductID = {1} AND SoldQuantity + ReservedQuantity + {0} <= SaleQuantity";
                     }
                     else
                     {
-                        // COD/Wallet: Tăng SoldQuantity
+                        // COD/Wallet: Tăng trực tiếp SoldQuantity
                         sql = "UPDATE PromotionProductSlots SET SoldQuantity = SoldQuantity + {0} " +
                               "WHERE SlotProductID = {1} AND SoldQuantity + ReservedQuantity + {0} <= SaleQuantity";
                     }
@@ -821,7 +787,8 @@ public class CheckoutService : ICheckoutService
 
             if (payMethod == PayMethodWallet)
             {
-                // Kiểm tra ví qua WalletRepository
+                // BƯỚC C.4.a: THANH TOÁN QUA VÍ ĐIỆN TỬ (WALLET METHOD)
+                // 1. Kiểm tra sự tồn tại và trạng thái hoạt động của ví
                 var wallet = await _uow.Wallets.GetByAccountIdWithActivePinAsync(accountId, cancellationToken);
                 if (wallet is null || wallet.Status != "Active")
                 {
@@ -829,6 +796,7 @@ public class CheckoutService : ICheckoutService
                     return Result<CheckoutConfirmResponseDto>.BusinessError("Wallet is not available.");
                 }
 
+                // 2. Yêu cầu ví phải được thiết lập mã PIN bảo mật trước khi thanh toán
                 var hasActivePin = wallet.WalletPins.Any(p => p.IsActive);
                 if (!hasActivePin)
                 {
@@ -837,10 +805,9 @@ public class CheckoutService : ICheckoutService
                         "Wallet is not activated. Please set up your PIN on the Wallet page.");
                 }
 
-                // IMPORTANT: Check available balance = Balance - LockedBalance to prevent double-spending
-                // when a withdrawal is in-flight (LockedBalance > 0). Using Balance alone would allow
-                // spending funds already reserved for a pending/processing withdrawal, causing
-                // the withdrawal CommitAsync to fail with InsufficientAvailable and losing store money.
+                // 3. TRÁNH DOUBLE-SPENDING: Đối chiếu số dư khả dụng (Available Balance = Balance - LockedBalance).
+                // Không được phép chi tiêu vào phần LockedBalance (đang bị tạm khóa cho lệnh rút tiền đang xử lý).
+                // Việc trừ số dư ví phải diễn ra atomically thông qua thủ tục DB để tránh race condition.
                 var walletSuccess = await _uow.Orders.DeductWalletBalanceAsync(accountId, totalAmount, cancellationToken);
                 if (!walletSuccess)
                 {
@@ -848,6 +815,7 @@ public class CheckoutService : ICheckoutService
                     return Result<CheckoutConfirmResponseDto>.BusinessError("Insufficient wallet balance.");
                 }
 
+                // 4. Ghi nhận lịch sử giao dịch ví (WalletTransaction)
                 var walletAfterBalance = wallet.Balance - totalAmount;
                 var walletTxn = new WalletTransaction
                 {
@@ -855,7 +823,7 @@ public class CheckoutService : ICheckoutService
                     AccountId = accountId,
                     RelatedOrderId = order.OrderId,
                     TxnType = "Payment",
-                    Direction = "DR",
+                    Direction = "DR", // Debit (Trừ tiền)
                     Amount = totalAmount,
                     BalanceBefore = wallet.Balance,
                     BalanceAfter = walletAfterBalance,
@@ -867,9 +835,9 @@ public class CheckoutService : ICheckoutService
                     CompletedAt = now
                 };
                 await _db.WalletTransactions.AddAsync(walletTxn, cancellationToken);
-                await _db.SaveChangesAsync(cancellationToken); // get WalletTransactionId
+                await _db.SaveChangesAsync(cancellationToken); // Lấy ID giao dịch
 
-                // TRỪ STOCK CHUNG (WALLET - chỉ trừ sau khi thanh toán thành công)
+                // 5. TRỪ STOCK CHUNG: Với WALLET, chỉ thực hiện trừ số lượng tồn kho sản phẩm sau khi ví đã trừ tiền thành công.
                 foreach (var item in request.Items)
                 {
                     var p = productMap[item.ProductId];
@@ -882,11 +850,13 @@ public class CheckoutService : ICheckoutService
                     }
                 }
 
+                // 6. Cập nhật trạng thái đơn hàng thành PAID và CONFIRMED ngay lập tức
                 order.PaymentStatus = "PAID";
                 order.PaidAt = now;
                 order.StatusId = confirmedStatusId;
                 order.ConfirmedAt = now;
 
+                // 7. Ghi nhận lịch sử thanh toán chung (PaymentHistory)
                 await _db.PaymentHistories.AddAsync(new PaymentHistory
                 {
                     AccountId = accountId,
@@ -899,6 +869,7 @@ public class CheckoutService : ICheckoutService
                     CreatedAt = now
                 }, cancellationToken);
 
+                // 8. Lưu vết thay đổi trạng thái đơn hàng (OrderStatusHistory)
                 await _db.OrderStatusHistories.AddAsync(new OrderStatusHistory
                 {
                     OrderId = order.OrderId,
@@ -914,7 +885,9 @@ public class CheckoutService : ICheckoutService
             }
             else // SE_PAY
             {
-                // Sinh attempt code + insert PaymentGatewayTransaction
+                // BƯỚC C.4.b: THANH TOÁN QUA CỔNG CHUYỂN KHOẢN NGÂN HÀNG (SE_PAY METHOD)
+                // Sinh mã đối chiếu giao dịch (attemptCode) duy nhất.
+                // Cơ chế thử lại tối đa 3 lần đề phòng trường hợp trùng lặp ngẫu nhiên mã khóa duy nhất (UNIQUE Constraint).
                 for (var retryInsert = 0; retryInsert < 3; retryInsert++)
                 {
                     attemptCode = BuildAttemptCode(orderCode);
@@ -936,12 +909,14 @@ public class CheckoutService : ICheckoutService
                     catch (DbUpdateException dex) when (IsUniqueViolation(dex))
                     {
                         _logger.LogWarning("PaymentGatewayTransaction UNIQUE violation for attemptCode {Code}, retrying", attemptCode);
+                        // Detach các entity lỗi khỏi change tracker để tránh xung đột khi SaveChanges ở lượt tiếp theo
                         _db.ChangeTracker.Entries<PaymentGatewayTransaction>()
                             .Where(e => e.State == EntityState.Added)
                             .ToList()
                             .ForEach(e => e.State = EntityState.Detached);
                     }
                 }
+                // Tự động tạo link ảnh mã VietQR với nội dung chuyển khoản là mã attemptCode
                 qrImageUrl = BuildVietQrUrl(attemptCode!, (long)totalAmount);
             }
 
@@ -1061,6 +1036,8 @@ public class CheckoutService : ICheckoutService
         string voucherTarget,
         CancellationToken ct)
     {
+        // Tăng UsedQuantity một cách atomic bằng SQL thô để phòng ngừa tranh chấp dữ liệu (Race Condition) 
+        // khi nhiều người dùng cùng áp dụng một voucher có giới hạn số lượng cùng lúc.
         var voucherAffected = await _db.Database.ExecuteSqlRawAsync(
             "UPDATE Vouchers SET UsedQuantity = UsedQuantity + 1 WHERE VoucherID = {0} AND (TotalQuantity IS NULL OR UsedQuantity + 1 <= TotalQuantity)",
             new object[] { voucher.VoucherId },
@@ -1068,6 +1045,7 @@ public class CheckoutService : ICheckoutService
         if (voucherAffected == 0)
             return "Voucher usage limit reached.";
 
+        // Ghi nhận lịch sử sử dụng voucher của khách hàng
         await _db.VoucherUsageLogs.AddAsync(new VoucherUsageLog
         {
             VoucherId = voucher.VoucherId,
@@ -1076,6 +1054,7 @@ public class CheckoutService : ICheckoutService
             UsedAt = _timeProvider.UtcNow
         }, ct);
 
+        // Lưu thông tin voucher áp dụng cụ thể cho đơn hàng và giá trị được giảm
         await _db.OrderVouchers.AddAsync(new OrderVoucher
         {
             OrderId = orderId,
