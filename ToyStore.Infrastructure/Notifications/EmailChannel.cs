@@ -424,7 +424,7 @@ public class EmailChannel : INotificationChannel
                                                                             <div style=""font-family:'Onest',Arial,sans-serif; font-size:12px; font-weight:600; color:#979da6; letter-spacing:0.9px;"">QUANTITY: {detail.Quantity}</div>
                                                                         </td>
                                                                         <td align=""right"" valign=""top"">
-                                                                            <div style=""font-family:'Onest',Arial,sans-serif; font-size:16px; font-weight:600; color:#333;"">{detail.UnitPrice:N0} VND</div>
+                                                                            <div style=""font-family:'Onest',Arial,sans-serif; font-size:16px; font-weight:600; color:#333;"">{(detail.Quantity > 0 ? detail.UnitPrice - detail.DiscountAmount / detail.Quantity : detail.UnitPrice):N0} VND</div>
                                                                         </td>
                                                                     </tr>
                                                                 </table>");

@@ -680,6 +680,10 @@ public class CheckoutService : ICheckoutService
                 var p = productMap[item.ProductId];
                 var flashSaleSlot = PriceHelper.GetActiveFlashSaleSlot(p, now, (int)item.Quantity);
 
+                var originalPrice = p.Price;
+                var salePrice = PriceHelper.ResolveCurrentPrice(p, now, (int)item.Quantity);
+                var unitDiscount = Math.Max(originalPrice - salePrice, 0m);
+
                 await _uow.Orders.AddOrderDetailAsync(new OrderDetail
                 {
                     OrderId = order.OrderId,
@@ -687,8 +691,8 @@ public class CheckoutService : ICheckoutService
                     ProductName = p.ProductName,
                     ProductImage = p.ProductImage?.ImageUrl,
                     Quantity = item.Quantity,
-                    UnitPrice = PriceHelper.ResolveCurrentPrice(p, now, (int)item.Quantity),
-                    DiscountAmount = 0,
+                    UnitPrice = originalPrice,
+                    DiscountAmount = unitDiscount * item.Quantity,
                     SlotProductId = flashSaleSlot?.SlotProductId,
                     CreatedAt = now
                 }, cancellationToken);
