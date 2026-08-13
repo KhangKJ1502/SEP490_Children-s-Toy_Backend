@@ -350,13 +350,19 @@ public class OrderLifecycleService : IOrderLifecycleService
             ? (refundOrder.VoucherDiscountAmount / refundOrder.SubTotal)
             : 0m;
 
-        var refundDetails = refundOrder.OrderDetails.Select(od => new RefundDetail
+        var refundDetails = refundOrder.OrderDetails.Select(od =>
         {
-            ProductId = od.ProductId,
-            Quantity = od.Quantity,
-            UnitPrice = od.UnitPrice,
-            RefundAmount = Math.Round(od.Quantity * od.UnitPrice * (1 - discountRatio), 0),
-            CreatedAt = _timeProvider.UtcNow
+            var netUnitPrice = od.Quantity > 0
+                ? od.UnitPrice - (od.DiscountAmount / od.Quantity)
+                : od.UnitPrice;
+            return new RefundDetail
+            {
+                ProductId = od.ProductId,
+                Quantity = od.Quantity,
+                UnitPrice = netUnitPrice,
+                RefundAmount = Math.Round(od.Quantity * netUnitPrice * (1 - discountRatio), 0),
+                CreatedAt = _timeProvider.UtcNow
+            };
         }).ToList();
 
         var subTotal = refundDetails.Sum(d => d.RefundAmount);

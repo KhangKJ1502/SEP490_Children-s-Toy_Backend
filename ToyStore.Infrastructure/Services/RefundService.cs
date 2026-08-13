@@ -251,13 +251,16 @@ public class RefundService : IRefundService
             }
 
             // Proportionate voucher discount adjustment
-            var itemRefundAmount = Math.Round(item.Quantity * originalDetail.UnitPrice * (1 - discountRatio), 0);
+            var netUnitPrice = originalDetail.Quantity > 0
+                ? originalDetail.UnitPrice - (originalDetail.DiscountAmount / originalDetail.Quantity)
+                : originalDetail.UnitPrice;
+            var itemRefundAmount = Math.Round(item.Quantity * netUnitPrice * (1 - discountRatio), 0);
 
             refundDetails.Add(new RefundDetail
             {
                 ProductId = item.ProductId,
                 Quantity = item.Quantity,
-                UnitPrice = originalDetail.UnitPrice,
+                UnitPrice = netUnitPrice,
                 RefundAmount = itemRefundAmount,
                 CreatedAt = DateTime.UtcNow
             });
@@ -420,14 +423,20 @@ public class RefundService : IRefundService
             ? (refundOrder.VoucherDiscountAmount / refundOrder.SubTotal)
             : 0m;
 
-        var refundDetails = refundOrder.OrderDetails.Select(od => new RefundDetail
+        var refundDetails = refundOrder.OrderDetails.Select(od =>
         {
-            ProductId = od.ProductId,
-            Quantity = od.Quantity,
-            UnitPrice = od.UnitPrice,
-            RefundAmount = isUnpaid ? 0m : Math.Round(od.Quantity * od.UnitPrice * (1 - discountRatio), 0),
-            RestorableQuantity = od.Quantity, // default = nguyên vẹn; Merchandise chỉnh khi inspect
-            CreatedAt = DateTime.UtcNow
+            var netUnitPrice = od.Quantity > 0
+                ? od.UnitPrice - (od.DiscountAmount / od.Quantity)
+                : od.UnitPrice;
+            return new RefundDetail
+            {
+                ProductId = od.ProductId,
+                Quantity = od.Quantity,
+                UnitPrice = netUnitPrice,
+                RefundAmount = isUnpaid ? 0m : Math.Round(od.Quantity * netUnitPrice * (1 - discountRatio), 0),
+                RestorableQuantity = od.Quantity, // default = nguyên vẹn; Merchandise chỉnh khi inspect
+                CreatedAt = DateTime.UtcNow
+            };
         }).ToList();
 
         if (!isUnpaid && refundDetails.Count > 0)
