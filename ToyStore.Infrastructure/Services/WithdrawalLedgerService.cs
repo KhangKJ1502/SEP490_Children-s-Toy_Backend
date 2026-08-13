@@ -31,7 +31,7 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
         await _uow.BeginTransactionAsync(ct);
         try
         {
-            // 1. Read wallet with UPDLOCK to prevent concurrent race conditions
+            // BƯỚC 1: Đọc ví và thực hiện khóa dòng dữ liệu (UPDLOCK) để tránh các yêu cầu rút tiền / thanh toán đồng thời tranh chấp số dư
             var wallet = await _uow.Wallets.GetForUpdateAsync(command.AccountId, ct);
             if (wallet is null)
             {
@@ -45,6 +45,8 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
                 return (WithdrawalErrorCode.WalletFrozen, null);
             }
 
+            // BƯỚC 2: Tính toán số dư khả dụng thực tế (Available Balance = Balance - LockedBalance)
+            // và đối chiếu với số tiền rút. Không được phép rút vào phần LockedBalance (đang bị tạm khóa cho lệnh rút khác).
             var available = wallet.Balance - wallet.LockedBalance;
             if (available < command.Amount)
             {
@@ -52,7 +54,7 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
                 return (WithdrawalErrorCode.InsufficientAvailable, null);
             }
 
-            // 2. Reserve funds atomically
+            // BƯỚC 3: Tạm khóa số tiền rút atomically bằng cách cộng dồn vào trường LockedBalance trong database
             var referenceId = $"WD{command.AccountId}{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
 
             var affected = await _uow.Wallets.IncrementLockedBalanceAsync(command.AccountId, command.Amount, ct);
@@ -62,7 +64,7 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
                 return (WithdrawalErrorCode.InsufficientAvailable, null);
             }
 
-            // 3. Create PENDING withdrawal request
+            // BƯỚC 4: Tạo bản ghi yêu cầu rút tiền với trạng thái PENDING
             var withdrawal = new WithdrawalRequest
             {
                 WalletId = wallet.WalletId,
@@ -80,7 +82,7 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
             await _uow.Withdrawals.AddAsync(withdrawal, ct);
             await _uow.SaveChangesAsync(ct);
 
-            // 4. Audit history
+            // BƯỚC 5: Lưu vết lịch sử thay đổi trạng thái giao dịch
             await _uow.Withdrawals.AddStatusHistoryAsync(
                 BuildHistory(withdrawal.WithdrawalId, null, WithdrawalStatuses.Pending, WithdrawalHistorySources.User, "Withdrawal requested"),
                 ct);
@@ -117,7 +119,7 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
                 return WithdrawalErrorCode.WalletNotFound;
             }
 
-            // Idempotency: already committed
+            // ĐẢM BẢO TÍNH ĐỒNG NHẤT (Idempotency): Nếu yêu cầu rút tiền đã được xác nhận thành công trước đó, bỏ qua không xử lý lại
             if (withdrawal.Status == WithdrawalStatuses.Success)
             {
                 await _uow.RollbackTransactionAsync(ct);
@@ -140,7 +142,7 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
             var balanceBefore = wallet.Balance;
             var balanceAfter  = balanceBefore - withdrawal.Amount;
 
-            // Deduct Balance and LockedBalance atomically
+            // BƯỚC 1: Thực trừ tiền atomically khỏi ví (Trừ cả số dư tổng Balance và số tiền tạm khóa LockedBalance)
             var affected = await _uow.Wallets.CommitDeductionAsync(wallet.WalletId, withdrawal.Amount, ct);
             if (affected == 0)
             {
@@ -149,7 +151,7 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
                 return WithdrawalErrorCode.InsufficientAvailable;
             }
 
-            // Insert WalletTransaction
+            // BƯỚC 2: Thêm bản ghi lịch sử giao dịch ví (WalletTransaction) dạng ghi nợ (DR - Debit)
             var txn = new WalletTransaction
             {
                 WalletId = wallet.WalletId,
@@ -169,7 +171,7 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
             await _uow.Wallets.AddTransactionAsync(txn, ct);
             await _uow.SaveChangesAsync(ct);
 
-            // Update withdrawal
+            // BƯỚC 3: Cập nhật thông tin giao dịch thành công của yêu cầu rút tiền
             var prevStatus = withdrawal.Status;
             withdrawal.WalletTransactionId = txn.WalletTransactionId;
             withdrawal.Status = WithdrawalStatuses.Success;
@@ -179,6 +181,7 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
             _uow.Withdrawals.UpdateAsync(withdrawal);
             await _uow.SaveChangesAsync(ct);
 
+            // BƯỚC 4: Ghi nhận lịch sử chuyển đổi trạng thái của yêu cầu
             await _uow.Withdrawals.AddStatusHistoryAsync(
                 BuildHistory(withdrawal.WithdrawalId, prevStatus, WithdrawalStatuses.Success, WithdrawalHistorySources.Job, null),
                 ct);
@@ -215,7 +218,7 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
                 return WithdrawalErrorCode.WalletNotFound;
             }
 
-            // Idempotency: already in terminal state
+            // ĐẢM BẢO TÍNH ĐỒNG NHẤT (Idempotency): Nếu giao dịch đã kết thúc (thành công/hủy/lỗi), không xử lý lại
             if (withdrawal.Status is WithdrawalStatuses.Failed or WithdrawalStatuses.Cancelled or WithdrawalStatuses.Success)
             {
                 await _uow.RollbackTransactionAsync(ct);
@@ -228,9 +231,10 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
                 return WithdrawalErrorCode.InvalidStatus;
             }
 
-            // Release LockedBalance only (Balance unchanged)
+            // BƯỚC 1: Giải phóng số tiền bị khóa (chỉ trừ trường LockedBalance, giữ nguyên tổng Balance của khách hàng)
             await _uow.Wallets.DecrementLockedBalanceAsync(withdrawal.AccountId, withdrawal.Amount, ct);
 
+            // BƯỚC 2: Cập nhật trạng thái lệnh rút tiền thành Failed (Lỗi) và ghi nhận nguyên nhân lỗi
             var prevStatus = withdrawal.Status;
             withdrawal.Status = WithdrawalStatuses.Failed;
             withdrawal.FailReason = command.FailReason;
@@ -238,6 +242,7 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
             _uow.Withdrawals.UpdateAsync(withdrawal);
             await _uow.SaveChangesAsync(ct);
 
+            // BƯỚC 3: Ghi nhận nhật ký trạng thái lỗi
             await _uow.Withdrawals.AddStatusHistoryAsync(
                 BuildHistory(withdrawal.WithdrawalId, prevStatus, WithdrawalStatuses.Failed, command.Source, command.FailReason),
                 ct);
@@ -274,21 +279,24 @@ public class WithdrawalLedgerService : IWithdrawalLedgerService
                 return WithdrawalErrorCode.WalletNotFound;
             }
 
+            // Chỉ chủ tài khoản mới được quyền hủy yêu cầu rút tiền của mình
             if (withdrawal.AccountId != command.RequestingAccountId)
             {
                 await _uow.RollbackTransactionAsync(ct);
                 return WithdrawalErrorCode.InvalidStatus;
             }
 
+            // Chỉ cho phép hủy khi lệnh rút tiền đang ở trạng thái PENDING và chưa từng gửi yêu cầu sang cổng PayOS
             if (withdrawal.Status != WithdrawalStatuses.Pending || withdrawal.PayosPayoutId is not null)
             {
                 await _uow.RollbackTransactionAsync(ct);
                 return WithdrawalErrorCode.InvalidStatus;
             }
 
-            // Release LockedBalance
+            // BƯỚC 1: Giải phóng số tiền bị khóa (LockedBalance) của khách hàng
             await _uow.Wallets.DecrementLockedBalanceAsync(withdrawal.AccountId, withdrawal.Amount, ct);
 
+            // BƯỚC 2: Cập nhật trạng thái thành Cancelled (Đã hủy)
             var prevStatus = withdrawal.Status;
             withdrawal.Status = WithdrawalStatuses.Cancelled;
             withdrawal.CancelledAt = DateTime.UtcNow;

@@ -202,31 +202,37 @@ public class WorkScheduleService : IWorkScheduleService
             return Result<MarkAbsentResultDto>.NotFound("WorkSchedule", scheduleId);
         }
 
+        // Không cho phép báo vắng mặt đối với các ca trực đã kết thúc (Completed) hoặc đã hủy (Cancelled)
         if (schedule.Status is "Completed" or "Cancelled")
         {
             return Result<MarkAbsentResultDto>.Failure("BUSINESS_RULE_VIOLATION", "Cannot mark a completed or cancelled shift as absent.");
         }
 
+        // BƯỚC 1: Lấy danh sách các đơn hàng hiện đang được phân công cho ca trực này
         var assignmentRows = await _unitOfWork.OrderAssignments
             .GetActiveByScheduleWithStatusAsync(scheduleId, cancellationToken);
 
+        // BƯỚC 2: Cập nhật trạng thái ca trực thành Absent (Vắng mặt)
         schedule.Status = "Absent";
         schedule.UpdatedAt = _timeProvider.UtcNow;
 
         var toReassignOrderIds = new HashSet<int>();
         var keptOrderIds = new List<int>();
 
+        // BƯỚC 3: Duyệt qua các đơn hàng đang phân bổ cho nhân viên vắng mặt
         foreach (var row in assignmentRows)
         {
+            // Kiểm tra xem đơn hàng có cần bàn giao sang ca khác không (chưa hoàn thành vai trò hiện tại)
             var needsHandoff = RoleNeedsHandoff(row.Assignment.RoleId, row.StatusName);
 
             if (needsHandoff)
             {
+                // Nếu cần bàn giao: Hủy kích hoạt phân công hiện tại
                 await _unitOfWork.OrderAssignments.DeactivateAssignmentAsync(row.Assignment, cancellationToken);
                 toReassignOrderIds.Add(row.Assignment.OrderId);
 
-                // Bug C fix: Clear trường denormalized trên Orders để tránh stale data.
-                // RefundRepository và các query khác dựa vào AssignedToStaffId/MerchId để scope đúng nhân viên.
+                // DỌN SẠCH DỮ LIỆU CŨ: Clear trường denormalized (AssignedToStaffId/MerchId) trên Orders.
+                // Do các repository khác đối chiếu đơn hàng theo các ID này, việc clear giúp tránh dữ liệu rác (stale data).
                 var orderForClear = await _unitOfWork.Orders.GetByIdForUpdateAsync(row.Assignment.OrderId, cancellationToken);
                 if (orderForClear is not null)
                 {
@@ -238,6 +244,7 @@ public class WorkScheduleService : IWorkScheduleService
             }
             else
             {
+                // Nếu vai trò đã hoàn thành (ví dụ: kho đã pack xong sản phẩm), giữ nguyên không thay đổi
                 keptOrderIds.Add(row.Assignment.OrderId);
             }
         }
@@ -250,6 +257,8 @@ public class WorkScheduleService : IWorkScheduleService
             KeptOrderIds = keptOrderIds.Distinct().ToList()
         };
 
+        // BƯỚC 4: Tự động chạy lại quy trình phân ca tự động (AutoAssign) cho các đơn hàng bị ảnh hưởng do nhân viên vắng mặt.
+        // Đơn hàng sẽ được gán cho nhân viên trực ca khác đang có tải trọng nhẹ hoặc đưa vào hàng đợi nếu tất cả nhân viên khác quá tải.
         foreach (var orderId in toReassignOrderIds)
         {
             var assignResult = await _shiftAssignmentService.AutoAssignOrderAsync(orderId, cancellationToken);

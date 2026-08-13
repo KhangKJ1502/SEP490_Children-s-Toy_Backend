@@ -71,8 +71,8 @@ public class CustomerNotificationPreferencesService : ICustomerNotificationPrefe
     /// <summary>Matches database defaults when trigger did not run (legacy accounts).</summary>
     private static CustomerNotificationPreferencesDto DefaultDtoForMissingRow() => new()
     {
-        EmailOptIn = true,
-        WebPushOptIn = false,
+        EmailOptIn = false,
+        WebPushOptIn = true,
         OrderUpdates = true,
         Promotions = true,
         StockAlerts = true,

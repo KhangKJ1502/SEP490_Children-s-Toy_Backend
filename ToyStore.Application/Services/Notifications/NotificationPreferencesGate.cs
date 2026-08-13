@@ -34,9 +34,13 @@ public class NotificationPreferencesGate : INotificationPreferencesGate
 
         var prefs = await _unitOfWork.UserPreferences.GetByAccountIdAsync(accountId, ct);
 
-        // Chưa có bản ghi preferences → mặc định opt-in tất cả
+        // Chưa có bản ghi preferences → Email phải được BẬT mới mở gửi; Web mặc định được gửi
         if (prefs is null)
+        {
+            if (channel == NotificationChannels.Email)
+                return false;
             return true;
+        }
 
         // Kiểm tra cờ theo NotificationType
         var topicAllowed = notificationType switch
@@ -65,11 +69,11 @@ public class NotificationPreferencesGate : INotificationPreferencesGate
             return false;
         }
 
-        // WEB_PUSH và WEB_BELL cần thêm cờ WebPushOptIn
-        if ((channel == NotificationChannels.WebPush || channel == NotificationChannels.WebBell) && !prefs.WebPushOptIn)
+        // WEB_PUSH cần thêm cờ WebPushOptIn (WEB_BELL là chuông trong app, không bị chặn bởi cờ WebPush)
+        if (channel == NotificationChannels.WebPush && !prefs.WebPushOptIn)
         {
             _logger.LogDebug(
-                "Web push / bell notification suppressed (WebPushOptIn=0). AccountID={Id} Type={Type} Channel={Channel}",
+                "Web push notification suppressed (WebPushOptIn=0). AccountID={Id} Type={Type} Channel={Channel}",
                 accountId, notificationType, channel);
             return false;
         }

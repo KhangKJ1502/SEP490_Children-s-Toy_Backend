@@ -65,6 +65,13 @@ public interface ICampaignRepository
     Task<int> RecoverStaleDispatchLocksAsync(TimeSpan lockOlderThan, DateTime utcNow, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Release a dispatch lock that was acquired but must be abandoned
+    /// (e.g. campaign status changed after lock acquisition).
+    /// Resets ExecutionStatus → Waiting and clears LockedByJobId / LockedAt.
+    /// </summary>
+    Task ReleaseDispatchLockAsync(int campaignId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Danh dau snapshot dang live la stale.
     /// </summary>
     Task MarkLiveReferenceSnapshotsStaleAsync(

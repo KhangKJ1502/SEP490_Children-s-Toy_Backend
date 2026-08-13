@@ -89,6 +89,18 @@ public class CampaignNotificationService : ICampaignNotificationService
         var campaign = await _unitOfWork.Campaigns.GetForUpdateAsync(campaignId, ct);
         if (campaign is null) return;
 
+        // Bug fix: Re-verify status AFTER acquiring lock.
+        // Guards against the race window between ShouldSkipDispatch (preview, no lock)
+        // and lock acquisition — e.g. Admin cancels campaign in those ~100ms.
+        if (campaign.Status != "Scheduled")
+        {
+            _logger.LogWarning(
+                "Campaign {Id} status changed to '{Status}' after lock was acquired — aborting dispatch.",
+                campaignId, campaign.Status);
+            await _unitOfWork.Campaigns.ReleaseDispatchLockAsync(campaignId, ct);
+            return;
+        }
+
         var dVal = await _lifecycleRules.ValidateDispatchAsync(campaign, ct);
         if (dVal.IsFailure)
         {
@@ -148,9 +160,7 @@ public class CampaignNotificationService : ICampaignNotificationService
 
             var idempotencyBase = $"campaign:{campaign.CampaignId}:{accountId}";
             var bellKey = $"{idempotencyBase}:{NotificationChannels.WebBell}";
-
-            // Check before dispatch so we can detect new bell deliveries
-            var bellExistedBefore = await _unitOfWork.Deliveries.ExistsByIdempotencyKeyAsync(bellKey, ct);
+           var bellExistedBefore = await _unitOfWork.Deliveries.ExistsByIdempotencyKeyAsync(bellKey, ct);
 
             await _dispatcher.DispatchAsync(new NotificationContext
             {
@@ -169,8 +179,8 @@ public class CampaignNotificationService : ICampaignNotificationService
                 IdempotencyKey     = idempotencyBase,
             }, ct);
 
-            // Count only new WEB_BELL deliveries (dedupe per recipient)
-            if (!bellExistedBefore && await _unitOfWork.Deliveries.ExistsByIdempotencyKeyAsync(bellKey, ct))
+            // Count as sent if this was NOT a duplicate delivery (idempotent re-send guard)
+            if (!bellExistedBefore)
                 sent++;
         }
 

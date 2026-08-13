@@ -86,7 +86,7 @@ public class EmailChannel : INotificationChannel
             ActionTarget     = actionTarget,
             IdempotencyKey   = idempotencyKey,
             CampaignId       = request.CampaignId,
-            CreatedAt        = _timeProvider.VnNow,
+            CreatedAt        = _timeProvider.UtcNow,
         };
 
         try
