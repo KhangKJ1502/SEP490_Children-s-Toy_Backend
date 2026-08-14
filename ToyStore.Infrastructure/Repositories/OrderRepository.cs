@@ -249,7 +249,7 @@ public class OrderRepository : IOrderRepository
                       x.od.ProductName,
                       c.CategoryName,
                       x.od.Quantity,
-                      x.od.UnitPrice,
+                      x.od.UnitPrice - (x.od.DiscountAmount / (decimal)x.od.Quantity),
                       x.pd.WeightGram,
                       x.pd.LengthCm,
                       x.pd.WidthCm,

@@ -67,6 +67,8 @@ public class OrdersProfile : Profile
         CreateMap<OrderDetail, AdminOrderDetailItemDto>();
 
         CreateMap<OrderDetail, CustomerOrderListItemProductDto>()
+            .ForMember(d => d.UnitPrice, opt => opt.MapFrom(s =>
+                s.Quantity > 0 ? s.UnitPrice - (s.DiscountAmount / s.Quantity) : s.UnitPrice))
             .ForMember(d => d.Variant, opt => opt.MapFrom(_ => string.Empty))
             .ForMember(d => d.CategoryName, opt => opt.MapFrom(s =>
                 s.Product != null && s.Product.Category != null
@@ -74,6 +76,9 @@ public class OrdersProfile : Profile
                     : null));
 
         CreateMap<OrderDetail, CustomerOrderDetailItemDto>()
+            .ForMember(d => d.UnitPrice, opt => opt.MapFrom(s =>
+                s.Quantity > 0 ? s.UnitPrice - (s.DiscountAmount / s.Quantity) : s.UnitPrice))
+            .ForMember(d => d.DiscountAmount, opt => opt.MapFrom(_ => 0m))
             .ForMember(d => d.Variant, opt => opt.MapFrom(_ => string.Empty))
             .ForMember(d => d.CategoryName, opt => opt.MapFrom(s =>
                 s.Product != null && s.Product.Category != null
