@@ -56,6 +56,7 @@ public static class NotificationEventTypes
     // Merchandise
     public const string MerchReadyToPack  = "order.ready_to_pack";
     public const string MerchPickedUp     = "shipping.picked_up";
+    public const string MerchPickFailed   = "shipping.pick_failed";
     public const string MerchReturned     = "shipping.returned";
     public const string ProductLowStock   = "product.low_stock";
     public const string ProductOutOfStock = "product.out_of_stock";
