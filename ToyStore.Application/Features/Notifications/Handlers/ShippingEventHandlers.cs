@@ -373,7 +373,7 @@ public class AdminReturnFailHandler : IOutboxEventHandler
         var orderCode         = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? $"#{orderId}" : $"#{orderId}";
         var providerOrderCode = root.TryGetProperty("providerOrderCode", out var pc) ? pc.GetString() ?? "" : "";
 
-        var admins = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 3 }, ct);
+        var admins = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
         foreach (var admin in admins)
         {
             await _dispatcher.DispatchAsync(new NotificationContext

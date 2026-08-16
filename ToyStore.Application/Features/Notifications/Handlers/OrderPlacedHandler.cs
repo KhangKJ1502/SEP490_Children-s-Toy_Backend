@@ -62,7 +62,7 @@ public class OrderPlacedHandler : IOutboxEventHandler
             },
         }, ct);
 
-        var staffAccounts = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
+        var staffAccounts = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 3 }, ct);
         foreach (var staff in staffAccounts)
         {
             await _dispatcher.DispatchAsync(new NotificationContext

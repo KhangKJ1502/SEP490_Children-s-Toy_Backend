@@ -27,7 +27,7 @@ public class RefundRequestHandler : IOutboxEventHandler
         var orderCode    = root.TryGetProperty("orderCode", out var oc) ? oc.GetString() ?? "" : "";
         var customerName = root.TryGetProperty("customerName", out var cn) ? cn.GetString() ?? "Customer" : "Customer";
 
-        var staffs = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
+        var staffs = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 3 }, ct);
 
         foreach (var staff in staffs)
         {
@@ -72,7 +72,7 @@ public class ReviewNeedsModerationHandler : IOutboxEventHandler
         var productName = root.TryGetProperty("productName", out var pn) ? pn.GetString() ?? $"#{reviewId}" : $"#{reviewId}";
         var rating      = root.TryGetProperty("rating", out var r) ? r.GetInt32().ToString() : "?";
 
-        var staffs = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
+        var staffs = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 3 }, ct);
 
         foreach (var staff in staffs)
         {
@@ -118,7 +118,7 @@ public class ReviewLowRatingHandler : IOutboxEventHandler
         var productId = root.TryGetProperty("productId", out var p) ? p.GetInt32() : 0;
         var productName = root.TryGetProperty("productName", out var pn) ? pn.GetString() ?? $"#{productId}" : $"#{productId}";
 
-        var staffs = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
+        var staffs = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 3 }, ct);
 
         foreach (var staff in staffs)
         {
@@ -244,7 +244,7 @@ public class StaffCancelRequestedHandler : IOutboxEventHandler
         var reason       = root.TryGetProperty("reason", out var r) ? r.GetString() ?? "" : "";
         var customerName = root.TryGetProperty("customerName", out var cn) ? cn.GetString() ?? "Customer" : "Customer";
 
-        var staffs = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
+        var staffs = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 3 }, ct);
 
         foreach (var staff in staffs)
         {
