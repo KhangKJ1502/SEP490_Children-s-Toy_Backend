@@ -31,6 +31,8 @@ VALUES
         N'Order {{OrderCode}} has been handed to courier {{ShipperName}}. Please keep your phone available.'),
     ('ORDER_DELIVERED', 'SYSTEM', N'Delivery successful',
         N'Order {{OrderCode}} has been delivered successfully. We would love to hear your feedback.'),
+    ('ORDER_COMPLETED', 'SYSTEM', N'Order {{OrderCode}} completed',
+        N'Your order {{OrderCode}} has been automatically completed. You have 3 days to request a refund if needed.'),
     ('ORDER_CANCELLED', 'SYSTEM', N'Order {{OrderCode}} cancelled',
         N'Your order {{OrderCode}} was cancelled. Reason: {{CancelReason}}.'),
     ('ORDER_DELIVERY_FAILED', 'SYSTEM', N'Delivery unsuccessful',

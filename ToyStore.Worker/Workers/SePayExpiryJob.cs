@@ -87,11 +87,22 @@ public class SePayExpiryJob : BackgroundService
             }
         }
 
-        // Update PaymentStatus = EXPIRED cho các attempt Pending của đơn đã hủy
-        await db.PaymentGatewayTransactions
-            .Where(t => t.Status == "Pending"
-                     && t.Order.PaymentMethod == "SE_PAY"
-                     && t.Order.CancelledAt != null)
-            .ExecuteUpdateAsync(s => s.SetProperty(t => t.Status, "Cancelled"), ct);
+        // Đưa vào trong try-catch để lỗi DB được ghi vào telemetry thay vì âm thầm bị nuốt
+        try
+        {
+            // Cập nhật trạng thái Pending → Cancelled cho các transaction SE_PAY của đơn đã hủy
+            var updatedCount = await db.PaymentGatewayTransactions
+                .Where(t => t.Status == "Pending"
+                         && t.Order.PaymentMethod == "SE_PAY"
+                         && t.Order.CancelledAt != null)
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.Status, "Cancelled"), ct);
+
+            _logger.LogInformation("SePayExpiryJob: marked {Count} SE_PAY transactions as Cancelled", updatedCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "SePayExpiryJob: failed to mark SE_PAY transactions as Cancelled");
+            throw; // re-throw để telemetry ghi lại success = false
+        }
     }
 }
