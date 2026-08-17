@@ -166,10 +166,10 @@ public class RefundService : IRefundService
         return internalStatus switch
         {
             RefundStatuses.Requested => "Requested",
-            RefundStatuses.Approved or RefundStatuses.PickupCreated or RefundStatuses.Shipping or RefundStatuses.Received or RefundStatuses.InspectionPending => "Processing",
+            RefundStatuses.Approved or RefundStatuses.PickupCreated or RefundStatuses.Shipping or RefundStatuses.Received or RefundStatuses.InspectionPending or RefundStatuses.ReturnShipmentCreated or RefundStatuses.ReturningToCustomer => "Processing",
             RefundStatuses.Completed => "Completed",
-            RefundStatuses.Rejected => "Rejected",
-            RefundStatuses.Cancelled => "Cancelled",
+            RefundStatuses.Rejected or RefundStatuses.ReturnedToCustomer => "Rejected",
+            RefundStatuses.Cancelled or RefundStatuses.ReturnToCustomerFailed => "Cancelled",
             RefundStatuses.Damage => "Damaged",
             _ => internalStatus
         };
@@ -622,11 +622,15 @@ public class RefundService : IRefundService
             var normalized = statusFilter.Trim().ToLowerInvariant();
             if (normalized == "processing")
             {
-                statusFilter = $"{RefundStatuses.Approved},{RefundStatuses.PickupCreated},{RefundStatuses.Shipping},{RefundStatuses.Received},{RefundStatuses.InspectionPending}";
+                statusFilter = $"{RefundStatuses.Approved},{RefundStatuses.PickupCreated},{RefundStatuses.Shipping},{RefundStatuses.Received},{RefundStatuses.InspectionPending},{RefundStatuses.ReturnShipmentCreated},{RefundStatuses.ReturningToCustomer}";
             }
             else if (normalized == "rejected")
             {
-                statusFilter = $"{RefundStatuses.Rejected},{RefundStatuses.ReturnShipmentCreated},{RefundStatuses.ReturningToCustomer},{RefundStatuses.ReturnedToCustomer},{RefundStatuses.ReturnToCustomerFailed}";
+                statusFilter = $"{RefundStatuses.Rejected},{RefundStatuses.ReturnedToCustomer}";
+            }
+            else if (normalized == "cancelled")
+            {
+                statusFilter = $"{RefundStatuses.Cancelled},{RefundStatuses.ReturnToCustomerFailed}";
             }
             else
             {

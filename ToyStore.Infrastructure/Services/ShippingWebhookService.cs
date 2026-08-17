@@ -9,6 +9,7 @@ using ToyStore.Domain.Constants;
 using ToyStore.Domain.Entities;
 using ToyStore.Domain.Enums;
 using ToyStore.Application.DTOs.Orders;
+using ToyStore.Infrastructure.Mappers;
 
 namespace ToyStore.Infrastructure.Services;
 
@@ -29,6 +30,7 @@ public class ShippingWebhookService : IShippingWebhookService
     private readonly IShippingStatusMapper _statusMapper;
     private readonly IShiftAssignmentService _shiftAssignmentService;
     private readonly IImageUploadService _imageUploadService;
+    private readonly IWalletRefundCreditor _walletRefundCreditor;
 
     public ShippingWebhookService(
         IUnitOfWork unitOfWork,
@@ -39,7 +41,8 @@ public class ShippingWebhookService : IShippingWebhookService
         IShippingReturnFlowService returnFlow,
         IShippingStatusMapper statusMapper,
         IShiftAssignmentService shiftAssignmentService,
-        IImageUploadService imageUploadService)
+        IImageUploadService imageUploadService,
+        IWalletRefundCreditor walletRefundCreditor)
     {
         _unitOfWork = unitOfWork;
         _eventPublisher = eventPublisher;
@@ -50,6 +53,7 @@ public class ShippingWebhookService : IShippingWebhookService
         _statusMapper = statusMapper;
         _shiftAssignmentService = shiftAssignmentService;
         _imageUploadService = imageUploadService;
+        _walletRefundCreditor = walletRefundCreditor;
     }
 
     public async Task HandleAsync(
@@ -288,7 +292,17 @@ public class ShippingWebhookService : IShippingWebhookService
         {
             bool isReturnToCustomer = string.Equals(providerOrderCode, refund.ReturnShippingOrderCode, StringComparison.OrdinalIgnoreCase);
 
+            _logger.LogInformation(
+                "Refund webhook routing: RefundId={RefundId}, ProviderCode={Code}, ShippingOrderCode={ShipCode}, ReturnShippingOrderCode={ReturnCode}, isReturnToCustomer={IsReturn}",
+                refund.RefundId, providerOrderCode, refund.ShippingOrderCode, refund.ReturnShippingOrderCode, isReturnToCustomer);
+
             var now = _timeProvider.UtcNow;
+
+            // Parse GHN reason code and reason for detailed history notes
+            var ghnReasonCode = TryGetString(JsonDocument.Parse(rawPayload).RootElement, "ReasonCode")
+                ?? TryGetString(JsonDocument.Parse(rawPayload).RootElement, "reason_code");
+            var ghnReason = TryGetString(JsonDocument.Parse(rawPayload).RootElement, "Reason")
+                ?? TryGetString(JsonDocument.Parse(rawPayload).RootElement, "reason");
 
             string? uploadedImageUrl = null;
             var ghnImageUrl = TryGetGhnImageUrl(rawPayload);
@@ -333,8 +347,12 @@ public class ShippingWebhookService : IShippingWebhookService
                     
                     ShippingStatuses.Delivered or ShippingStatuses.Returned => (byte)RefundStatusEnum.RefundReturnedToCustomer,
                     
-                    ShippingStatuses.Cancel or ShippingStatuses.DeliveryFail or ShippingStatuses.ReturnFail or 
-                    ShippingStatuses.Lost or ShippingStatuses.Damage or ShippingStatuses.Exception => (byte)RefundStatusEnum.RefundReturnToCustomerFailed,
+                    ShippingStatuses.Cancel => (byte)RefundStatusEnum.RefundCancelled,
+
+                    ShippingStatuses.DeliveryFail or ShippingStatuses.ReturnFail or 
+                    ShippingStatuses.Exception => (byte)RefundStatusEnum.RefundReturnToCustomerFailed,
+
+                    ShippingStatuses.Lost or ShippingStatuses.Damage => (byte)RefundStatusEnum.RefundDamage,
                     
                     _ => null
                 };
@@ -352,7 +370,7 @@ public class ShippingWebhookService : IShippingWebhookService
                     ShippingStatuses.Returning or
                     ShippingStatuses.Delivered or ShippingStatuses.Returned => (byte)RefundStatusEnum.RefundShipping,
                     
-                    ShippingStatuses.Cancel or ShippingStatuses.ReturnFail or 
+                    ShippingStatuses.Cancel or ShippingStatuses.DeliveryFail or ShippingStatuses.ReturnFail or 
                     ShippingStatuses.Exception => (byte)RefundStatusEnum.RefundCancelled,
 
                     ShippingStatuses.Lost or ShippingStatuses.Damage => (byte)RefundStatusEnum.RefundDamage,
@@ -422,6 +440,59 @@ public class ShippingWebhookService : IShippingWebhookService
                         {
                             refund.CancelledAt = now;
                             await _unitOfWork.OrderAssignments.ReleaseCapacityAsync(refund.OrderId, cancellationToken);
+
+                            if (isReturnToCustomer)
+                            {
+                                // Hoàn lại phí ReturnToCustomerFee mà khách đã trả để lấy lại hàng khi shop không giao hàng cho shipper
+                                if (refund.ReturnToCustomerFeePaid && refund.ReturnToCustomerFee > 0)
+                                {
+                                    var order = await _unitOfWork.Orders.GetByIdForUpdateAsync(refund.OrderId, cancellationToken);
+                                    if (order != null)
+                                    {
+                                        var returnFeeRefundKey = $"REFUND_RETURN_FEE_{refund.RefundCode ?? refund.RefundId.ToString()}";
+                                        var credited = await _walletRefundCreditor.CreditRefundAsync(
+                                            order.AccountId,
+                                            refund.ReturnToCustomerFee,
+                                            order.OrderCode,
+                                            order.OrderId,
+                                            cancellationToken,
+                                            returnFeeRefundKey);
+
+                                        if (credited)
+                                        {
+                                            _logger.LogInformation(
+                                                "Return-to-customer fee {Amount} credited to wallet for RefundId={RefundId} (GHN cancel - shop did not hand over items)",
+                                                refund.ReturnToCustomerFee, refund.RefundId);
+                                        }
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // Hoàn lại phí ship mà khách đã trả khi refund bị GHN cancel (shop không giao lại hàng cho shipper)
+                                if (refund.CustomerShippingPaid > 0)
+                                {
+                                    var order = await _unitOfWork.Orders.GetByIdForUpdateAsync(refund.OrderId, cancellationToken);
+                                    if (order != null)
+                                    {
+                                        var shippingRefundKey = $"REFUND_SHIP_CANCEL_{refund.RefundCode ?? refund.RefundId.ToString()}";
+                                        var credited = await _walletRefundCreditor.CreditRefundAsync(
+                                            order.AccountId,
+                                            refund.CustomerShippingPaid,
+                                            order.OrderCode,
+                                            order.OrderId,
+                                            cancellationToken,
+                                            shippingRefundKey);
+
+                                        if (credited)
+                                        {
+                                            _logger.LogInformation(
+                                                "Refund shipping fee {Amount} credited to wallet for RefundId={RefundId} (GHN cancel - shop did not hand over items)",
+                                                refund.CustomerShippingPaid, refund.RefundId);
+                                        }
+                                    }
+                                }
+                            }
                         }
                         else if (targetRefundStatusId.Value == (byte)RefundStatusEnum.RefundDamage)
                         {
@@ -446,11 +517,40 @@ public class ShippingWebhookService : IShippingWebhookService
                             }
                         }
 
+                        // Build detailed history note with GHN reason
+                        var friendlyReason = GhnFailCodeMapper.GetFriendlyDescription(ghnReasonCode, ghnReason);
+                        var detailedNote = !string.IsNullOrWhiteSpace(friendlyReason) && friendlyReason != ghnReason
+                            ? $"GHN {newStatus} ({ghnReasonCode ?? "N/A"}): {friendlyReason}"
+                            : !string.IsNullOrWhiteSpace(ghnReason)
+                                ? $"GHN {newStatus}: {ghnReason}"
+                                : $"Auto-updated from GHN shipping webhook: {newStatus}";
+
+                        // Append context for cancel / fail scenarios
+                        if (targetRefundStatusId.Value == (byte)RefundStatusEnum.RefundCancelled)
+                        {
+                            if (isReturnToCustomer)
+                            {
+                                detailedNote += ". Return-to-customer shipment cancelled: shop did not hand over return items to courier.";
+                                if (refund.ReturnToCustomerFeePaid && refund.ReturnToCustomerFee > 0)
+                                    detailedNote += $" Return shipping fee {refund.ReturnToCustomerFee:N0}₫ refunded to customer wallet.";
+                            }
+                            else
+                            {
+                                detailedNote += ". Refund cancelled: shop did not hand over return items to courier.";
+                                if (refund.CustomerShippingPaid > 0)
+                                    detailedNote += $" Shipping fee {refund.CustomerShippingPaid:N0}₫ refunded to customer wallet.";
+                            }
+                        }
+                        else if (targetRefundStatusId.Value == (byte)RefundStatusEnum.RefundReturnToCustomerFailed)
+                        {
+                            detailedNote += ". Return delivery to customer failed (customer did not receive package / delivery failed).";
+                        }
+
                         refund.RefundStatusHistories.Add(new RefundStatusHistory
                         {
                             StatusId = targetRefundStatusId.Value,
                             ChangedBy = null,
-                            Note = $"Auto-updated from GHN shipping webhook: {newStatus}",
+                            Note = detailedNote,
                             CreatedAt = now
                         });
 

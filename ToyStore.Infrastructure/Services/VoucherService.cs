@@ -144,7 +144,7 @@ public class VoucherService : IVoucherService
     /// - Kiểm tra trùng lặp mã VoucherCode.
     /// - Phân luồng trạng thái duyệt (Status Transition Rules):
     ///   + Admin: Trực tiếp vào trạng thái Scheduled.
-    ///   + Staff: Nếu giảm giá trên giá cuối (FINAL_PRICE) hoặc vượt ngưỡng rủi ro (MaxDiscountCap, MaxTotalDiscount) -> chuyển sang Pending chờ duyệt; ngược lại vào Scheduled.
+    ///   + Staff: Nếu giảm giá trên giá cuối (FINAL_PRICE), không giới hạn số lượng (TotalQuantity = null), hoặc vượt ngưỡng rủi ro (MaxDiscountCap, MaxTotalDiscount) -> chuyển sang Pending chờ duyệt; ngược lại vào Scheduled.
     /// - Lưu xuống database trong Transaction an toàn.
     /// </summary>
     /// <param name="request">DTO chứa thông tin tạo voucher.</param>
@@ -193,8 +193,12 @@ public class VoucherService : IVoucherService
             // Nhóm 2: Voucher theo phần trăm (%) - kiểm tra mức giảm tối đa (cap) và tổng ngân sách giảm giá
             else if (string.Equals(voucher.DiscountType, "PERCENTAGE", StringComparison.OrdinalIgnoreCase))
             {
-                if (voucher.MaxDiscountCap > _thresholds.MaxDiscountCap ||
-                   (voucher.MaxDiscountCap * (voucher.TotalQuantity ?? 1)) > _thresholds.MaxTotalDiscount)
+                // Nếu Staff không giới hạn số lượng (TotalQuantity = null) -> ngân sách vô hạn -> chuyển sang Pending chờ Admin duyệt
+                bool isUnlimited = !voucher.TotalQuantity.HasValue;
+                bool exceedsDiscountCap = (voucher.MaxDiscountCap ?? 0) > _thresholds.MaxDiscountCap;
+                bool exceedsTotalBudget = isUnlimited || ((voucher.MaxDiscountCap ?? 0) * voucher.TotalQuantity!.Value) > _thresholds.MaxTotalDiscount;
+
+                if (exceedsDiscountCap || exceedsTotalBudget)
                 {
                     voucher.Status = VoucherStatuses.Pending;
                 }
@@ -206,8 +210,12 @@ public class VoucherService : IVoucherService
             // Nhóm 3: Voucher giảm theo số tiền cố định (FIXED) - kiểm tra số tiền giảm và tổng ngân sách
             else if (string.Equals(voucher.DiscountType, "FIXED", StringComparison.OrdinalIgnoreCase))
             {
-                if (voucher.DiscountValue > _thresholds.MaxDiscountCap ||
-                   (voucher.DiscountValue * (voucher.TotalQuantity ?? 1)) > _thresholds.MaxTotalDiscount)
+                // Nếu Staff không giới hạn số lượng (TotalQuantity = null) -> ngân sách vô hạn -> chuyển sang Pending chờ Admin duyệt
+                bool isUnlimited = !voucher.TotalQuantity.HasValue;
+                bool exceedsDiscountCap = voucher.DiscountValue > _thresholds.MaxDiscountCap;
+                bool exceedsTotalBudget = isUnlimited || (voucher.DiscountValue * voucher.TotalQuantity!.Value) > _thresholds.MaxTotalDiscount;
+
+                if (exceedsDiscountCap || exceedsTotalBudget)
                 {
                     voucher.Status = VoucherStatuses.Pending;
                 }

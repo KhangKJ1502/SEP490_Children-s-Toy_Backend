@@ -236,6 +236,8 @@ public class GhnWebhookService : IGhnWebhookService
                         tx.Order.StatusId          = processingId;
                         tx.Order.ShippingOrderCode = null;   // xóa GHN code cũ để tạo đơn mới
                         tx.Order.ShippedAt         = null;
+                        tx.Order.DeliveredAt       = null;
+                        tx.Order.CompletedAt       = null;
                         tx.Order.LastGHNFailCode   = payload.ReasonCode;
                         tx.Order.UpdatedAt         = now;
 
@@ -307,6 +309,20 @@ public class GhnWebhookService : IGhnWebhookService
                         if (!isTerminal && OrderWebhookTransitionValidator.CanApplyWebhookStatus(tx.Order.StatusId, targetStatusId))
                         {
                             tx.Order.StatusId = targetStatusId;
+
+                            // Đảm bảo các mốc thời gian trước đó thỏa mãn CK_Orders_Timestamps khi chuyển trạng thái
+                            if (targetStatusId == (byte)OrderStatus.Shipped || targetStatusId == (byte)OrderStatus.Delivering)
+                            {
+                                if (tx.Order.ConfirmedAt == null)
+                                {
+                                    tx.Order.ConfirmedAt = tx.Order.OrderDate <= now ? tx.Order.OrderDate : now;
+                                }
+                                if (tx.Order.ShippedAt == null || tx.Order.ShippedAt < tx.Order.ConfirmedAt)
+                                {
+                                    tx.Order.ShippedAt = now < tx.Order.ConfirmedAt ? tx.Order.ConfirmedAt : now;
+                                }
+                            }
+
                             tx.Order.UpdatedAt = now;
 
                             var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);

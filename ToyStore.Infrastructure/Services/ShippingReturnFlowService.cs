@@ -287,6 +287,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         {
             order.StatusId = cancelledId;
             order.CancelledAt = now;
+            order.CompletedAt = null; // Enforce NOT ([CompletedAt] IS NOT NULL AND [CancelledAt] IS NOT NULL)
             // Chỉ ghi đè lý do hủy nếu chưa có lý do cụ thể từ mã lỗi GHN
             if (string.IsNullOrEmpty(order.CancelReason) || order.CancelReason == OrderCancelReasons.DeliveryFailedGhn)
                 order.CancelReason = cancelReason;
@@ -427,6 +428,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         order.StatusId = targetStatusId;
         order.CancelReason = cancelReason;
         order.CancelledAt = now;
+        order.CompletedAt = null; // Enforce NOT ([CompletedAt] IS NOT NULL AND [CancelledAt] IS NOT NULL)
         order.UpdatedAt = now;
 
         await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
@@ -635,6 +637,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         // 3. Cập nhật trạng thái đơn hàng và thanh toán sang CANCELLED
         fullOrder.StatusId = cancelledId;
         fullOrder.CancelledAt = now;
+        fullOrder.CompletedAt = null; // Enforce NOT ([CompletedAt] IS NOT NULL AND [CancelledAt] IS NOT NULL)
         fullOrder.CancelReason = cancelReason;
         fullOrder.PaymentStatus = "CANCELLED";
         fullOrder.UpdatedAt = now;

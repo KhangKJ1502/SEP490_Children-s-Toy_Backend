@@ -130,6 +130,9 @@ public class GhnWebhookController : ControllerBase
             // 3. Log business error back to the transaction database
             try
             {
+                // Clear change tracker so any failed tracked entities from ProcessAsync do not block saving tx
+                _context.ChangeTracker.Clear();
+
                 var tx = await _context.ShippingProviderTransactions
                     .FirstOrDefaultAsync(t => t.ProviderOrderCode == orderCode && t.Provider == "GHN", cancellationToken);
 
