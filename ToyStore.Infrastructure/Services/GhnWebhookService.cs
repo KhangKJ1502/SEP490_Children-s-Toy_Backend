@@ -147,6 +147,8 @@ public class GhnWebhookService : IGhnWebhookService
         var pendingNotifications = new List<PendingShippingNotification>();
         var releaseCapacity = false;
         var orderIdForCapacity = tx.OrderId;
+        // Khi true: Section B (action dispatch) bị bỏ qua vì Section A đã xử lý toàn bộ luồng
+        var skipActionDispatch = false;
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
@@ -202,7 +204,6 @@ public class GhnWebhookService : IGhnWebhookService
 
             // A2. Update direct tracking columns on the Order
             if (statusLower == "delivery_fail")
-
             {
                 tx.Order.FailedDeliveryAt = now;
                 tx.Order.LastGHNFailCode = payload.ReasonCode;
@@ -221,9 +222,65 @@ public class GhnWebhookService : IGhnWebhookService
                 tx.Order.ReturnedAt = now;
                 _logger.LogInformation("GHN Webhook returned updated: order={OrderCode}", tx.Order.OrderCode);
             }
+            else if (statusLower == "ready_to_pick" && GhnFailCodeMapper.IsPickFail(payload.ReasonCode))
+            {
+                // A3. Lấy hàng thất bại: GHN gửi Status=ready_to_pick + mã GHN-PFA.../GHN-PCB...
+                // → Reset đơn về Processing để Merchandise Staff tạo lại vận đơn GHN mới
+                var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
+                if (statusMap.TryGetValue(OrderStatuses.Processing, out var processingId))
+                {
+                    var friendlyReason = GhnFailCodeMapper.GetFriendlyDescription(payload.ReasonCode);
+
+                    if (tx.Order.StatusId == (byte)OrderStatus.Shipped)
+                    {
+                        tx.Order.StatusId          = processingId;
+                        tx.Order.ShippingOrderCode = null;   // xóa GHN code cũ để tạo đơn mới
+                        tx.Order.ShippedAt         = null;
+                        tx.Order.LastGHNFailCode   = payload.ReasonCode;
+                        tx.Order.UpdatedAt         = now;
+
+                        await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
+                        {
+                            OrderId   = tx.OrderId,
+                            StatusId  = processingId,
+                            ChangedBy = null,
+                            Note      = $"GHN pick-up failed ({payload.ReasonCode}): {friendlyReason}. " +
+                                        "Order reset to Processing for re-shipment.",
+                            CreatedAt = now
+                        }, cancellationToken);
+
+                        pendingNotifications.Add(new PendingShippingNotification(
+                            NotificationEventTypes.MerchPickFailed,
+                            new
+                            {
+                                orderId      = tx.OrderId,
+                                orderCode    = tx.Order.OrderCode,
+                                reasonCode   = payload.ReasonCode,
+                                reason       = friendlyReason,
+                                providerCode = payload.OrderCode
+                            }));
+
+                        _logger.LogInformation(
+                            "GHN Pick Fail: Order {OrderCode} reset to Processing. Reason: {ReasonCode} - {Reason}",
+                            tx.Order.OrderCode, payload.ReasonCode, friendlyReason);
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "GHN Pick Fail: Order {OrderCode} not in Shipped status (current StatusId={StatusId}), skip reset.",
+                            tx.Order.OrderCode, tx.Order.StatusId);
+                    }
+                }
+                // Pick fail is fully handled above — skip Section B to prevent ready_to_pick
+                // from being re-mapped to UpdateOrderStatus → Shipped (which would undo the reset)
+                skipActionDispatch = true;
+            }
 
             // B. Resolve return flow or normal delivery action
-            var action = _statusMapper.ResolveWebhookAction(status);
+            // (skipped when pick fail was already handled in A3)
+            var action = skipActionDispatch
+                ? ShippingWebhookAction.Unknown
+                : _statusMapper.ResolveWebhookAction(status);
 
             if (action == ShippingWebhookAction.UpdateOrderStatus)
             {
@@ -378,6 +435,9 @@ public class GhnWebhookService : IGhnWebhookService
         return statusLower switch
         {
             "delivery_fail"     => NotificationEventTypes.OrderDeliveryFailed,
+            // ready_to_pick + pick fail code: notification handled inline in ProcessAsync
+            // ready_to_pick (bình thường — đơn mới tạo): không cần notify
+            "ready_to_pick"     => null,
             "waiting_to_return" => NotificationEventTypes.OrderReturning,
             "returned"          => NotificationEventTypes.MerchReturned,
             "return_fail"       => NotificationEventTypes.OrderReturnFail,

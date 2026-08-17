@@ -2238,8 +2238,8 @@ GO
 CREATE TABLE [Notification].[UserPreferences] (
     [PreferenceID] INT IDENTITY(1,1) PRIMARY KEY,
     [AccountID]    INT NOT NULL UNIQUE,
-    [EmailOptIn]   BIT NOT NULL DEFAULT 1,
-    [WebPushOptIn] BIT NOT NULL DEFAULT 0,
+    [EmailOptIn]   BIT NOT NULL DEFAULT 0,
+    [WebPushOptIn] BIT NOT NULL DEFAULT 1,
     [OrderUpdates] BIT NOT NULL DEFAULT 1,
     [Promotions]   BIT NOT NULL DEFAULT 1,
     [StockAlerts]  BIT NOT NULL DEFAULT 1,

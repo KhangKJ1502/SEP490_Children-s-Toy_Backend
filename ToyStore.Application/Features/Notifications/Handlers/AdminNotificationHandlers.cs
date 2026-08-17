@@ -25,7 +25,7 @@ public class PaymentGatewayErrorHandler : IOutboxEventHandler
 
         var txnId   = root.TryGetProperty("txnId", out var t) ? t.GetString() ?? "" : "";
         var now     = DateTime.UtcNow;
-        var admins  = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 3 }, ct);
+        var admins  = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
 
         foreach (var admin in admins)
         {
@@ -67,7 +67,7 @@ public class BackgroundJobFailedHandler : IOutboxEventHandler
 
         var jobName = root.TryGetProperty("jobName", out var j) ? j.GetString() ?? "Unknown" : "Unknown";
         var now     = DateTime.UtcNow;
-        var admins  = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 3 }, ct);
+        var admins  = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
 
         foreach (var admin in admins)
         {
@@ -110,7 +110,7 @@ public class BlogPendingApprovalHandler : IOutboxEventHandler
                       : root.TryGetProperty("blogPostId", out var bpid) ? bpid.GetInt32() : 0;
         var blogTitle = root.TryGetProperty("blogTitle", out var bt) ? bt.GetString() ?? $"#{blogId}" : $"#{blogId}";
 
-        var admins = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 3 }, ct);
+        var admins = await _unitOfWork.Accounts.GetByRoleIdsAsync(new byte[] { 2 }, ct);
 
         foreach (var admin in admins)
         {

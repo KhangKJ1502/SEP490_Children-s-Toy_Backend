@@ -12,6 +12,7 @@ public static class NotificationTemplates
     public const string OrderPacking         = "ORDER_PACKING";
     public const string OrderShipping        = "ORDER_SHIPPING";
     public const string OrderDelivered       = "ORDER_DELIVERED";
+    public const string OrderCompleted       = "ORDER_COMPLETED";
     public const string OrderCancelled       = "ORDER_CANCELLED";
     public const string OrderDeliveryFailed  = "ORDER_DELIVERY_FAILED";
     public const string OrderReturnRefundPending = "ORDER_RETURN_REFUND_PENDING";
