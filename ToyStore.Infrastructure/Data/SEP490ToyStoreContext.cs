@@ -2376,6 +2376,7 @@ public partial class SEP490ToyStoreContext : DbContext
             entity.Property(e => e.RowVersion)
                 .IsRowVersion()
                 .IsConcurrencyToken();
+            entity.Property(e => e.RefundId).HasColumnName("RefundID");
             entity.Property(e => e.ServiceType).HasMaxLength(100);
             entity.Property(e => e.ShippingFee).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.Status)
@@ -2390,6 +2391,11 @@ public partial class SEP490ToyStoreContext : DbContext
                 .HasForeignKey(d => d.OrderId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_ShippingTxn_Orders");
+
+            entity.HasOne(d => d.Refund).WithMany(p => p.ShippingProviderTransactions)
+                .HasForeignKey(d => d.RefundId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ShippingTxn_OrderRefunds");
         });
 
         modelBuilder.Entity<ShippingStatusHistory>(entity =>

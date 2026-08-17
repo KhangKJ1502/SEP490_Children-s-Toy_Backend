@@ -35,10 +35,7 @@ public static class AdminOrderFulfillmentMapper
 
     public static string? GetLatestGhnStatus(Order order)
     {
-        return order.ShippingProviderTransactions
-            .OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt)
-            .Select(t => t.Status)
-            .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s));
+        return CustomerOrderDisplayStatusMapper.GetOriginalOrderShippingTransaction(order)?.Status;
     }
 
     public static bool IsGhnReturnInProgress(string? ghnStatus)

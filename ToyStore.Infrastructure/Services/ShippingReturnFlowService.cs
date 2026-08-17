@@ -690,13 +690,15 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
     {
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(ct);
         var cancelled = ResolveStatusId(statusMap, OrderStatuses.Cancelled, OrderStatus.Cancelled);
+        var completed = ResolveStatusId(statusMap, OrderStatuses.Completed, OrderStatus.Completed);
         var refunded = ResolveStatusId(statusMap, OrderStatuses.Refunded, OrderStatus.Refunded);
         var returnCompleted = ResolveStatusId(statusMap, OrderStatuses.ReturnCompleted, OrderStatus.ReturnCompleted);
         var returnFailed = ResolveStatusId(statusMap, OrderStatuses.ReturnFailed, OrderStatus.ReturnFailed);
         var lost = ResolveStatusId(statusMap, OrderStatuses.Lost, OrderStatus.Lost);
         var damaged = ResolveStatusId(statusMap, OrderStatuses.Damaged, OrderStatus.Damaged);
 
-        if (order.StatusId == refunded || 
+        if (order.StatusId == completed ||
+            order.StatusId == refunded || 
             order.StatusId == returnCompleted || 
             order.StatusId == returnFailed || 
             order.StatusId == lost || 

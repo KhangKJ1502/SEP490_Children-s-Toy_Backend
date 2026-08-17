@@ -20,6 +20,15 @@ using System.Net.Http;
 
 namespace ToyStore.Infrastructure.Services;
 
+/// <summary>
+/// Dịch vụ chuyên trách xử lý Webhook phản hồi từ Giao Hàng Nhanh (GHN):
+/// - Xử lý thông tin hình ảnh chứng từ giao hàng POD (tải dạng URL hoặc dạng luồng Stream nhị phân lên Cloudinary).
+/// - Phân loại xử lý riêng nếu mã vận đơn thuộc về Đơn hoàn tiền (Refund).
+/// - Khôi phục đơn hàng về trạng thái Processing khi GHN giao hàng/lấy hàng thất bại (Pick Fail).
+/// - Đồng bộ phí giao hàng và số tiền COD thực tế thu được từ GHN.
+/// - Đồng bộ trạng thái đơn hàng nội bộ và phát sự kiện thông báo (Notification Events).
+/// - Đưa tài khoản khách hàng vào danh sách nghi vấn nếu mã thất bại có dấu hiệu cố tình từ chối nhận.
+/// </summary>
 public class GhnWebhookService : IGhnWebhookService
 {
     private const string WebhookSource = "GHN_WEBHOOK";
@@ -62,12 +71,21 @@ public class GhnWebhookService : IGhnWebhookService
         _httpClientFactory = httpClientFactory;
     }
 
-
+    /// <summary>
+    /// Tiếp nhận và xử lý payload Webhook từ GHN (không kèm file đính kèm).
+    /// </summary>
     public Task ProcessAsync(GhnWebhookPayload payload, CancellationToken cancellationToken = default)
     {
         return ProcessAsync(payload, imageStream: null, fileName: null, cancellationToken);
     }
 
+    /// <summary>
+    /// Xử lý Webhook từ GHN kèm theo luồng dữ liệu hình ảnh POD nhị phân (nếu có).
+    /// </summary>
+    /// <param name="payload">Đối tượng dữ liệu Webhook từ GHN</param>
+    /// <param name="imageStream">Luồng dữ liệu file ảnh nhị phân đính kèm</param>
+    /// <param name="fileName">Tên file ảnh</param>
+    /// <param name="cancellationToken">Token hủy tác vụ</param>
     public async Task ProcessAsync(
         GhnWebhookPayload payload, 
         Stream? imageStream, 
@@ -76,26 +94,33 @@ public class GhnWebhookService : IGhnWebhookService
     {
         if (payload == null)
         {
-            _logger.LogWarning("GHN Webhook: Null payload received.");
+            _logger.LogWarning("GHN Webhook: Nhận payload rỗng (Null).");
             return;
         }
 
         var orderCode = (payload.EffectiveOrderCode ?? payload.EffectiveClientOrderCode)?.Trim();
         if (string.IsNullOrWhiteSpace(orderCode))
         {
-            _logger.LogWarning("GHN Webhook: Invalid payload or empty OrderCode.");
+            _logger.LogWarning("GHN Webhook: Payload không hợp lệ hoặc OrderCode trống.");
             return;
         }
 
+        // 1. Kiểm tra xem OrderCode này có thuộc về Đơn hoàn tiền / Trả hàng (Refund) hay không
         var refund = await _unitOfWork.Refunds.GetByShippingOrReturnOrderCodeAsync(orderCode, cancellationToken);
+        if (refund is null && !string.IsNullOrWhiteSpace(payload.EffectiveClientOrderCode))
+        {
+            refund = await _unitOfWork.Refunds.GetByShippingOrReturnOrderCodeAsync(payload.EffectiveClientOrderCode.Trim(), cancellationToken);
+        }
+
+        // Nếu thuộc đơn Refund -> Chuyển giao trách nhiệm xử lý cho ShippingWebhookService
         if (refund is not null)
         {
-            _logger.LogInformation("GHN Webhook: OrderCode '{Code}' matches refund request. Delegating to IShippingWebhookService.", orderCode);
+            _logger.LogInformation("GHN Webhook: OrderCode '{Code}' khớp với yêu cầu refund. Đang chuyển tiếp sang IShippingWebhookService.", orderCode);
             await _shippingWebhookService.HandleAsync("GHN", JsonSerializer.Serialize(payload), cancellationToken);
             return;
         }
 
-        // Fetch transaction by provider code (OrderCode) or fallback to ClientOrderCode
+        // 2. Tìm giao dịch vận chuyển của đơn hàng thường trong cơ sở dữ liệu
         var tx = await _unitOfWork.Orders.GetShippingTransactionByProviderCodeAsync(orderCode, cancellationToken);
         if (tx == null && !string.IsNullOrWhiteSpace(payload.EffectiveClientOrderCode))
         {
@@ -104,13 +129,38 @@ public class GhnWebhookService : IGhnWebhookService
 
         if (tx == null)
         {
-            _logger.LogWarning("GHN Webhook: Transaction not found for OrderCode '{Code}'", orderCode);
+            _logger.LogWarning("GHN Webhook: Không tìm thấy giao dịch vận chuyển cho OrderCode '{Code}'", orderCode);
             return;
+        }
+
+        // Kiểm tra bổ sung an toàn: Nếu tx thuộc về đơn refund thì chuyển tiếp sang ShippingWebhookService
+        if (tx.OrderId > 0)
+        {
+            var existingRefund = await _unitOfWork.Refunds.GetByOrderIdAsync(tx.OrderId, cancellationToken);
+            if (existingRefund is not null && string.Equals(existingRefund.RefundSource, RefundSources.Customer, StringComparison.OrdinalIgnoreCase))
+            {
+                bool isRefundShipment =
+                    string.Equals(orderCode, existingRefund.ShippingOrderCode, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(orderCode, existingRefund.ReturnShippingOrderCode, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(tx.ProviderOrderCode, existingRefund.ShippingOrderCode, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(tx.ProviderOrderCode, existingRefund.ReturnShippingOrderCode, StringComparison.OrdinalIgnoreCase) ||
+                    (!string.IsNullOrWhiteSpace(payload.EffectiveClientOrderCode) &&
+                        (payload.EffectiveClientOrderCode.StartsWith("R-", StringComparison.OrdinalIgnoreCase) ||
+                         payload.EffectiveClientOrderCode.StartsWith("R2-", StringComparison.OrdinalIgnoreCase) ||
+                         payload.EffectiveClientOrderCode.StartsWith("REF-", StringComparison.OrdinalIgnoreCase)));
+
+                if (isRefundShipment)
+                {
+                    _logger.LogInformation("GHN Webhook: Giao dịch '{Code}' thuộc về đơn refund {RefundId}. Đang chuyển tiếp sang IShippingWebhookService.", orderCode, existingRefund.RefundId);
+                    await _shippingWebhookService.HandleAsync("GHN", JsonSerializer.Serialize(payload), cancellationToken);
+                    return;
+                }
+            }
         }
 
         var status = payload.EffectiveStatus?.Trim();
 
-        // If status is empty but delivery image is provided (either binary stream or payload string), handle image upload directly
+        // 3. Nếu trạng thái gửi sang bị rỗng nhưng có kèm ảnh minh chứng POD -> Chỉ thực hiện cập nhật ảnh POD
         if (string.IsNullOrWhiteSpace(status))
         {
             if (imageStream != null)
@@ -126,7 +176,7 @@ public class GhnWebhookService : IGhnWebhookService
                 }
                 else
                 {
-                    _logger.LogWarning("GHN Webhook: Empty status and no delivery image in payload for OrderCode '{Code}'.", orderCode);
+                    _logger.LogWarning("GHN Webhook: Trạng thái rỗng và không có ảnh giao hàng trong payload cho OrderCode '{Code}'.", orderCode);
                 }
             }
             return;
@@ -134,10 +184,10 @@ public class GhnWebhookService : IGhnWebhookService
 
         var rawPayload = JsonSerializer.Serialize(payload);
 
-        // Idempotency check:
+        // 4. Kiểm tra Idempotency (Bỏ qua nếu webhook đã được xử lý trước đó)
         if (await _unitOfWork.Orders.ExistsShippingStatusHistoryAsync(tx.ShippingTransactionId, status, rawPayload, cancellationToken))
         {
-            _logger.LogInformation("GHN Webhook duplicate skipped: code={Code}, status={Status}", orderCode, status);
+            _logger.LogInformation("Bỏ qua GHN Webhook trùng lặp: code={Code}, status={Status}", orderCode, status);
             return;
         }
 
@@ -147,13 +197,14 @@ public class GhnWebhookService : IGhnWebhookService
         var pendingNotifications = new List<PendingShippingNotification>();
         var releaseCapacity = false;
         var orderIdForCapacity = tx.OrderId;
-        // Khi true: Section B (action dispatch) bị bỏ qua vì Section A đã xử lý toàn bộ luồng
+        // Khi true: Mục B (Action Dispatch) sẽ bị bỏ qua vì Mục A3 đã xử lý xong luồng
         var skipActionDispatch = false;
 
+        // 5. Bắt đầu Database Transaction
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            // 1. Add shipping status history record
+            // A1. Thêm bản ghi nhật ký lịch sử trạng thái vận chuyển
             await _unitOfWork.Orders.AddShippingStatusHistoryAsync(new ShippingStatusHistory
             {
                 ShippingTxId = tx.ShippingTransactionId,
@@ -165,7 +216,7 @@ public class GhnWebhookService : IGhnWebhookService
                 ProcessedAt = now
             }, cancellationToken);
 
-            // 2. Update transaction status
+            // A2. Cập nhật trạng thái giao dịch vận chuyển, Phí vận chuyển và Tiền COD
             tx.Status = status;
             tx.UpdatedAt = now;
             if (payload.EffectiveTotalFee > 0)
@@ -177,11 +228,9 @@ public class GhnWebhookService : IGhnWebhookService
                 tx.CodAmount = payload.EffectiveCODAmount.Value;
             }
 
-            // 3. Handle Order entity columns & flow based on status
             var statusLower = status.ToLowerInvariant();
 
-
-            // A. Update POD delivery image: Prefer direct binary stream if available, otherwise check payload string (URL or Base64)
+            // A3. Xử lý tải ảnh minh chứng giao hàng (POD) lên Cloudinary
             if (imageStream != null)
             {
                 await UploadDeliveryImageStreamToCloudinaryAsync(tx.Order, imageStream, fileName, cancellationToken);
@@ -200,9 +249,7 @@ public class GhnWebhookService : IGhnWebhookService
                 }
             }
 
-
-
-            // A2. Update direct tracking columns on the Order
+            // A4. Cập nhật các cột thông tin giao hàng trực tiếp trên thực thể Order
             if (statusLower == "delivery_fail")
             {
                 tx.Order.FailedDeliveryAt = now;
@@ -214,18 +261,18 @@ public class GhnWebhookService : IGhnWebhookService
                     tx.Order.CancelReason = payload.Reason;
                 }
 
-                _logger.LogInformation("GHN Webhook delivery fail updated: order={OrderCode}, fail count={Count}, reason={Reason}",
+                _logger.LogInformation("GHN Webhook cập nhật giao thất bại: order={OrderCode}, số lần thất bại={Count}, lý do={ReasonCode}",
                     tx.Order.OrderCode, tx.Order.DeliveryFailCount, payload.ReasonCode);
             }
             else if (statusLower == "returned")
             {
                 tx.Order.ReturnedAt = now;
-                _logger.LogInformation("GHN Webhook returned updated: order={OrderCode}", tx.Order.OrderCode);
+                _logger.LogInformation("GHN Webhook cập nhật đơn đã hoàn về shop: order={OrderCode}", tx.Order.OrderCode);
             }
             else if (statusLower == "ready_to_pick" && GhnFailCodeMapper.IsPickFail(payload.ReasonCode))
             {
-                // A3. Lấy hàng thất bại: GHN gửi Status=ready_to_pick + mã GHN-PFA.../GHN-PCB...
-                // → Reset đơn về Processing để Merchandise Staff tạo lại vận đơn GHN mới
+                // A5. Lấy hàng thất bại: GHN gửi Status=ready_to_pick kèm mã lỗi lấy hàng GHN-PFA... / GHN-PCB...
+                // -> Reset đơn về Processing để nhân viên Merchandise có thể tạo lại vận đơn GHN mới
                 var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
                 if (statusMap.TryGetValue(OrderStatuses.Processing, out var processingId))
                 {
@@ -234,7 +281,7 @@ public class GhnWebhookService : IGhnWebhookService
                     if (tx.Order.StatusId == (byte)OrderStatus.Shipped)
                     {
                         tx.Order.StatusId          = processingId;
-                        tx.Order.ShippingOrderCode = null;   // xóa GHN code cũ để tạo đơn mới
+                        tx.Order.ShippingOrderCode = null;   // Xóa mã GHN cũ để chuẩn bị tạo đơn mới
                         tx.Order.ShippedAt         = null;
                         tx.Order.DeliveredAt       = null;
                         tx.Order.CompletedAt       = null;
@@ -246,8 +293,8 @@ public class GhnWebhookService : IGhnWebhookService
                             OrderId   = tx.OrderId,
                             StatusId  = processingId,
                             ChangedBy = null,
-                            Note      = $"GHN pick-up failed ({payload.ReasonCode}): {friendlyReason}. " +
-                                        "Order reset to Processing for re-shipment.",
+                            Note      = $"GHN lấy hàng thất bại ({payload.ReasonCode}): {friendlyReason}. " +
+                                        "Đơn hàng được reset về Processing để chuẩn bị giao lại.",
                             CreatedAt = now
                         }, cancellationToken);
 
@@ -263,23 +310,21 @@ public class GhnWebhookService : IGhnWebhookService
                             }));
 
                         _logger.LogInformation(
-                            "GHN Pick Fail: Order {OrderCode} reset to Processing. Reason: {ReasonCode} - {Reason}",
+                            "GHN Pick Fail: Đơn hàng {OrderCode} đã được reset về Processing. Lý do: {ReasonCode} - {Reason}",
                             tx.Order.OrderCode, payload.ReasonCode, friendlyReason);
                     }
                     else
                     {
                         _logger.LogWarning(
-                            "GHN Pick Fail: Order {OrderCode} not in Shipped status (current StatusId={StatusId}), skip reset.",
+                            "GHN Pick Fail: Đơn hàng {OrderCode} không ở trạng thái Shipped (StatusId hiện tại={StatusId}), bỏ qua reset.",
                             tx.Order.OrderCode, tx.Order.StatusId);
                     }
                 }
-                // Pick fail is fully handled above — skip Section B to prevent ready_to_pick
-                // from being re-mapped to UpdateOrderStatus → Shipped (which would undo the reset)
+                // Vì trường hợp Pick Fail đã xử lý xong ở đây nên đánh dấu bỏ qua Mục B
                 skipActionDispatch = true;
             }
 
-            // B. Resolve return flow or normal delivery action
-            // (skipped when pick fail was already handled in A3)
+            // B. Thực hiện ánh xạ action và cập nhật trạng thái quy trình đơn hàng
             var action = skipActionDispatch
                 ? ShippingWebhookAction.Unknown
                 : _statusMapper.ResolveWebhookAction(status);
@@ -291,17 +336,17 @@ public class GhnWebhookService : IGhnWebhookService
                 {
                     if (targetStatusId == (byte)OrderStatus.Delivered)
                     {
-                        // Use Lifecycle Service for delivery completion (releases shift, processes events)
+                        // Sử dụng Lifecycle Service để chuyển hoàn tất giao hàng (giải phóng ca nhân viên, kích hoạt sự kiện)
                         var result = await _orderLifecycle.DeliverOrderAsync(tx.OrderId, cancellationToken);
                         if (!result.IsSuccess)
                         {
-                            _logger.LogWarning("Failed to mark order {OrderId} as delivered via lifecycle: {Error}",
+                            _logger.LogWarning("Đánh dấu đơn hàng {OrderId} là delivered thất bại qua lifecycle: {Error}",
                                 tx.OrderId, result.ErrorMessage);
                         }
                     }
                     else
                     {
-                        // Normal order status progression with out-of-order check
+                        // Kiểm tra luồng chuyển trạng thái hợp lệ
                         bool isTerminal = tx.Order.StatusId == (byte)OrderStatus.Cancelled || 
                                           tx.Order.StatusId == (byte)OrderStatus.Refunded || 
                                           tx.Order.StatusId == (byte)OrderStatus.ReturnCompleted;
@@ -310,7 +355,7 @@ public class GhnWebhookService : IGhnWebhookService
                         {
                             tx.Order.StatusId = targetStatusId;
 
-                            // Đảm bảo các mốc thời gian trước đó thỏa mãn CK_Orders_Timestamps khi chuyển trạng thái
+                            // Đảm bảo mốc thời gian thỏa mãn điều kiện ràng buộc DB khi chuyển trạng thái
                             if (targetStatusId == (byte)OrderStatus.Shipped || targetStatusId == (byte)OrderStatus.Delivering)
                             {
                                 if (tx.Order.ConfirmedAt == null)
@@ -333,7 +378,7 @@ public class GhnWebhookService : IGhnWebhookService
                                 OrderId = tx.OrderId,
                                 StatusId = targetStatusId,
                                 ChangedBy = null,
-                                Note = $"Auto-updated from GHN webhook: {targetStatusName}",
+                                Note = $"Tự động cập nhật từ GHN webhook: {targetStatusName}",
                                 CreatedAt = now
                             }, cancellationToken);
 
@@ -347,21 +392,19 @@ public class GhnWebhookService : IGhnWebhookService
                     }
                 }
             }
-
-
             else if (action != ShippingWebhookAction.Unknown)
             {
-                // Process return flow using the standard Return Flow service
+                // Xử lý quy trình trả hàng bằng service Return Flow tiêu chuẩn
                 var flowResult = await _returnFlow.ProcessActionAsync(action, tx.Order, tx, status, now, cancellationToken);
                 pendingNotifications.AddRange(flowResult.Notifications);
                 releaseCapacity = flowResult.ReleaseShiftCapacity;
             }
             else
             {
-                _logger.LogWarning("GHN Webhook unknown action for status '{Status}' on order {OrderId}", status, tx.OrderId);
+                _logger.LogWarning("GHN Webhook action không xác định cho trạng thái '{Status}' của đơn hàng {OrderId}", status, tx.OrderId);
             }
 
-            // C. Synchronize Payment Status
+            // C. Đồng bộ trạng thái thanh toán đối với đơn COD
             var newPaymentStatus = GhnStatusMapper.ComputePaymentStatus(payload, tx.Order.PaymentMethod, tx.Order.PaymentStatus);
             if (newPaymentStatus != tx.Order.PaymentStatus)
             {
@@ -378,15 +421,13 @@ public class GhnWebhookService : IGhnWebhookService
                     CreatedAt = now
                 }, cancellationToken);
 
-                _logger.LogInformation("Order {OrderCode} payment status auto-updated to {PaymentStatus} via GHN webhook",
+                _logger.LogInformation("Trạng thái thanh toán của đơn hàng {OrderCode} tự động cập nhật thành {PaymentStatus} qua GHN webhook",
                     tx.Order.OrderCode, newPaymentStatus);
             }
 
-
-            // E. Suspect fail code / customer blacklisting triggers
+            // D. Kiểm tra mã lỗi giao hàng bất thường để cảnh báo đưa khách vào danh sách đen (Blacklist)
             if (statusLower == "delivery_fail" && GhnFailCodeMapper.ShouldBlacklist(payload.ReasonCode ?? ""))
             {
-                // Publish warning event for suspicious delivery failure (staff/admin action requested)
                 pendingNotifications.Add(new PendingShippingNotification(
                     NotificationEventTypes.SystemShippingWebhookError,
                     new
@@ -395,18 +436,18 @@ public class GhnWebhookService : IGhnWebhookService
                         orderCode = tx.Order.OrderCode,
                         providerStatus = status,
                         reasonCode = payload.ReasonCode,
-                        message = $"Suspicious GHN failure code '{payload.ReasonCode}' detected (potential customer blacklist needed)."
+                        message = $"Phát hiện mã giao thất bại nghi vấn '{payload.ReasonCode}' từ GHN (cần xem xét đưa khách vào danh sách đen)."
                     }));
             }
 
-            // Save and Commit!
+            // E. Lưu và Commit Transaction
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-            _logger.LogInformation("GHN Webhook transaction committed successfully for code={Code}, status={Status}",
+            _logger.LogInformation("Transaction GHN Webhook đã được commit thành công cho code={Code}, status={Status}",
                 payload.OrderCode, status);
 
-            // 4. Publish Event Notifications (Out of transaction for performance and reliability)
+            // 6. Phát các sự kiện thông báo (Thực hiện ngoài Transaction để tăng hiệu năng)
             var notifEvent = ResolveNotificationEventType(statusLower);
             if (notifEvent != null && pendingNotifications.All(n => n.EventType != notifEvent))
             {
@@ -425,7 +466,7 @@ public class GhnWebhookService : IGhnWebhookService
                     "Order", tx.OrderId.ToString(), pending.EventType, pending.Payload, cancellationToken);
             }
 
-            // 5. Release shift assignment capacity if requested
+            // 7. Giải phóng công suất ca làm việc của nhân viên nếu đơn hàng hủy/giao thất bại
             if (releaseCapacity)
             {
                 try
@@ -434,25 +475,26 @@ public class GhnWebhookService : IGhnWebhookService
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to release capacity for order {OrderId}", orderIdForCapacity);
+                    _logger.LogError(ex, "Lỗi khi giải phóng công suất ca làm việc cho đơn hàng {OrderId}", orderIdForCapacity);
                 }
             }
         }
         catch (Exception ex)
         {
             await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-            _logger.LogError(ex, "Error processing GHN webhook callback for order {Code}", payload.OrderCode);
+            _logger.LogError(ex, "Lỗi khi xử lý callback GHN webhook cho đơn hàng {Code}", payload.OrderCode);
             throw;
         }
     }
 
+    /// <summary>
+    /// Ánh xạ trạng thái vận chuyển từ GHN thành loại sự kiện thông báo hệ thống.
+    /// </summary>
     private static string? ResolveNotificationEventType(string statusLower)
     {
         return statusLower switch
         {
             "delivery_fail"     => NotificationEventTypes.OrderDeliveryFailed,
-            // ready_to_pick + pick fail code: notification handled inline in ProcessAsync
-            // ready_to_pick (bình thường — đơn mới tạo): không cần notify
             "ready_to_pick"     => null,
             "waiting_to_return" => NotificationEventTypes.OrderReturning,
             "returned"          => NotificationEventTypes.MerchReturned,
@@ -467,6 +509,9 @@ public class GhnWebhookService : IGhnWebhookService
         await UploadDeliveryImageToCloudinaryAsync(order, ghnImageUrl, cancellationToken);
     }
 
+    /// <summary>
+    /// Tải hình ảnh giao hàng (URL hoặc Base64) lên Cloudinary.
+    /// </summary>
     private async Task UploadDeliveryImageToCloudinaryAsync(Order order, string imageInput, CancellationToken cancellationToken)
     {
         try
@@ -487,7 +532,6 @@ public class GhnWebhookService : IGhnWebhookService
             }
             else if (Uri.IsWellFormedUriString(imageInput, UriKind.Absolute))
             {
-                // Direct server-to-server Cloudinary upload from source URL
                 uploadResult = await _imageUploadService.UploadImageFromUrlAsync(
                     imageInput,
                     folder: "order_pods",
@@ -496,7 +540,7 @@ public class GhnWebhookService : IGhnWebhookService
             }
             else
             {
-                _logger.LogWarning("Invalid POD image input format for order {OrderCode}", order.OrderCode);
+                _logger.LogWarning("Định dạng dữ liệu ảnh POD không hợp lệ cho đơn hàng {OrderCode}", order.OrderCode);
                 return;
             }
 
@@ -506,22 +550,24 @@ public class GhnWebhookService : IGhnWebhookService
                 order.UpdatedAt = _timeProvider.UtcNow;
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-                _logger.LogInformation("GHN Webhook POD image uploaded to Cloudinary: {Url} for order {OrderCode}",
+                _logger.LogInformation("Đã tải thành công ảnh GHN Webhook POD lên Cloudinary: {Url} cho đơn hàng {OrderCode}",
                     uploadResult.Data, order.OrderCode);
             }
             else
             {
-                _logger.LogWarning("Failed to upload GHN POD image to Cloudinary for order {OrderCode}: {Error}",
+                _logger.LogWarning("Tải ảnh GHN POD lên Cloudinary thất bại cho đơn hàng {OrderCode}: {Error}",
                     order.OrderCode, uploadResult.ErrorMessage);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error uploading GHN POD image to Cloudinary for order {OrderCode}", order.OrderCode);
+            _logger.LogError(ex, "Lỗi khi tải ảnh GHN POD lên Cloudinary cho đơn hàng {OrderCode}", order.OrderCode);
         }
     }
 
-
+    /// <summary>
+    /// Tải luồng ảnh nhị phân (Binary Stream) trực tiếp lên Cloudinary.
+    /// </summary>
     private async Task UploadDeliveryImageStreamToCloudinaryAsync(Order order, Stream imageStream, string? fileName, CancellationToken cancellationToken)
     {
         try
@@ -542,18 +588,18 @@ public class GhnWebhookService : IGhnWebhookService
                 order.UpdatedAt = _timeProvider.UtcNow;
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-                _logger.LogInformation("GHN Webhook binary POD image stream uploaded to Cloudinary: {Url} for order {OrderCode}",
+                _logger.LogInformation("Đã tải thành công luồng ảnh nhị phân POD lên Cloudinary: {Url} cho đơn hàng {OrderCode}",
                     uploadResult.Data, order.OrderCode);
             }
             else
             {
-                _logger.LogWarning("Failed to upload binary GHN POD image stream to Cloudinary for order {OrderCode}: {Error}",
+                _logger.LogWarning("Tải luồng ảnh nhị phân GHN POD lên Cloudinary thất bại cho đơn hàng {OrderCode}: {Error}",
                     order.OrderCode, uploadResult.ErrorMessage);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Exception while uploading binary POD image stream to Cloudinary for order {OrderCode}", order.OrderCode);
+            _logger.LogError(ex, "Lỗi ngoại lệ khi tải luồng ảnh nhị phân POD lên Cloudinary cho đơn hàng {OrderCode}", order.OrderCode);
         }
     }
 }

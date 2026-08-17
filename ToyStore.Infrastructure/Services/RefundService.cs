@@ -456,9 +456,12 @@ public class RefundService : IRefundService
             new AdminRefundFilterDto { OrderId = order.OrderId, PageSize = 10 },
             cancellationToken);
 
+        // Bug Fix #4: Thêm PickupCreated và Shipping vào danh sách kiểm tra
+        // để tránh tạo duplicate System Refund khi GHN gửi nhiều webhook liên tiếp (race condition).
         if (existing.Items.Any(r =>
                 r.RefundStatus is RefundStatuses.Requested or RefundStatuses.Approved or RefundStatuses.Received
-                    or RefundStatuses.InspectionPending or RefundStatuses.Completed or RefundStatuses.Damage))
+                    or RefundStatuses.InspectionPending or RefundStatuses.Completed or RefundStatuses.Damage
+                    or RefundStatuses.PickupCreated or RefundStatuses.Shipping))
         {
             return null;
         }
@@ -879,28 +882,11 @@ public class RefundService : IRefundService
         if (newStatusId == null)
             return Result<RefundDto>.BusinessError($"Invalid status name '{dto.Status}'.");
 
-        // Tự động chuyển RefundReceived hoặc RefundInspectionPending -> RefundRejected sang RefundReturnShipmentCreated nếu là hình thức ReturnAndRefund
-        if (newStatusId.Value == (byte)RefundStatusEnum.RefundRejected
-            && (refund.StatusId == (byte)RefundStatusEnum.RefundInspectionPending || refund.StatusId == (byte)RefundStatusEnum.RefundReceived)
-            && refund.RefundType == RefundTypes.ReturnAndRefund)
-        {
-            if (string.IsNullOrWhiteSpace(dto.RejectReason))
-            {
-                return Result<RefundDto>.BusinessError("Reject reason is required when rejecting a refund.");
-            }
-
-            newStatusId = (byte)RefundStatusEnum.RefundReturnShipmentCreated;
-            dto.InspectionPassed = false;
-
-            if (string.IsNullOrWhiteSpace(refund.InspectionNote))
-            {
-                dto.InspectionNote = dto.RejectReason;
-            }
-
-            refund.AdminNote = string.IsNullOrEmpty(refund.AdminNote)
-                ? $"Reject Reason: {dto.RejectReason}"
-                : $"{refund.AdminNote} | Reject Reason: {dto.RejectReason}";
-        }
+        // Lưu ý: Khi Admin/Staff reject đơn ReturnAndRefund (dù ở bất kỳ giai đoạn nào kể cả
+        // sau RefundReceived / RefundInspectionPending), hệ thống chỉ chuyển sang RefundRejected —
+        // đóng yêu cầu hoàn, giữ hàng tại kho. KHÔNG tự động tạo đơn GHN gửi trả.
+        // Nếu nghiệp vụ yêu cầu trả hàng về cho khách (một phần bị từ chối), nhân viên
+        // phải chuyển tường minh sang RefundReturnShipmentCreated thay vì Reject.
 
         // Khi Thủ kho gửi kết quả kiểm tra chất lượng
         if (newStatusId.Value == (byte)RefundStatusEnum.RefundInspectionPending
@@ -1392,6 +1378,7 @@ public class RefundService : IRefundService
                     var tx = new ShippingProviderTransaction
                     {
                         OrderId = refund.OrderId,
+                        RefundId = refund.RefundId,
                         Provider = "GHN",
                         ProviderOrderCode = dto.ShippingOrderCode,
                         Status = ShippingStatuses.ReadyToPick,
@@ -1399,6 +1386,32 @@ public class RefundService : IRefundService
                         UpdatedAt = DateTime.UtcNow
                     };
                     await _unitOfWork.Orders.AddShippingTransactionAsync(tx, cancellationToken);
+                }
+                else if (existingTx.RefundId == null)
+                {
+                    // Bug Fix: existingTx là transaction gốc của đơn hàng chính (RefundId == null).
+                    // Không được gán RefundId vào tx gốc vì sẽ làm GetOriginalOrderShippingTransaction()
+                    // bỏ qua nó và dùng status refund để hiển thị trạng thái đơn hàng checkout → sai!
+                    // Tạo tx mới riêng cho refund thay vì modify tx gốc.
+                    _logger.LogWarning(
+                        "ShippingOrderCode '{Code}' khớp tx gốc của đơn hàng (RefundId=null). Tạo tx mới cho RefundId={RefundId} để bảo vệ tx gốc.",
+                        dto.ShippingOrderCode, refund.RefundId);
+                    var newTx = new ShippingProviderTransaction
+                    {
+                        OrderId = refund.OrderId,
+                        RefundId = refund.RefundId,
+                        Provider = "GHN",
+                        ProviderOrderCode = dto.ShippingOrderCode + $"_REF{refund.RefundId}",
+                        Status = ShippingStatuses.ReadyToPick,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+                    await _unitOfWork.Orders.AddShippingTransactionAsync(newTx, cancellationToken);
+                }
+                else
+                {
+                    // tx này đã có RefundId != null (là tx của refund khác hoặc chính refund này)
+                    existingTx.RefundId = refund.RefundId;
                 }
             }
 
@@ -1412,6 +1425,7 @@ public class RefundService : IRefundService
                     var tx = new ShippingProviderTransaction
                     {
                         OrderId = refund.OrderId,
+                        RefundId = refund.RefundId,
                         Provider = "GHN",
                         ProviderOrderCode = dto.ReturnShippingOrderCode,
                         Status = ShippingStatuses.ReadyToPick,
@@ -1419,6 +1433,30 @@ public class RefundService : IRefundService
                         UpdatedAt = DateTime.UtcNow
                     };
                     await _unitOfWork.Orders.AddShippingTransactionAsync(tx, cancellationToken);
+                }
+                else if (existingTx.RefundId == null)
+                {
+                    // Bug Fix: existingTx là transaction gốc của đơn hàng chính (RefundId == null).
+                    // Không được gán RefundId vào tx gốc, tạo tx mới riêng cho refund.
+                    _logger.LogWarning(
+                        "ReturnShippingOrderCode '{Code}' khớp tx gốc của đơn hàng (RefundId=null). Tạo tx mới cho RefundId={RefundId} để bảo vệ tx gốc.",
+                        dto.ReturnShippingOrderCode, refund.RefundId);
+                    var newTx = new ShippingProviderTransaction
+                    {
+                        OrderId = refund.OrderId,
+                        RefundId = refund.RefundId,
+                        Provider = "GHN",
+                        ProviderOrderCode = dto.ReturnShippingOrderCode + $"_RET{refund.RefundId}",
+                        Status = ShippingStatuses.ReadyToPick,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+                    await _unitOfWork.Orders.AddShippingTransactionAsync(newTx, cancellationToken);
+                }
+                else
+                {
+                    // tx này đã có RefundId != null (là tx của refund khác hoặc chính refund này)
+                    existingTx.RefundId = refund.RefundId;
                 }
             }
 
@@ -1840,42 +1878,45 @@ public class RefundService : IRefundService
             }
         }
 
-        if (isFullRefund)
+        if (refund.FinalRefundAmount > 0m)
         {
-            // 3. Đơn hoàn toàn bộ: PaymentStatus = REFUNDED, OrderStatus = Refunded
-            order.PaymentStatus = PaymentStatuses.Refunded;
-
-            var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
-            byte refundedStatusId = statusMap.GetValueOrDefault("Refunded", (byte)OrderStatus.Refunded);
-
-            order.StatusId = refundedStatusId;
-            order.UpdatedAt = DateTime.UtcNow;
-
-            var history = new OrderStatusHistory
+            if (isFullRefund)
             {
-                OrderId = order.OrderId,
-                StatusId = refundedStatusId,
-                ChangedBy = refund.ApprovedBy ?? refund.RequestedBy, // Admin or System
-                Note = "Refund Completed",
-                CreatedAt = DateTime.UtcNow
-            };
-            order.OrderStatusHistories.Add(history);
-        }
-        else
-        {
-            // 4. Đơn hoàn một phần: PaymentStatus = PARTIALLY_REFUNDED
-            order.PaymentStatus = PaymentStatuses.PartiallyRefunded;
-            order.UpdatedAt = DateTime.UtcNow;
+                // 3. Đơn hoàn toàn bộ: PaymentStatus = REFUNDED, OrderStatus = Refunded
+                order.PaymentStatus = PaymentStatuses.Refunded;
 
-            var history = new OrderStatusHistory
+                var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(cancellationToken);
+                byte refundedStatusId = statusMap.GetValueOrDefault("Refunded", (byte)OrderStatus.Refunded);
+
+                order.StatusId = refundedStatusId;
+                order.UpdatedAt = DateTime.UtcNow;
+
+                var history = new OrderStatusHistory
+                {
+                    OrderId = order.OrderId,
+                    StatusId = refundedStatusId,
+                    ChangedBy = refund.ApprovedBy ?? refund.RequestedBy, // Admin or System
+                    Note = "Refund Completed",
+                    CreatedAt = DateTime.UtcNow
+                };
+                order.OrderStatusHistories.Add(history);
+            }
+            else
             {
-                OrderId = order.OrderId,
-                StatusId = order.StatusId,
-                ChangedBy = refund.ApprovedBy ?? refund.RequestedBy, // Admin or System
-                Note = "Partial Refund Completed",
-                CreatedAt = DateTime.UtcNow
-            };
-            order.OrderStatusHistories.Add(history);
+                // 4. Đơn hoàn một phần: PaymentStatus = PARTIALLY_REFUNDED
+                order.PaymentStatus = PaymentStatuses.PartiallyRefunded;
+                order.UpdatedAt = DateTime.UtcNow;
+
+                var history = new OrderStatusHistory
+                {
+                    OrderId = order.OrderId,
+                    StatusId = order.StatusId,
+                    ChangedBy = refund.ApprovedBy ?? refund.RequestedBy, // Admin or System
+                    Note = "Partial Refund Completed",
+                    CreatedAt = DateTime.UtcNow
+                };
+                order.OrderStatusHistories.Add(history);
+            }
         }
 
         // 5. Khôi phục số lượng tồn kho sản phẩm (nếu hàng hóa không bị mất/hư hỏng trong vận chuyển)

@@ -155,7 +155,7 @@ public class OrderCustomerService : IOrderCustomerService
             return Result<CancelOrderCustomerResponseDto>.UnprocessableEntity("Order is already cancelled.");
 
         // Kiểm tra trạng thái GHN
-        var shippingTxn = order.ShippingProviderTransactions.FirstOrDefault();
+        var shippingTxn = CustomerOrderDisplayStatusMapper.GetOriginalOrderShippingTransaction(order);
         if (shippingTxn is not null
             && !string.IsNullOrEmpty(shippingTxn.Status)
             && NonCancellableGhnStatuses.Contains(shippingTxn.Status))
@@ -220,7 +220,11 @@ public class OrderCustomerService : IOrderCustomerService
         if (order is null || (!isAdmin && order.AccountId != accountId))
             return Result<OrderTrackingDto>.Failure("NOT_FOUND", "Order not found or you don't have permission to view this order tracking.");
 
-        var shippingTxn = order.ShippingProviderTransactions.FirstOrDefault();
+        // Lấy đúng giao dịch vận chuyển của đơn hàng gốc (không phải tx của refund)
+        // FirstOrDefault() không an toàn vì sau khi có refund webhook, DB có thể chứa
+        // nhiều tx (refund pickup, refund return-to-customer) cùng OrderId.
+        // GetOriginalOrderShippingTransaction() lọc đúng tx có RefundId == null.
+        var shippingTxn = CustomerOrderDisplayStatusMapper.GetOriginalOrderShippingTransaction(order);
 
         var dto = new OrderTrackingDto
         {

@@ -370,7 +370,11 @@ public class RefundRepository : IRefundRepository
     /// </summary>
     public async Task<OrderRefund?> GetByShippingOrReturnOrderCodeAsync(string code, CancellationToken cancellationToken = default)
     {
-        return await _context.OrderRefunds
+        if (string.IsNullOrWhiteSpace(code)) return null;
+
+        var cleanCode = code.Trim();
+
+        var refund = await _context.OrderRefunds
             .Include(r => r.Status)
             .Include(r => r.Order).ThenInclude(o => o.Status)
             .Include(r => r.Order).ThenInclude(o => o.ShippingProviderTransactions).ThenInclude(t => t.ShippingStatusHistories)
@@ -385,7 +389,42 @@ public class RefundRepository : IRefundRepository
             .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.Category)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.Status)
             .Include(r => r.RefundStatusHistories).ThenInclude(h => h.ChangedByNavigation)
-            .FirstOrDefaultAsync(r => (r.ShippingOrderCode == code || r.ReturnShippingOrderCode == code) && !r.IsDeleted, cancellationToken);
+            .FirstOrDefaultAsync(r => (r.ShippingOrderCode == cleanCode || r.ReturnShippingOrderCode == cleanCode || r.RefundCode == cleanCode) && !r.IsDeleted, cancellationToken);
+
+        if (refund != null) return refund;
+
+        // Bóc tách tiền tố R- hoặc R2- nếu client order code từ GHN gửi dạng R-REF-xxx hoặc R2-REF-xxx
+        string strippedCode = cleanCode;
+        if (cleanCode.StartsWith("R2-", StringComparison.OrdinalIgnoreCase))
+        {
+            strippedCode = cleanCode.Substring(3);
+        }
+        else if (cleanCode.StartsWith("R-", StringComparison.OrdinalIgnoreCase))
+        {
+            strippedCode = cleanCode.Substring(2);
+        }
+
+        if (!string.Equals(strippedCode, cleanCode, StringComparison.OrdinalIgnoreCase))
+        {
+            refund = await _context.OrderRefunds
+                .Include(r => r.Status)
+                .Include(r => r.Order).ThenInclude(o => o.Status)
+                .Include(r => r.Order).ThenInclude(o => o.ShippingProviderTransactions).ThenInclude(t => t.ShippingStatusHistories)
+                .Include(r => r.RefundReason)
+                .Include(r => r.Customer).ThenInclude(c => c.Address).ThenInclude(a => a.Province)
+                .Include(r => r.Customer).ThenInclude(c => c.Address).ThenInclude(a => a.District)
+                .Include(r => r.Customer).ThenInclude(c => c.Address).ThenInclude(a => a.WardCodeNavigation)
+                .Include(r => r.RequestedByNavigation)
+                .Include(r => r.RefundImages.Where(i => !i.IsDeleted))
+                .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.ProductImage)
+                .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.ProductDetail)
+                .Include(r => r.RefundDetails).ThenInclude(d => d.Product).ThenInclude(p => p.Category)
+                .Include(r => r.RefundStatusHistories).ThenInclude(h => h.Status)
+                .Include(r => r.RefundStatusHistories).ThenInclude(h => h.ChangedByNavigation)
+                .FirstOrDefaultAsync(r => (r.RefundCode == strippedCode || r.ShippingOrderCode == strippedCode || r.ReturnShippingOrderCode == strippedCode) && !r.IsDeleted, cancellationToken);
+        }
+
+        return refund;
     }
 
     /// <summary>

@@ -56,7 +56,8 @@ public class GhnShippingRetryJob : BackgroundService
         var pendingShipments = await db.ShippingProviderTransactions
             .Include(t => t.Order)
                 .ThenInclude(o => o.OrderDetails)
-            .Where(t => string.IsNullOrEmpty(t.ProviderOrderCode)
+            .Where(t => t.RefundId == null
+                     && string.IsNullOrEmpty(t.ProviderOrderCode)
                      && t.RetryCount > 0
                      && t.RetryCount <= MaxRetries
                      && (t.Order.PaymentStatus == "PAID" || t.Order.PaymentStatus == "COD_PENDING")

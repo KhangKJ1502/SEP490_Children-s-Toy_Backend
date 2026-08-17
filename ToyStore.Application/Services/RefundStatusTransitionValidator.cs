@@ -80,9 +80,11 @@ public static class RefundStatusTransitionValidator
         {
             (byte)RefundStatusEnum.RefundApproved => currentStatusId == (byte)RefundStatusEnum.RefundRequested
                 || (currentStatusId == (byte)RefundStatusEnum.RefundRejected && isAdmin),
-            (byte)RefundStatusEnum.RefundRejected => currentStatusId != (byte)RefundStatusEnum.RefundRejected
-                && currentStatusId != (byte)RefundStatusEnum.RefundInspectionPending
-                && currentStatusId != (byte)RefundStatusEnum.RefundReceived, // Từ chối sau kiểm kho hoặc khi đã nhận hàng phải chuyển sang RefundReturnShipmentCreated
+            // Cho phép từ chối ở bất kỳ giai đoạn nào (kể cả sau khi đã nhận hàng / kiểm kho).
+            // Khi reject toàn bộ = đóng yêu cầu, giữ hàng tại kho, KHÔNG tạo đơn GHN gửi trả.
+            // RefundReturnShipmentCreated chỉ dùng khi một phần hàng bị từ chối và cần ship trả cho khách.
+            (byte)RefundStatusEnum.RefundRejected =>
+                currentStatusId != (byte)RefundStatusEnum.RefundRejected,
             (byte)RefundStatusEnum.RefundPickupCreated => currentStatusId == (byte)RefundStatusEnum.RefundApproved,
             (byte)RefundStatusEnum.RefundShipping => currentStatusId == (byte)RefundStatusEnum.RefundPickupCreated,
             (byte)RefundStatusEnum.RefundReceived => currentStatusId == (byte)RefundStatusEnum.RefundShipping,
@@ -93,9 +95,10 @@ public static class RefundStatusTransitionValidator
             (byte)RefundStatusEnum.RefundCancelled => isAdmin,
 
             // Trạng thái vận chuyển trả ngược về cho khách
+            // Bug Fix #3: Xóa RefundReturnToCustomerFailed khỏi source cho phép
+            // vì đây là trạng thái Final — không cho phép tạo lại vận đơn giao lại.
             (byte)RefundStatusEnum.RefundReturnShipmentCreated => currentStatusId == (byte)RefundStatusEnum.RefundInspectionPending
-                || currentStatusId == (byte)RefundStatusEnum.RefundReceived
-                || currentStatusId == (byte)RefundStatusEnum.RefundReturnToCustomerFailed,
+                || currentStatusId == (byte)RefundStatusEnum.RefundReceived,
             (byte)RefundStatusEnum.RefundReturningToCustomer => currentStatusId == (byte)RefundStatusEnum.RefundReturnShipmentCreated,
             (byte)RefundStatusEnum.RefundReturnedToCustomer => currentStatusId == (byte)RefundStatusEnum.RefundReturningToCustomer,
             (byte)RefundStatusEnum.RefundReturnToCustomerFailed => currentStatusId == (byte)RefundStatusEnum.RefundReturningToCustomer,

@@ -9,6 +9,7 @@ public static class OrderWebhookTransitionValidator
 {
     private static readonly HashSet<byte> TerminalStatusIds =
     [
+        (byte)OrderStatus.Completed,
         (byte)OrderStatus.Cancelled,
         (byte)OrderStatus.Refunded,
         (byte)OrderStatus.ReturnCompleted,

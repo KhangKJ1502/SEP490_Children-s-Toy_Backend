@@ -174,8 +174,12 @@ public class OrderRepository : IOrderRepository
             .Include(o => o.OrderStatusHistories)
                 .ThenInclude(h => h.Status)
             .Include(o => o.ShippingProviderTransactions.OrderByDescending(t => t.CreatedAt))
-                .ThenInclude(t => t.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt).ThenByDescending(h => h.HistoryId));
+                .ThenInclude(t => t.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt).ThenByDescending(h => h.HistoryId))
+            // Include OrderRefunds để GetOriginalOrderShippingTransaction() lọc đúng refundCodes
+            // → không nhầm tx của refund (R-/R2-) với tx gốc của đơn hàng khi hiển thị ShippingHistory
+            .Include(o => o.OrderRefunds);
     }
+
 
     public async Task<Order?> GetByIdForCustomerAsync(
         int orderId,
@@ -193,6 +197,7 @@ public class OrderRepository : IOrderRepository
             .Include(o => o.OrderStatusHistories)
                 .ThenInclude(h => h.ChangedByNavigation)
             .Include(o => o.ShippingProviderTransactions.OrderByDescending(t => t.CreatedAt))
+                .ThenInclude(t => t.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt).ThenByDescending(h => h.HistoryId))
             .Include(o => o.OrderRefunds)
                 .ThenInclude(r => r.RefundStatusHistories)
             .FirstOrDefaultAsync(o =>
@@ -217,6 +222,9 @@ public class OrderRepository : IOrderRepository
             .Include(o => o.Status)
             .Include(o => o.ShippingProviderTransactions.OrderByDescending(t => t.CreatedAt))
                 .ThenInclude(t => t.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt).ThenByDescending(h => h.HistoryId))
+            // Cần Include OrderRefunds để GetOriginalOrderShippingTransaction() lọc đúng refundCodes
+            // và không nhầm tx của refund với tx của đơn hàng gốc
+            .Include(o => o.OrderRefunds)
             .FirstOrDefaultAsync(o => o.OrderId == orderId && !o.IsDeleted, cancellationToken);
     }
 
@@ -477,7 +485,11 @@ public class OrderRepository : IOrderRepository
             .Include(o => o.AssignedToStaff)
             .Include(o => o.AssignedToMerch)
             .Include(o => o.ShippingProviderTransactions)
+            // Include OrderRefunds để GetOriginalOrderShippingTransaction() lọc đúng tx gốc
+            // (tránh nhầm tx refund với tx đơn hàng khi hiển thị GhnShippingStatus)
+            .Include(o => o.OrderRefunds)
             .Where(o => !o.IsDeleted);
+
 
         if (allowedStatusNames.Count > 0)
         {

@@ -55,8 +55,7 @@ public static class GhnStatusMapper
 
         return status switch
         {
-            "money_collect_delivering" when isCod => "PAID",       // COD: thu tien thanh cong
-            "delivered" when isCod => "PAID",       // COD: giao thanh cong
+            "delivered" when isCod => "PAID",       // COD: giao va thu tien thanh cong
             "delivered" => currentPaymentStatus, // tra truoc: giu nguyen
             "delivery_fail" when isCod && currentPaymentStatus != "PAID"
                                                              => "COD_PENDING",

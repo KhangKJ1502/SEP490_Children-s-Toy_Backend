@@ -97,37 +97,62 @@ public class RefundProfile : Profile
     }
 
     /// <summary>
-    /// Thu thập và sắp xếp toàn bộ lịch sử hành trình giao nhận / hoàn trả vận chuyển từ các giao dịch GHN liên quan.
+    /// Thu thập và sắp xếp toàn bộ lịch sử hành trình giao nhận / hoàn trả vận chuyển từ các giao dịch GHN liên quan ĐẾN REFUND NÀY.
+    /// Loại trừ 100% giao dịch giao hàng gốc của đơn hàng chính (RefundId == null).
     /// </summary>
     private static System.Collections.Generic.List<ShippingStatusHistory> MapRefundShippingHistory(OrderRefund refund)
     {
-        if (refund == null || refund.Order == null)
+        if (refund == null || refund.Order == null || refund.Order.ShippingProviderTransactions == null)
             return new System.Collections.Generic.List<ShippingStatusHistory>();
 
         var historyList = new System.Collections.Generic.List<ShippingStatusHistory>();
 
-        // Lấy lịch sử theo mã vận đơn chuyển hàng ban đầu
-        if (!string.IsNullOrWhiteSpace(refund.ShippingOrderCode))
+        var mainOrderShippingCode = refund.Order?.ShippingOrderCode;
+
+        var refundTxns = refund.Order.ShippingProviderTransactions
+            .Where(t =>
+            {
+                // Loại trừ 100% giao dịch giao hàng gốc của đơn hàng chính (kể cả dữ liệu cũ đã lỡ bị gán RefundId)
+                bool isOriginalOrderTx = !string.IsNullOrWhiteSpace(mainOrderShippingCode) &&
+                    string.Equals(t.ProviderOrderCode, mainOrderShippingCode, StringComparison.OrdinalIgnoreCase) &&
+                    !t.ProviderOrderCode.StartsWith("R-", StringComparison.OrdinalIgnoreCase) &&
+                    !t.ProviderOrderCode.StartsWith("R2-", StringComparison.OrdinalIgnoreCase) &&
+                    !t.ProviderOrderCode.StartsWith("REF-", StringComparison.OrdinalIgnoreCase);
+
+                if (isOriginalOrderTx) return false;
+
+                // 1. Giao dịch được gán trực tiếp cho Refund này VÀ có tiền tố refund hoặc mã refund
+                if (t.RefundId.HasValue && t.RefundId.Value == refund.RefundId) return true;
+
+                // 2. Giao dịch thuộc luồng refund (có tiền tố R-, R2-, REF- hoặc khớp ReturnShippingOrderCode/RefundCode)
+                if (!string.IsNullOrWhiteSpace(t.ProviderOrderCode))
+                {
+                    if (t.ProviderOrderCode.StartsWith("R-", StringComparison.OrdinalIgnoreCase) ||
+                        t.ProviderOrderCode.StartsWith("R2-", StringComparison.OrdinalIgnoreCase) ||
+                        t.ProviderOrderCode.StartsWith("REF-", StringComparison.OrdinalIgnoreCase))
+                        return true;
+
+                    if (!string.IsNullOrWhiteSpace(refund.ReturnShippingOrderCode) &&
+                        string.Equals(t.ProviderOrderCode, refund.ReturnShippingOrderCode, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+
+                return false;
+            })
+            .ToList();
+
+        foreach (var tx in refundTxns)
         {
-            var tx = refund.Order.ShippingProviderTransactions
-                .FirstOrDefault(t => t.ProviderOrderCode == refund.ShippingOrderCode);
-            if (tx != null)
+            if (tx.ShippingStatusHistories != null)
             {
                 historyList.AddRange(tx.ShippingStatusHistories);
             }
         }
 
-        // Lấy lịch sử theo mã vận đơn trả hàng về kho
-        if (!string.IsNullOrWhiteSpace(refund.ReturnShippingOrderCode))
-        {
-            var tx = refund.Order.ShippingProviderTransactions
-                .FirstOrDefault(t => t.ProviderOrderCode == refund.ReturnShippingOrderCode);
-            if (tx != null)
-            {
-                historyList.AddRange(tx.ShippingStatusHistories);
-            }
-        }
-
-        return historyList.OrderByDescending(h => h.ProcessedAt).ThenByDescending(h => h.HistoryId).ToList();
+        return historyList
+            .OrderByDescending(h => h.ProcessedAt)
+            .ThenByDescending(h => h.HistoryId)
+            .DistinctBy(h => h.HistoryId)
+            .ToList();
     }
 }

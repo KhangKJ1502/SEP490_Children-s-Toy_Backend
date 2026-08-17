@@ -278,7 +278,8 @@ public class OrderLifecycleService : IOrderLifecycleService
         if (!statusMap.TryGetValue(OrderStatuses.Delivered, out var deliveredId))
             return Result.Failure("INTERNAL_ERROR", "Status 'Delivered' not found.");
 
-        if (order.StatusId == deliveredId) return Result.Success();
+        var completedId = statusMap.TryGetValue(OrderStatuses.Completed, out var compId) ? compId : (byte)OrderStatus.Completed;
+        if (order.StatusId == deliveredId || order.StatusId == completedId) return Result.Success();
 
         var now = _timeProvider.UtcNow;
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
