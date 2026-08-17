@@ -9,6 +9,9 @@ using ToyStore.Domain.Enums;
 
 namespace ToyStore.Infrastructure.Services;
 
+/// <summary>
+/// Service điều phối các hành động nghiệp vụ xử lý luồng Hoàn trả / Chuyển hoàn hàng hóa (Return Flow) được kích hoạt từ Webhook của đơn vị vận chuyển GHN.
+/// </summary>
 public class ShippingReturnFlowService : IShippingReturnFlowService
 {
     private readonly IUnitOfWork _unitOfWork;
@@ -18,6 +21,9 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
     private static readonly HashSet<string> PrepaidMethods =
         new(StringComparer.OrdinalIgnoreCase) { "SE_PAY", "WALLET", "BANK_TRANSFER" };
 
+    /// <summary>
+    /// Khởi tạo ShippingReturnFlowService với UnitOfWork, RefundService và Logger.
+    /// </summary>
     public ShippingReturnFlowService(
         IUnitOfWork unitOfWork,
         IRefundService refundService,
@@ -28,6 +34,22 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Xử lý hành động nghiệp vụ hoàn trả tương ứng dựa trên sự kiện trạng thái vận đơn từ GHN:
+    /// - Giao hàng thất bại (HandleDeliveryFail)
+    /// - Chuyển sang chờ hoàn / đang hoàn (SetReturning / HandleReturnStarted / KeepReturning)
+    /// - Hoàn hàng thành công về kho (HandleReturnCompleted)
+    /// - Hoàn hàng thất bại (HandleReturnFail)
+    /// - Hàng hóa bị hỏng hoặc mất trong vận chuyển (HandleDamageLost)
+    /// - Đơn vận chuyển bị hủy (HandleGhnCancel)
+    /// </summary>
+    /// <param name="action">Hành động webhook cần xử lý.</param>
+    /// <param name="order">Thực thể đơn hàng tương ứng.</param>
+    /// <param name="tx">Giao dịch vận chuyển liên quan.</param>
+    /// <param name="ghnStatus">Mã trạng thái trả về từ GHN.</param>
+    /// <param name="now">Thời điểm hiện tại (UTC).</param>
+    /// <param name="cancellationToken">Token hủy tác vụ bất đồng bộ.</param>
+    /// <returns>Kết quả xử lý luồng hoàn trả kèm danh sách thông báo cần phát.</returns>
     public async Task<ShippingReturnFlowResult> ProcessActionAsync(
         ShippingWebhookAction action,
         Order order,
@@ -73,6 +95,20 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         };
     }
 
+    /// <summary>
+    /// Xử lý sự kiện giao hàng thất bại (Delivery Fail) từ Webhook GHN:
+    /// 1. Lấy mã trạng thái DeliveryFailed từ cơ sở dữ liệu.
+    /// 2. Chuyển đổi mã lỗi GHN (LastGHNFailCode) sang lý do chi tiết dễ hiểu.
+    /// 3. Cập nhật trạng thái đơn hàng sang DeliveryFailed và lưu lý do thất bại.
+    /// 4. Đếm số lần giao thất bại trong lịch sử vận chuyển (Attempt count) và ghi nhận OrderStatusHistory.
+    /// 5. Tạo thông báo sự kiện OrderDeliveryFailed gửi tới khách hàng.
+    /// </summary>
+    /// <param name="order">Thực thể đơn hàng.</param>
+    /// <param name="tx">Giao dịch vận chuyển liên quan.</param>
+    /// <param name="ghnStatus">Trạng thái vận chuyển GHN.</param>
+    /// <param name="now">Thời gian hiện tại UTC.</param>
+    /// <param name="ct">Token hủy tác vụ bất đồng bộ.</param>
+    /// <returns>Kết quả xử lý luồng hoàn trả chứa danh sách thông báo.</returns>
     private async Task<ShippingReturnFlowResult> HandleDeliveryFailAsync(
         Order order, ShippingProviderTransaction tx, string ghnStatus, DateTime now, CancellationToken ct)
     {
@@ -80,6 +116,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(ct);
         var deliveryFailedId = ResolveStatusId(statusMap, OrderStatuses.DeliveryFailed, OrderStatus.DeliveryFailed);
 
+        // 1. Ánh xạ mã lỗi GHN sang mô tả thân thiện
         var friendlyReason = ToyStore.Infrastructure.Mappers.GhnFailCodeMapper.GetFriendlyDescription(
             order.LastGHNFailCode, order.CancelReason);
 
@@ -90,6 +127,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
                 : OrderCancelReasons.DeliveryFailedGhn;
         }
 
+        // 2. Cập nhật trạng thái đơn hàng sang DeliveryFailed
         order.StatusId = deliveryFailedId;
         order.UpdatedAt = now;
 
@@ -99,6 +137,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
 
         tx.LastErrorMessage = $"Delivery failed: {detailedReason} (Code: {order.LastGHNFailCode ?? "N/A"})";
 
+        // 3. Đếm số lần giao thất bại trước đó để ghi nhận lần thử (attempt)
         var attempt = await _unitOfWork.Orders.CountShippingStatusHistoryAsync(
             tx.ShippingTransactionId, ShippingStatuses.DeliveryFail, ct);
 
@@ -111,18 +150,27 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
             CreatedAt = now
         }, ct);
 
+        // 4. Phát sự kiện thông báo giao hàng thất bại
         notifications.Add(BuildOrderNotification(
             NotificationEventTypes.OrderDeliveryFailed, order, ghnStatus, tx.ProviderOrderCode));
 
         return new ShippingReturnFlowResult { Notifications = notifications };
     }
 
+    /// <summary>
+    /// Xử lý sự kiện bắt đầu chuyển hoàn hàng về kho (Return Started): Chuyển tiếp tới hàm HandleSetReturningAsync.
+    /// </summary>
     private async Task<ShippingReturnFlowResult> HandleReturnStartedAsync(
         Order order, string ghnStatus, DateTime now, CancellationToken ct)
     {
         return await HandleSetReturningAsync(order, ghnStatus, now, ct);
     }
 
+    /// <summary>
+    /// Cập nhật trạng thái đơn hàng sang Chờ chuyển hoàn (WaitingReturn):
+    /// - Ghi nhận lịch sử trạng thái chờ shipper đến lấy hàng hoàn về shop.
+    /// - Phát sự kiện thông báo đơn hàng bắt đầu chuyển hoàn (OrderReturning).
+    /// </summary>
     private async Task<ShippingReturnFlowResult> HandleSetReturningAsync(
         Order order, string ghnStatus, DateTime now, CancellationToken ct)
     {
@@ -153,6 +201,9 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         };
     }
 
+    /// <summary>
+    /// Xử lý cập nhật trạng thái khi hàng đang trong quá trình chuyển hoàn về kho (Returning).
+    /// </summary>
     private async Task<ShippingReturnFlowResult> HandleKeepReturningAsync(
         Order order, string ghnStatus, DateTime now, CancellationToken ct)
     {
@@ -187,6 +238,12 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         return new ShippingReturnFlowResult();
     }
 
+    /// <summary>
+    /// Xử lý khi kiện hàng đã hoàn về kho shop thành công (Return Completed):
+    /// 1. Đối với đơn trả trước (Prepaid: Ví, Chuyển khoản, SePay): Chuyển trạng thái đơn sang Cancelled ngay khi nhận kho và lưu lý do.
+    /// 2. Đối với đơn COD: Chuyển sang ReturnCompleted hoặc hủy đơn qua ApplyReturnPaymentBranchAsync.
+    /// 3. Kích hoạt phân nhánh thanh toán hoàn trả ApplyReturnPaymentBranchAsync để tạo yêu cầu hoàn trả hệ thống cho Thủ kho kiểm tra.
+    /// </summary>
     private async Task<ShippingReturnFlowResult> HandleReturnCompletedAsync(
         Order order, string cancelReason, DateTime now, CancellationToken ct)
     {
@@ -194,6 +251,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         var returnCompletedId = ResolveStatusId(statusMap, OrderStatuses.ReturnCompleted, OrderStatus.ReturnCompleted);
         var cancelledId = ResolveStatusId(statusMap, OrderStatuses.Cancelled, OrderStatus.Cancelled);
 
+        // Trường hợp đơn đã ở trạng thái ReturnCompleted trước đó
         if (order.StatusId == returnCompletedId)
         {
             if (PrepaidMethods.Contains(order.PaymentMethod))
@@ -204,6 +262,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
             return new ShippingReturnFlowResult();
         }
 
+        // Trường hợp đơn đã ở trạng thái Cancelled
         if (order.StatusId == cancelledId)
         {
             var existingRefunds = await _unitOfWork.Refunds.GetAdminRefundsAsync(
@@ -217,17 +276,18 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
             }
         }
 
+        // Trường hợp đơn thanh toán khi nhận hàng (SHIP_COD)
         if (string.Equals(order.PaymentMethod, "SHIP_COD", StringComparison.OrdinalIgnoreCase))
         {
             return await ApplyReturnPaymentBranchAsync(order, cancelReason, now, ct);
         }
 
-        // For Prepaid orders: set order status to Cancelled immediately upon warehouse receipt
+        // Đối với đơn hàng trả trước (Prepaid): Chuyển trạng thái đơn hàng sang Cancelled ngay khi hàng về đến kho
         if (PrepaidMethods.Contains(order.PaymentMethod))
         {
             order.StatusId = cancelledId;
             order.CancelledAt = now;
-            // Only overwrite CancelReason if it has no real translated reason already
+            // Chỉ ghi đè lý do hủy nếu chưa có lý do cụ thể từ mã lỗi GHN
             if (string.IsNullOrEmpty(order.CancelReason) || order.CancelReason == OrderCancelReasons.DeliveryFailedGhn)
                 order.CancelReason = cancelReason;
             order.UpdatedAt = now;
@@ -259,6 +319,12 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         return await ApplyReturnPaymentBranchAsync(order, cancelReason, now, ct);
     }
 
+    /// <summary>
+    /// Xử lý khi quá trình chuyển hoàn hàng về shop bị thất bại (Return Fail):
+    /// - Chuyển trạng thái đơn sang ReturnFailed.
+    /// - Ghi nhận thông báo lỗi yêu cầu quản trị viên can thiệp xử lý thủ công với đơn vị vận chuyển.
+    /// - Phát sự kiện OrderReturnFail.
+    /// </summary>
     private async Task<ShippingReturnFlowResult> HandleReturnFailAsync(
         Order order, ShippingProviderTransaction tx, string ghnStatus, DateTime now, CancellationToken ct)
     {
@@ -295,6 +361,9 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         };
     }
 
+    /// <summary>
+    /// Xử lý sự kiện hàng hóa bị thất lạc (Lost) hoặc hư hỏng (Damage) trong quá trình vận chuyển.
+    /// </summary>
     private async Task<ShippingReturnFlowResult> HandleDamageLostAsync(
         Order order, string ghnStatus, DateTime now, CancellationToken ct)
     {
@@ -305,6 +374,9 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         return await ApplyDirectCancelReturnAsync(order, cancelReason, ghnStatus, now, ct);
     }
 
+    /// <summary>
+    /// Xử lý sự kiện đơn vận chuyển bị hủy bởi GHN (GhnCancel).
+    /// </summary>
     private async Task<ShippingReturnFlowResult> HandleGhnCancelAsync(
         Order order, DateTime now, CancellationToken ct)
     {
@@ -312,6 +384,11 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
             order, OrderCancelReasons.GhnCancelled, ShippingStatuses.Cancel, now, ct);
     }
 
+    /// <summary>
+    /// Hủy đơn hàng trực tiếp và xử lý chuyển tiếp hoàn trả khi gặp sự cố vận chuyển (Lost / Damaged / Cancelled):
+    /// 1. Nếu là đơn SHIP_COD: Gọi ApplyCodCancelForDeliveryFailAsync để hủy đơn và giải phóng tải ca trực (ReleaseShiftCapacity = true).
+    /// 2. Nếu là đơn trả trước: Cập nhật đơn sang trạng thái Lost/Damaged/Cancelled tương ứng, ghi nhận lịch sử và kích hoạt luồng hoàn tiền.
+    /// </summary>
     private async Task<ShippingReturnFlowResult> ApplyDirectCancelReturnAsync(
         Order order, string cancelReason, string ghnStatus, DateTime now, CancellationToken ct)
     {
@@ -364,6 +441,9 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         return await ApplyReturnPaymentBranchAsync(order, cancelReason, now, ct, skipReturnCompletedStep: true);
     }
 
+    /// <summary>
+    /// Xử lý các trường hợp ngoại lệ bất thường từ Webhook GHN: Ghi log lịch sử và gửi thông báo cảnh báo hệ thống.
+    /// </summary>
     private async Task<ShippingReturnFlowResult> HandleExceptionAsync(
         Order order, string ghnStatus, DateTime now, CancellationToken ct)
     {
@@ -393,6 +473,17 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         };
     }
 
+    /// <summary>
+    /// Xử lý phân nhánh nghiệp vụ thanh toán / hoàn tiền khi hàng được chuyển hoàn về kho hoặc bị hỏng/mất:
+    /// - Nhánh SHIP_COD:
+    ///   + Gọi ApplyCodCancelForDeliveryFailAsync hủy đơn và khôi phục voucher.
+    ///   + Tự động tạo bản ghi Hoàn trả Hệ thống (System Refund) thông qua CreateSystemRefundForDeliveryFailAsync để Thủ kho kiểm kê chất lượng.
+    ///   + Gửi thông báo MerchReturned cho Thủ kho kiểm tra hàng thực tế.
+    /// - Nhánh Trả trước (Prepaid):
+    ///   + Lấy lý do hoàn trả DeliveryFailedGhn.
+    ///   + Tự động tạo bản ghi Hoàn trả Hệ thống (CreateSystemRefundForDeliveryFailAsync).
+    ///   + Gửi thông báo OrderReturnRefundPending cho khách hàng và MerchReturned cho Thủ kho.
+    /// </summary>
     private async Task<ShippingReturnFlowResult> ApplyReturnPaymentBranchAsync(
         Order order,
         string cancelReason,
@@ -402,6 +493,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
     {
         var notifications = new List<PendingShippingNotification>();
 
+        // 1. Phân nhánh đơn SHIP_COD
         if (string.Equals(order.PaymentMethod, "SHIP_COD", StringComparison.OrdinalIgnoreCase))
         {
             await ApplyCodCancelForDeliveryFailAsync(order, cancelReason, now, ct, restoreStock: false);
@@ -425,6 +517,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
                     initialStatusId = (byte)RefundStatusEnum.RefundDamage;
                 }
 
+                // Tạo yêu cầu hoàn tiền hệ thống (System Return) cho đơn COD
                 var refund = await _refundService.CreateSystemRefundForDeliveryFailAsync(order, reason.RefundReasonId, initialStatusId, ct);
                 if (refund is not null)
                 {
@@ -433,6 +526,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
                         new { orderId = order.OrderId, orderCode = order.OrderCode }));
                 }
 
+                // Gửi thông báo cho Thủ kho (Merchandise) tiến hành kiểm tra kiện hàng hoàn
                 if (!skipReturnCompletedStep)
                 {
                     notifications.Add(new PendingShippingNotification(
@@ -454,6 +548,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
             };
         }
 
+        // 2. Phân nhánh đơn thanh toán trả trước (Prepaid: SE_PAY, WALLET, BANK_TRANSFER)
         if (PrepaidMethods.Contains(order.PaymentMethod))
         {
             var reason = await _unitOfWork.Refunds.GetReasonByContentAsync(RefundReasons.DeliveryFailedGhn, ct);
@@ -471,6 +566,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
                 initialStatusId = (byte)RefundStatusEnum.RefundDamage;
             }
 
+            // Tạo yêu cầu hoàn tiền hệ thống để nhân viên kiểm tra và hoàn tiền vào ví khách
             var refund = await _refundService.CreateSystemRefundForDeliveryFailAsync(order, reason.RefundReasonId, initialStatusId, ct);
             if (refund is not null)
             {
@@ -479,6 +575,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
                     new { orderId = order.OrderId, orderCode = order.OrderCode }));
             }
 
+            // Gửi thông báo cho Thủ kho (Merchandise) kiểm tra hàng thực tế tại kho
             if (!skipReturnCompletedStep)
             {
                 notifications.Add(new PendingShippingNotification(
@@ -496,6 +593,14 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         return new ShippingReturnFlowResult { Notifications = notifications };
     }
 
+    /// <summary>
+    /// Thực hiện hủy đơn hàng SHIP_COD do giao hàng không thành công:
+    /// 1. Khôi phục số lượng tồn kho sản phẩm (nếu restoreStock = true).
+    /// 2. Khôi phục tồn kho Flash Sale tương ứng nếu có sản phẩm trong chương trình Flash Sale.
+    /// 3. Khôi phục lại voucher giảm giá đã áp dụng cho đơn hàng.
+    /// 4. Đổi trạng thái đơn sang Cancelled, PaymentStatus = CANCELLED và lưu PaymentHistory.
+    /// 5. Đồng bộ lại dữ liệu của thực thể order đang được theo dõi.
+    /// </summary>
     private async Task ApplyCodCancelForDeliveryFailAsync(
         Order order, string cancelReason, DateTime now, CancellationToken ct, bool restoreStock = true)
     {
@@ -507,6 +612,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
 
         bool productsSubtracted = fullOrder.PaymentStatus != "PAID" && restoreStock;
 
+        // 1. Khôi phục tồn kho chính và flash sale cho từng sản phẩm
         foreach (var detail in fullOrder.OrderDetails)
         {
             if (productsSubtracted)
@@ -523,8 +629,10 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
             }
         }
 
+        // 2. Khôi phục voucher của khách hàng
         await _unitOfWork.Orders.RestoreVoucherAsync(fullOrder.OrderId, ct);
 
+        // 3. Cập nhật trạng thái đơn hàng và thanh toán sang CANCELLED
         fullOrder.StatusId = cancelledId;
         fullOrder.CancelledAt = now;
         fullOrder.CancelReason = cancelReason;
@@ -550,7 +658,7 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
             CreatedAt = now
         }, ct);
 
-        // Sync tracked order reference from webhook
+        // Đồng bộ dữ liệu tham chiếu
         order.StatusId = fullOrder.StatusId;
         order.CancelledAt = fullOrder.CancelledAt;
         order.CancelReason = fullOrder.CancelReason;
@@ -558,6 +666,9 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         order.UpdatedAt = fullOrder.UpdatedAt;
     }
 
+    /// <summary>
+    /// Helper đóng gói đối tượng thông báo vận chuyển (PendingShippingNotification).
+    /// </summary>
     private static PendingShippingNotification BuildOrderNotification(
         string eventType, Order order, string providerStatus, string? providerOrderCode)
         => new(eventType, new
@@ -568,6 +679,10 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
             providerOrderCode = providerOrderCode ?? ""
         });
 
+    /// <summary>
+    /// Kiểm tra xem đơn hàng đã chuyển sang trạng thái kết thúc (Terminal State) hay chưa.
+    /// Các trạng thái kết thúc bao gồm: Refunded, ReturnCompleted, ReturnFailed, Lost, Damaged, Cancelled.
+    /// </summary>
     private async Task<bool> IsTerminalOrderAsync(Order order, ShippingWebhookAction action, CancellationToken ct)
     {
         var statusMap = await _unitOfWork.Orders.GetStatusMapAsync(ct);
@@ -599,6 +714,9 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         return false;
     }
 
+    /// <summary>
+    /// Lấy ID trạng thái đơn hàng từ StatusMap trong cơ sở dữ liệu, nếu không tìm thấy sẽ fallback về enum mặc định.
+    /// </summary>
     private byte ResolveStatusId(
         Dictionary<string, byte> statusMap,
         string statusName,

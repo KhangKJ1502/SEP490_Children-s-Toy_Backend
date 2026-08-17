@@ -5,17 +5,31 @@ using ToyStore.Infrastructure.Data;
 
 namespace ToyStore.Infrastructure.Services.Resolvers;
 
+/// <summary>
+/// Service giải quyết thông tin tham chiếu Khuyến mãi/Sale (IBusinessObjectResolver) dùng để tự động điền các placeholder
+/// và nạp danh sách khung giờ Flash Sale cho các chiến dịch marketing và mẫu thông báo.
+/// </summary>
 public class SaleResolver : IBusinessObjectResolver
 {
     private readonly SEP490ToyStoreContext _context;
 
+    /// <summary>
+    /// Khởi tạo SaleResolver với DbContext.
+    /// </summary>
+    /// <param name="context">DbContext kết nối cơ sở dữ liệu.</param>
     public SaleResolver(SEP490ToyStoreContext context)
     {
         _context = context;
     }
 
+    /// <summary>
+    /// Loại đối tượng nghiệp vụ tham chiếu được nhận diện là "SALE".
+    /// </summary>
     public string ReferenceType => "SALE";
 
+    /// <summary>
+    /// Danh sách các placeholder được hỗ trợ cho chiến dịch khuyến mãi.
+    /// </summary>
     public IReadOnlyList<PlaceholderInfoDto> AvailablePlaceholders =>
     [
         new() { Token = "{{PromotionName}}", Description = "Promotion campaign name" },
@@ -24,6 +38,12 @@ public class SaleResolver : IBusinessObjectResolver
         new() { Token = "{{PromotionId}}",   Description = "Promotion ID" }
     ];
 
+    /// <summary>
+    /// Giải quyết và trích xuất dữ liệu của chương trình khuyến mãi theo ID (kèm khung giờ và danh sách sản phẩm) để điền vào thông báo.
+    /// </summary>
+    /// <param name="referenceId">Mã ID của Promotion.</param>
+    /// <param name="cancellationToken">Token hủy tác vụ bất đồng bộ.</param>
+    /// <returns>Đối tượng ResolvedReferenceDto hoặc null nếu không tìm thấy.</returns>
     public async Task<ResolvedReferenceDto?> ResolveAsync(int referenceId, CancellationToken cancellationToken = default)
     {
         var promotion = await _context.Promotions
@@ -101,5 +121,4 @@ public class SaleResolver : IBusinessObjectResolver
             DateTimeKind.Local => value.ToUniversalTime(),
             _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
         };
-
 }

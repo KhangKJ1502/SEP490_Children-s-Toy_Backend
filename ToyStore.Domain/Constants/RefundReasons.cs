@@ -1,9 +1,10 @@
 namespace ToyStore.Domain.Constants;
 
 /// <summary>
-/// Content values for OrderRefundReasons lookup (must match DB seed).
+/// Các hằng số giá trị nội dung lý do hoàn tiền (OrderRefundReasons) được hệ thống dùng để tra cứu (khớp với DB seed).
 /// </summary>
 public static class RefundReasons
 {
+    /// <summary>Lý do giao hàng thất bại / không thể giao được hàng từ phía đơn vị vận chuyển GHN.</summary>
     public const string DeliveryFailedGhn = "Delivery failed / unable to deliver";
 }
