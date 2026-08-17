@@ -434,7 +434,7 @@ public class EmailChannel : INotificationChannel
 
         var discountText = order.VoucherDiscountAmount > 0 ? $"-{order.VoucherDiscountAmount:N0} VND" : "0 VND";
 
-        var tx = order.ShippingProviderTransactions.FirstOrDefault();
+        var tx = ToyStore.Application.Services.CustomerOrderDisplayStatusMapper.GetOriginalOrderShippingTransaction(order);
         var expectedDeliveryText = tx?.EstimatedDelivery?.ToString("dd/MM/yyyy") ?? "2-5 business days";
 
         var paymentMethodDetail = order.PaymentMethod == "SHIP_COD" ? "Cash on Delivery (COD)" : 

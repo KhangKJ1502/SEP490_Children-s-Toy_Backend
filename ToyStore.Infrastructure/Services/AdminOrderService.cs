@@ -636,11 +636,33 @@ public class AdminOrderService : IAdminOrderService
         if (order is null)
             return Result<CancelOrderResponseDto>.NotFound("Order", orderId);
 
-        // BƯỚC 1: Kiểm soát trạng thái cuối (Terminal Status Guard). Không cho phép hủy đơn nếu đã Completed, Cancelled, hoặc Refunded.
-        bool isTerminal = order.Status.StatusName is OrderStatuses.Cancelled or OrderStatuses.Refunded or OrderStatuses.Completed;
+        // BƯỚC 1: Kiểm soát trạng thái cuối (Terminal Status Guard).
+        // Không cho phép hủy đơn nếu đã Completed, Cancelled, Refunded, hoặc Delivered.
+        // Delivered = đơn đã giao tới tay khách, không thể hủy hay thu hồi.
+        bool isTerminal = order.Status.StatusName is
+            OrderStatuses.Cancelled or
+            OrderStatuses.Refunded or
+            OrderStatuses.Completed or
+            OrderStatuses.Delivered;
         if (isTerminal)
             return Result<CancelOrderResponseDto>.UnprocessableEntity(
                 $"Order is in status '{order.Status.StatusName}'; cancellation is not allowed.");
+
+        // BƯỚC 1b: Kiểm tra GHN status — nếu shipper đang trên đường giao hàng hoặc đã giao xong
+        // (delivering / money_collect_delivering / delivered) thì không cho hủy vì đơn đã rời kho.
+        var latestGhnStatus = order.ShippingProviderTransactions
+            .Where(t => t.RefundId == null)
+            .OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt)
+            .Select(t => t.Status)
+            .FirstOrDefault();
+        bool isOutForDelivery = latestGhnStatus is
+            ShippingStatuses.Delivering or
+            ShippingStatuses.MoneyCollectDelivering or
+            ShippingStatuses.Delivered;
+        if (isOutForDelivery)
+            return Result<CancelOrderResponseDto>.UnprocessableEntity(
+                $"Order cannot be cancelled: the shipment is already out for delivery (GHN status: '{latestGhnStatus}'). " +
+                "Cancellation is only possible while the package is still in the warehouse.");
 
         // BƯỚC 2: Chỉ Admin mới có quyền tối cao hủy đơn ở mọi trạng thái trung gian, 
         // Staff chỉ được hủy đơn hàng ở giai đoạn Pending hoặc Confirmed.

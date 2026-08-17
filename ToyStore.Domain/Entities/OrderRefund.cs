@@ -293,4 +293,9 @@ public partial class OrderRefund
     /// Navigation property: Lịch sử các lần chuyển trạng thái hoàn tiền.
     /// </summary>
     public virtual ICollection<RefundStatusHistory> RefundStatusHistories { get; set; } = new List<RefundStatusHistory>();
+
+    /// <summary>
+    /// Navigation property: Danh sách các giao dịch vận chuyển phục vụ quy trình hoàn tiền.
+    /// </summary>
+    public virtual ICollection<ShippingProviderTransaction> ShippingProviderTransactions { get; set; } = new List<ShippingProviderTransaction>();
 }

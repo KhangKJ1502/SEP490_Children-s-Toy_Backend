@@ -42,11 +42,39 @@ public static class CustomerOrderTimelineFilter
     {
         var list = history.ToList();
         var cutoff = ResolveCancellationCutoff(cancelledAt, list, internalStatusName);
-        if (!cutoff.HasValue)
-            return list;
+        if (cutoff.HasValue)
+        {
+            list = list.Where(h => h.CreatedAt <= cutoff.Value).ToList();
+        }
+
+        var completedEntry = list
+            .Where(h => h.StatusName != null &&
+                        (h.StatusName.Equals(OrderStatuses.Completed, StringComparison.OrdinalIgnoreCase) ||
+                         h.StatusName.Equals(OrderStatuses.Delivered, StringComparison.OrdinalIgnoreCase) ||
+                         h.StatusName.StartsWith("Completed", StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(h => h.CreatedAt)
+            .FirstOrDefault();
+
+        if (completedEntry != null)
+        {
+            list = list.Where(h => h.CreatedAt <= completedEntry.CreatedAt).ToList();
+        }
+
+        if (string.Equals(internalStatusName, OrderStatuses.Completed, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(internalStatusName, OrderStatuses.Delivered, StringComparison.OrdinalIgnoreCase))
+        {
+            list = list.Where(h =>
+                !string.Equals(h.StatusName, OrderStatuses.Returning, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(h.StatusName, OrderStatuses.WaitingReturn, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(h.StatusName, OrderStatuses.ReturnCompleted, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(h.StatusName, OrderStatuses.ReturnFailed, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(h.StatusName, OrderStatuses.DeliveryFailed, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(h.StatusName, CustomerOrderDisplayStatusMapper.ReturningLabel, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(h.StatusName, CustomerOrderDisplayStatusMapper.ReturnedToWarehouseLabel, StringComparison.OrdinalIgnoreCase)
+            ).ToList();
+        }
 
         return list
-            .Where(h => h.CreatedAt <= cutoff.Value)
             .OrderByDescending(h => h.CreatedAt)
             .ToList();
     }
@@ -57,14 +85,34 @@ public static class CustomerOrderTimelineFilter
         string internalStatusName)
     {
         var list = events.ToList();
-        if (!IsCancelledOrder(internalStatusName, cancelledAt))
-            return list;
 
-        if (!cancelledAt.HasValue)
-            return list;
+        if (IsCancelledOrder(internalStatusName, cancelledAt) && cancelledAt.HasValue)
+        {
+            return list
+                .Where(e => e.Time <= cancelledAt.Value)
+                .OrderByDescending(e => e.Time)
+                .ToList();
+        }
+
+        if (string.Equals(internalStatusName, OrderStatuses.Completed, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(internalStatusName, OrderStatuses.Delivered, StringComparison.OrdinalIgnoreCase))
+        {
+            list = list.Where(e =>
+                !string.Equals(e.Status, OrderStatuses.Returning, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(e.Status, OrderStatuses.WaitingReturn, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(e.Status, OrderStatuses.ReturnCompleted, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(e.Status, OrderStatuses.ReturnFailed, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(e.Status, OrderStatuses.DeliveryFailed, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(e.Status, "returned", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(e.Status, "returning", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(e.Status, "return_transporting", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(e.Status, "return_sorting", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(e.Status, "waiting_to_return", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(e.Status, "delivery_fail", StringComparison.OrdinalIgnoreCase)
+            ).ToList();
+        }
 
         return list
-            .Where(e => e.Time <= cancelledAt.Value)
             .OrderByDescending(e => e.Time)
             .ToList();
     }
