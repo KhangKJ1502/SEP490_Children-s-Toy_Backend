@@ -154,6 +154,7 @@ public class OrderLifecycleService : IOrderLifecycleService
             // 5. Update order status
             order.StatusId = cancelledId;
             order.CancelledAt = now;
+            order.CompletedAt = null; // Enforce NOT ([CompletedAt] IS NOT NULL AND [CancelledAt] IS NOT NULL)
             order.CancelReason = reason;
             order.CancelledBy = cancelledByAccountId == 0 ? null : cancelledByAccountId;
 
@@ -216,7 +217,22 @@ public class OrderLifecycleService : IOrderLifecycleService
         try
         {
             order.StatusId = completedId;
-            order.CompletedAt = now;
+
+            // Đảm bảo chuỗi mốc thời gian thỏa mãn ràng buộc CK_Orders_Timestamps
+            if (order.ConfirmedAt == null)
+            {
+                order.ConfirmedAt = order.OrderDate <= now ? order.OrderDate : now;
+            }
+            if (order.ShippedAt == null || order.ShippedAt < order.ConfirmedAt)
+            {
+                order.ShippedAt = order.ConfirmedAt > now ? order.ConfirmedAt : now;
+            }
+            if (order.DeliveredAt == null || order.DeliveredAt < order.ShippedAt)
+            {
+                order.DeliveredAt = order.ShippedAt > now ? order.ShippedAt : now;
+            }
+            order.CompletedAt = now < order.DeliveredAt ? order.DeliveredAt : now;
+            order.CancelledAt = null;
             order.UpdatedAt = now;
 
             // Cập nhật trạng thái thanh toán cho đơn COD
@@ -269,7 +285,18 @@ public class OrderLifecycleService : IOrderLifecycleService
         try
         {
             order.StatusId = deliveredId;
-            order.DeliveredAt = now;
+
+            // Đảm bảo chuỗi mốc thời gian thỏa mãn ràng buộc CK_Orders_Timestamps
+            if (order.ConfirmedAt == null)
+            {
+                order.ConfirmedAt = order.OrderDate <= now ? order.OrderDate : now;
+            }
+            if (order.ShippedAt == null || order.ShippedAt < order.ConfirmedAt)
+            {
+                order.ShippedAt = order.ConfirmedAt > now ? order.ConfirmedAt : now;
+            }
+            order.DeliveredAt = now < order.ShippedAt ? order.ShippedAt : now;
+            order.CancelledAt = null;
             order.UpdatedAt = now;
 
             // Cập nhật trạng thái thanh toán cho đơn COD khi giao thành công

@@ -59,7 +59,10 @@ public class OrdersProfile : Profile
             .ForMember(d => d.Items, opt => opt.MapFrom(s => s.OrderDetails))
             .ForMember(d => d.StatusHistory, opt => opt.MapFrom(s => s.OrderStatusHistories))
             .ForMember(d => d.Shipping, opt => opt.MapFrom(s =>
-                s.ShippingProviderTransactions.FirstOrDefault()))
+                s.ShippingProviderTransactions
+                    .OrderByDescending(t => t.EstimatedDelivery != null)
+                    .ThenBy(t => t.CreatedAt)
+                    .FirstOrDefault()))
             .ForMember(d => d.HasActiveRefund, opt => opt.MapFrom(s => CustomerOrderDisplayStatusMapper.HasActiveRefund(s)))
             .AfterMap((s, d) => CustomerOrderDisplayStatusMapper.ApplyCustomerOrderContract(s, d));
 

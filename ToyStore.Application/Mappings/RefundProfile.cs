@@ -5,10 +5,17 @@ using ToyStore.Domain.Entities;
 
 namespace ToyStore.Application.Mappings;
 
+/// <summary>
+/// Cấu hình ánh xạ AutoMapper giữa các thực thể Domain của nghiệp vụ Hoàn tiền (OrderRefund, RefundDetail, RefundStatusHistory, OrderRefundReason) và các DTOs tương ứng.
+/// </summary>
 public class RefundProfile : Profile
 {
+    /// <summary>
+    /// Khởi tạo cấu hình ánh xạ AutoMapper cho toàn bộ phân hệ Refund.
+    /// </summary>
     public RefundProfile()
     {
+        // Ánh xạ OrderRefund -> RefundDto (Chi tiết đầy đủ)
         CreateMap<OrderRefund, RefundDto>()
             .ForMember(dest => dest.ReasonDetails, opt => opt.MapFrom(src => CleanReasonDetails(src.ReasonDetails)))
             .ForMember(dest => dest.OrderCode, opt => opt.MapFrom(src => src.Order.OrderCode))
@@ -39,6 +46,7 @@ public class RefundProfile : Profile
             .ForMember(dest => dest.CustomerShippingPaid, opt => opt.MapFrom(src => src.CustomerShippingPaid))
             .ForMember(dest => dest.IncludeShippingInRefund, opt => opt.MapFrom(src => src.IncludeShippingInRefund));
 
+        // Ánh xạ OrderRefund -> RefundListDto (Danh sách tóm tắt)
         CreateMap<OrderRefund, RefundListDto>()
             .ForMember(dest => dest.OrderCode, opt => opt.MapFrom(src => src.Order.OrderCode))
             .ForMember(dest => dest.OrderStatus, opt => opt.MapFrom(src => src.Order.Status.StatusName))
@@ -51,18 +59,24 @@ public class RefundProfile : Profile
             .ForMember(dest => dest.RefundStatus, opt => opt.MapFrom(src => src.Status != null ? src.Status.StatusName : null))
             .ForMember(dest => dest.RefundSource, opt => opt.MapFrom(src => src.RefundSource ?? "Customer"));
 
+        // Ánh xạ OrderRefundReason -> RefundReasonDto
         CreateMap<OrderRefundReason, RefundReasonDto>();
 
+        // Ánh xạ RefundDetail -> RefundDetailDto
         CreateMap<RefundDetail, RefundDetailDto>()
             .ForMember(dest => dest.ProductName, opt => opt.MapFrom(src => src.Product.ProductName))
             .ForMember(dest => dest.ProductImage, opt => opt.MapFrom(src => src.Product.ProductImage != null ? src.Product.ProductImage.ImageUrl : null))
             .ForMember(dest => dest.RestorableQuantity, opt => opt.MapFrom(src => src.RestorableQuantity));
 
+        // Ánh xạ RefundStatusHistory -> RefundStatusHistoryDto
         CreateMap<RefundStatusHistory, RefundStatusHistoryDto>()
             .ForMember(dest => dest.StatusName, opt => opt.MapFrom(src => src.Status.StatusName))
             .ForMember(dest => dest.ChangedByName, opt => opt.MapFrom(src => src.ChangedByNavigation != null ? src.ChangedByNavigation.AccountName : null));
     }
 
+    /// <summary>
+    /// Xóa bỏ phần thông tin từ chối (Reject Reason) nếu bị nối vào ReasonDetails của khách hàng để hiển thị sạch đẹp.
+    /// </summary>
     private static string? CleanReasonDetails(string? reasonDetails)
     {
         if (string.IsNullOrWhiteSpace(reasonDetails)) return null;
@@ -82,6 +96,9 @@ public class RefundProfile : Profile
         return reasonDetails;
     }
 
+    /// <summary>
+    /// Thu thập và sắp xếp toàn bộ lịch sử hành trình giao nhận / hoàn trả vận chuyển từ các giao dịch GHN liên quan.
+    /// </summary>
     private static System.Collections.Generic.List<ShippingStatusHistory> MapRefundShippingHistory(OrderRefund refund)
     {
         if (refund == null || refund.Order == null)
@@ -89,6 +106,7 @@ public class RefundProfile : Profile
 
         var historyList = new System.Collections.Generic.List<ShippingStatusHistory>();
 
+        // Lấy lịch sử theo mã vận đơn chuyển hàng ban đầu
         if (!string.IsNullOrWhiteSpace(refund.ShippingOrderCode))
         {
             var tx = refund.Order.ShippingProviderTransactions
@@ -99,6 +117,7 @@ public class RefundProfile : Profile
             }
         }
 
+        // Lấy lịch sử theo mã vận đơn trả hàng về kho
         if (!string.IsNullOrWhiteSpace(refund.ReturnShippingOrderCode))
         {
             var tx = refund.Order.ShippingProviderTransactions

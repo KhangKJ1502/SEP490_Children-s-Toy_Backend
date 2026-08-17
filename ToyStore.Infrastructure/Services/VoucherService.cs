@@ -8,10 +8,15 @@ using ToyStore.Application.Interfaces.Repositories;
 using ToyStore.Application.Interfaces.Services;
 using ToyStore.Domain.Constants;
 using ToyStore.Domain.Entities;
+using ToyStore.Application.Common.Models;
+
 namespace ToyStore.Infrastructure.Services;
 
 /// <summary>
-/// Service xử lý nghiệp vụ voucher.
+/// Service triển khai các nghiệp vụ quản lý Voucher (mã khuyến mãi/giảm giá), bao gồm:
+/// - Tạo mới, cập nhật từng phần, xem chi tiết, phân trang danh sách voucher.
+/// - Kiểm tra ràng buộc và phân luồng trạng thái duyệt tự động theo phân quyền (Admin / Staff).
+/// - Áp dụng các chốt an toàn (Safeguards) bảo vệ dữ liệu khi voucher đã có lượt sử dụng hoặc đã hết hạn.
 /// </summary>
 public class VoucherService : IVoucherService
 {
@@ -24,6 +29,17 @@ public class VoucherService : IVoucherService
     private readonly ICurrentUserService _currentUserService;
     private readonly VoucherRiskThresholds _thresholds;
 
+    /// <summary>
+    /// Khởi tạo VoucherService với các dependency cần thiết.
+    /// </summary>
+    /// <param name="unitOfWork">Unit of Work quản lý các repository và transaction cơ sở dữ liệu.</param>
+    /// <param name="mapper">AutoMapper để chuyển đổi giữa Entity và DTO.</param>
+    /// <param name="logger">Logger ghi lại log hệ thống.</param>
+    /// <param name="createValidator">Bộ validator kiểm tra dữ liệu tạo mới voucher.</param>
+    /// <param name="updateValidator">Bộ validator kiểm tra dữ liệu cập nhật voucher.</param>
+    /// <param name="timeProvider">Provider cung cấp thời gian hiện tại (hỗ trợ giả lập/kiểm thử thời gian).</param>
+    /// <param name="currentUserService">Service cung cấp thông tin người dùng đang đăng nhập (AccountId, RoleName).</param>
+    /// <param name="thresholds">Ngưỡng rủi ro cấu hình để quyết định voucher của Staff có cần duyệt hay không.</param>
     public VoucherService(
         IUnitOfWork unitOfWork,
         IMapper mapper,
@@ -44,6 +60,18 @@ public class VoucherService : IVoucherService
         _thresholds = thresholds.Value;
     }
 
+    /// <summary>
+    /// Lấy danh sách voucher có phân trang, lọc và sắp xếp.
+    /// Nếu người dùng đã đăng nhập, tự động tính số lần người dùng đó đã dùng từng voucher (CurrentUserUsageCount).
+    /// </summary>
+    /// <param name="pageNumber">Số trang hiện tại (>= 1).</param>
+    /// <param name="pageSize">Số lượng bản ghi mỗi trang (1 đến 100).</param>
+    /// <param name="sortBy">Tên trường sắp xếp.</param>
+    /// <param name="sortDesc">true: giảm dần, false: tăng dần.</param>
+    /// <param name="searchTerm">Từ khóa tìm kiếm theo mã, tên hoặc mô tả.</param>
+    /// <param name="status">Trạng thái voucher cần lọc.</param>
+    /// <param name="cancellationToken">Token hủy tác vụ bất đồng bộ.</param>
+    /// <returns>Đối tượng Result chứa danh sách VoucherListDto đã phân trang.</returns>
     public async Task<Result<PaginatedResponse<VoucherListDto>>> GetVouchersAsync(
         int pageNumber = 1,
         int pageSize = 10,
@@ -53,6 +81,7 @@ public class VoucherService : IVoucherService
         string? status = null,
         CancellationToken cancellationToken = default)
     {
+        // 1. Kiểm tra tính hợp lệ của tham số phân trang
         if (pageNumber < 1)
         {
             return Result<PaginatedResponse<VoucherListDto>>.Failure(
@@ -65,6 +94,7 @@ public class VoucherService : IVoucherService
                 "VALIDATION_ERROR", "Page size must be between 1 and 100.");
         }
 
+        // 2. Truy vấn danh sách voucher từ repository
         var pagedVouchers = await _unitOfWork.Vouchers.GetPagedAsync(
             pageNumber,
             pageSize,
@@ -74,9 +104,10 @@ public class VoucherService : IVoucherService
             status,
             cancellationToken);
 
+        // 3. Map danh sách thực thể sang danh sách DTO gọn (VoucherListDto)
         var items = _mapper.Map<List<VoucherListDto>>(pagedVouchers.Items);
 
-        // Populate CurrentUserUsageCount if user is authenticated
+        // 4. Nếu người dùng hiện tại đã đăng nhập (AccountId > 0), tính số lần người dùng này đã dùng voucher
         var accountId = _currentUserService.AccountId;
         if (accountId > 0)
         {
@@ -96,6 +127,7 @@ public class VoucherService : IVoucherService
             searchTerm,
             status);
 
+        // 5. Đóng gói kết quả phân trang và trả về
         var response = new PaginatedResponse<VoucherListDto>(
             items,
             pagedVouchers.TotalCount,
@@ -105,11 +137,24 @@ public class VoucherService : IVoucherService
         return Result<PaginatedResponse<VoucherListDto>>.Success(response);
     }
 
+    /// <summary>
+    /// Tạo mới một voucher:
+    /// - Chuẩn hóa dữ liệu đầu vào (Trim, ToUpper mã code và loại giảm giá).
+    /// - Kiểm tra hợp lệ dữ liệu qua FluentValidation.
+    /// - Kiểm tra trùng lặp mã VoucherCode.
+    /// - Phân luồng trạng thái duyệt (Status Transition Rules):
+    ///   + Admin: Trực tiếp vào trạng thái Scheduled.
+    ///   + Staff: Nếu giảm giá trên giá cuối (FINAL_PRICE), không giới hạn số lượng (TotalQuantity = null), hoặc vượt ngưỡng rủi ro (MaxDiscountCap, MaxTotalDiscount) -> chuyển sang Pending chờ duyệt; ngược lại vào Scheduled.
+    /// - Lưu xuống database trong Transaction an toàn.
+    /// </summary>
+    /// <param name="request">DTO chứa thông tin tạo voucher.</param>
+    /// <param name="cancellationToken">Token hủy tác vụ bất đồng bộ.</param>
+    /// <returns>Đối tượng Result chứa VoucherDto chi tiết của voucher vừa tạo.</returns>
     public async Task<Result<VoucherDto>> CreateVoucherAsync(
         CreateVoucherDto request,
         CancellationToken cancellationToken = default)
     {
-        // Chuẩn hoá input trước khi validate
+        // 1. Chuẩn hoá input trước khi validate (cắt khoảng trắng, viết hoa mã code/loại giảm giá)
         var normalizedRequest = NormalizeCreateRequest(request);
         var validationResult = await _createValidator.ValidateAsync(normalizedRequest, cancellationToken);
 
@@ -118,7 +163,7 @@ public class VoucherService : IVoucherService
             return validationResult.ToResult<VoucherDto>();
         }
 
-        // Kiểm tra trùng voucher code
+        // 2. Kiểm tra trùng mã voucher code trong cơ sở dữ liệu
         var voucherCodeExists = await _unitOfWork.Vouchers.ExistsVoucherCodeAsync(
             normalizedRequest.VoucherCode,
             null,
@@ -129,6 +174,7 @@ public class VoucherService : IVoucherService
             return Result<VoucherDto>.Conflict("Voucher code already exists.");
         }
 
+        // 3. Khởi tạo đối tượng Entity Voucher từ DTO và gán thông tin hệ thống
         var voucher = _mapper.Map<Voucher>(normalizedRequest);
         voucher.CreatedBy = _currentUserService.AccountId;
         voucher.CreatedAt = _timeProvider.UtcNow;
@@ -136,17 +182,23 @@ public class VoucherService : IVoucherService
         voucher.UsedQuantity = 0;
         voucher.IsDeleted = false;
 
-        // Apply Status Transition Rules
+        // 4. Áp dụng quy tắc chuyển đổi trạng thái duyệt (Status Transition Rules)
         if (string.Equals(_currentUserService.RoleName, "Staff", StringComparison.OrdinalIgnoreCase))
         {
+            // Nhóm 1: Voucher áp dụng trên giá cuối (FINAL_PRICE) luôn cần Admin duyệt
             if (string.Equals(voucher.DiscountTarget, "FINAL_PRICE", StringComparison.OrdinalIgnoreCase))
             {
                 voucher.Status = VoucherStatuses.Pending;
             }
+            // Nhóm 2: Voucher theo phần trăm (%) - kiểm tra mức giảm tối đa (cap) và tổng ngân sách giảm giá
             else if (string.Equals(voucher.DiscountType, "PERCENTAGE", StringComparison.OrdinalIgnoreCase))
             {
-                if (voucher.MaxDiscountCap > _thresholds.MaxDiscountCap ||
-                   (voucher.MaxDiscountCap * (voucher.TotalQuantity ?? 1)) > _thresholds.MaxTotalDiscount)
+                // Nếu Staff không giới hạn số lượng (TotalQuantity = null) -> ngân sách vô hạn -> chuyển sang Pending chờ Admin duyệt
+                bool isUnlimited = !voucher.TotalQuantity.HasValue;
+                bool exceedsDiscountCap = (voucher.MaxDiscountCap ?? 0) > _thresholds.MaxDiscountCap;
+                bool exceedsTotalBudget = isUnlimited || ((voucher.MaxDiscountCap ?? 0) * voucher.TotalQuantity!.Value) > _thresholds.MaxTotalDiscount;
+
+                if (exceedsDiscountCap || exceedsTotalBudget)
                 {
                     voucher.Status = VoucherStatuses.Pending;
                 }
@@ -155,10 +207,15 @@ public class VoucherService : IVoucherService
                     voucher.Status = VoucherStatuses.Scheduled;
                 }
             }
+            // Nhóm 3: Voucher giảm theo số tiền cố định (FIXED) - kiểm tra số tiền giảm và tổng ngân sách
             else if (string.Equals(voucher.DiscountType, "FIXED", StringComparison.OrdinalIgnoreCase))
             {
-                if (voucher.DiscountValue > _thresholds.MaxDiscountCap ||
-                   (voucher.DiscountValue * (voucher.TotalQuantity ?? 1)) > _thresholds.MaxTotalDiscount)
+                // Nếu Staff không giới hạn số lượng (TotalQuantity = null) -> ngân sách vô hạn -> chuyển sang Pending chờ Admin duyệt
+                bool isUnlimited = !voucher.TotalQuantity.HasValue;
+                bool exceedsDiscountCap = voucher.DiscountValue > _thresholds.MaxDiscountCap;
+                bool exceedsTotalBudget = isUnlimited || (voucher.DiscountValue * voucher.TotalQuantity!.Value) > _thresholds.MaxTotalDiscount;
+
+                if (exceedsDiscountCap || exceedsTotalBudget)
                 {
                     voucher.Status = VoucherStatuses.Pending;
                 }
@@ -172,11 +229,12 @@ public class VoucherService : IVoucherService
                 voucher.Status = VoucherStatuses.Scheduled;
             }
         }
-        else // Admin
+        else // Tài khoản Admin tạo thì mặc định được lên lịch (Scheduled) ngay không cần duyệt
         {
             voucher.Status = VoucherStatuses.Scheduled;
         }
 
+        // 5. Mở Transaction và lưu vào database
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -191,6 +249,7 @@ public class VoucherService : IVoucherService
             throw;
         }
 
+        // 6. Truy vấn lại voucher vừa tạo để đảm bảo dữ liệu chuẩn xác trước khi trả về
         var createdVoucher = await _unitOfWork.Vouchers.GetByCodeAsync(voucher.VoucherCode, cancellationToken);
         if (createdVoucher is null)
         {
@@ -206,17 +265,33 @@ public class VoucherService : IVoucherService
         return Result<VoucherDto>.Success(_mapper.Map<VoucherDto>(createdVoucher));
     }
 
+    /// <summary>
+    /// Cập nhật thông tin voucher theo ID (hỗ trợ cập nhật từng phần - Partial Update):
+    /// - Kiểm tra ID hợp lệ và sự tồn tại của voucher.
+    /// - Xử lý xóa mềm (Soft Delete): không cho xóa voucher đang Active, xử lý dữ liệu cũ để tránh lỗi CHECK constraint SQL Server.
+    /// - Safeguard 1 (Voucher đã sử dụng): Chặn sửa các trường tài chính cốt lõi (Mã, Loại giảm giá, Giá trị giảm, Mức giảm tối đa, Mục tiêu giảm giá, Đơn tối thiểu); không cho giảm Tổng số lượng nhỏ hơn số lượng đã dùng.
+    /// - Safeguard 2 (Voucher đã hết hạn): Khóa voucher đã hết hạn, chỉ cho phép gia hạn EndDate hoặc chuyển trạng thái sang Inactive/xóa để lưu trữ.
+    /// - Rule 1: Nếu Staff sửa trường tài chính của voucher đang Active/Scheduled -> tự động chuyển về Pending chờ duyệt lại.
+    /// - Role-based Logic: Staff không được tự ý duyệt; Admin từ chối phải nhập Reason; Admin duyệt sẽ tính toán trạng thái Active/Scheduled theo ngày hiệu lực.
+    /// - Rule 2: Chặn kích hoạt lại voucher Inactive nếu đã hết hạn hoặc đã đạt giới hạn số lượng sử dụng.
+    /// - Merge dữ liệu an toàn, validate toàn diện lại một lần nữa trước khi commit transaction.
+    /// </summary>
+    /// <param name="voucherId">Mã ID của voucher cần cập nhật.</param>
+    /// <param name="request">DTO chứa các trường cần cập nhật.</param>
+    /// <param name="cancellationToken">Token hủy tác vụ bất đồng bộ.</param>
+    /// <returns>Đối tượng Result chứa VoucherDto sau khi cập nhật thành công.</returns>
     public async Task<Result<VoucherDto>> UpdateVoucherAsync(
         int voucherId,
         UpdateVoucherDto request,
         CancellationToken cancellationToken = default)
     {
+        // 1. Kiểm tra ID voucher hợp lệ
         if (voucherId <= 0)
         {
             return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Voucher ID must be greater than 0.");
         }
 
-        // Validate partial update request
+        // 2. Chuẩn hóa và validate các trường trong request cập nhật từng phần
         var normalizedRequest = NormalizeUpdateRequest(request);
         var updateValidation = await _updateValidator.ValidateAsync(normalizedRequest, cancellationToken);
 
@@ -225,16 +300,17 @@ public class VoucherService : IVoucherService
             return updateValidation.ToResult<VoucherDto>();
         }
 
-        // Lấy voucher hiện tại
+        // 3. Tìm kiếm voucher hiện tại trong DB
         var existingVoucher = await _unitOfWork.Vouchers.GetByIdAsync(voucherId, cancellationToken);
         if (existingVoucher is null)
         {
             return Result<VoucherDto>.NotFound("Voucher", voucherId);
         }
 
-        // Nếu là yêu cầu xoá (Soft Delete)
+        // 4. Xử lý trường hợp yêu cầu Xóa mềm (Soft Delete)
         if (normalizedRequest.IsDeleted == true)
         {
+            // Không cho phép xóa voucher đang trong trạng thái Active (đang hoạt động)
             if (string.Equals(existingVoucher.Status, "Active", StringComparison.OrdinalIgnoreCase))
             {
                 return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Cannot delete an Active voucher.");
@@ -243,7 +319,7 @@ public class VoucherService : IVoucherService
             existingVoucher.IsDeleted = true;
             existingVoucher.UpdatedAt = _timeProvider.UtcNow;
 
-            // Fix legacy invalid data to satisfy SQL Server CHECK constraints during soft delete
+            // Xử lý các giá trị không hợp lệ từ dữ liệu cũ (legacy data) để thỏa mãn CHECK constraint của SQL Server khi xóa mềm
             if (existingVoucher.DiscountValue <= 0)
             {
                 existingVoucher.DiscountValue = 1;
@@ -262,9 +338,10 @@ public class VoucherService : IVoucherService
             var oldStatus = existingVoucher.Status;
             var now = _timeProvider.UtcNow;
 
-            // Safeguard 1: Used Voucher Safeguard
+            // ── Chốt an toàn 1: Safeguard cho Voucher đã có lượt sử dụng (UsedQuantity > 0) ──
             if (existingVoucher.UsedQuantity > 0)
             {
+                // Kiểm tra xem có yêu cầu thay đổi các trường tài chính cốt lõi hay không
                 bool hasInvalidCriticalChanges =
                     (normalizedRequest.VoucherCode is not null && !string.Equals(normalizedRequest.VoucherCode, existingVoucher.VoucherCode, StringComparison.OrdinalIgnoreCase)) ||
                     (normalizedRequest.DiscountType is not null && !string.Equals(normalizedRequest.DiscountType, existingVoucher.DiscountType, StringComparison.OrdinalIgnoreCase)) ||
@@ -278,17 +355,18 @@ public class VoucherService : IVoucherService
                     return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Cannot modify core financial fields (VoucherCode, DiscountType, DiscountValue, MaxDiscountCap, DiscountTarget, MinOrderAmount) for a voucher that has already been used.");
                 }
 
+                // Không cho phép chỉnh Tổng số lượng (TotalQuantity) nhỏ hơn số lượng đã dùng thực tế
                 if (normalizedRequest.TotalQuantity.HasValue && normalizedRequest.TotalQuantity.Value < existingVoucher.UsedQuantity)
                 {
                     return Result<VoucherDto>.Failure("VALIDATION_ERROR", $"Total quantity cannot be set below the used quantity ({existingVoucher.UsedQuantity}).");
                 }
             }
 
-            // Safeguard 2: Expired Voucher Safeguard
+            // ── Chốt an toàn 2: Safeguard cho Voucher đã hết hạn (Expired) ──
             bool isExpired = string.Equals(oldStatus, VoucherStatuses.Expired, StringComparison.OrdinalIgnoreCase) || existingVoucher.EndDate <= now;
             if (isExpired)
             {
-                // Expired vouchers are locked, except for EndDate, Status, and IsDeleted
+                // Voucher đã hết hạn bị khóa toàn bộ các thông tin, ngoại trừ EndDate, Status hoặc IsDeleted
                 bool hasInvalidExpiredChanges =
                     (normalizedRequest.VoucherCode is not null && !string.Equals(normalizedRequest.VoucherCode, existingVoucher.VoucherCode, StringComparison.OrdinalIgnoreCase)) ||
                     (normalizedRequest.VoucherName is not null && !string.Equals(normalizedRequest.VoucherName, existingVoucher.VoucherName, StringComparison.Ordinal)) ||
@@ -307,7 +385,7 @@ public class VoucherService : IVoucherService
                     return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Expired vouchers are locked. You can only update the End Date, Status, or delete it to reactivate/archive.");
                 }
 
-                // If not archiving/deleting, require extending the End Date to a future time
+                // Nếu không phải thao tác lưu trữ (chuyển sang Inactive, Rejected, Expired hoặc Xóa), bắt buộc phải gia hạn EndDate về tương lai
                 var targetEndDate = normalizedRequest.EndDate ?? existingVoucher.EndDate;
                 var targetStatus = normalizedRequest.Status ?? existingVoucher.Status;
                 bool isArchiving = string.Equals(targetStatus, VoucherStatuses.Inactive, StringComparison.OrdinalIgnoreCase)
@@ -321,7 +399,7 @@ public class VoucherService : IVoucherService
                 }
             }
 
-            // Rule 1: Check if Staff modifies financial fields of an Active or Scheduled voucher
+            // ── Quy tắc 1: Staff chỉnh sửa trường tài chính của voucher đang Active hoặc Scheduled ──
             if (string.Equals(_currentUserService.RoleName, "Staff", StringComparison.OrdinalIgnoreCase) &&
                 (string.Equals(oldStatus, VoucherStatuses.Active, StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(oldStatus, VoucherStatuses.Scheduled, StringComparison.OrdinalIgnoreCase)))
@@ -336,6 +414,7 @@ public class VoucherService : IVoucherService
                     (normalizedRequest.StartDate.HasValue && normalizedRequest.StartDate.Value != existingVoucher.StartDate) ||
                     (normalizedRequest.EndDate.HasValue && normalizedRequest.EndDate.Value != existingVoucher.EndDate);
 
+                // Nếu có thay đổi tài chính, bắt buộc đưa về trạng thái Pending để Admin duyệt lại
                 if (hasFinancialChanges)
                 {
                     normalizedRequest.Status = VoucherStatuses.Pending;
@@ -343,32 +422,32 @@ public class VoucherService : IVoucherService
                 }
             }
 
-            // Role-based logic before merge
+            // ── Xử lý phân quyền chi tiết trước khi merge dữ liệu ──
             if (string.Equals(_currentUserService.RoleName, "Staff", StringComparison.OrdinalIgnoreCase))
             {
-                // Staff cannot explicitly set to Scheduled or Approved
+                // Staff không được phép tự ý đổi trạng thái sang Scheduled hoặc Active (phải qua Pending)
                 if (string.Equals(normalizedRequest.Status, VoucherStatuses.Scheduled, StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(normalizedRequest.Status, VoucherStatuses.Active, StringComparison.OrdinalIgnoreCase))
                 {
                     normalizedRequest.Status = VoucherStatuses.Pending;
                 }
 
-                // If updating a Rejected voucher, it goes back to Pending automatically (unless emergency Inactive)
+                // Nếu Staff chỉnh sửa voucher bị Rejected, tự động chuyển lại về Pending (trừ khi chủ động tắt sang Inactive)
                 if (string.Equals(oldStatus, VoucherStatuses.Rejected, StringComparison.OrdinalIgnoreCase))
                 {
                     if (!string.Equals(normalizedRequest.Status, VoucherStatuses.Inactive, StringComparison.OrdinalIgnoreCase))
                     {
                         normalizedRequest.Status = VoucherStatuses.Pending;
-                        normalizedRequest.Reason = null; // clear admin reason
+                        normalizedRequest.Reason = null; // Xóa lý do từ chối cũ của Admin
                     }
                 }
 
-                // Staff cannot update Reason
+                // Staff không có quyền thay đổi lý do từ chối (Reason)
                 normalizedRequest.Reason = null;
             }
             else if (string.Equals(_currentUserService.RoleName, "Admin", StringComparison.OrdinalIgnoreCase))
             {
-                // Admin Rejecting must provide Reason
+                // Admin từ chối (Rejected) bắt buộc phải nhập lý do từ chối
                 if (string.Equals(normalizedRequest.Status, VoucherStatuses.Rejected, StringComparison.OrdinalIgnoreCase))
                 {
                     if (string.IsNullOrWhiteSpace(normalizedRequest.Reason) && string.IsNullOrWhiteSpace(existingVoucher.Reason))
@@ -377,7 +456,7 @@ public class VoucherService : IVoucherService
                     }
                 }
 
-                // Admin Approving clears Reason and calculates dynamic status
+                // Khi Admin duyệt (Scheduled): xóa lý do từ chối cũ và tự động xác định trạng thái Active nếu ngày bắt đầu đã đến
                 if (string.Equals(normalizedRequest.Status, VoucherStatuses.Scheduled, StringComparison.OrdinalIgnoreCase))
                 {
                     var targetEndDate = normalizedRequest.EndDate ?? existingVoucher.EndDate;
@@ -400,12 +479,13 @@ public class VoucherService : IVoucherService
                     normalizedRequest.Reason = null;
                 }
 
-                // If Admin updates dates without explicitly specifying Status (or status remains Expired)
+                // Nếu Admin cập nhật ngày tháng mà không chỉ định rõ trạng thái mới (hoặc trạng thái đang là Expired)
                 if (normalizedRequest.Status == null || string.Equals(normalizedRequest.Status, VoucherStatuses.Expired, StringComparison.OrdinalIgnoreCase))
                 {
                     var targetStartDate = normalizedRequest.StartDate ?? existingVoucher.StartDate;
                     var targetEndDate = normalizedRequest.EndDate ?? existingVoucher.EndDate;
 
+                    // Nếu ngày kết thúc ở tương lai, tính toán lại trạng thái Active / Scheduled tương ứng
                     if (targetEndDate > now)
                     {
                         if (targetStartDate <= now)
@@ -431,7 +511,7 @@ public class VoucherService : IVoucherService
                 }
             }
 
-            // Rule 2: Limit Reactivation of Paused Vouchers (Inactive)
+            // ── Quy tắc 2: Giới hạn kích hoạt lại voucher đang tạm ngưng (Inactive) ──
             if (string.Equals(oldStatus, VoucherStatuses.Inactive, StringComparison.OrdinalIgnoreCase) &&
                 (string.Equals(normalizedRequest.Status, VoucherStatuses.Scheduled, StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(normalizedRequest.Status, VoucherStatuses.Active, StringComparison.OrdinalIgnoreCase) ||
@@ -457,10 +537,10 @@ public class VoucherService : IVoucherService
                 }
             }
 
-            // Merge partial update vào entity hiện tại, AutoMapper đã được cấu hình PreCondition để an toàn với nullable value types
+            // Merge các trường cập nhật vào entity hiện tại qua AutoMapper
             _mapper.Map(normalizedRequest, existingVoucher);
 
-            // Xử lý field Reason do AutoMapper có thể không set null được nếu property src null.
+            // Xử lý trường Reason: AutoMapper bỏ qua null nên cần gán trực tiếp nếu có logic xóa reason
             if (normalizedRequest.Reason == null &&
                 ((string.Equals(_currentUserService.RoleName, "Staff", StringComparison.OrdinalIgnoreCase) && !string.Equals(normalizedRequest.Status, VoucherStatuses.Inactive, StringComparison.OrdinalIgnoreCase)) ||
                  (string.Equals(_currentUserService.RoleName, "Admin", StringComparison.OrdinalIgnoreCase) && string.Equals(normalizedRequest.Status, VoucherStatuses.Scheduled, StringComparison.OrdinalIgnoreCase))))
@@ -472,14 +552,14 @@ public class VoucherService : IVoucherService
                 existingVoucher.Reason = normalizedRequest.Reason;
             }
 
-            // Chuẩn hoá lại các field string sau khi merge
+            // Chuẩn hoá lại các trường chuỗi sau khi merge
             existingVoucher.VoucherCode = NormalizeCode(existingVoucher.VoucherCode);
             existingVoucher.DiscountType = NormalizeToken(existingVoucher.DiscountType);
             existingVoucher.DiscountTarget = NormalizeToken(existingVoucher.DiscountTarget);
             existingVoucher.Status = NormalizeStatus(existingVoucher.Status);
             existingVoucher.UpdatedAt = _timeProvider.UtcNow;
 
-            // Validate toàn bộ dữ liệu sau merge
+            // Validate toàn bộ dữ liệu tổng thể của entity sau khi merge thông qua CreateVoucherValidator (với cờ IsUpdate = true)
             var fullValidationRequest = MapToCreateDto(existingVoucher);
             var context = new ValidationContext<CreateVoucherDto>(fullValidationRequest);
             context.RootContextData["IsUpdate"] = true;
@@ -490,7 +570,7 @@ public class VoucherService : IVoucherService
                 return fullValidationResult.ToResult<VoucherDto>();
             }
 
-            // Kiểm tra trùng voucher code (bỏ qua chính mình)
+            // Kiểm tra trùng mã voucher code (loại trừ chính voucher đang cập nhật)
             var voucherCodeExists = await _unitOfWork.Vouchers.ExistsVoucherCodeAsync(
                 existingVoucher.VoucherCode,
                 voucherId,
@@ -502,6 +582,7 @@ public class VoucherService : IVoucherService
             }
         }
 
+        // 5. Thực hiện lưu thay đổi trong Database Transaction
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -516,6 +597,7 @@ public class VoucherService : IVoucherService
             throw;
         }
 
+        // 6. Lấy dữ liệu mới nhất sau cập nhật và trả về VoucherDto
         var updatedVoucher = await _unitOfWork.Vouchers.GetByIdAsync(voucherId, cancellationToken) ?? existingVoucher;
 
         _logger.LogInformation(
@@ -526,15 +608,23 @@ public class VoucherService : IVoucherService
         return Result<VoucherDto>.Success(_mapper.Map<VoucherDto>(updatedVoucher));
     }
 
+    /// <summary>
+    /// Lấy thông tin chi tiết của một voucher theo ID.
+    /// </summary>
+    /// <param name="voucherId">Mã định danh duy nhất (ID) của voucher.</param>
+    /// <param name="cancellationToken">Token hủy tác vụ bất đồng bộ.</param>
+    /// <returns>Đối tượng Result chứa VoucherDto nếu tìm thấy, hoặc NotFound nếu không tồn tại.</returns>
     public async Task<Result<VoucherDto>> GetVoucherByIdAsync(
         int voucherId,
         CancellationToken cancellationToken = default)
     {
+        // Kiểm tra ID hợp lệ
         if (voucherId <= 0)
         {
             return Result<VoucherDto>.Failure("VALIDATION_ERROR", "Voucher ID must be greater than 0.");
         }
 
+        // Tìm nạp voucher từ database
         var voucher = await _unitOfWork.Vouchers.GetByIdAsync(voucherId, cancellationToken);
         if (voucher is null)
         {
@@ -546,8 +636,13 @@ public class VoucherService : IVoucherService
 
 
 
-    // ── Normalize helpers ─────────────────────────────────────────────────────
+    // ── Các hàm tiện ích hỗ trợ chuẩn hóa dữ liệu (Normalize Helpers) ──────────────────
 
+    /// <summary>
+    /// Chuẩn hóa dữ liệu đầu vào cho request tạo mới voucher (cắt khoảng trắng, viết hoa các mã token/code).
+    /// </summary>
+    /// <param name="request">DTO tạo mới ban đầu.</param>
+    /// <returns>DTO tạo mới đã được làm sạch và chuẩn hóa.</returns>
     private static CreateVoucherDto NormalizeCreateRequest(CreateVoucherDto request)
     {
         return new CreateVoucherDto
@@ -568,6 +663,11 @@ public class VoucherService : IVoucherService
         };
     }
 
+    /// <summary>
+    /// Chuẩn hóa dữ liệu đầu vào cho request cập nhật voucher từng phần (xử lý an toàn với các trường nullable).
+    /// </summary>
+    /// <param name="request">DTO cập nhật ban đầu.</param>
+    /// <returns>DTO cập nhật đã được làm sạch và chuẩn hóa.</returns>
     private static UpdateVoucherDto NormalizeUpdateRequest(UpdateVoucherDto request)
     {
         return new UpdateVoucherDto
@@ -590,7 +690,11 @@ public class VoucherService : IVoucherService
         };
     }
 
-    // Map Voucher → CreateVoucherDto để validate toàn bộ sau merge
+    /// <summary>
+    /// Chuyển đổi một thực thể Voucher đã merge thành CreateVoucherDto để chạy bộ validation toàn diện (CreateVoucherValidator).
+    /// </summary>
+    /// <param name="voucher">Thực thể Voucher.</param>
+    /// <returns>CreateVoucherDto chứa toàn bộ thông tin của voucher.</returns>
     private static CreateVoucherDto MapToCreateDto(Voucher voucher)
     {
         return new CreateVoucherDto
@@ -611,12 +715,21 @@ public class VoucherService : IVoucherService
         };
     }
 
+    /// <summary>
+    /// Chuẩn hóa mã code của voucher (Cắt khoảng trắng và viết in hoa).
+    /// </summary>
     private static string NormalizeCode(string value)
         => value.Trim().ToUpperInvariant();
 
+    /// <summary>
+    /// Chuẩn hóa mã định danh hằng số (Cắt khoảng trắng và viết in hoa, ví dụ: PERCENTAGE, FIXED, ORDER_TOTAL).
+    /// </summary>
     private static string NormalizeToken(string value)
         => value.Trim().ToUpperInvariant();
 
+    /// <summary>
+    /// Chuẩn hóa chuỗi trạng thái voucher về đúng quy chuẩn viết hoa chữ cái đầu (PascalCase).
+    /// </summary>
     private static string NormalizeStatus(string value)
         => value.Trim().ToLowerInvariant() switch
         {

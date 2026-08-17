@@ -562,8 +562,13 @@ public class AdminOrderService : IAdminOrderService
             }, cancellationToken);
 
             // B. Cập nhật mã vận đơn và phí vận chuyển thực tế lên đơn hàng
+            // Đảm bảo ConfirmedAt được thiết lập để thỏa mãn ràng buộc CK_Orders_Timestamps
+            if (order.ConfirmedAt == null)
+            {
+                order.ConfirmedAt = order.OrderDate <= now ? order.OrderDate : now;
+            }
             order.StatusId = shippedId;
-            order.ShippedAt = now;
+            order.ShippedAt = now < order.ConfirmedAt ? order.ConfirmedAt : now;
             order.ActualShippingFee = actualFee > 0 ? actualFee : null;
             if (actualFee > 0)
                 order.EstimatedShippingFee = actualFee;
