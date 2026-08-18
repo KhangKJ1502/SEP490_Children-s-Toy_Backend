@@ -306,11 +306,9 @@ public class WalletService : IWalletService
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            // KIỂM TRA & TẠO TOKEN NẠP TIỀN:
-            // Nếu hành động là nạp tiền ví (TOP_UP), hệ thống sẽ sinh ra một chuỗi token ngẫu nhiên gọi là topUpToken 
-            // (có thời gian sống ngắn, thường là 10 phút - TopUpVerifyExpiry) và lưu vào Redis kèm theo ID ví.
-            // Điều này đóng vai trò là bằng chứng xác thực hợp lệ: "Người dùng này đã nhập đúng mã PIN và có quyền nạp tiền".
-            // Frontend sẽ dùng topUpToken này ở bước tiếp theo để gọi API tạo mã QR nạp tiền. Hàm này chưa tạo mã QR.
+            // REDIS: Nếu hành động là NẠP TIỀN VÍ (TOP_UP), sinh ra token ngẫu nhiên topUpToken (hạn 10 phút - TopUpVerifyExpiry)
+            // và lưu vào Redis theo Key: wallet:topup:verify:{accountId}:{topUpToken}.
+            // Token này làm bằng chứng xác thực hợp lệ "Người dùng đã nhập đúng PIN ví" để Frontend dùng gọi API tạo mã VietQR ở bước tiếp theo.
             string? topUpToken = null;
             if (string.Equals(actionType, "TOP_UP", StringComparison.OrdinalIgnoreCase))
             {
@@ -412,16 +410,16 @@ public class WalletService : IWalletService
             return Result<SePayTopUpQrResponseDto>.BusinessError("Wallet is not available for top-up.");
         }
 
-        // 5. XÁC THỰC MÃ PIN: Kiểm tra xem token xác nhận PIN thành công (TopUpToken) còn hạn và hợp lệ trên Redis hay không
+        // REDIS: XÁC THỰC MÃ PIN: Đọc token xác nhận PIN (topUpToken) từ Redis để đảm bảo người dùng đã verify PIN thành công trong 10 phút qua
         var verifyKey = BuildTopUpVerifyKey(accountId, dto.TopUpToken.Trim());
         var verifyValue = await _redisService.GetAsync(verifyKey);
         if (string.IsNullOrWhiteSpace(verifyValue))
         {
-            // Nếu token đã hết hạn (sau 10 phút) hoặc không hợp lệ, yêu cầu người dùng xác thực lại mã PIN của ví
+            // Nếu token không tồn tại hoặc đã quá hạn 10 phút trên Redis, yêu cầu người dùng xác thực lại mã PIN của ví
             return Result<SePayTopUpQrResponseDto>.BusinessError("Top-up PIN verification has expired. Please verify PIN again.");
         }
 
-        // Đảm bảo token ví trùng khớp chính xác với WalletId của ví người dùng
+        // Đảm bảo token ví trong Redis trùng khớp chính xác với WalletId của ví người dùng
         if (!string.Equals(verifyValue, wallet.WalletId.ToString(), StringComparison.Ordinal))
         {
             return Result<SePayTopUpQrResponseDto>.Unauthorized("Invalid top-up verification token.");
@@ -449,7 +447,8 @@ public class WalletService : IWalletService
             WalletTransactionId = null
         };
 
-        // 7. LƯU THÔNG TIN VÀO REDIS: Lưu cache giao dịch PENDING trong vòng 24h để chờ đối soát từ webhook SePay gửi về
+        // REDIS: LƯU THÔNG TIN ĐỢT NẠP: Lưu cache đối tượng topUpAttempt (Status = PENDING) vào Redis trong 24h
+        // Theo Key: wallet:topup:attempt:{attemptCode}. Dùng làm bộ nhớ đệm cho Client check status và cho Webhook SePay đối soát cộng tiền.
         await _redisService.SetAsync(
             BuildTopUpAttemptKey(attemptCode),
             JsonSerializer.Serialize(topUpAttempt),
@@ -494,15 +493,15 @@ public class WalletService : IWalletService
             return Result<SePayTopUpStatusResponseDto>.BusinessError("Invalid top-up attempt code.");
         }
 
-        // 3. Truy vấn thông tin giao dịch nạp tiền từ Redis Cache
+        // REDIS: Lấy thông tin đợt nạp tiền (PENDING, PAID, FAILED) từ Redis Cache theo attemptCode để trả về tức thì cho Frontend khi bấm "I have transferred"
         var raw = await _redisService.GetAsync(BuildTopUpAttemptKey(normalizedAttemptCode));
         if (string.IsNullOrWhiteSpace(raw))
         {
-            // Trả về NotFound nếu không tìm thấy giao dịch (đã quá 24h hoặc mã không đúng)
+            // Trả về NotFound nếu không tìm thấy giao dịch trong Redis (đã quá 24h hoặc mã không tồn tại)
             return Result<SePayTopUpStatusResponseDto>.NotFound("Top-up attempt");
         }
 
-        // 4. Giải mã (Deserialize) dữ liệu JSON từ Redis sang đối tượng C#
+        // Giải mã dữ liệu JSON từ Redis sang đối tượng C#
         WalletTopUpAttemptCache? topUpAttempt;
         try
         {
@@ -635,14 +634,18 @@ public class WalletService : IWalletService
 
         try
         {
+            // REDIS: 1. Kiểm tra Cooldown 60s (Key: wallet:pin:forgot:cooldown:{accountId}). Nếu tồn tại thì chặn gửi để chống spam mail.
             if (await _redisService.ExistsAsync(cooldownKey))
             {
                 return Result.BusinessError("OTP was sent recently. Please wait 60 seconds and try again.");
             }
 
             var otpCode = GenerateOtpCode();
+            // REDIS: 2. Lưu mã OTP 6 số vào Redis (Key: wallet:pin:forgot:{accountId}) với thời hạn 10 phút (OtpExpiry).
             await _redisService.SetAsync(otpKey, otpCode, OtpExpiry);
+            // REDIS: 3. Thiết lập cờ Cooldown 60 giây (Key: wallet:pin:forgot:cooldown:{accountId}).
             await _redisService.SetAsync(cooldownKey, "1", OtpCooldown);
+            // REDIS: 4. Xóa cờ xác thực OTP cũ (Key: wallet:pin:forgot:verified:{accountId}) để bắt buộc verify lại OTP mới.
             await _redisService.DeleteAsync(verifiedKey);
 
             await _emailService.SendForgotWalletPinOtpEmailAsync(account.Email.Trim(), otpCode, cancellationToken);
@@ -654,6 +657,7 @@ public class WalletService : IWalletService
             _logger.LogError(ex, "Failed to send forgot wallet PIN OTP for account {AccountId}.", accountId);
             try
             {
+                // REDIS: Dọn dẹp cache nếu gặp lỗi trong quá trình gửi Email OTP
                 await _redisService.DeleteAsync(otpKey);
                 await _redisService.DeleteAsync(cooldownKey);
             }
@@ -699,6 +703,7 @@ public class WalletService : IWalletService
 
         try
         {
+            // REDIS: 1. Đọc mã OTP 6 số lưu trong Redis (Key: wallet:pin:forgot:{accountId}) ra so sánh với OTP người dùng nhập vào
             var storedOtp = await _redisService.GetAsync(otpKey);
             if (storedOtp == null)
             {
@@ -710,6 +715,7 @@ public class WalletService : IWalletService
                 return Result.Failure("OTP_INVALID", "Invalid OTP code.");
             }
 
+            // REDIS: 2. Nếu OTP chính xác, lưu cờ verifiedKey = "1" (Key: wallet:pin:forgot:verified:{accountId}, hạn 10 phút) làm bằng chứng đã verify OTP thành công
             await _redisService.SetAsync(verifiedKey, "1", OtpExpiry);
             return Result.Success();
         }
@@ -754,6 +760,7 @@ public class WalletService : IWalletService
 
         try
         {
+            // REDIS: 1. Kiểm tra cờ verifiedKey (Key: wallet:pin:forgot:verified:{accountId}) xem người dùng đã đi qua bước verify OTP thành công hay chưa
             var isVerified = await _redisService.ExistsAsync(verifiedKey);
             if (!isVerified)
             {
@@ -799,6 +806,7 @@ public class WalletService : IWalletService
 
         try
         {
+            // REDIS: 2. Sau khi cập nhật PIN mới thành công trong DB, xóa sạch toàn bộ các key Redis liên quan đến luồng OTP quên PIN của tài khoản này
             await _redisService.DeleteAsync(otpKey);
             await _redisService.DeleteAsync(cooldownKey);
             await _redisService.DeleteAsync(verifiedKey);

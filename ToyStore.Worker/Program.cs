@@ -49,6 +49,7 @@ builder.Services.AddHostedService<OrderQueueRetryJob>();
 builder.Services.AddHostedService<OrderAssignmentReconciliationJob>();
 builder.Services.AddHostedService<OrderQueuedDigestJob>(); // Digest email mỗi 10 phút thay vì spam từng email
 builder.Services.AddHostedService<CustomerDeliveryAbuseScanJob>();
+builder.Services.AddHostedService<AutoCompleteOrderJob>(); // Auto-complete orders 3 days after delivery
 
 // Checkout flow workers
 builder.Services.AddHostedService<SePayExpiryJob>();

@@ -40,6 +40,24 @@ public static class GhnFailCodeMapper
         "GHN-RFE0A5",  // Nhân viên sự cố khi trả
     };
 
+    /// <summary>
+    /// 10 mã lỗi Lấy hàng thất bại của GHN.
+    /// GHN gửi Status="ready_to_pick" kèm một trong các mã này khi shipper không lấy được hàng.
+    /// </summary>
+    private static readonly HashSet<string> PickFailCodes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "GHN-PFA1A0",  // Người gửi hẹn lại ngày lấy hàng
+        "GHN-PFA2A2",  // Thông tin lấy hàng sai (địa chỉ / SĐT)
+        "GHN-PFA2A1",  // Thuê bao không liên lạc được / Máy bận
+        "GHN-PFA2A3",  // Người gửi không nghe máy
+        "GHN-PFA1A1",  // Người gửi muốn gửi hàng tại bưu cục
+        "GHN-PCB0B2",  // Hàng vi phạm quy định khối lượng, kích thước
+        "GHN-PFA4A1",  // Hàng vi phạm quy cách đóng gói
+        "GHN-PCB0B1",  // Người gửi không muốn gửi hàng nữa
+        "GHN-PFA4A2",  // Hàng hóa GHN không vận chuyển
+        "GHN-PFA3A2",  // Nhân viên lấy hàng gặp sự cố
+    };
+
     public static bool ShouldBlacklist(string failCode)
         => !string.IsNullOrEmpty(failCode) && BlacklistCodes.Contains(failCode);
 
@@ -51,6 +69,13 @@ public static class GhnFailCodeMapper
 
     public static bool IsGhnFault(string failCode)
         => !string.IsNullOrEmpty(failCode) && GhnFaultCodes.Contains(failCode);
+
+    /// <summary>
+    /// Trả về true nếu đây là mã lỗi Lấy hàng thất bại của GHN (GHN-PFA... / GHN-PCB...).
+    /// Dùng để phân biệt webhook "ready_to_pick" thông thường với "ready_to_pick sau khi lấy thất bại".
+    /// </summary>
+    public static bool IsPickFail(string? failCode)
+        => !string.IsNullOrWhiteSpace(failCode) && PickFailCodes.Contains(failCode.Trim());
 
     public static string BuildFailMessage(string orderCode, string? failCode, string? defaultReason)
     {
@@ -100,14 +125,20 @@ public static class GhnFailCodeMapper
 
     public static string GetFriendlyDescription(string? failCode, string? defaultReason = null)
     {
+        var resolvedDefault = string.Equals(defaultReason, "GHN_CANCELLED", StringComparison.OrdinalIgnoreCase)
+            ? "Hủy vận đơn từ GHN (Shop không giao hàng cho shipper hoặc đơn bị hủy)"
+            : string.Equals(defaultReason, "DELIVERY_FAILED_GHN", StringComparison.OrdinalIgnoreCase)
+                ? "Giao hàng không thành công từ đơn vị vận chuyển GHN"
+                : defaultReason;
+
         if (string.IsNullOrWhiteSpace(failCode))
-            return defaultReason ?? "Không có lý do chi tiết từ đơn vị vận chuyển";
+            return resolvedDefault ?? "Không có lý do chi tiết từ đơn vị vận chuyển";
 
         var normalizedCode = failCode.Trim().ToUpperInvariant();
 
         return normalizedCode switch
         {
-            // Lấy thất bại
+            // Lấy thất bại / Hủy vận đơn từ Shop
             "GHN-PFA1A0" => "Người gửi hẹn lại ngày lấy hàng",
             "GHN-PFA2A2" => "Thông tin lấy hàng sai (địa chỉ / SĐT)",
             "GHN-PFA2A1" => "Thuê bao người gửi không liên lạc được / Máy bận",
@@ -115,8 +146,8 @@ public static class GhnFailCodeMapper
             "GHN-PFA1A1" => "Người gửi muốn gửi hàng tại bưu cục",
             "GHN-PCB0B2" => "Hàng vi phạm quy định khối lượng, kích thước",
             "GHN-PFA4A1" => "Hàng vi phạm quy cách đóng gói",
-            "GHN-PCB0B1" => "Người gửi không muốn gửi hàng nữa",
-            "GHN-PFA4A2" => "Hàng hóa GHN không vận chuyển",
+            "GHN-PCB0B1" => "Người gửi không muốn gửi hàng nữa (Shop hủy gửi)",
+            "GHN-PFA4A2" => "Hàng hóa GHN không hỗ trợ vận chuyển",
             "GHN-PFA3A2" => "Nhân viên lấy hàng gặp sự cố",
 
             // Giao thất bại

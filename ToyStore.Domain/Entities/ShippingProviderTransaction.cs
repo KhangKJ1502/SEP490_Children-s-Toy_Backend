@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ToyStore.Domain.Entities;
@@ -33,6 +33,8 @@ public partial class ShippingProviderTransaction
 
     public DateTime? EstimatedDelivery { get; set; }
 
+    public int? RefundId { get; set; }
+
     public DateTime? ActualDelivery { get; set; }
 
     public DateTime? LastPolledAt { get; set; }
@@ -42,6 +44,8 @@ public partial class ShippingProviderTransaction
     public DateTime? UpdatedAt { get; set; }
 
     public virtual Order Order { get; set; } = null!;
+
+    public virtual OrderRefund? Refund { get; set; }
 
     public virtual ICollection<ShippingStatusHistory> ShippingStatusHistories { get; set; } = new List<ShippingStatusHistory>();
 }

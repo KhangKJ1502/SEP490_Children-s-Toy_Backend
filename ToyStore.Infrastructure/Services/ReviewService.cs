@@ -12,6 +12,12 @@ using ToyStore.Domain.Entities;
 
 namespace ToyStore.Infrastructure.Services;
 
+/// <summary>
+/// Service triển khai toàn bộ logic nghiệp vụ của chức năng Đánh giá sản phẩm (Product Review).
+/// Bao gồm: lấy danh sách đánh giá công khai, tạo đánh giá mới (kèm upload ảnh Cloudinary và kích hoạt AI Moderation),
+/// sửa đánh giá (giới hạn 1 lần trong 3 ngày), tra cứu sản phẩm chưa đánh giá, danh sách đánh giá của tôi,
+/// quản trị kiểm duyệt đánh giá Admin/Staff, phản hồi của nhân viên và tính năng Like/Unlike.
+/// </summary>
 public class ReviewService : IReviewService
 {
     private readonly IUnitOfWork _unitOfWork;
@@ -29,6 +35,9 @@ public class ReviewService : IReviewService
     private readonly ITimeProvider _timeProvider;
     private readonly IProductReviewModerationGateway _productReviewModerationGateway;
 
+    /// <summary>
+    /// Khởi tạo ReviewService với đầy đủ các dependency cần thiết.
+    /// </summary>
     public ReviewService(
         IUnitOfWork unitOfWork,
         IMapper mapper,
@@ -59,14 +68,22 @@ public class ReviewService : IReviewService
         _productReviewModerationGateway = productReviewModerationGateway;
     }
 
-    // --- Public / Customer ---
+    // ==========================================
+    // Public / Customer Endpoints
+    // ==========================================
 
+    /// <summary>
+    /// Lấy danh sách đánh giá công khai đã được duyệt (APPROVED) của một sản phẩm.
+    /// Tính toán tổng số LikeCount và cờ IsLiked dựa trên người dùng hiện tại (nếu đã đăng nhập).
+    /// </summary>
     public async Task<Result<PaginatedResponse<ReviewProductListDto>>> GetPublicListAsync(
         ReviewQueryDto query, CancellationToken cancellationToken = default)
     {
+        // Chuẩn hóa giới hạn phân trang
         var pageSize = Math.Min(query.PageSize, 100);
         var pageNumber = Math.Max(query.PageNumber, 1);
 
+        // Lấy danh sách đánh giá từ repository
         var items = await _unitOfWork.Reviews.GetPublicPagedAsync(
             query.ProductId,
             pageNumber,
@@ -78,6 +95,7 @@ public class ReviewService : IReviewService
             query.SearchTerm,
             cancellationToken);
 
+        // Đếm tổng số đánh giá thỏa mãn bộ lọc
         var count = await _unitOfWork.Reviews.GetPublicCountAsync(
             query.ProductId,
             query.Rating,
@@ -87,6 +105,7 @@ public class ReviewService : IReviewService
 
         var dtos = _mapper.Map<List<ReviewProductListDto>>(items);
         
+        // Tính toán thông tin Like cho từng đánh giá
         var currentUserId = _currentUser.IsAuthenticated ? _currentUser.AccountId : 0;
         foreach (var dto in dtos)
         {
@@ -99,6 +118,16 @@ public class ReviewService : IReviewService
             new PaginatedResponse<ReviewProductListDto>(dtos, count, pageNumber, pageSize));
     }
 
+    /// <summary>
+    /// Tạo mới một đánh giá sản phẩm:
+    /// 1. Kiểm tra tính hợp lệ qua FluentValidation.
+    /// 2. Kiểm tra xem khách hàng đã đánh giá sản phẩm trong đơn hàng này chưa.
+    /// 3. Xác thực đơn hàng phải ở trạng thái "Completed" và hoàn thành trong vòng 20 ngày gần nhất.
+    /// 4. Tạo bản ghi ReviewProduct với trạng thái ban đầu là "Pending".
+    /// 5. Upload các hình ảnh đính kèm lên Cloudinary.
+    /// 6. Kích hoạt AI Moderation Gateway dạng Fire-and-Forget để kiểm duyệt nội dung tự động.
+    /// 7. Phát sự kiện thông báo nếu rating thấp (<= 2 sao).
+    /// </summary>
     public async Task<Result<ReviewProductDto>> CreateReviewAsync(
         CreateReviewProductDto dto, CancellationToken cancellationToken = default)
     {
@@ -129,7 +158,7 @@ public class ReviewService : IReviewService
 
         var now = _timeProvider.UtcNow;
 
-        // 3. Khởi tạo Review entity
+        // 3. Khởi tạo Review entity với trạng thái ban đầu là Pending
         var review = new ReviewProduct
         {
             AccountId = accountId,
@@ -147,9 +176,9 @@ public class ReviewService : IReviewService
         try
         {
             await _unitOfWork.Reviews.AddReviewAsync(review, cancellationToken);
-            await _unitOfWork.SaveChangesAsync(cancellationToken); // Save to generate ReviewId
+            await _unitOfWork.SaveChangesAsync(cancellationToken); // Lưu để sinh ReviewId
 
-            // 4. Upload Images (nếu có)
+            // 4. Upload Images (nếu có gửi kèm)
             var uploadedImages = new List<ReviewProductImage>();
             if (dto.Images != null && dto.Images.Any())
             {
@@ -174,7 +203,7 @@ public class ReviewService : IReviewService
                     }
                     else
                     {
-                        // Nếu upload ảnh lỗi thì rollback tất cả
+                        // Nếu upload ảnh lỗi thì rollback transaction
                         await _unitOfWork.RollbackTransactionAsync(cancellationToken);
                         return Result<ReviewProductDto>.BusinessError($"Failed to upload image: {uploadResult.ErrorMessage}");
                     }
@@ -182,24 +211,23 @@ public class ReviewService : IReviewService
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
 
-            // 5. AI Moderation: Kích hoạt ngay lập tức AI Moderation dạng Async Fire-and-Forget (<<include>> Moderate Review)
+            // 5. Commit transaction cơ sở dữ liệu
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
+            // Kích hoạt AI Moderation chạy ngầm (Async Fire-and-Forget)
             _ = _productReviewModerationGateway.ModerateReviewAsync(review.ReviewId, CancellationToken.None);
 
             _logger.LogInformation("User {UserId} created review {ReviewId} for product {ProductId}", accountId, review.ReviewId, dto.ProductId);
 
-            // Publish notification events (fire-and-forget)
+            // Phát sự kiện thông báo nếu đánh giá có số sao thấp (<= 2 sao)
             if (review.Rating <= 2)
             {
                 await _eventPublisher.PublishAsync("Review", review.ReviewId.ToString(), NotificationEventTypes.ReviewLowRating,
                     new { reviewId = review.ReviewId, rating = review.Rating, productId = dto.ProductId }, cancellationToken);
-
             }
 
-            // Fetch the fully populated review to map and return
-            // Dùng GetByIdForUpdateAsync (không filter ModerationStatus) vì review đang ở trạng thái Pending
+            // Lấy thực thể đầy đủ vừa tạo để ánh xạ trả về
             var completeReview = await _unitOfWork.Reviews.GetByIdForUpdateAsync(review.ReviewId, cancellationToken);
             return Result<ReviewProductDto>.Success(_mapper.Map<ReviewProductDto>(completeReview ?? review));
         }
@@ -211,6 +239,15 @@ public class ReviewService : IReviewService
         }
     }
 
+    /// <summary>
+    /// Chỉnh sửa đánh giá sản phẩm của khách hàng:
+    /// - Kiểm tra quyền sở hữu của khách hàng.
+    /// - Kiểm tra điều kiện: chỉ được sửa 1 lần duy nhất (`IsEdited == false`).
+    /// - Kiểm tra thời hạn: chỉ được sửa trong vòng 3 ngày kể từ khi có quyết định kiểm duyệt (`Approved` hoặc `Rejected`).
+    /// - Đặt lại trạng thái `ModerationStatus = "Pending"`, `IsEdited = true`.
+    /// - Xóa mềm ảnh cũ và tải lên ảnh mới nếu có.
+    /// - Kích hoạt kiểm duyệt lại nội dung qua AI Moderation Gateway.
+    /// </summary>
     public async Task<Result<ReviewProductDto>> UpdateReviewAsync(
         int reviewId, UpdateReviewProductDto dto, CancellationToken cancellationToken = default)
     {
@@ -220,14 +257,16 @@ public class ReviewService : IReviewService
 
         var accountId = _currentUser.AccountId;
 
-        var review = await _unitOfWork.Reviews.GetByIdForAdminAsync(reviewId, cancellationToken); // Dùng admin get để lấy log
+        // Lấy thông tin đánh giá kèm log kiểm duyệt
+        var review = await _unitOfWork.Reviews.GetByIdForAdminAsync(reviewId, cancellationToken);
         if (review == null || review.AccountId != accountId)
             return Result<ReviewProductDto>.NotFound("Review", reviewId);
 
+        // Kiểm tra số lần chỉnh sửa
         if (review.IsEdited)
             return Result<ReviewProductDto>.BusinessError("You have already edited this review once.");
 
-        // Kiểm tra thời hạn 3 ngày từ lúc Approved hoặc Rejected
+        // Kiểm tra thời hạn 3 ngày kể từ lúc có kết quả duyệt Approved hoặc Rejected
         var decisionLog = review.ReviewModerationLogs
             .Where(l => l.ImageId == null && 
                        (l.Action == "Approved" || 
@@ -242,7 +281,7 @@ public class ReviewService : IReviewService
         if ((_timeProvider.UtcNow - decisionLog.CreatedAt).TotalDays > 3)
             return Result<ReviewProductDto>.BusinessError("You can only edit the review within 3 days after it is approved or rejected.");
 
-        // Lấy entity track để update
+        // Lấy thực thể có tracking để cập nhật
         var trackReview = await _unitOfWork.Reviews.GetByIdForUpdateAsync(reviewId, cancellationToken);
         if (trackReview == null) return Result<ReviewProductDto>.NotFound("Review", reviewId);
 
@@ -251,6 +290,7 @@ public class ReviewService : IReviewService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
+            // Xử lý xóa mềm đánh giá nếu yêu cầu
             if (dto.IsDeleted == true)
             {
                 trackReview.IsDeleted = true;
@@ -269,6 +309,7 @@ public class ReviewService : IReviewService
                 return Result<ReviewProductDto>.Success(_mapper.Map<ReviewProductDto>(trackReview));
             }
 
+            // Cập nhật rating và bình luận mới
             if (dto.Rating.HasValue) trackReview.Rating = dto.Rating.Value;
             if (dto.Comment != null) trackReview.Comment = dto.Comment;
 
@@ -283,7 +324,7 @@ public class ReviewService : IReviewService
                 img.UpdatedAt = now;
             }
 
-            // Upload ảnh mới
+            // Upload danh sách ảnh mới (nếu có)
             var uploadedImages = new List<ReviewProductImage>();
             if (dto.Images != null && dto.Images.Any())
             {
@@ -315,7 +356,7 @@ public class ReviewService : IReviewService
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
 
-            // AI Moderation: Kích hoạt ngay lập tức AI Moderation dạng Async Fire-and-Forget (<<include>> Moderate Review)
+            // Commit Transaction và kích hoạt AI Moderation
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
@@ -323,7 +364,6 @@ public class ReviewService : IReviewService
 
             _logger.LogInformation("User {UserId} edited review {ReviewId}", accountId, reviewId);
 
-            // Dùng GetByIdForUpdateAsync (không filter ModerationStatus) vì review đang ở trạng thái Pending
             var completeReview = await _unitOfWork.Reviews.GetByIdForUpdateAsync(reviewId, cancellationToken);
             return Result<ReviewProductDto>.Success(_mapper.Map<ReviewProductDto>(completeReview ?? trackReview));
         }
@@ -335,6 +375,9 @@ public class ReviewService : IReviewService
         }
     }
 
+    /// <summary>
+    /// Lấy danh sách sản phẩm chưa được đánh giá từ các đơn hàng hoàn tất của khách hàng, tính toán số ngày còn lại để đánh giá.
+    /// </summary>
     public async Task<Result<PaginatedResponse<UnreviewedProductDto>>> GetUnreviewedProductsAsync(
         int pageNumber, int pageSize, CancellationToken cancellationToken = default)
     {
@@ -362,6 +405,9 @@ public class ReviewService : IReviewService
             new PaginatedResponse<UnreviewedProductDto>(dtos, count, pageNumber, pageSize));
     }
 
+    /// <summary>
+    /// Lấy danh sách đánh giá của khách hàng hiện tại kèm hình ảnh, phản hồi của staff và trạng thái duyệt.
+    /// </summary>
     public async Task<Result<PaginatedResponse<MyReviewDto>>> GetMyReviewsAsync(
         MyReviewQueryDto query, CancellationToken cancellationToken = default)
     {
@@ -396,8 +442,6 @@ public class ReviewService : IReviewService
             ModerationStatus = r.ModerationStatus,
             IsEdited = r.IsEdited,
             CreatedAt = r.CreatedAt,
-            // Calculate ModeratedAt from logs if needed, or we just map it from something.
-            // For now, if it's approved, we can assume it was moderated recently, but let's just use UpdatedAt if it's not Pending
             ModeratedAt = (r.ModerationStatus == "Approved" || r.ModerationStatus == "Rejected") ? (r.UpdatedAt ?? r.CreatedAt) : null,
             Images = r.ReviewProductImages.Select(img => new ReviewImageDto
             {
@@ -419,9 +463,13 @@ public class ReviewService : IReviewService
             new PaginatedResponse<MyReviewDto>(dtos, count, pageNumber, pageSize));
     }
 
+    // ==========================================
+    // Admin / Staff Moderation Endpoints
+    // ==========================================
 
-    // --- Admin / Staff ---
-
+    /// <summary>
+    /// Admin/Staff lấy danh sách đánh giá có phân trang và bộ lọc nâng cao.
+    /// </summary>
     public async Task<Result<PaginatedResponse<AdminReviewListDto>>> GetAdminListAsync(
         AdminReviewQueryDto query, CancellationToken cancellationToken = default)
     {
@@ -459,6 +507,9 @@ public class ReviewService : IReviewService
             new PaginatedResponse<AdminReviewListDto>(dtos, count, pageNumber, pageSize));
     }
 
+    /// <summary>
+    /// Admin/Staff xem thông tin chi tiết một đánh giá kèm toàn bộ hình ảnh, phản hồi staff và log kiểm duyệt.
+    /// </summary>
     public async Task<Result<AdminReviewDetailDto>> GetAdminDetailAsync(
         int reviewId, CancellationToken cancellationToken = default)
     {
@@ -470,6 +521,12 @@ public class ReviewService : IReviewService
         return Result<AdminReviewDetailDto>.Success(dto);
     }
 
+    /// <summary>
+    /// Admin/Staff cập nhật trạng thái kiểm duyệt thủ công (Approved, Rejected, Hidden):
+    /// - Kiểm tra trạng thái hiện tại (không cho phép đổi từ Rejected sang trạng thái khác).
+    /// - Ghi nhận nhật ký ReviewModerationLog cho Review và toàn bộ ảnh đính kèm.
+    /// - Nếu chuyển sang "Rejected", tự động gửi thông báo hệ thống (Delivery) tới tài khoản khách hàng kèm lý do từ chối.
+    /// </summary>
     public async Task<Result<AdminReviewDetailDto>> UpdateModerationStatusAsync(
         int reviewId, UpdateModerationStatusDto dto, CancellationToken cancellationToken = default)
     {
@@ -513,7 +570,7 @@ public class ReviewService : IReviewService
                 review.ModerationStatus = dto.ModerationStatus;
                 review.UpdatedAt = now;
 
-                // Log cho Review
+                // Ghi nhận log kiểm duyệt cho nội dung văn bản
                 await _unitOfWork.Reviews.AddModerationLogAsync(new ReviewModerationLog
                 {
                     TargetType = "Text",
@@ -526,7 +583,7 @@ public class ReviewService : IReviewService
                     CreatedAt = now
                 }, cancellationToken);
 
-                // Tự động override status của các ảnh chưa xoá theo review
+                // Tự động đồng bộ trạng thái kiểm duyệt cho các ảnh đính kèm chưa xóa
                 foreach (var img in review.ReviewProductImages.Where(i => !i.IsDeleted))
                 {
                     img.ModerationStatus = dto.ModerationStatus;
@@ -546,6 +603,7 @@ public class ReviewService : IReviewService
                     }, cancellationToken);
                 }
 
+                // Gửi thông báo nếu từ chối đánh giá
                 if (dto.ModerationStatus == "Rejected")
                 {
                     var productName = review.Product?.ProductName ?? "product";
@@ -586,8 +644,6 @@ public class ReviewService : IReviewService
             _logger.LogInformation("Staff {StaffId} updated review {ReviewId}: ModerationStatus={Status}, IsDeleted={IsDeleted}",
                 staffId, reviewId, dto.ModerationStatus, dto.IsDeleted);
 
-
-
             var completeReview = await _unitOfWork.Reviews.GetByIdForAdminAsync(reviewId, cancellationToken);
             return Result<AdminReviewDetailDto>.Success(_mapper.Map<AdminReviewDetailDto>(completeReview));
         }
@@ -599,6 +655,9 @@ public class ReviewService : IReviewService
         }
     }
 
+    /// <summary>
+    /// Tạo phản hồi của nhân viên cho đánh giá sản phẩm và phát sự kiện thông báo cho khách hàng.
+    /// </summary>
     public async Task<Result<StaffReplyDto>> CreateReplyAsync(
         int reviewId, CreateStaffReplyDto dto, CancellationToken cancellationToken = default)
     {
@@ -627,20 +686,19 @@ public class ReviewService : IReviewService
 
         _logger.LogInformation("Staff {StaffId} replied to review {ReviewId}", staffId, reviewId);
 
-        // Notify customer that staff replied to their review
+        // Thông báo cho khách hàng rằng nhân viên đã phản hồi đánh giá của họ
         await _eventPublisher.PublishAsync("Review", reviewId.ToString(), NotificationEventTypes.ReviewStaffReplied,
             new { reviewId, accountId = review.AccountId, productId = review.ProductId }, cancellationToken);
 
         var savedReply = await _unitOfWork.Reviews.GetReplyByIdAsync(reply.ReplyProductId, cancellationToken);
         var staffDto = _mapper.Map<StaffReplyDto>(savedReply);
-        // Explicitly set StaffName since it might not be eagerly loaded if we just created it without tracking include
+        
         if (savedReply?.Staff != null)
         {
             staffDto.StaffName = savedReply.Staff.AccountName;
         }
         else
         {
-            // fallback, get staff info
             var staffInfo = await _unitOfWork.Accounts.GetByIdAsync(staffId, cancellationToken);
             if (staffInfo != null) staffDto.StaffName = staffInfo.AccountName;
         }
@@ -648,6 +706,9 @@ public class ReviewService : IReviewService
         return Result<StaffReplyDto>.Success(staffDto);
     }
 
+    /// <summary>
+    /// Chỉnh sửa hoặc xóa mềm phản hồi của nhân viên (chỉ nhân viên tạo hoặc Admin mới có quyền sửa).
+    /// </summary>
     public async Task<Result<StaffReplyDto>> UpdateReplyAsync(
         int reviewId, int replyId, UpdateStaffReplyDto dto, CancellationToken cancellationToken = default)
     {
@@ -659,7 +720,7 @@ public class ReviewService : IReviewService
         if (reply == null || reply.ReviewProductId != reviewId)
             return Result<StaffReplyDto>.NotFound("Reply", replyId);
 
-        // Chỉ staff tạo reply mới được sửa/xoá (hoặc admin)
+        // Chỉ nhân viên tạo phản hồi mới được sửa/xóa (hoặc tài khoản Admin)
         if (reply.StaffId != _currentUser.AccountId && _currentUser.RoleName != "Admin")
             return Result<StaffReplyDto>.Forbidden("You can only edit or delete your own replies.");
 
@@ -684,7 +745,6 @@ public class ReviewService : IReviewService
             _logger.LogInformation("Staff {StaffId} updated reply {ReplyId} for review {ReviewId}", _currentUser.AccountId, replyId, reviewId);
         }
 
-        // Load account to map StaffName
         if (reply.Staff == null)
         {
             var staff = await _unitOfWork.Accounts.GetByIdAsync(reply.StaffId, cancellationToken);
@@ -694,6 +754,9 @@ public class ReviewService : IReviewService
         return Result<StaffReplyDto>.Success(_mapper.Map<StaffReplyDto>(reply));
     }
 
+    /// <summary>
+    /// Khách hàng Toggle Like hoặc Bỏ Like cho một đánh giá sản phẩm.
+    /// </summary>
     public async Task<Result<ReviewLikeResponseDto>> ToggleLikeAsync(int reviewId, CancellationToken cancellationToken = default)
     {
         var likeType = await _unitOfWork.Reviews.GetReactionTypeByCodeAsync("like", cancellationToken);
@@ -715,7 +778,7 @@ public class ReviewService : IReviewService
 
         if (existing != null)
         {
-            // Toggle IsDeleted
+            // Toggle cờ IsDeleted
             existing.IsDeleted = !existing.IsDeleted;
             existing.UpdatedAt = now;
             existing.ReactionTypeId = likeType.ReactionTypeId;
@@ -749,12 +812,4 @@ public class ReviewService : IReviewService
             IsLiked = isLikedNow
         });
     }
-
-
-
-    // --- Private Helpers ---
-
-    // AutoApproveAsync đã được xóa.
-    // Review được tạo với ModerationStatus = "Pending" và AI Sidecar
-    // (chạy trên port 8001) sẽ tự động poll DB mỗi 30 giây để kiểm duyệt.
 }

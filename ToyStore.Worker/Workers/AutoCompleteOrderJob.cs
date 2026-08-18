@@ -3,6 +3,7 @@ using ToyStore.Application.Constants;
 using ToyStore.Application.DTOs.Notifications;
 using ToyStore.Application.Interfaces.Notifications;
 using ToyStore.Application.Interfaces.Services;
+using ToyStore.Domain.Constants;
 using ToyStore.Infrastructure.Data;
 using ToyStore.Infrastructure.Notifications;
 
@@ -55,9 +56,22 @@ public class AutoCompleteOrderJob : BackgroundService
         {
             var cutoff = _timeProvider.UtcNow.AddDays(-3);
 
-            // StatusID=6 (Delivered), delivered more than 3 days ago, customer hasn't confirmed
+            // Tìm StatusId của "Delivered" từ DB thay vì hardcode
+            var deliveredStatus = await db.StatusOrders
+                .Where(s => s.StatusName == OrderStatuses.Delivered)
+                .FirstOrDefaultAsync(ct);
+
+            if (deliveredStatus is null)
+            {
+                _logger.LogError("AutoCompleteOrderJob: 'Delivered' status not found in DB. Skipping.");
+                message = "Delivered status not found";
+                success = false;
+                return;
+            }
+
+            // Delivered hơn 3 ngày mà chưa xác nhận
             var ordersToComplete = await db.Orders
-                .Where(o => o.StatusId == 6
+                .Where(o => o.StatusId == deliveredStatus.StatusId
                          && !o.IsDeleted
                          && o.DeliveredAt != null
                          && o.DeliveredAt < cutoff)
@@ -78,7 +92,7 @@ public class AutoCompleteOrderJob : BackgroundService
                     RecipientAccountId = order.AccountId,
                     RecipientType      = RecipientTypes.Customer,
                     NotificationType   = NotificationTypes.Order,
-                    TemplateCode       = NotificationTemplates.OrderDelivered,
+                    TemplateCode       = NotificationTemplates.OrderCompleted,
                     Placeholders       = new Dictionary<string, string>
                     {
                         ["OrderCode"] = order.OrderCode,

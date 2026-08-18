@@ -40,7 +40,7 @@ public class OrdersProfile : Profile
             .ForMember(d => d.Items, opt => opt.MapFrom(s => s.OrderDetails))
             .ForMember(d => d.StatusHistory, opt => opt.MapFrom(s => s.OrderStatusHistories))
             .ForMember(d => d.Shipping, opt => opt.MapFrom(s =>
-                s.ShippingProviderTransactions.OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt).FirstOrDefault()))
+                CustomerOrderDisplayStatusMapper.GetOriginalOrderShippingTransaction(s)))
             .ForMember(d => d.ShippingHistory, opt => opt.MapFrom(s => MapAdminShippingHistory(s)));
 
         CreateMap<ShippingStatusHistory, AdminShippingStatusHistoryDto>();
@@ -59,7 +59,7 @@ public class OrdersProfile : Profile
             .ForMember(d => d.Items, opt => opt.MapFrom(s => s.OrderDetails))
             .ForMember(d => d.StatusHistory, opt => opt.MapFrom(s => s.OrderStatusHistories))
             .ForMember(d => d.Shipping, opt => opt.MapFrom(s =>
-                s.ShippingProviderTransactions.FirstOrDefault()))
+                CustomerOrderDisplayStatusMapper.GetOriginalOrderShippingTransaction(s)))
             .ForMember(d => d.HasActiveRefund, opt => opt.MapFrom(s => CustomerOrderDisplayStatusMapper.HasActiveRefund(s)))
             .AfterMap((s, d) => CustomerOrderDisplayStatusMapper.ApplyCustomerOrderContract(s, d));
 
@@ -105,9 +105,7 @@ public class OrdersProfile : Profile
 
     private static List<ShippingStatusHistory> MapAdminShippingHistory(Order order)
     {
-        var tx = order.ShippingProviderTransactions
-            .OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt)
-            .FirstOrDefault();
+        var tx = CustomerOrderDisplayStatusMapper.GetOriginalOrderShippingTransaction(order);
         return tx?.ShippingStatusHistories.OrderByDescending(h => h.ProcessedAt).ThenByDescending(h => h.HistoryId).ToList() ?? [];
     }
 }

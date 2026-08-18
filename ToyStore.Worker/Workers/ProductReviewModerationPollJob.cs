@@ -6,8 +6,8 @@ using ToyStore.Infrastructure.Notifications;
 namespace ToyStore.Worker.Workers;
 
 /// <summary>
-/// Polls pending product reviews as a safety net and asks the AI sidecar to moderate them.
-/// Runs every 60 seconds.
+/// Background Worker quét định kỳ (mỗi 60 giây) các đánh giá sản phẩm đang ở trạng thái chờ duyệt ("Pending")
+/// đóng vai trò là chốt an toàn (Safety Net) gửi yêu cầu sang AI Moderation Sidecar để kiểm duyệt nội dung tự động nếu sự kiện tức thời bị bỏ lỡ.
 /// </summary>
 public class ProductReviewModerationPollJob : BackgroundService
 {
@@ -16,6 +16,9 @@ public class ProductReviewModerationPollJob : BackgroundService
     private readonly TimeSpan _interval = TimeSpan.FromSeconds(60);
     private const int BatchSize = 20;
 
+    /// <summary>
+    /// Khởi tạo ProductReviewModerationPollJob.
+    /// </summary>
     public ProductReviewModerationPollJob(
         IServiceProvider services,
         ILogger<ProductReviewModerationPollJob> logger)
@@ -24,6 +27,9 @@ public class ProductReviewModerationPollJob : BackgroundService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Vòng lặp thực thi ngầm định kỳ của BackgroundService.
+    /// </summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
@@ -35,6 +41,9 @@ public class ProductReviewModerationPollJob : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Logic quét và gửi từng batch đánh giá ở trạng thái "Pending" sang AI Gateway để kiểm duyệt.
+    /// </summary>
     private async Task RunAsync(CancellationToken ct)
     {
         using var scope = _services.CreateScope();
@@ -46,6 +55,7 @@ public class ProductReviewModerationPollJob : BackgroundService
 
         try
         {
+            // Lấy tối đa BatchSize (20) đánh giá đang ở trạng thái Pending cũ nhất
             var reviewIds = await db.ReviewProducts
                 .AsNoTracking()
                 .Where(x => !x.IsDeleted
@@ -80,6 +90,7 @@ public class ProductReviewModerationPollJob : BackgroundService
             _logger.LogError(ex, "ProductReviewModerationPollJob failed");
         }
 
+        // Ghi nhận telemetry nhật ký chạy của Background Job
         await BackgroundJobTelemetry.RecordAsync(
             scope.ServiceProvider.GetRequiredService<SEP490ToyStoreContext>(),
             "ProductReviewModerationPollJob", success, message, _logger, ct);

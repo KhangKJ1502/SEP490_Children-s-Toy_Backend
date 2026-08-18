@@ -49,7 +49,15 @@ public static class CustomerOrderDisplayStatusMapper
         bool hasActiveRefund = false,
         byte? refundStatusId = null)
     {
-        if (refundStatusId.HasValue)
+        if (string.IsNullOrWhiteSpace(internalStatusName))
+            return string.Empty;
+
+        // Kiểm tra trạng thái Refund liên quan đến giao hàng trả lại cho khách TRƯỚC KHI check
+        // Completed/Delivered. CHỈ override khi refund đang ACTIVE (đang xử lý), KHÔNG override
+        // khi refund đã ở trạng thái terminal (RefundReturnedToCustomer / RefundReturnToCustomerFailed)
+        // để tránh đè lên trạng thái Completed/Delivered của đơn hàng gốc.
+        // hasActiveRefund đã loại trừ đúng các trạng thái terminal này.
+        if (hasActiveRefund && refundStatusId.HasValue)
         {
             var rStatus = (RefundStatusEnum)refundStatusId.Value;
             if (rStatus == RefundStatusEnum.RefundReturnShipmentCreated
@@ -57,24 +65,19 @@ public static class CustomerOrderDisplayStatusMapper
             {
                 return "Returning to you";
             }
-            if (rStatus == RefundStatusEnum.RefundReturnedToCustomer)
-            {
-                return "Returned (Rejected)";
-            }
-            if (rStatus == RefundStatusEnum.RefundReturnToCustomerFailed)
-            {
-                return "Return to you failed";
-            }
         }
 
-        if (string.IsNullOrWhiteSpace(internalStatusName))
-            return internalStatusName ?? string.Empty;
+        if (internalStatusName.Equals(OrderStatuses.Completed, StringComparison.OrdinalIgnoreCase))
+            return OrderStatuses.Completed;
 
-        if (internalStatusName.Equals(OrderStatuses.Cancelled, StringComparison.OrdinalIgnoreCase))
-            return hasActiveRefund ? RefundProcessingLabel : CancelledLabel;
+        if (internalStatusName.Equals(OrderStatuses.Delivered, StringComparison.OrdinalIgnoreCase))
+            return OrderStatuses.Delivered;
 
         if (internalStatusName.Equals(OrderStatuses.Refunded, StringComparison.OrdinalIgnoreCase))
             return RefundedLabel;
+
+        if (internalStatusName.Equals(OrderStatuses.Cancelled, StringComparison.OrdinalIgnoreCase))
+            return CancelledLabel;
 
         if (internalStatusName.Equals(OrderStatuses.Returning, StringComparison.OrdinalIgnoreCase)
             || internalStatusName.Equals(OrderStatuses.WaitingReturn, StringComparison.OrdinalIgnoreCase)
@@ -87,7 +90,7 @@ public static class CustomerOrderDisplayStatusMapper
         if (internalStatusName.Equals(OrderStatuses.ReturnCompleted, StringComparison.OrdinalIgnoreCase)
             || IsGhnReturned(ghnShippingStatus))
         {
-            return hasActiveRefund ? RefundProcessingLabel : ReturnedToWarehouseLabel;
+            return ReturnedToWarehouseLabel;
         }
 
         if (internalStatusName.Equals(OrderStatuses.DeliveryFailed, StringComparison.OrdinalIgnoreCase))
@@ -98,7 +101,7 @@ public static class CustomerOrderDisplayStatusMapper
         if (internalStatusName.Equals(OrderStatuses.Lost, StringComparison.OrdinalIgnoreCase)
             || internalStatusName.Equals(OrderStatuses.Damaged, StringComparison.OrdinalIgnoreCase))
         {
-            return hasActiveRefund ? RefundProcessingLabel : "Delivery failed (Issue)";
+            return "Delivery failed (Issue)";
         }
 
         if (DeliveringLikeStatuses.Contains(internalStatusName))
@@ -199,12 +202,67 @@ public static class CustomerOrderDisplayStatusMapper
         dto.IsAwaitingRefund = hasActiveRefund
             && string.Equals(order.PaymentStatus, PaymentStatuses.Paid, StringComparison.OrdinalIgnoreCase);
         dto.CanRefund = CanRefund(order);
+
+        if (dto.StatusHistory != null && dto.StatusHistory.Any())
+        {
+            dto.StatusHistory = CustomerOrderTimelineFilter.FilterStatusHistory(dto.StatusHistory, order.CancelledAt, internalName);
+        }
+    }
+
+    public static ShippingProviderTransaction? GetOriginalOrderShippingTransaction(Order order)
+    {
+        if (order?.ShippingProviderTransactions == null || !order.ShippingProviderTransactions.Any())
+            return null;
+
+        // 1. Ưu tiên 1: Tìm transaction có ProviderOrderCode trùng với ShippingOrderCode của đơn hàng gốc (không chứa prefix refund)
+        if (!string.IsNullOrWhiteSpace(order.ShippingOrderCode))
+        {
+            var matchMain = order.ShippingProviderTransactions
+                .Where(t => string.Equals(t.ProviderOrderCode, order.ShippingOrderCode, StringComparison.OrdinalIgnoreCase))
+                .Where(t => !t.ProviderOrderCode.StartsWith("R-", StringComparison.OrdinalIgnoreCase) &&
+                            !t.ProviderOrderCode.StartsWith("R2-", StringComparison.OrdinalIgnoreCase) &&
+                            !t.ProviderOrderCode.StartsWith("REF-", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt)
+                .FirstOrDefault();
+
+            if (matchMain != null)
+                return matchMain;
+        }
+
+        // 2. Ưu tiên 2: Transaction có RefundId == null
+        var mainTx = order.ShippingProviderTransactions
+            .Where(t => t.RefundId == null)
+            .OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt)
+            .FirstOrDefault();
+
+        if (mainTx != null)
+            return mainTx;
+
+        // 3. Ưu tiên 3: Transaction không nằm trong danh sách mã refund và không có tiền tố refund R-/R2-/REF-
+        var refundCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (order.OrderRefunds != null)
+        {
+            foreach (var r in order.OrderRefunds)
+            {
+                if (!string.IsNullOrWhiteSpace(r.ShippingOrderCode)) refundCodes.Add(r.ShippingOrderCode.Trim());
+                if (!string.IsNullOrWhiteSpace(r.ReturnShippingOrderCode)) refundCodes.Add(r.ReturnShippingOrderCode.Trim());
+                if (!string.IsNullOrWhiteSpace(r.RefundCode)) refundCodes.Add(r.RefundCode.Trim());
+            }
+        }
+
+        return order.ShippingProviderTransactions
+            .Where(t => !string.IsNullOrWhiteSpace(t.ProviderOrderCode))
+            .Where(t => !refundCodes.Contains(t.ProviderOrderCode.Trim()))
+            .Where(t => !t.ProviderOrderCode.StartsWith("R-", StringComparison.OrdinalIgnoreCase) &&
+                        !t.ProviderOrderCode.StartsWith("R2-", StringComparison.OrdinalIgnoreCase) &&
+                        !t.ProviderOrderCode.StartsWith("REF-", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt)
+            .FirstOrDefault();
+        // Tuyệt đối không fallback về FirstOrDefault() nữa để tránh nhầm sang transaction của Refund (R-, R2-)
     }
 
     private static string? GetLatestGhnStatus(Order order)
-        => order.ShippingProviderTransactions
-            .OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt)
-            .FirstOrDefault()?.Status;
+        => GetOriginalOrderShippingTransaction(order)?.Status;
 
     public static string MapStatusBucket(string internalStatusName)
     {

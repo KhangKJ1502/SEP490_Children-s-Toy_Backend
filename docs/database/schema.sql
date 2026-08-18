@@ -2131,6 +2131,7 @@ GO
 CREATE TABLE [dbo].[ShippingProviderTransactions] (
     [ShippingTransactionID] BIGINT IDENTITY(1,1) NOT NULL,
     [OrderID]               INT            NOT NULL,
+    [RefundID]              INT            NULL,
     [Provider]              VARCHAR(50)    NOT NULL,
     [ProviderOrderCode]     VARCHAR(100)   NULL,
     [TrackingNumber]        VARCHAR(100)   NULL,
@@ -2148,7 +2149,8 @@ CREATE TABLE [dbo].[ShippingProviderTransactions] (
     [CreatedAt]             DATETIME2(0)   NOT NULL CONSTRAINT DF_ShippingTxn_CreatedAt DEFAULT (GETDATE()),
     [UpdatedAt]             DATETIME2(0)   NULL,
     CONSTRAINT [PK__Shipping__F215F69363919D74] PRIMARY KEY ([ShippingTransactionID]),
-    CONSTRAINT [FK_ShippingTxn_Orders]    FOREIGN KEY ([OrderID]) REFERENCES [dbo].[Orders]([OrderID]),
+    CONSTRAINT [FK_ShippingTxn_Orders]        FOREIGN KEY ([OrderID]) REFERENCES [dbo].[Orders]([OrderID]),
+    CONSTRAINT [FK_ShippingTxn_OrderRefunds]  FOREIGN KEY ([RefundID]) REFERENCES [dbo].[OrderRefunds]([RefundID]),
     CONSTRAINT [CK_ShippingTxn_CodAmount] CHECK ([CodAmount] IS NULL OR [CodAmount] >= 0),
     CONSTRAINT [CK_ShippingTxn_Status] CHECK ([Status] IN (
         'ready_to_pick', 'picking', 'cancel', 'money_collect_picking',
@@ -2161,6 +2163,7 @@ CREATE TABLE [dbo].[ShippingProviderTransactions] (
 GO
 
 CREATE INDEX [IX_ShippingTxn_OrderID]         ON [dbo].[ShippingProviderTransactions] ([OrderID]);
+CREATE INDEX [IX_ShippingTxn_RefundID]        ON [dbo].[ShippingProviderTransactions] ([RefundID]) WHERE [RefundID] IS NOT NULL;
 CREATE INDEX [IX_ShippingTxn_Provider_Status] ON [dbo].[ShippingProviderTransactions] ([Provider], [Status]);
 GO
 
@@ -2238,8 +2241,8 @@ GO
 CREATE TABLE [Notification].[UserPreferences] (
     [PreferenceID] INT IDENTITY(1,1) PRIMARY KEY,
     [AccountID]    INT NOT NULL UNIQUE,
-    [EmailOptIn]   BIT NOT NULL DEFAULT 1,
-    [WebPushOptIn] BIT NOT NULL DEFAULT 0,
+    [EmailOptIn]   BIT NOT NULL DEFAULT 0,
+    [WebPushOptIn] BIT NOT NULL DEFAULT 1,
     [OrderUpdates] BIT NOT NULL DEFAULT 1,
     [Promotions]   BIT NOT NULL DEFAULT 1,
     [StockAlerts]  BIT NOT NULL DEFAULT 1,

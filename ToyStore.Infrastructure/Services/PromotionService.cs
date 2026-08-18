@@ -12,7 +12,7 @@ using ToyStore.Domain.Entities;
 namespace ToyStore.Infrastructure.Services;
 
 /// <summary>
-/// Service xử lý nghiệp vụ promotion.
+/// Service xử lý toàn bộ nghiệp vụ quản lý Chương trình Khuyến mãi (Promotion), Flash Sale theo khung giờ và giảm giá trực tiếp theo sản phẩm.
 /// </summary>
 public class PromotionService : IPromotionService
 {
@@ -26,6 +26,18 @@ public class PromotionService : IPromotionService
     private readonly ITimeProvider _timeProvider;
     private readonly IConfiguration _configuration;
 
+    /// <summary>
+    /// Khởi tạo PromotionService và tiêm các phụ thuộc cần thiết.
+    /// </summary>
+    /// <param name="unitOfWork">Unit of Work quản lý các Repository và Database Transaction.</param>
+    /// <param name="mapper">AutoMapper chuyển đổi dữ liệu Entity sang DTO và ngược lại.</param>
+    /// <param name="logger">Logger ghi vết lỗi và thông tin hoạt động.</param>
+    /// <param name="cartService">Service giỏ hàng dùng để thông báo cập nhật lại giá khi khuyến mãi thay đổi.</param>
+    /// <param name="createValidator">FluentValidation kiểm tra dữ liệu tạo mới chương trình khuyến mãi.</param>
+    /// <param name="updateValidator">FluentValidation kiểm tra dữ liệu cập nhật chương trình khuyến mãi.</param>
+    /// <param name="currentUserService">Service cung cấp thông tin tài khoản người dùng đang đăng nhập.</param>
+    /// <param name="timeProvider">Service cung cấp thời gian hệ thống chuẩn hóa UTC.</param>
+    /// <param name="configuration">Cấu hình hệ thống (đọc số ngày hiển thị Flash Sale).</param>
     public PromotionService(
         IUnitOfWork unitOfWork,
         IMapper mapper,
@@ -48,6 +60,17 @@ public class PromotionService : IPromotionService
         _configuration = configuration;
     }
 
+    /// <summary>
+    /// Lấy danh sách chương trình khuyến mãi có phân trang, hỗ trợ tìm kiếm theo từ khóa và lọc theo trạng thái.
+    /// </summary>
+    /// <param name="pageNumber">Số thứ tự trang (1-based).</param>
+    /// <param name="pageSize">Số bản ghi trên mỗi trang (1 - 100).</param>
+    /// <param name="sortBy">Trường cần sắp xếp.</param>
+    /// <param name="sortDesc">true để giảm dần, false để tăng dần.</param>
+    /// <param name="searchTerm">Từ khóa tìm kiếm theo tên hoặc mô tả.</param>
+    /// <param name="status">Trạng thái lọc (Scheduled, Active, Inactive, Expired).</param>
+    /// <param name="cancellationToken">Token hủy tác vụ bất đồng bộ.</param>
+    /// <returns>Đối tượng Result chứa PaginatedResponse danh sách PromotionListDto.</returns>
     public async Task<Result<PaginatedResponse<PromotionListDto>>> GetPromotionsAsync(
         int pageNumber = 1,
         int pageSize = 10,
@@ -57,6 +80,7 @@ public class PromotionService : IPromotionService
         string? status = null,
         CancellationToken cancellationToken = default)
     {
+        // 1. Kiểm tra tính hợp lệ của tham số phân trang
         if (pageNumber < 1)
         {
             return Result<PaginatedResponse<PromotionListDto>>.Failure(
@@ -69,6 +93,7 @@ public class PromotionService : IPromotionService
                 "VALIDATION_ERROR", "Page size must be between 1 and 100.");
         }
 
+        // 2. Truy vấn dữ liệu phân trang từ Repository
         var pagedPromotions = await _unitOfWork.Promotions.GetPagedAsync(
             pageNumber,
             pageSize,
@@ -78,6 +103,7 @@ public class PromotionService : IPromotionService
             status,
             cancellationToken);
 
+        // 3. Ánh xạ danh sách Entity sang DTO hiển thị rút gọn
         var items = _mapper.Map<List<PromotionListDto>>(pagedPromotions.Items);
 
         _logger.LogInformation(
@@ -96,9 +122,15 @@ public class PromotionService : IPromotionService
         return Result<PaginatedResponse<PromotionListDto>>.Success(response);
     }
 
+    /// <summary>
+    /// Lấy danh sách các chương trình FLASH_SALE đang diễn ra hoặc sắp diễn ra để hiển thị công khai ở trang chủ.
+    /// </summary>
+    /// <param name="cancellationToken">Token hủy tác vụ bất đồng bộ.</param>
+    /// <returns>Danh sách PromotionDto chứa thông tin Flash Sale, khung giờ và sản phẩm.</returns>
     public async Task<Result<List<PromotionDto>>> GetFlashSalePromotionsAsync(
         CancellationToken cancellationToken = default)
     {
+        // Đọc số ngày hiển thị Flash Sale trước từ cấu hình (mặc định 2 ngày)
         int visibilityDays = _configuration.GetValue<int>("Promotions:FlashSaleVisibilityDays", 2);
         var promotions = await _unitOfWork.Promotions.GetFlashSalePromotionsAsync(visibilityDays, cancellationToken);
         var dtos = _mapper.Map<List<PromotionDto>>(promotions);
@@ -110,6 +142,12 @@ public class PromotionService : IPromotionService
         return Result<List<PromotionDto>>.Success(dtos);
     }
 
+    /// <summary>
+    /// Lấy thông tin chi tiết một chương trình khuyến mãi theo ID (nạp kèm danh sách sản phẩm hoặc khung giờ Flash Sale).
+    /// </summary>
+    /// <param name="promotionId">Mã ID chương trình khuyến mãi.</param>
+    /// <param name="cancellationToken">Token hủy tác vụ bất đồng bộ.</param>
+    /// <returns>Đối tượng Result chứa PromotionDto chi tiết hoặc 404 NotFound nếu không tìm thấy.</returns>
     public async Task<Result<PromotionDto>> GetPromotionByIdAsync(
         int promotionId,
         CancellationToken cancellationToken = default)
@@ -119,6 +157,7 @@ public class PromotionService : IPromotionService
             return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Promotion ID must be greater than 0.");
         }
 
+        // Nạp kèm đầy đủ cây quan hệ thực thể
         var promotion = await _unitOfWork.Promotions.GetByIdAsync(
             promotionId,
             cancellationToken,
@@ -133,10 +172,17 @@ public class PromotionService : IPromotionService
         return Result<PromotionDto>.Success(_mapper.Map<PromotionDto>(promotion));
     }
 
+    /// <summary>
+    /// Tạo mới một chương trình khuyến mãi (NORMAL/DISCOUNT hoặc FLASH_SALE) trong Database Transaction an toàn.
+    /// </summary>
+    /// <param name="request">DTO chứa thông tin tạo mới chương trình khuyến mãi.</param>
+    /// <param name="cancellationToken">Token hủy tác vụ bất đồng bộ.</param>
+    /// <returns>Đối tượng Result chứa thông tin PromotionDto vừa tạo.</returns>
     public async Task<Result<PromotionDto>> CreatePromotionAsync(
         CreatePromotionDto request,
         CancellationToken cancellationToken = default)
     {
+        // 1. Kiểm tra hợp lệ dữ liệu đầu vào qua FluentValidation
         var validationResult = await _createValidator.ValidateAsync(request, cancellationToken);
 
         if (!validationResult.IsValid)
@@ -144,6 +190,7 @@ public class PromotionService : IPromotionService
             return validationResult.ToResult<PromotionDto>();
         }
 
+        // 2. Kiểm tra trùng lặp tên chương trình khuyến mãi
         var promotionNameExists = await _unitOfWork.Promotions.ExistsPromotionNameAsync(
             request.PromotionName,
             null,
@@ -154,13 +201,14 @@ public class PromotionService : IPromotionService
             return Result<PromotionDto>.Conflict("Promotion name already exists.");
         }
 
+        // 3. Ánh xạ sang Entity và gán các trường quản lý hệ thống
         var promotion = _mapper.Map<Promotion>(request);
-        // Set dynamically from current authenticated user
         promotion.CreatedBy = _currentUserService.AccountId;
         promotion.CreatedAt = _timeProvider.UtcNow;
         promotion.UpdatedAt = null;
         promotion.IsDeleted = false;
 
+        // 4. Nếu là loại khuyến mãi trực tiếp trên sản phẩm (DISCOUNT)
         if (request.ProductPromotions != null && request.ProductPromotions.Any())
         {
             var productIds = request.ProductPromotions.Select(p => p.ProductId).Distinct().ToList();
@@ -174,6 +222,7 @@ public class PromotionService : IPromotionService
             foreach (var pp in request.ProductPromotions)
             {
                 var product = products.First(p => p.ProductId == pp.ProductId);
+                // Đảm bảo giá khuyến mãi không lớn hơn giá gốc của sản phẩm
                 if (pp.SalePrice > product.Price)
                 {
                     return Result<PromotionDto>.Failure("VALIDATION_ERROR", $"Sale price for product {product.ProductName} cannot be greater than original price ({product.Price}).");
@@ -185,6 +234,7 @@ public class PromotionService : IPromotionService
             }
         }
 
+        // 5. Nếu là loại khuyến mãi Flash Sale theo khung giờ (FLASH_SALE)
         if (request.PromotionTimeSlots != null && request.PromotionTimeSlots.Any())
         {
             foreach (var ts in request.PromotionTimeSlots)
@@ -195,6 +245,7 @@ public class PromotionService : IPromotionService
             }
         }
 
+        // 6. Thực thi lưu xuống Database trong Transaction
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -213,8 +264,7 @@ public class PromotionService : IPromotionService
             "Created promotion with name {PromotionName}",
             promotion.PromotionName);
 
-        // Since ID is generated, we might just return what we have mapped minus ID if we can't fetch it by Name
-        // Or we can fetch it again:
+        // 7. Nạp lại thông tin đầy đủ của chương trình vừa tạo để ánh xạ sang DTO trả về
         var createdPromotion = await _unitOfWork.Promotions.GetByIdAsync(
             promotion.PromotionId,
             cancellationToken,
@@ -222,6 +272,7 @@ public class PromotionService : IPromotionService
         );
         var dto = _mapper.Map<PromotionDto>(createdPromotion ?? promotion);
 
+        // 8. Thông báo cho CartService cập nhật lại giá khuyến mãi của các sản phẩm bị ảnh hưởng trong giỏ hàng
         var createdProductIds = (createdPromotion ?? promotion).ProductPromotions
             .Select(x => x.ProductId)
             .Distinct()
@@ -234,6 +285,13 @@ public class PromotionService : IPromotionService
         return Result<PromotionDto>.Success(dto);
     }
 
+    /// <summary>
+    /// Cập nhật thông tin chương trình khuyến mãi theo ID (áp dụng các cơ chế bảo vệ giao dịch, Partial Update và kiểm tra trạng thái).
+    /// </summary>
+    /// <param name="promotionId">Mã ID chương trình khuyến mãi cần cập nhật.</param>
+    /// <param name="request">DTO chứa các trường cần cập nhật.</param>
+    /// <param name="cancellationToken">Token hủy tác vụ bất đồng bộ.</param>
+    /// <returns>Đối tượng Result chứa PromotionDto chi tiết sau cập nhật.</returns>
     public async Task<Result<PromotionDto>> UpdatePromotionAsync(
         int promotionId,
         UpdatePromotionDto request,
@@ -244,6 +302,7 @@ public class PromotionService : IPromotionService
             return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Promotion ID must be greater than 0.");
         }
 
+        // 1. Kiểm tra tính hợp lệ của DTO cập nhật qua FluentValidation
         var updateValidation = await _updateValidator.ValidateAsync(request, cancellationToken);
 
         if (!updateValidation.IsValid)
@@ -251,6 +310,7 @@ public class PromotionService : IPromotionService
             return updateValidation.ToResult<PromotionDto>();
         }
 
+        // 2. Tìm nạp thực thể chương trình khuyến mãi hiện tại
         var existingPromotion = await _unitOfWork.Promotions.GetByIdAsync(
             promotionId,
             cancellationToken,
@@ -261,9 +321,10 @@ public class PromotionService : IPromotionService
             return Result<PromotionDto>.NotFound("Promotion", promotionId);
         }
 
-        // Nếu là yêu cầu xoá (Soft Delete)
+        // 3. Xử lý yêu cầu Xóa mềm (Soft Delete)
         if (request.IsDeleted == true)
         {
+            // Không cho phép xóa chương trình đang ở trạng thái Active
             if (string.Equals(existingPromotion.Status, "Active", StringComparison.OrdinalIgnoreCase))
             {
                 return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot delete an Active promotion.");
@@ -272,7 +333,7 @@ public class PromotionService : IPromotionService
             existingPromotion.IsDeleted = true;
             existingPromotion.UpdatedAt = _timeProvider.UtcNow;
 
-            // Fix legacy invalid data to satisfy SQL Server CHECK constraints during soft delete
+            // Chuẩn hóa dữ liệu cũ để tránh vi phạm CHECK constraint trong SQL Server khi xóa mềm
             if (existingPromotion.StartDate == default)
             {
                 existingPromotion.StartDate = _timeProvider.UtcNow;
@@ -286,26 +347,31 @@ public class PromotionService : IPromotionService
         {
             var oldStatus = existingPromotion.Status;
             var now = _timeProvider.UtcNow;
+            // Kiểm tra xem đã có giao dịch mua hàng nào trong các khung giờ flash sale hay chưa
             bool hasTransactions = existingPromotion.PromotionTimeSlots.Any(ts => ts.PromotionProductSlots.Any(pps => pps.SoldQuantity > 0));
 
+            // Kiểm tra trường hợp đặc biệt: chương trình Active nhưng rỗng (chưa gán sản phẩm)
             bool isEmptyActivePromotion = string.Equals(oldStatus, "Active", StringComparison.OrdinalIgnoreCase) &&
                 ((string.Equals(existingPromotion.PromotionType, "FLASH_SALE", StringComparison.OrdinalIgnoreCase) && 
                   !existingPromotion.PromotionTimeSlots.Any(ts => !ts.IsDeleted && ts.PromotionProductSlots.Any(pps => !pps.IsDeleted))) ||
                  (string.Equals(existingPromotion.PromotionType, "DISCOUNT", StringComparison.OrdinalIgnoreCase) && !existingPromotion.ProductPromotions.Any(p => !p.IsDeleted)));
 
+            // Không cho phép chỉnh sửa chương trình khuyến mãi đã hết hạn (Expired)
             if (string.Equals(oldStatus, "Expired", StringComparison.OrdinalIgnoreCase))
             {
                 return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot update an Expired promotion.");
             }
 
-            // Enforce edit safeguards on products and time slots if promotion is active or has transactions
+            // 4. Áp dụng các chốt an toàn (Safeguards) khi chương trình đang Active hoặc đã phát sinh giao dịch mua hàng
             if (hasTransactions || (string.Equals(oldStatus, "Active", StringComparison.OrdinalIgnoreCase) && !isEmptyActivePromotion))
             {
+                // Không được thay đổi loại khuyến mãi (PromotionType)
                 if (request.PromotionType is not null && !string.Equals(request.PromotionType, existingPromotion.PromotionType, StringComparison.OrdinalIgnoreCase))
                 {
                     return Result<PromotionDto>.Failure("VALIDATION_ERROR", "Cannot modify PromotionType for a promotion that is active or has transactions.");
                 }
 
+                // Không được thêm/bớt sản phẩm hoặc đổi giá khuyến mãi trong ProductPromotions
                 if (request.ProductPromotions is not null)
                 {
                     var existingActiveProducts = existingPromotion.ProductPromotions.Where(p => !p.IsDeleted).ToList();
@@ -327,6 +393,7 @@ public class PromotionService : IPromotionService
                     }
                 }
 
+                // Không được thêm/bớt khung giờ hoặc đổi giá/số lượng sản phẩm trong PromotionTimeSlots
                 if (request.PromotionTimeSlots is not null)
                 {
                     var existingActiveTimeSlots = existingPromotion.PromotionTimeSlots.Where(ts => !ts.IsDeleted).ToList();
@@ -372,6 +439,7 @@ public class PromotionService : IPromotionService
                 }
             }
 
+            // 5. Kiểm tra tính hợp lệ của ngày bắt đầu và kết thúc mục tiêu
             var targetStatus = request.Status ?? oldStatus;
             var targetStartDate = request.StartDate ?? existingPromotion.StartDate;
             var targetEndDate = request.EndDate ?? existingPromotion.EndDate;
@@ -390,7 +458,7 @@ public class PromotionService : IPromotionService
                 }
             }
 
-            // Handle transition checks
+            // 6. Kiểm tra các bước chuyển trạng thái (State Machine Transitions)
             if (string.Equals(oldStatus, "Active", StringComparison.OrdinalIgnoreCase))
             {
                 if (!string.Equals(targetStatus, "Active", StringComparison.OrdinalIgnoreCase) &&
@@ -418,12 +486,10 @@ public class PromotionService : IPromotionService
                 }
             }
 
-            // Normalization of StartDate / Status on reactivation or rescheduling
+            // 7. Chuẩn hóa StartDate và Status khi kích hoạt lại hoặc đổi lịch
             if (string.Equals(targetStatus, "Scheduled", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(targetStatus, "Active", StringComparison.OrdinalIgnoreCase))
             {
-                // Only reset StartDate to now if we are transitioning to Active from Scheduled.
-                // If it is already Active or Inactive, keep the targetStartDate to prevent decoupling slots.
                 if (targetStartDate <= now && string.Equals(oldStatus, "Scheduled", StringComparison.OrdinalIgnoreCase))
                 {
                     existingPromotion.StartDate = now;
@@ -477,6 +543,7 @@ public class PromotionService : IPromotionService
 
             existingPromotion.UpdatedAt = now;
 
+            // 8. Cập nhật danh sách sản phẩm khuyến mãi (ProductPromotions)
             if (request.ProductPromotions != null)
             {
                 var productIds = request.ProductPromotions.Select(p => p.ProductId).Distinct().ToList();
@@ -492,12 +559,14 @@ public class PromotionService : IPromotionService
                     .Where(pp => !incomingProductIds.Contains(pp.ProductId))
                     .ToList();
 
+                // Đánh dấu xóa mềm cho sản phẩm bị loại bỏ khỏi khuyến mãi
                 foreach (var item in toRemove)
                 {
                     item.IsDeleted = true;
                     item.UpdatedAt = _timeProvider.UtcNow;
                 }
 
+                // Thêm mới hoặc cập nhật các sản phẩm trong danh sách gửi lên
                 foreach (var incomingPp in request.ProductPromotions)
                 {
                     var product = products.First(p => p.ProductId == incomingPp.ProductId);
@@ -526,6 +595,7 @@ public class PromotionService : IPromotionService
                 }
             }
 
+            // 9. Cập nhật danh sách khung giờ Flash Sale (PromotionTimeSlots)
             if (request.PromotionTimeSlots != null)
             {
                 var existingTimeSlots = existingPromotion.PromotionTimeSlots.ToList();
@@ -627,7 +697,7 @@ public class PromotionService : IPromotionService
                 }
             }
 
-            // Run full validation on the final combined state
+            // 10. Chạy toàn bộ bộ quy tắc kiểm tra tính hợp lệ trên trạng thái tổng thể cuối cùng của chương trình
             var fullValidationRequest = _mapper.Map<CreatePromotionDto>(existingPromotion);
 
             var context = new FluentValidation.ValidationContext<CreatePromotionDto>(fullValidationRequest);
@@ -641,6 +711,7 @@ public class PromotionService : IPromotionService
             }
         }
 
+        // 11. Lưu thay đổi vào Database trong Transaction
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -654,6 +725,7 @@ public class PromotionService : IPromotionService
             throw;
         }
 
+        // 12. Nạp lại dữ liệu sau cập nhật để trả về cho Client
         var updatedPromotion = await _unitOfWork.Promotions.GetByIdAsync(
             promotionId,
             cancellationToken,
@@ -665,6 +737,7 @@ public class PromotionService : IPromotionService
             promotionId,
             updatedPromotion.PromotionName);
 
+        // 13. Thông báo cho CartService đồng bộ lại giá các sản phẩm bị ảnh hưởng trong giỏ hàng
         var impactedProductIds = updatedPromotion.ProductPromotions
             .Select(x => x.ProductId)
             .Distinct()
@@ -677,6 +750,12 @@ public class PromotionService : IPromotionService
         return Result<PromotionDto>.Success(_mapper.Map<PromotionDto>(updatedPromotion));
     }
 
+    /// <summary>
+    /// Lấy danh sách toàn bộ các chương trình khuyến mãi (cả DISCOUNT thông thường và FLASH_SALE theo khung giờ) đang áp dụng cho một sản phẩm cụ thể.
+    /// </summary>
+    /// <param name="productId">Mã ID sản phẩm cần kiểm tra.</param>
+    /// <param name="cancellationToken">Token hủy tác vụ bất đồng bộ.</param>
+    /// <returns>Đối tượng Result chứa danh sách ProductPromotionInfoDto.</returns>
     public async Task<Result<List<ProductPromotionInfoDto>>> GetPromotionsByProductIdAsync(
         int productId,
         CancellationToken cancellationToken = default)
