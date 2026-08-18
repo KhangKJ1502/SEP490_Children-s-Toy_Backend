@@ -18,15 +18,15 @@ public class CreateProductPromotionValidator : AbstractValidator<CreateProductPr
     {
         // Kiểm tra mã định danh sản phẩm
         RuleFor(x => x.ProductId)
-            .NotEmpty().WithMessage("Mã sản phẩm là bắt buộc.")
-            .GreaterThan(0).WithMessage("Mã sản phẩm phải lớn hơn 0.");
+            .NotEmpty().WithMessage("Product ID is required.")
+            .GreaterThan(0).WithMessage("Product ID must be greater than 0.");
 
         // Kiểm tra giá bán khuyến mãi
         RuleFor(x => x.SalePrice)
-            .GreaterThanOrEqualTo(0).WithMessage("Giá khuyến mãi phải lớn hơn hoặc bằng 0.");
+            .GreaterThanOrEqualTo(0).WithMessage("Promotion price must be greater than or equal to 0.");
 
         // Kiểm tra phần trăm giảm giá (nếu có)
         RuleFor(x => x.DiscountPercent)
-            .InclusiveBetween(1, 99).WithMessage("Phần trăm giảm giá phải nằm trong khoảng từ 1% đến 99%.");
+            .InclusiveBetween(1, 99).WithMessage("Discount percentage must be between 1% and 99%.");
     }
 }

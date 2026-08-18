@@ -19,22 +19,22 @@ public class CreatePromotionProductSlotValidator : AbstractValidator<CreatePromo
     {
         // Kiểm tra mã định danh sản phẩm
         RuleFor(x => x.ProductId)
-            .GreaterThan(0).WithMessage("Mã sản phẩm phải lớn hơn 0.");
+            .GreaterThan(0).WithMessage("Product ID must be greater than 0.");
 
         // Kiểm tra giá bán Flash Sale
         RuleFor(x => x.SalePrice)
-            .GreaterThan(0).WithMessage("Giá bán Flash Sale phải lớn hơn 0.")
-            .LessThanOrEqualTo(999_999_999).WithMessage("Giá bán Flash Sale không được vượt quá 999,999,999 VNĐ.");
+            .GreaterThan(0).WithMessage("Flash Sale price must be greater than 0.")
+            .LessThanOrEqualTo(999_999_999).WithMessage("Flash Sale price must not exceed 999,999,999 VND.");
 
         // Kiểm tra tỷ lệ phần trăm giảm giá (nếu có)
         RuleFor(x => x.DiscountPercent)
             .InclusiveBetween(1, 99)
-            .WithMessage("Phần trăm giảm giá phải nằm trong khoảng từ 1% đến 99%.")
+            .WithMessage("Discount percentage must be between 1% and 99%.")
             .When(x => x.DiscountPercent.HasValue);
 
         // Kiểm tra số lượng sản phẩm mở bán Flash Sale
         RuleFor(x => x.SaleQuantity)
-            .GreaterThan(0).WithMessage("Số lượng mở bán Flash Sale phải lớn hơn 0.")
-            .LessThanOrEqualTo(100_000).WithMessage("Số lượng mở bán Flash Sale không được vượt quá 100,000 sản phẩm.");
+            .GreaterThan(0).WithMessage("Flash Sale quantity must be greater than 0.")
+            .LessThanOrEqualTo(100_000).WithMessage("Flash Sale quantity must not exceed 100,000 items.");
     }
 }

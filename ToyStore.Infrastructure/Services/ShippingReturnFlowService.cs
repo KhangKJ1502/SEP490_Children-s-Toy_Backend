@@ -381,8 +381,18 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
     private async Task<ShippingReturnFlowResult> HandleGhnCancelAsync(
         Order order, DateTime now, CancellationToken ct)
     {
+        var friendlyReason = ToyStore.Infrastructure.Mappers.GhnFailCodeMapper.GetFriendlyDescription(
+            order.LastGHNFailCode,
+            !string.IsNullOrWhiteSpace(order.CancelReason) && order.CancelReason != OrderCancelReasons.GhnCancelled
+                ? order.CancelReason
+                : "Shop did not hand over items to courier / Shipment cancelled");
+
+        var cancelReason = !string.IsNullOrEmpty(friendlyReason)
+            ? friendlyReason
+            : "Shop did not hand over items to courier / Shipment cancelled";
+
         return await ApplyDirectCancelReturnAsync(
-            order, OrderCancelReasons.GhnCancelled, ShippingStatuses.Cancel, now, ct);
+            order, cancelReason, ShippingStatuses.Cancel, now, ct);
     }
 
     /// <summary>
@@ -431,12 +441,16 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         order.CompletedAt = null; // Enforce NOT ([CompletedAt] IS NOT NULL AND [CancelledAt] IS NOT NULL)
         order.UpdatedAt = now;
 
+        var noteDetail = !string.IsNullOrWhiteSpace(order.LastGHNFailCode)
+            ? $"GHN {ghnStatus} ({order.LastGHNFailCode}): {cancelReason}"
+            : $"GHN {ghnStatus}: {cancelReason}";
+
         await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
         {
             OrderId = order.OrderId,
             StatusId = targetStatusId,
             ChangedBy = null,
-            Note = $"GHN {ghnStatus}: {cancelReason}",
+            Note = noteDetail,
             CreatedAt = now
         }, ct);
 
@@ -642,12 +656,16 @@ public class ShippingReturnFlowService : IShippingReturnFlowService
         fullOrder.PaymentStatus = "CANCELLED";
         fullOrder.UpdatedAt = now;
 
+        var noteDetail = !string.IsNullOrWhiteSpace(fullOrder.LastGHNFailCode)
+            ? $"Order cancelled ({fullOrder.LastGHNFailCode}): {cancelReason}"
+            : $"Order cancelled: {cancelReason}";
+
         await _unitOfWork.Orders.AddStatusHistoryAsync(new OrderStatusHistory
         {
             OrderId = fullOrder.OrderId,
             StatusId = cancelledId,
             ChangedBy = null,
-            Note = $"Order cancelled: {cancelReason}",
+            Note = noteDetail,
             CreatedAt = now
         }, ct);
 

@@ -101,9 +101,10 @@ public class RefundDto
     public string RefundType { get; set; } = "ReturnAndRefund";
 
     /// <summary>
-    /// Đánh dấu xem đây có phải là hoàn tiền tự động do lỗi giao hàng trả hàng hệ thống hay không.
+    /// Đánh dấu xem đây có phải là hoàn tiền tự động do lỗi giao hàng trả hàng hệ thống hay không (loại trừ RefundOnly).
     /// </summary>
-    public bool IsSystemReturn => string.Equals(RefundSource, "System", StringComparison.OrdinalIgnoreCase);
+    public bool IsSystemReturn => string.Equals(RefundSource, "System", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(RefundType, "RefundOnly", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Số tiền hoàn trả được phê duyệt ban đầu (tổng tiền các sản phẩm được duyệt).

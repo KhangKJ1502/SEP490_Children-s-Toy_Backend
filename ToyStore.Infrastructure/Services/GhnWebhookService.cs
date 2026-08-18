@@ -133,6 +133,23 @@ public class GhnWebhookService : IGhnWebhookService
             return;
         }
 
+        // Xác thực chéo cho đơn hàng thường:
+        if (!string.IsNullOrWhiteSpace(payload.EffectiveOrderCode) && !string.IsNullOrWhiteSpace(payload.EffectiveClientOrderCode) && tx.Order != null)
+        {
+            bool matchesOrder = string.Equals(payload.EffectiveOrderCode.Trim(), tx.ProviderOrderCode, StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(payload.EffectiveOrderCode.Trim(), tx.Order.ShippingOrderCode, StringComparison.OrdinalIgnoreCase);
+            bool matchesClient = string.Equals(payload.EffectiveClientOrderCode.Trim(), tx.Order.OrderCode, StringComparison.OrdinalIgnoreCase)
+                              || string.Equals(payload.EffectiveClientOrderCode.Trim(), tx.ProviderOrderCode, StringComparison.OrdinalIgnoreCase);
+
+            if (!matchesOrder || !matchesClient)
+            {
+                _logger.LogWarning(
+                    "GHN Webhook Mismatch cho Order: ClientOrderCode '{ClientCode}' (Order #{OrderCode}) không khớp với OrderCode '{OrderCode}' (Mã GHN trong DB: '{ExpectedCode}'). Bỏ qua cập nhật.",
+                    payload.EffectiveClientOrderCode, tx.Order.OrderCode, payload.EffectiveOrderCode, tx.ProviderOrderCode);
+                return;
+            }
+        }
+
         // Kiểm tra bổ sung an toàn: Nếu tx thuộc về đơn refund thì chuyển tiếp sang ShippingWebhookService
         if (tx.OrderId > 0)
         {
@@ -269,6 +286,16 @@ public class GhnWebhookService : IGhnWebhookService
                 tx.Order.ReturnedAt = now;
                 _logger.LogInformation("GHN Webhook cập nhật đơn đã hoàn về shop: order={OrderCode}", tx.Order.OrderCode);
             }
+            else if (statusLower == "cancel")
+            {
+                tx.Order.LastGHNFailCode = payload.ReasonCode;
+                if (!string.IsNullOrEmpty(payload.Reason))
+                {
+                    tx.Order.CancelReason = payload.Reason;
+                }
+                _logger.LogInformation("GHN Webhook cập nhật hủy vận đơn: order={OrderCode}, lý do={ReasonCode} - {Reason}",
+                    tx.Order.OrderCode, payload.ReasonCode, payload.Reason);
+            }
             else if (statusLower == "ready_to_pick" && GhnFailCodeMapper.IsPickFail(payload.ReasonCode))
             {
                 // A5. Lấy hàng thất bại: GHN gửi Status=ready_to_pick kèm mã lỗi lấy hàng GHN-PFA... / GHN-PCB...
@@ -293,8 +320,8 @@ public class GhnWebhookService : IGhnWebhookService
                             OrderId   = tx.OrderId,
                             StatusId  = processingId,
                             ChangedBy = null,
-                            Note      = $"GHN lấy hàng thất bại ({payload.ReasonCode}): {friendlyReason}. " +
-                                        "Đơn hàng được reset về Processing để chuẩn bị giao lại.",
+                            Note      = $"GHN pickup failed ({payload.ReasonCode}): {friendlyReason}. " +
+                                        "Order reset to Processing for redelivery.",
                             CreatedAt = now
                         }, cancellationToken);
 
@@ -378,7 +405,7 @@ public class GhnWebhookService : IGhnWebhookService
                                 OrderId = tx.OrderId,
                                 StatusId = targetStatusId,
                                 ChangedBy = null,
-                                Note = $"Tự động cập nhật từ GHN webhook: {targetStatusName}",
+                                Note = $"Automatically updated from GHN webhook: {targetStatusName}",
                                 CreatedAt = now
                             }, cancellationToken);
 

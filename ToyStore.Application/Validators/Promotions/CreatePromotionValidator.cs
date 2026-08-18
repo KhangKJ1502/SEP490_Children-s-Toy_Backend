@@ -24,39 +24,39 @@ public class CreatePromotionValidator : AbstractValidator<CreatePromotionDto>
     {
         // Kiểm tra tên chương trình khuyến mãi
         RuleFor(x => x.PromotionName)
-            .NotEmpty().WithMessage("Tên chương trình khuyến mãi là bắt buộc.")
-            .MaximumLength(200).WithMessage("Tên chương trình khuyến mãi không được vượt quá 200 ký tự.");
+            .NotEmpty().WithMessage("Promotion name is required.")
+            .MaximumLength(200).WithMessage("Promotion name must not exceed 200 characters.");
 
         // Kiểm tra loại khuyến mãi
         RuleFor(x => x.PromotionType)
-            .NotEmpty().WithMessage("Loại khuyến mãi là bắt buộc.")
-            .MaximumLength(50).WithMessage("Loại khuyến mãi không được vượt quá 50 ký tự.");
+            .NotEmpty().WithMessage("Promotion type is required.")
+            .MaximumLength(50).WithMessage("Promotion type must not exceed 50 characters.");
 
         // Kiểm tra mô tả chi tiết
         RuleFor(x => x.Description)
-            .MaximumLength(1000).WithMessage("Mô tả không được vượt quá 1000 ký tự.")
+            .MaximumLength(1000).WithMessage("Description must not exceed 1000 characters.")
             .When(x => !string.IsNullOrEmpty(x.Description));
 
         // Kiểm tra ngày bắt đầu: nếu là Scheduled khi tạo mới, phải cách thời điểm hiện tại ít nhất 10 phút
         RuleFor(x => x.StartDate)
-            .NotEmpty().WithMessage("Ngày bắt đầu là bắt buộc.")
+            .NotEmpty().WithMessage("Start date is required.")
             .Must(d => d >= DateTime.UtcNow.AddMinutes(9))
             .When((x, ctx) => x.Status == "Scheduled" && !ctx.RootContextData.ContainsKey("IsUpdate"))
-            .WithMessage("Ngày bắt đầu của chương trình lên lịch phải cách hiện tại ít nhất 10 phút.");
+            .WithMessage("Scheduled start date must be at least 10 minutes in the future.");
 
         // Kiểm tra ngày kết thúc: phải lớn hơn ngày bắt đầu
         RuleFor(x => x.EndDate)
-            .NotEmpty().WithMessage("Ngày kết thúc là bắt buộc.")
-            .GreaterThan(x => x.StartDate).WithMessage("Ngày kết thúc phải lớn hơn ngày bắt đầu.");
+            .NotEmpty().WithMessage("End date is required.")
+            .GreaterThan(x => x.StartDate).WithMessage("End date must be after start date.");
 
         // Kiểm tra trạng thái
         RuleFor(x => x.Status)
-            .NotEmpty().WithMessage("Trạng thái là bắt buộc.")
-            .MaximumLength(50).WithMessage("Trạng thái không được vượt quá 50 ký tự.");
+            .NotEmpty().WithMessage("Status is required.")
+            .MaximumLength(50).WithMessage("Status must not exceed 50 characters.");
 
         // Kiểm tra độ ưu tiên
         RuleFor(x => x.Priority)
-            .GreaterThanOrEqualTo(0).WithMessage("Độ ưu tiên phải lớn hơn hoặc bằng 0.");
+            .GreaterThanOrEqualTo(0).WithMessage("Priority must be greater than or equal to 0.");
 
         // Validate từng sản phẩm giảm giá trong danh sách
         RuleForEach(x => x.ProductPromotions)
@@ -69,7 +69,7 @@ public class CreatePromotionValidator : AbstractValidator<CreatePromotionDto>
         // Đảm bảo tất cả các khung giờ Flash Sale phải nằm trọn trong thời gian diễn ra chương trình
         RuleFor(x => x.PromotionTimeSlots)
             .Must((dto, slots) => slots == null || slots.All(s => s.StartAt >= dto.StartDate && s.EndAt <= dto.EndDate))
-            .WithMessage("Tất cả các khung giờ Flash Sale phải nằm trong khoảng thời gian diễn ra chương trình khuyến mãi.")
+            .WithMessage("All Flash Sale time slots must be within the promotion duration.")
             .When(x => x.PromotionTimeSlots != null && x.StartDate != default && x.EndDate != default);
 
         // Đảm bảo các khung giờ Flash Sale không bị chồng chéo thời gian lên nhau
@@ -88,7 +88,7 @@ public class CreatePromotionValidator : AbstractValidator<CreatePromotionDto>
                 }
                 return true;
             })
-            .WithMessage("Các khung giờ Flash Sale không được trùng hoặc chồng lấn thời gian với nhau.")
+            .WithMessage("Flash Sale time slots must not overlap with each other.")
             .When(x => x.PromotionTimeSlots != null);
     }
 }

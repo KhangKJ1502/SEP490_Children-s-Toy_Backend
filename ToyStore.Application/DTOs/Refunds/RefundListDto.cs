@@ -88,9 +88,15 @@ public class RefundListDto
     public string RefundSource { get; set; } = "Customer";
 
     /// <summary>
-    /// Đánh dấu yêu cầu do hệ thống tự tạo khi GHN trả hàng thất bại.
+    /// Loại hình hoàn tiền ("ReturnAndRefund" hoặc "RefundOnly").
     /// </summary>
-    public bool IsSystemReturn => string.Equals(RefundSource, "System", StringComparison.OrdinalIgnoreCase);
+    public string RefundType { get; set; } = "ReturnAndRefund";
+
+    /// <summary>
+    /// Đánh dấu yêu cầu do hệ thống tự tạo khi GHN trả hàng thất bại (loại trừ RefundOnly).
+    /// </summary>
+    public bool IsSystemReturn => string.Equals(RefundSource, "System", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(RefundType, "RefundOnly", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Số tiền thực tế hoàn vào ví (Wallet) sau khi trừ chi phí (nếu có).

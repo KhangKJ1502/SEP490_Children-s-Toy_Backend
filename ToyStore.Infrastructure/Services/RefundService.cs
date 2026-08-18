@@ -169,7 +169,8 @@ public class RefundService : IRefundService
             RefundStatuses.Approved or RefundStatuses.PickupCreated or RefundStatuses.Shipping or RefundStatuses.Received or RefundStatuses.InspectionPending or RefundStatuses.ReturnShipmentCreated or RefundStatuses.ReturningToCustomer => "Processing",
             RefundStatuses.Completed => "Completed",
             RefundStatuses.Rejected or RefundStatuses.ReturnedToCustomer => "Rejected",
-            RefundStatuses.Cancelled or RefundStatuses.ReturnToCustomerFailed => "Cancelled",
+            RefundStatuses.Cancelled => "Cancelled",
+            RefundStatuses.ReturnToCustomerFailed => RefundStatuses.ReturnToCustomerFailed,
             RefundStatuses.Damage => "Damaged",
             _ => internalStatus
         };
@@ -282,7 +283,9 @@ public class RefundService : IRefundService
 
         // 8. Kiểm tra sản phẩm tồn tại trong đơn hàng và số lượng trả không vượt quá số lượng đã mua
         var refundDetails = new List<RefundDetail>();
-        var discountRatio = order.SubTotal > 0 ? (order.VoucherDiscountAmount / order.SubTotal) : 0m;
+        var grossShipping = order.ActualShippingFee ?? order.EstimatedShippingFee;
+        var productVoucherDisc = Math.Max(0m, order.VoucherDiscountAmount - grossShipping);
+        var discountRatio = order.SubTotal > 0 ? (productVoucherDisc / order.SubTotal) : 0m;
 
         foreach (var item in returnItems)
         {
@@ -486,8 +489,9 @@ public class RefundService : IRefundService
         // không gộp shipping voucher discount vào product subtotal.
         var grossShippingFee = isUnpaid ? 0m : (refundOrder.ActualShippingFee ?? refundOrder.EstimatedShippingFee);
         var orderTotalAmount = isUnpaid ? 0m : refundOrder.TotalAmount;
-        var discountRatio = refundOrder.SubTotal > 0
-            ? (refundOrder.VoucherDiscountAmount / refundOrder.SubTotal)
+        var productVoucherDiscount = isUnpaid ? 0m : Math.Max(0m, refundOrder.VoucherDiscountAmount - grossShippingFee);
+        var discountRatio = (!isUnpaid && refundOrder.SubTotal > 0)
+            ? (productVoucherDiscount / refundOrder.SubTotal)
             : 0m;
 
         // 3. Phân bổ chi tiết từng mặt hàng và tiền hoàn tương ứng
@@ -882,11 +886,15 @@ public class RefundService : IRefundService
         if (newStatusId == null)
             return Result<RefundDto>.BusinessError($"Invalid status name '{dto.Status}'.");
 
-        // Lưu ý: Khi Admin/Staff reject đơn ReturnAndRefund (dù ở bất kỳ giai đoạn nào kể cả
-        // sau RefundReceived / RefundInspectionPending), hệ thống chỉ chuyển sang RefundRejected —
-        // đóng yêu cầu hoàn, giữ hàng tại kho. KHÔNG tự động tạo đơn GHN gửi trả.
-        // Nếu nghiệp vụ yêu cầu trả hàng về cho khách (một phần bị từ chối), nhân viên
-        // phải chuyển tường minh sang RefundReturnShipmentCreated thay vì Reject.
+        // Không được phép Reject khi đã tạo mã vận đơn GHN (chiều thu hồi hoặc chiều giao lại)
+        if (newStatusId.Value == (byte)RefundStatusEnum.RefundRejected)
+        {
+            if (!string.IsNullOrWhiteSpace(refund.ShippingOrderCode) || !string.IsNullOrWhiteSpace(refund.ReturnShippingOrderCode))
+            {
+                return Result<RefundDto>.BusinessError(
+                    "Cannot reject refund request after GHN shipping order has been created.");
+            }
+        }
 
         // Khi Thủ kho gửi kết quả kiểm tra chất lượng
         if (newStatusId.Value == (byte)RefundStatusEnum.RefundInspectionPending
@@ -1090,11 +1098,15 @@ public class RefundService : IRefundService
                 refund.ItemRejectedSubTotal = refund.RefundDetails.Sum(d => 
                     d.RefundAmount * (decimal)d.FailedCustomerQty / d.Quantity);
 
-                // 7.2. Hoàn phí ship gốc: chỉ hoàn nếu không có bất kỳ sản phẩm nào bị khách làm hỏng
-                var originalShipFeeRefund = totalFailedCustomer > 0 ? 0m : refund.ShippingFee;
+                // 7.2. Hoàn phí ship gốc: chỉ hoàn nếu Store chịu phí và không có bất kỳ sản phẩm nào bị khách làm hỏng
+                var isCustomerBearingFee = string.Equals(refund.ReturnShippingFeeBy, RefundResponsibleParty.Customer, StringComparison.OrdinalIgnoreCase);
+                var originalShipFeeRefund = (totalFailedCustomer > 0 || isCustomerBearingFee) ? 0m : refund.ShippingFee;
 
-                // 7.3. Tổng số tiền hoàn dự kiến trước cấn trừ phí gửi trả lại
+                // 7.3. Tổng số tiền hoàn dự kiến trước cấn trừ phí gửi trả lại (nếu có trừ phí ship hoàn trả)
                 var totalRefundCandidate = refund.ItemApprovedSubTotal + originalShipFeeRefund;
+                var effectiveCandidate = isCustomerBearingFee
+                    ? Math.Max(0m, totalRefundCandidate - refund.ReturnShippingFee)
+                    : totalRefundCandidate;
 
                 // 7.4. Nếu có hàng hỏng do khách: gọi GHN ước tính phí gửi trả lại nhà cho khách
                 if (totalFailedCustomer > 0)
@@ -1103,7 +1115,7 @@ public class RefundService : IRefundService
                         .Where(d => d.FailedCustomerQty > 0)
                         .Select(d => new ShippingItem(
                             d.ProductId,
-                            d.Product?.ProductName ?? "Sản phẩm hoàn trả",
+                            d.Product?.ProductName ?? "Return item",
                             d.Product?.Category?.CategoryName ?? "Toys",
                             (int)d.FailedCustomerQty,
                             d.UnitPrice,
@@ -1151,10 +1163,10 @@ public class RefundService : IRefundService
                     }
 
                     // 7.5. Thực hiện cơ chế cấn trừ phí gửi lại vào số tiền hoàn
-                    if (totalRefundCandidate >= refund.ReturnToCustomerFee)
+                    if (effectiveCandidate >= refund.ReturnToCustomerFee)
                     {
                         // Tiền hoàn đủ bù phí gửi -> cấn trừ tự động và đánh dấu đã trả phí
-                        refund.FinalRefundAmount = totalRefundCandidate - refund.ReturnToCustomerFee;
+                        refund.FinalRefundAmount = effectiveCandidate - refund.ReturnToCustomerFee;
                         refund.ReturnToCustomerFeePaid = true;
                         refund.CustomerResponseDeadline = null;
                     }
@@ -1169,7 +1181,7 @@ public class RefundService : IRefundService
                 else
                 {
                     refund.ReturnToCustomerFee = 0m;
-                    refund.FinalRefundAmount = totalRefundCandidate;
+                    refund.FinalRefundAmount = effectiveCandidate;
                     refund.ReturnToCustomerFeePaid = true;
                     refund.CustomerResponseDeadline = null;
                 }
@@ -1187,7 +1199,7 @@ public class RefundService : IRefundService
 
             var shippingItems = refund.RefundDetails.Select(x => new ShippingItem(
                 x.ProductId,
-                x.Product?.ProductName ?? "Sản phẩm hoàn trả",
+                x.Product?.ProductName ?? "Return item",
                 x.Product?.Category?.CategoryName ?? "Toys",
                 x.Quantity,
                 x.UnitPrice,
@@ -1274,7 +1286,7 @@ public class RefundService : IRefundService
 
             var shippingItems = returnItems.Select(x => new ShippingItem(
                 x.ProductId,
-                x.Product?.ProductName ?? "Sản phẩm hoàn trả",
+                x.Product?.ProductName ?? "Return item",
                 x.Product?.Category?.CategoryName ?? "Toys",
                 (int)(x.FailedCustomerQty > 0 ? x.FailedCustomerQty : x.Quantity),
                 x.UnitPrice,
@@ -1504,11 +1516,21 @@ public class RefundService : IRefundService
                     refund.ReturnShippingFeeBy = finalFeeBy;
                     refund.ReturnShippingFeeNote = dto.ReturnShippingFeeNote;
 
-                    if (string.Equals(finalFeeBy, RefundResponsibleParty.Customer, StringComparison.OrdinalIgnoreCase))
+                    var itemSubTotal = refund.RefundDetails.Sum(d => d.RefundAmount);
+                    bool isCustomerBearing = string.Equals(finalFeeBy, RefundResponsibleParty.Customer, StringComparison.OrdinalIgnoreCase);
+
+                    if (isCustomerBearing)
                     {
+                        // 1. Khách chịu phí (Customer fault/bears cost):
+                        // - Không hoàn phí ship ban đầu
+                        refund.ShippingFee = 0m;
+                        refund.ApprovedAmount = itemSubTotal;
+                        refund.TotalAmount = itemSubTotal;
+
+                        // - Tính phí vận chuyển hoàn trả hàng về kho (GHN)
                         var shippingItems = refund.RefundDetails.Select(x => new ShippingItem(
                             x.ProductId,
-                            x.Product?.ProductName ?? "Sản phẩm hoàn trả",
+                            x.Product?.ProductName ?? "Return item",
                             x.Product?.Category?.CategoryName ?? "Toys",
                             x.Quantity,
                             x.UnitPrice,
@@ -1525,7 +1547,7 @@ public class RefundService : IRefundService
                             _ghnOptions.DefaultWidth,
                             _ghnOptions.DefaultHeight);
 
-                        var feeRequest = new ToyStore.Application.DTOs.Checkouts.FeeRequestDTO
+                        var feeRequest = new FeeRequestDTO
                         {
                             FromDistrictId = order.ShippingDistrictId,
                             FromWardCode = order.ShippingWardCode,
@@ -1544,19 +1566,30 @@ public class RefundService : IRefundService
                         var feeResult = await _ghnClient.GetFeeAsync(feeRequest, cancellationToken);
                         refund.ReturnShippingFee = feeResult.IsSuccess && feeResult.Data != null
                             ? feeResult.Data.Fee
-                            : 0m;
+                            : 30_000m;
+
+                        refund.FinalRefundAmount = ComputeFinalRefundAmount(
+                            refund.ApprovedAmount, refund.ReturnShippingFee, refund.ReturnShippingFeeBy);
+
+                        if (refund.FinalRefundAmount == 0m)
+                        {
+                            var warningNote = "[WARNING] Return shipping fee equals or exceeds approved amount. Customer will receive 0 refund.";
+                            refund.AdminNote = string.IsNullOrEmpty(refund.AdminNote)
+                                ? warningNote
+                                : refund.AdminNote + " | " + warningNote;
+                        }
                     }
-
-                    refund.FinalRefundAmount = ComputeFinalRefundAmount(
-                        refund.ApprovedAmount, refund.ReturnShippingFee, refund.ReturnShippingFeeBy);
-
-                    if (refund.FinalRefundAmount == 0m
-                        && string.Equals(refund.ReturnShippingFeeBy, RefundResponsibleParty.Customer, StringComparison.OrdinalIgnoreCase))
+                    else
                     {
-                        var warningNote = "[WARNING] Return shipping fee equals or exceeds approved amount. Customer will receive 0 refund.";
-                        refund.AdminNote = string.IsNullOrEmpty(refund.AdminNote)
-                            ? warningNote
-                            : refund.AdminNote + " | " + warningNote;
+                        // 2. Shop chịu phí (Store fault/bears cost):
+                        // - Hoàn phí ship ban đầu nếu là trả toàn bộ đơn hàng
+                        bool isFullReturn = order.OrderDetails.All(od => 
+                            refund.RefundDetails.Any(rd => rd.ProductId == od.ProductId && rd.Quantity >= od.Quantity));
+                        refund.ShippingFee = isFullReturn ? (order.ActualShippingFee ?? order.EstimatedShippingFee) : 0m;
+                        refund.ReturnShippingFee = 0m;
+                        refund.ApprovedAmount = itemSubTotal + refund.ShippingFee;
+                        refund.TotalAmount = refund.ApprovedAmount;
+                        refund.FinalRefundAmount = refund.ApprovedAmount;
                     }
                 }
                 else
@@ -1635,7 +1668,7 @@ public class RefundService : IRefundService
                         {
                             var ghnItems = customerFaultItems.Select(x => new ShippingOrderCreateItemDto
                             {
-                                Name = x.Product?.ProductName ?? "Sản phẩm hoàn trả",
+                                Name = x.Product?.ProductName ?? "Return item",
                                 Quantity = x.FailedCustomerQty,
                                 Price = x.UnitPrice,
                                 Weight = 500,
@@ -1919,13 +1952,16 @@ public class RefundService : IRefundService
             }
         }
 
-        // 5. Khôi phục số lượng tồn kho sản phẩm (nếu hàng hóa không bị mất/hư hỏng trong vận chuyển)
+        // 5. Khôi phục số lượng tồn kho sản phẩm (nếu hàng hóa không bị mất/hư hỏng trong vận chuyển và chưa từng được hoàn kho lúc Cancel đơn)
+        bool isAlreadyStockRestoredOnCancel = order.CancelledAt.HasValue
+            || string.Equals(refund.RefundType, RefundTypes.RefundOnly, StringComparison.OrdinalIgnoreCase);
+
         bool isLostOrDamaged = string.Equals(order.CancelReason, OrderCancelReasons.LostInTransit, StringComparison.OrdinalIgnoreCase)
             || string.Equals(order.CancelReason, OrderCancelReasons.DamagedInTransit, StringComparison.OrdinalIgnoreCase)
             || refund.RefundStatusHistories.Any(h => h.StatusId == (byte)RefundStatusEnum.RefundDamage)
             || string.Equals(refund.DamageResponsibility, RefundDamageResponsibility.Carrier, StringComparison.OrdinalIgnoreCase);
 
-        if (!isLostOrDamaged)
+        if (!isLostOrDamaged && !isAlreadyStockRestoredOnCancel)
         {
             foreach (var item in refund.RefundDetails)
             {
@@ -2061,7 +2097,8 @@ public class RefundService : IRefundService
     /// Kiểm tra xem yêu cầu hoàn trả có phải do hệ thống tự động tạo khi GHN giao hàng thất bại (Luồng B) hay không.
     /// </summary>
     /// <param name="refund">Thực thể OrderRefund.</param>
-    /// <returns>true nếu là nguồn System, ngược lại là false.</returns>
+    /// <returns>true nếu là nguồn System và có hàng hoàn vật lý, ngược lại là false.</returns>
     private static bool IsSystemReturnRefund(OrderRefund refund)
-        => string.Equals(refund.RefundSource, RefundSources.System, StringComparison.OrdinalIgnoreCase);
+        => string.Equals(refund.RefundSource, RefundSources.System, StringComparison.OrdinalIgnoreCase)
+           && !string.Equals(refund.RefundType, RefundTypes.RefundOnly, StringComparison.OrdinalIgnoreCase);
 }

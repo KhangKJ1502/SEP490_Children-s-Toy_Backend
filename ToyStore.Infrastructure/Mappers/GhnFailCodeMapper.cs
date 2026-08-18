@@ -125,14 +125,20 @@ public static class GhnFailCodeMapper
 
     public static string GetFriendlyDescription(string? failCode, string? defaultReason = null)
     {
+        var resolvedDefault = string.Equals(defaultReason, "GHN_CANCELLED", StringComparison.OrdinalIgnoreCase)
+            ? "Hủy vận đơn từ GHN (Shop không giao hàng cho shipper hoặc đơn bị hủy)"
+            : string.Equals(defaultReason, "DELIVERY_FAILED_GHN", StringComparison.OrdinalIgnoreCase)
+                ? "Giao hàng không thành công từ đơn vị vận chuyển GHN"
+                : defaultReason;
+
         if (string.IsNullOrWhiteSpace(failCode))
-            return defaultReason ?? "Không có lý do chi tiết từ đơn vị vận chuyển";
+            return resolvedDefault ?? "Không có lý do chi tiết từ đơn vị vận chuyển";
 
         var normalizedCode = failCode.Trim().ToUpperInvariant();
 
         return normalizedCode switch
         {
-            // Lấy thất bại
+            // Lấy thất bại / Hủy vận đơn từ Shop
             "GHN-PFA1A0" => "Người gửi hẹn lại ngày lấy hàng",
             "GHN-PFA2A2" => "Thông tin lấy hàng sai (địa chỉ / SĐT)",
             "GHN-PFA2A1" => "Thuê bao người gửi không liên lạc được / Máy bận",
@@ -140,8 +146,8 @@ public static class GhnFailCodeMapper
             "GHN-PFA1A1" => "Người gửi muốn gửi hàng tại bưu cục",
             "GHN-PCB0B2" => "Hàng vi phạm quy định khối lượng, kích thước",
             "GHN-PFA4A1" => "Hàng vi phạm quy cách đóng gói",
-            "GHN-PCB0B1" => "Người gửi không muốn gửi hàng nữa",
-            "GHN-PFA4A2" => "Hàng hóa GHN không vận chuyển",
+            "GHN-PCB0B1" => "Người gửi không muốn gửi hàng nữa (Shop hủy gửi)",
+            "GHN-PFA4A2" => "Hàng hóa GHN không hỗ trợ vận chuyển",
             "GHN-PFA3A2" => "Nhân viên lấy hàng gặp sự cố",
 
             // Giao thất bại
