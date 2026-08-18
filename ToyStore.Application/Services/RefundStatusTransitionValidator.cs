@@ -50,7 +50,9 @@ public static class RefundStatusTransitionValidator
                 (byte)RefundStatusEnum.RefundRejected => currentStatusId == (byte)RefundStatusEnum.RefundRequested
                     || currentStatusId == (byte)RefundStatusEnum.RefundApproved,
                 (byte)RefundStatusEnum.RefundCompleted => currentStatusId == (byte)RefundStatusEnum.RefundApproved,
-                (byte)RefundStatusEnum.RefundCancelled => isAdmin,
+                (byte)RefundStatusEnum.RefundCancelled => isAdmin
+                    || currentStatusId == (byte)RefundStatusEnum.RefundRequested
+                    || currentStatusId == (byte)RefundStatusEnum.RefundApproved,
                 _ => false
             };
         }
@@ -71,6 +73,11 @@ public static class RefundStatusTransitionValidator
                 ((byte)RefundStatusEnum.RefundInspectionPending, (byte)RefundStatusEnum.RefundCompleted) => true,
                 ((byte)RefundStatusEnum.RefundRejected, (byte)RefundStatusEnum.RefundApproved) => isAdmin,
                 ((byte)RefundStatusEnum.RefundDamage, (byte)RefundStatusEnum.RefundCompleted) => true,
+                (_, (byte)RefundStatusEnum.RefundCancelled) => isAdmin
+                    || currentStatusId == (byte)RefundStatusEnum.RefundRequested
+                    || currentStatusId == (byte)RefundStatusEnum.RefundApproved
+                    || currentStatusId == (byte)RefundStatusEnum.RefundReceived
+                    || currentStatusId == (byte)RefundStatusEnum.RefundInspectionPending,
                 _ => false
             };
         }
@@ -80,11 +87,11 @@ public static class RefundStatusTransitionValidator
         {
             (byte)RefundStatusEnum.RefundApproved => currentStatusId == (byte)RefundStatusEnum.RefundRequested
                 || (currentStatusId == (byte)RefundStatusEnum.RefundRejected && isAdmin),
-            // Cho phép từ chối ở bất kỳ giai đoạn nào (kể cả sau khi đã nhận hàng / kiểm kho).
-            // Khi reject toàn bộ = đóng yêu cầu, giữ hàng tại kho, KHÔNG tạo đơn GHN gửi trả.
-            // RefundReturnShipmentCreated chỉ dùng khi một phần hàng bị từ chối và cần ship trả cho khách.
+            // Chỉ cho phép từ chối (Reject) khi yêu cầu mới được gửi (RefundRequested) hoặc vừa duyệt sơ bộ (RefundApproved) trước khi tạo đơn vận chuyển GHN.
+            // Khi đã tạo đơn GHN (PickupCreated/Shipping/Received/Inspection/...) thì tuyệt đối không được Reject.
             (byte)RefundStatusEnum.RefundRejected =>
-                currentStatusId != (byte)RefundStatusEnum.RefundRejected,
+                currentStatusId == (byte)RefundStatusEnum.RefundRequested
+                || currentStatusId == (byte)RefundStatusEnum.RefundApproved,
             (byte)RefundStatusEnum.RefundPickupCreated => currentStatusId == (byte)RefundStatusEnum.RefundApproved,
             (byte)RefundStatusEnum.RefundShipping => currentStatusId == (byte)RefundStatusEnum.RefundPickupCreated,
             (byte)RefundStatusEnum.RefundReceived => currentStatusId == (byte)RefundStatusEnum.RefundShipping,
@@ -92,7 +99,18 @@ public static class RefundStatusTransitionValidator
             (byte)RefundStatusEnum.RefundCompleted => currentStatusId == (byte)RefundStatusEnum.RefundInspectionPending
                 || currentStatusId == (byte)RefundStatusEnum.RefundApproved
                 || currentStatusId == (byte)RefundStatusEnum.RefundDamage,
-            (byte)RefundStatusEnum.RefundCancelled => isAdmin,
+            (byte)RefundStatusEnum.RefundCancelled => isAdmin
+                || currentStatusId == (byte)RefundStatusEnum.RefundRequested
+                || currentStatusId == (byte)RefundStatusEnum.RefundApproved
+                || currentStatusId == (byte)RefundStatusEnum.RefundPickupCreated
+                || currentStatusId == (byte)RefundStatusEnum.RefundShipping
+                || currentStatusId == (byte)RefundStatusEnum.RefundReturnShipmentCreated
+                || currentStatusId == (byte)RefundStatusEnum.RefundReturningToCustomer,
+            (byte)RefundStatusEnum.RefundDamage => currentStatusId == (byte)RefundStatusEnum.RefundPickupCreated
+                || currentStatusId == (byte)RefundStatusEnum.RefundShipping
+                || currentStatusId == (byte)RefundStatusEnum.RefundReturnShipmentCreated
+                || currentStatusId == (byte)RefundStatusEnum.RefundReturningToCustomer
+                || currentStatusId == (byte)RefundStatusEnum.RefundCancelled,
 
             // Trạng thái vận chuyển trả ngược về cho khách
             // Bug Fix #3: Xóa RefundReturnToCustomerFailed khỏi source cho phép

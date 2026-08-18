@@ -19,27 +19,27 @@ public class CreatePromotionTimeSlotValidator : AbstractValidator<CreatePromotio
     {
         // Kiểm tra thời điểm bắt đầu khung giờ
         RuleFor(x => x.StartAt)
-            .NotEmpty().WithMessage("Thời điểm bắt đầu khung giờ là bắt buộc.")
+            .NotEmpty().WithMessage("Start time is required.")
             .Must(d => d >= DateTime.UtcNow.AddMinutes(9))
             .When((x, ctx) => x.Status == "Scheduled" && !ctx.RootContextData.ContainsKey("IsUpdate"))
-            .WithMessage("Thời điểm bắt đầu của khung giờ lên lịch phải cách hiện tại ít nhất 10 phút.");
+            .WithMessage("Scheduled start time must be at least 10 minutes in the future.");
 
         // Kiểm tra thời điểm kết thúc khung giờ: luôn phải sau StartAt
         RuleFor(x => x.EndAt)
-            .NotEmpty().WithMessage("Thời điểm kết thúc khung giờ là bắt buộc.")
-            .GreaterThan(x => x.StartAt).WithMessage("Thời điểm kết thúc phải sau thời điểm bắt đầu.");
+            .NotEmpty().WithMessage("End time is required.")
+            .GreaterThan(x => x.StartAt).WithMessage("End time must be after start time.");
 
         // Đối với khung giờ mới lên lịch (Scheduled), khoảng cách giữa StartAt và EndAt tối thiểu 10 phút
         RuleFor(x => x.EndAt)
             .GreaterThan(x => x.StartAt.AddMinutes(9))
             .When(x => x.Status == "Scheduled")
-            .WithMessage("Thời điểm kết thúc phải cách thời điểm bắt đầu ít nhất 10 phút.");
+            .WithMessage("End time must be at least 10 minutes after start time.");
 
         // Kiểm tra giá trị trạng thái khung giờ
         RuleFor(x => x.Status)
-            .NotEmpty().WithMessage("Trạng thái khung giờ là bắt buộc.")
+            .NotEmpty().WithMessage("Time slot status is required.")
             .Must(s => s == "Active" || s == "Scheduled" || s == "Expired")
-            .WithMessage("Trạng thái khung giờ chỉ có thể là 'Active', 'Scheduled', hoặc 'Expired'.");
+            .WithMessage("Time slot status must be 'Active', 'Scheduled', or 'Expired'.");
 
         // Validate lặp cho từng sản phẩm trong khung giờ này
         RuleForEach(x => x.PromotionProductSlots)

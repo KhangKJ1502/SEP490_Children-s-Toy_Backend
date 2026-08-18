@@ -102,18 +102,62 @@ public class ShippingWebhookService : IShippingWebhookService
 
             providerOrderCode = providerOrderCode.Trim();
             newStatus = newStatus.Trim();
+            clientOrderCode = clientOrderCode?.Trim();
 
             // 2. Kiểm tra xem mã vận chuyển này có thuộc về yêu cầu Trả hàng / Hoàn tiền (Refund) hay không
             var refund = await _unitOfWork.Refunds.GetByShippingOrReturnOrderCodeAsync(providerOrderCode, cancellationToken);
             if (refund is null && !string.IsNullOrWhiteSpace(clientOrderCode))
             {
-                refund = await _unitOfWork.Refunds.GetByShippingOrReturnOrderCodeAsync(clientOrderCode.Trim(), cancellationToken);
+                refund = await _unitOfWork.Refunds.GetByShippingOrReturnOrderCodeAsync(clientOrderCode, cancellationToken);
             }
 
-            // Nếu đây là mã vận chuyển của đơn Refund -> Chuyển hướng sang hàm xử lý Webhook Hoàn tiền
+            // Nếu đây là mã vận chuyển của đơn Refund -> Thực hiện xác thực chéo (Cross-Validation) tính hợp lệ giữa OrderCode và ClientOrderCode
             if (refund is not null)
             {
-                await HandleRefundWebhookAsync(refund, providerOrderCode, newStatus, rawPayload, cancellationToken);
+                bool isR2Client = !string.IsNullOrWhiteSpace(clientOrderCode) && clientOrderCode.StartsWith("R2-", StringComparison.OrdinalIgnoreCase);
+                bool isR1Client = !string.IsNullOrWhiteSpace(clientOrderCode) && (clientOrderCode.StartsWith("R-", StringComparison.OrdinalIgnoreCase) || clientOrderCode.StartsWith("REF-", StringComparison.OrdinalIgnoreCase));
+
+                // Nếu webhook gửi CẢ providerOrderCode VÀ clientOrderCode:
+                if (!string.IsNullOrWhiteSpace(providerOrderCode) && !string.IsNullOrWhiteSpace(clientOrderCode))
+                {
+                    if (isR2Client)
+                    {
+                        // Chiều giao lại hàng cho khách: OrderCode từ GHN phải khớp với ReturnShippingOrderCode trong DB
+                        if (!string.Equals(providerOrderCode, refund.ReturnShippingOrderCode, StringComparison.OrdinalIgnoreCase))
+                        {
+                            _logger.LogWarning(
+                                "GHN Webhook Mismatch cho Refund (chiều Shop->Khách): ClientOrderCode '{ClientCode}' (Refund #{RefundCode}) không khớp với OrderCode '{OrderCode}' (Mã ReturnShippingOrderCode trong DB: '{ExpectedCode}'). Bỏ qua cập nhật.",
+                                clientOrderCode, refund.RefundCode, providerOrderCode, refund.ReturnShippingOrderCode);
+                            return;
+                        }
+                    }
+                    else if (isR1Client)
+                    {
+                        // Chiều thu hồi hàng từ khách: OrderCode từ GHN phải khớp với ShippingOrderCode trong DB
+                        if (!string.Equals(providerOrderCode, refund.ShippingOrderCode, StringComparison.OrdinalIgnoreCase))
+                        {
+                            _logger.LogWarning(
+                                "GHN Webhook Mismatch cho Refund (chiều Khách->Shop): ClientOrderCode '{ClientCode}' (Refund #{RefundCode}) không khớp với OrderCode '{OrderCode}' (Mã ShippingOrderCode trong DB: '{ExpectedCode}'). Bỏ qua cập nhật.",
+                                clientOrderCode, refund.RefundCode, providerOrderCode, refund.ShippingOrderCode);
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        // Không có tiền tố R-/R2-, kiểm tra xem providerOrderCode có khớp 1 trong 2 mã vận đơn của refund không
+                        bool matchesRefund = string.Equals(providerOrderCode, refund.ShippingOrderCode, StringComparison.OrdinalIgnoreCase)
+                                          || string.Equals(providerOrderCode, refund.ReturnShippingOrderCode, StringComparison.OrdinalIgnoreCase);
+                        if (!matchesRefund)
+                        {
+                            _logger.LogWarning(
+                                "GHN Webhook Mismatch cho Refund: OrderCode '{OrderCode}' không khớp với bất kỳ mã vận đơn nào của Refund #{RefundCode} (Shipping='{ShipCode}', Return='{ReturnCode}'). Bỏ qua cập nhật.",
+                                providerOrderCode, refund.RefundCode, refund.ShippingOrderCode, refund.ReturnShippingOrderCode);
+                            return;
+                        }
+                    }
+                }
+
+                await HandleRefundWebhookAsync(refund, providerOrderCode, clientOrderCode, newStatus, rawPayload, cancellationToken);
                 return;
             }
 
@@ -123,15 +167,33 @@ public class ShippingWebhookService : IShippingWebhookService
 
             if (tx is null && !string.IsNullOrWhiteSpace(clientOrderCode))
             {
-                tx = await _unitOfWork.Orders.GetShippingTransactionByProviderCodeAsync(clientOrderCode.Trim(), cancellationToken);
+                tx = await _unitOfWork.Orders.GetShippingTransactionByProviderCodeAsync(clientOrderCode, cancellationToken);
             }
 
             if (tx is null)
             {
                 _logger.LogWarning(
-                    "Shipping webhook from {Provider}: ProviderOrderCode '{Code}' not found in shipping transactions or refund requests",
-                    provider, providerOrderCode);
+                    "Shipping webhook from {Provider}: ProviderOrderCode '{Code}' / ClientOrderCode '{ClientCode}' not found in shipping transactions or refund requests",
+                    provider, providerOrderCode, clientOrderCode);
                 return;
+            }
+
+            // Xác thực chéo cho đơn hàng thường:
+            // Nếu có cả providerOrderCode và clientOrderCode, kiểm tra xem providerOrderCode có khớp với mã vận chuyển đã lưu của đơn này không
+            if (!string.IsNullOrWhiteSpace(providerOrderCode) && !string.IsNullOrWhiteSpace(clientOrderCode) && tx.Order != null)
+            {
+                bool matchesOrder = string.Equals(providerOrderCode, tx.ProviderOrderCode, StringComparison.OrdinalIgnoreCase)
+                                 || string.Equals(providerOrderCode, tx.Order.ShippingOrderCode, StringComparison.OrdinalIgnoreCase);
+                bool matchesClient = string.Equals(clientOrderCode, tx.Order.OrderCode, StringComparison.OrdinalIgnoreCase)
+                                  || string.Equals(clientOrderCode, tx.ProviderOrderCode, StringComparison.OrdinalIgnoreCase);
+
+                if (!matchesOrder || !matchesClient)
+                {
+                    _logger.LogWarning(
+                        "GHN Webhook Mismatch cho Order: ClientOrderCode '{ClientCode}' (Order #{OrderCode}) không khớp với OrderCode '{OrderCode}' (Mã GHN trong DB: '{ExpectedCode}'). Bỏ qua cập nhật.",
+                        clientOrderCode, tx.Order.OrderCode, providerOrderCode, tx.ProviderOrderCode);
+                    return;
+                }
             }
 
             // Kiểm tra bổ sung an toàn: Nếu trước đó chưa tìm thấy refund theo mã vận đơn, kiểm tra xem giao dịch tx hoặc clientOrderCode có thuộc về yêu cầu Refund hay không
@@ -182,7 +244,7 @@ public class ShippingWebhookService : IShippingWebhookService
 
             if (refund is not null)
             {
-                await HandleRefundWebhookAsync(refund, providerOrderCode, newStatus, rawPayload, cancellationToken);
+                await HandleRefundWebhookAsync(refund, providerOrderCode, clientOrderCode, newStatus, rawPayload, cancellationToken);
                 return;
             }
 
@@ -256,6 +318,20 @@ public class ShippingWebhookService : IShippingWebhookService
                 // B. Cập nhật trạng thái giao dịch vận chuyển
                 tx.Status = newStatus;
                 tx.UpdatedAt = now;
+
+                if (tx.Order != null)
+                {
+                    var rCode = TryGetString(root, "ReasonCode") ?? TryGetString(root, "reason_code");
+                    var rDesc = TryGetString(root, "Reason") ?? TryGetString(root, "reason");
+                    if (!string.IsNullOrWhiteSpace(rCode))
+                    {
+                        tx.Order.LastGHNFailCode = rCode;
+                    }
+                    if (!string.IsNullOrWhiteSpace(rDesc))
+                    {
+                        tx.Order.CancelReason = rDesc;
+                    }
+                }
 
                 // C. Phân tích hành động tương ứng với trạng thái vận chuyển mới
                 var action = _statusMapper.ResolveWebhookAction(newStatus);
@@ -401,7 +477,7 @@ public class ShippingWebhookService : IShippingWebhookService
             OrderId = order.OrderId,
             StatusId = targetStatusId,
             ChangedBy = null,
-            Note = $"Tự động cập nhật từ webhook vận chuyển: {targetStatusName}",
+            Note = $"Automatically updated from shipping webhook: {targetStatusName}",
             CreatedAt = now
         }, cancellationToken);
     }
@@ -436,6 +512,7 @@ public class ShippingWebhookService : IShippingWebhookService
     private async Task HandleRefundWebhookAsync(
         OrderRefund refund,
         string providerOrderCode,
+        string? clientOrderCode,
         string newStatus,
         string rawPayload,
         CancellationToken cancellationToken)
@@ -443,11 +520,12 @@ public class ShippingWebhookService : IShippingWebhookService
         try
         {
             // Kiểm tra đây là chiều giao lại hàng cho khách (ReturnToCustomer) hay chiều thu hồi hàng trả về Shop
-            bool isReturnToCustomer = string.Equals(providerOrderCode, refund.ReturnShippingOrderCode, StringComparison.OrdinalIgnoreCase);
+            bool isReturnToCustomer = (!string.IsNullOrWhiteSpace(clientOrderCode) && clientOrderCode.StartsWith("R2-", StringComparison.OrdinalIgnoreCase))
+                || string.Equals(providerOrderCode, refund.ReturnShippingOrderCode, StringComparison.OrdinalIgnoreCase);
 
             _logger.LogInformation(
-                "Đang định tuyến Refund webhook: RefundId={RefundId}, ProviderCode={Code}, ShippingOrderCode={ShipCode}, ReturnShippingOrderCode={ReturnCode}, isReturnToCustomer={IsReturn}",
-                refund.RefundId, providerOrderCode, refund.ShippingOrderCode, refund.ReturnShippingOrderCode, isReturnToCustomer);
+                "Đang định tuyến Refund webhook: RefundId={RefundId}, ProviderCode={Code}, ClientOrderCode={ClientCode}, ShippingOrderCode={ShipCode}, ReturnShippingOrderCode={ReturnCode}, isReturnToCustomer={IsReturn}",
+                refund.RefundId, providerOrderCode, clientOrderCode, refund.ShippingOrderCode, refund.ReturnShippingOrderCode, isReturnToCustomer);
 
             var now = _timeProvider.UtcNow;
 
@@ -538,7 +616,7 @@ public class ShippingWebhookService : IShippingWebhookService
 
             // 1. Xác định mã vận đơn của Refund (ưu tiên mã refund, không dùng mã gốc của đơn hàng chính)
             var payloadRoot = JsonDocument.Parse(rawPayload).RootElement;
-            var clientOrderCode = TryGetString(payloadRoot, "ClientOrderCode") ?? TryGetString(payloadRoot, "client_order_code");
+            clientOrderCode ??= TryGetString(payloadRoot, "ClientOrderCode") ?? TryGetString(payloadRoot, "client_order_code");
 
             string refundTxCode = providerOrderCode;
             if (!string.IsNullOrWhiteSpace(clientOrderCode) &&
@@ -699,38 +777,39 @@ public class ShippingWebhookService : IShippingWebhookService
                                     }
                                 }
                             }
-                            else
-                            {
-                                // Hoàn lại phí ship hàng mà khách đã trả khi đơn refund bị GHN hủy (do shop không giao hàng lại)
-                                if (refund.CustomerShippingPaid > 0)
-                                {
-                                    var order = await _unitOfWork.Orders.GetByIdForUpdateAsync(refund.OrderId, cancellationToken);
-                                    if (order != null)
-                                    {
-                                        var shippingRefundKey = $"REFUND_SHIP_CANCEL_{refund.RefundCode ?? refund.RefundId.ToString()}";
-                                        var credited = await _walletRefundCreditor.CreditRefundAsync(
-                                            order.AccountId,
-                                            refund.CustomerShippingPaid,
-                                            order.OrderCode,
-                                            order.OrderId,
-                                            cancellationToken,
-                                            shippingRefundKey);
-
-                                        if (credited)
-                                        {
-                                            _logger.LogInformation(
-                                                "Phí vận chuyển refund {Amount} đã được hoàn vào ví cho RefundId={RefundId} (GHN cancel - shop không giao hàng cho shipper)",
-                                                refund.CustomerShippingPaid, refund.RefundId);
-                                        }
-                                    }
-                                }
-                            }
                         }
                         // Trường hợp hàng hóa bị HƯ HỎNG / THẤT LẠC (RefundDamage)
                         else if (targetRefundStatusId.Value == (byte)RefundStatusEnum.RefundDamage)
                         {
                             refund.CancelledAt = null;
-                            refund.AdminNote = "Hàng hóa bị hư hỏng/thất lạc trong quá trình vận chuyển (GHN cập nhật Damage/Lost). Không cần kiểm định chất lượng.";
+                            refund.AdminNote = "Goods damaged/lost in transit (GHN updated Damage/Lost). No quality inspection required.";
+
+                            if (isReturnToCustomer)
+                            {
+                                // Hoàn lại phí ReturnToCustomerFee mà khách đã trả trước đó vì ĐVVC GHN làm hư hỏng / bể vỡ / thất lạc hàng trên đường giao lại cho khách
+                                if (refund.ReturnToCustomerFeePaid && refund.ReturnToCustomerFee > 0)
+                                {
+                                    var order = await _unitOfWork.Orders.GetByIdForUpdateAsync(refund.OrderId, cancellationToken);
+                                    if (order != null)
+                                    {
+                                        var returnFeeRefundKey = $"REFUND_RETURN_FEE_{refund.RefundCode ?? refund.RefundId.ToString()}";
+                                        var credited = await _walletRefundCreditor.CreditRefundAsync(
+                                            order.AccountId,
+                                            refund.ReturnToCustomerFee,
+                                            order.OrderCode,
+                                            order.OrderId,
+                                            cancellationToken,
+                                            returnFeeRefundKey);
+
+                                        if (credited)
+                                        {
+                                            _logger.LogInformation(
+                                                "Phí giao lại cho khách {Amount} đã được hoàn vào ví cho RefundId={RefundId} (GHN damage/lost trên đường giao lại hàng cho khách)",
+                                                refund.ReturnToCustomerFee, refund.RefundId);
+                                        }
+                                    }
+                                }
+                            }
 
                             if (previousRefundStatusId == (byte)RefundStatusEnum.RefundCancelled)
                             {
@@ -750,28 +829,35 @@ public class ShippingWebhookService : IShippingWebhookService
                             }
                         }
 
-                        // Xây dựng ghi chú lịch sử chi tiết bao gồm nguyên nhân từ GHN
+                        // Xây dựng ghi chú lịch sử chi tiết bao gồm nguyên nhân từ GHN (giữ nguyên reason từ GHN)
                         var friendlyReason = GhnFailCodeMapper.GetFriendlyDescription(ghnReasonCode, ghnReason);
                         var detailedNote = !string.IsNullOrWhiteSpace(friendlyReason) && friendlyReason != ghnReason
                             ? $"GHN {newStatus} ({ghnReasonCode ?? "N/A"}): {friendlyReason}"
                             : !string.IsNullOrWhiteSpace(ghnReason)
                                 ? $"GHN {newStatus}: {ghnReason}"
-                                : $"Tự động cập nhật từ webhook vận chuyển GHN: {newStatus}";
+                                : $"Automatically updated from GHN shipping webhook: {newStatus}";
 
                         // Bổ sung bối cảnh đối với trường hợp hủy hoặc giao thất bại
                         if (targetRefundStatusId.Value == (byte)RefundStatusEnum.RefundCancelled)
                         {
                             if (isReturnToCustomer)
                             {
-                                detailedNote += ". Vận đơn giao lại cho khách bị hủy: shop không bàn giao hàng cho đơn vị vận chuyển.";
+                                detailedNote += ". Return-to-customer delivery cancelled: shop did not hand over items to courier.";
                                 if (refund.ReturnToCustomerFeePaid && refund.ReturnToCustomerFee > 0)
-                                    detailedNote += $" Phí vận chuyển {refund.ReturnToCustomerFee:N0}₫ đã được hoàn trả vào ví của khách hàng.";
+                                    detailedNote += $" Return shipping fee of {refund.ReturnToCustomerFee:N0} VND was refunded to customer wallet.";
                             }
                             else
                             {
-                                detailedNote += ". Đơn refund bị hủy: shop không bàn giao hàng cho đơn vị vận chuyển.";
-                                if (refund.CustomerShippingPaid > 0)
-                                    detailedNote += $" Phí vận chuyển {refund.CustomerShippingPaid:N0}₫ đã được hoàn trả vào ví của khách hàng.";
+                                detailedNote += ". Return pickup shipment cancelled: items were not handed over to courier or shipment was cancelled. Refund request cancelled.";
+                            }
+                        }
+                        else if (targetRefundStatusId.Value == (byte)RefundStatusEnum.RefundDamage)
+                        {
+                            if (isReturnToCustomer)
+                            {
+                                detailedNote += ". Returned items to customer were damaged/lost in transit by courier.";
+                                if (refund.ReturnToCustomerFeePaid && refund.ReturnToCustomerFee > 0)
+                                    detailedNote += $" Return shipping fee of {refund.ReturnToCustomerFee:N0} VND was refunded to customer wallet.";
                             }
                         }
                         else if (targetRefundStatusId.Value == (byte)RefundStatusEnum.RefundReturnToCustomerFailed)
@@ -779,7 +865,7 @@ public class ShippingWebhookService : IShippingWebhookService
                             // Lỗi DO KHÁCH: Shipper đã đến giao nhưng khách không nhận hàng / không nghe máy.
                             // → KHÔNG hoàn lại phí giao trả (ReturnToCustomerFee) — khách chịu trách nhiệm.
                             // Chỉ hoàn phí ship khi là lỗi do Shop (không bàn giao hàng cho shipper → RefundCancelled).
-                            detailedNote += ". Giao hàng trả lại cho khách thất bại (khách không nhận hàng / phát hàng không thành công). Phí vận chuyển không được hoàn do lỗi từ phía khách hàng.";
+                            detailedNote += ". Delivery of rejected items back to customer failed (customer was unreachable or refused package). Return shipping fee is non-refundable.";
                         }
 
                         // Lưu nhật ký chuyển đổi trạng thái refund

@@ -86,37 +86,29 @@ public class OrderLifecycleService : IOrderLifecycleService
                 await _unitOfWork.Orders.RestoreVoucherAsync(order.OrderId, cancellationToken);
             }
 
-            // BƯỚC 3: Xử lý hoàn tiền cho các đơn hàng đã thanh toán trước (Prepaid PAID: SE_PAY / WALLET)
+            // BƯỚC 3: Xử lý hoàn tiền cho các đơn hàng đã thanh toán trước (Prepaid PAID: SE_PAY / WALLET / BANK_TRANSFER)
             bool hasCreatedSystemRefund = false;
             if (string.Equals(order.PaymentStatus, PaymentStatuses.Paid, StringComparison.OrdinalIgnoreCase)
                 && PrepaidPaymentMethods.Contains(order.PaymentMethod))
             {
-                // Nếu trạng thái đơn hàng đã tiến xa (ví dụ: đã gán shipper/đang giao hàng), 
-                // không tự động hoàn vào ví nữa mà phải tạo phiếu yêu cầu hoàn tiền thủ công (manual refund request) để admin duyệt.
-                if (OrderStatuses.PrepaidCancelRequiresManualRefund(order.StatusId))
-                {
-                    _logger.LogInformation(
-                        "Cancel {OrderCode}: prepaid PAID at status {StatusId} — no auto wallet; use refund management.",
-                        order.OrderCode, order.StatusId);
-                    await CreateCancelledOrderSystemRefundAsync(order, cancelledByAccountId, reason, cancellationToken);
-                    hasCreatedSystemRefund = true;
-                }
                 // Phòng tránh hoàn tiền trùng lặp (Idempotency Check) bằng cách check lịch sử hoàn tiền hoặc giao dịch ví trùng mã.
-                else if (await _unitOfWork.Orders.HasCompletedRefundWalletCreditForOrderAsync(order.OrderId, cancellationToken)
-                         || await _unitOfWork.Orders.ExistsWalletTransactionByIdempotencyKeyAsync(
-                             WalletRefundKeys.ForOrder(order.OrderCode), cancellationToken))
+                if (await _unitOfWork.Orders.HasCompletedRefundWalletCreditForOrderAsync(order.OrderId, cancellationToken)
+                    || await _unitOfWork.Orders.ExistsWalletTransactionByIdempotencyKeyAsync(
+                        WalletRefundKeys.ForOrder(order.OrderCode), cancellationToken))
                 {
                     _logger.LogInformation(
                         "Cancel {OrderCode}: refund wallet credit already exists — skipping duplicate.",
                         order.OrderCode);
                     order.PaymentStatus = PaymentStatuses.Refunded;
                 }
-                // Nếu đơn hàng ở trạng thái mới đặt (ví dụ: Confirmed/Processing), tự động hoàn tiền trực tiếp vào Ví điện tử của khách hàng.
+                // Đối với đơn hàng đã thanh toán trước khi bị hủy: luôn tạo phiếu yêu cầu hoàn tiền RefundOnly để Staff thẩm định và bấm duyệt hoàn ví.
                 else
                 {
-                    await _walletRefundCreditor.CreditRefundAsync(
-                        order.AccountId, order.TotalAmount, order.OrderCode, order.OrderId, cancellationToken);
-                    order.PaymentStatus = PaymentStatuses.Refunded;
+                    _logger.LogInformation(
+                        "Cancel {OrderCode}: prepaid PAID at status {StatusId} — creating RefundOnly request for Staff review.",
+                        order.OrderCode, order.StatusId);
+                    await CreateCancelledOrderSystemRefundAsync(order, cancelledByAccountId, reason, cancellationToken);
+                    hasCreatedSystemRefund = true;
                 }
             }
             else if (order.PaymentMethod == "SE_PAY" && order.PaymentStatus == "PENDING")
@@ -358,8 +350,9 @@ public class OrderLifecycleService : IOrderLifecycleService
             return;
         }
 
-        // 2. Resolve refund reason ID
-        var reasonEntity = await _unitOfWork.Refunds.GetReasonByContentAsync(RefundReasons.DeliveryFailedGhn, cancellationToken);
+        // 2. Resolve refund reason ID (Ưu tiên lý do Hủy đơn hàng trước khi giao)
+        var reasonEntity = await _unitOfWork.Refunds.GetReasonByContentAsync(RefundReasons.OrderCancelled, cancellationToken)
+            ?? await _unitOfWork.Refunds.GetReasonByContentAsync(RefundReasons.DeliveryFailedGhn, cancellationToken);
         byte reasonId = reasonEntity?.RefundReasonId ?? 1;
 
         // Reload details if empty to calculate exact refund amounts
@@ -374,8 +367,12 @@ public class OrderLifecycleService : IOrderLifecycleService
         }
 
         // 3. Map refund details
+        // Tách discount: Chỉ tính tỷ lệ giảm giá sản phẩm từ Voucher đơn hàng (ORDER_TOTAL),
+        // loại trừ giảm giá vận chuyển (SHIPPING_FEE) để không làm giảm sai giá trị hoàn của sản phẩm.
+        var shippingFee = refundOrder.ActualShippingFee ?? refundOrder.EstimatedShippingFee;
+        var productVoucherDiscount = Math.Max(0m, refundOrder.VoucherDiscountAmount - shippingFee);
         var discountRatio = refundOrder.SubTotal > 0
-            ? (refundOrder.VoucherDiscountAmount / refundOrder.SubTotal)
+            ? (productVoucherDiscount / refundOrder.SubTotal)
             : 0m;
 
         var refundDetails = refundOrder.OrderDetails.Select(od =>
@@ -394,9 +391,6 @@ public class OrderLifecycleService : IOrderLifecycleService
         }).ToList();
 
         var subTotal = refundDetails.Sum(d => d.RefundAmount);
-        var shippingFee = refundOrder.ActualShippingFee ?? refundOrder.EstimatedShippingFee;
-        // Use the order's TotalAmount (already includes shipping and deducts voucher discount)
-        // instead of manually computing subTotal + shippingFee which ignores VoucherDiscountAmount.
         var totalAmount = refundOrder.TotalAmount;
         var now = _timeProvider.UtcNow;
 
@@ -405,11 +399,15 @@ public class OrderLifecycleService : IOrderLifecycleService
         {
             OrderId = refundOrder.OrderId,
             RefundReasonId = reasonId,
-            ReasonDetails = $"Auto-created: Order cancelled by {(cancelledByAccountId == 0 ? "System" : "Admin")} (Reason: {cancelReason})",
+            ReasonDetails = $"Order cancelled: {cancelReason}",
             RefundSource = RefundSources.System, // Bypasses customer return windows
+            RefundType = RefundTypes.RefundOnly, // Chỉ hoàn tiền, không có kiện hàng gửi trả
             CustomerId = refundOrder.AccountId,
             RequestedBy = cancelledByAccountId == 0 ? null : cancelledByAccountId,
             ApprovedAmount = totalAmount,
+            FinalRefundAmount = totalAmount,
+            ReturnShippingFee = 0m,
+            ReturnShippingFeeBy = RefundResponsibleParty.Store,
             RefundCode = "REF-" + now.ToString("yyyyMMdd") + "-" + Guid.NewGuid().ToString().Substring(0, 8).ToUpper(),
             SubTotal = subTotal,
             ShippingFee = shippingFee,

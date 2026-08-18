@@ -57,37 +57,32 @@ public class WalletRefundCreditorService : IWalletRefundCreditor
         if (amount <= 0)
             return false;
 
-        var canonicalKey = WalletRefundKeys.ForOrder(orderCode);
+        var keyToUse = !string.IsNullOrWhiteSpace(idempotencyKey)
+            ? idempotencyKey
+            : WalletRefundKeys.ForOrder(orderCode);
 
-        // 2. Kiểm tra xem đơn hàng đã từng có giao dịch cộng tiền hoàn hoàn tất trước đó chưa
-        if (relatedOrderId.HasValue
-            && await _unitOfWork.Orders.HasCompletedRefundWalletCreditForOrderAsync(relatedOrderId.Value, cancellationToken))
+        // 2. Nếu không có custom idempotencyKey (nghĩa là luồng hoàn tiền đơn hàng chính):
+        // Kiểm tra xem đơn hàng đã từng có giao dịch cộng tiền hoàn hoàn tất trước đó chưa
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
         {
-            _logger.LogInformation(
-                "Refund wallet credit skipped — order {OrderId} already has a completed refund txn",
-                relatedOrderId.Value);
+            if (relatedOrderId.HasValue
+                && await _unitOfWork.Orders.HasCompletedRefundWalletCreditForOrderAsync(relatedOrderId.Value, cancellationToken))
+            {
+                _logger.LogInformation(
+                    "Refund wallet credit skipped — order {OrderId} already has a completed refund txn",
+                    relatedOrderId.Value);
+                return true;
+            }
+        }
+
+        // Kiểm tra trùng IdempotencyKey
+        if (await _unitOfWork.Orders.ExistsWalletTransactionByIdempotencyKeyAsync(keyToUse, cancellationToken))
+        {
+            _logger.LogInformation("Refund wallet credit skipped (duplicate key {Key}) for order {OrderCode}", keyToUse, orderCode);
             return true;
         }
 
-        // Kiểm tra trùng IdempotencyKey chuẩn
-        if (await _unitOfWork.Orders.ExistsWalletTransactionByIdempotencyKeyAsync(canonicalKey, cancellationToken))
-        {
-            _logger.LogInformation("Refund wallet credit skipped (duplicate key) for order {OrderCode}", orderCode);
-            return true;
-        }
-
-        // Kiểm tra trùng IdempotencyKey cũ (legacy key nếu có)
-        if (!string.IsNullOrEmpty(idempotencyKey)
-            && !string.Equals(idempotencyKey, canonicalKey, StringComparison.Ordinal)
-            && await _unitOfWork.Orders.ExistsWalletTransactionByIdempotencyKeyAsync(idempotencyKey, cancellationToken))
-        {
-            _logger.LogInformation(
-                "Refund wallet credit skipped (legacy key {LegacyKey}) for order {OrderCode}",
-                idempotencyKey, orderCode);
-            return true;
-        }
-
-        idempotencyKey = canonicalKey;
+        idempotencyKey = keyToUse;
 
         // 3. Lấy thông tin ví của khách hàng
         var wallet = await _unitOfWork.Wallets.GetByAccountIdAsync(accountId, cancellationToken);
