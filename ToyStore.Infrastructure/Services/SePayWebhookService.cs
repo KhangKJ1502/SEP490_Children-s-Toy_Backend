@@ -282,25 +282,26 @@ public class SePayWebhookService : ISePayWebhookService
     // ── WLT_: Nạp ví ─────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Hàm điều hướng xử lý webhook nạp tiền ví từ SePay (WLT).
+    /// Điều hướng xử lý webhook nạp tiền vào ví (tiền tố WLT).
+    /// Thử lần lượt 3 cách: 1. Redis Cache -> 2. Backfill Gateway Txn -> 3. Fallback theo AccountId.
     /// </summary>
     private async Task HandleWalletTopUpAsync(string idempotencyKey, SePayWebhookPayload payload, CancellationToken ct)
     {
         var amount = payload.TransferAmount;
 
-        // Ưu tiên xử lý theo metadata topup đã tạo trước đó từ API tạo QR.
-        // Nếu không tìm thấy metadata thì fallback về nhánh xử lý thủ công cũ phía dưới.
+        // 1. Ưu tiên xử lý từ dữ liệu nạp tiền lưu trong Redis Cache (tạo từ QR trong vòng 24h)
         if (await TryHandleWalletTopUpFromAttemptCacheAsync(idempotencyKey, payload, ct))
         {
             return;
         }
 
+        // 2. Nếu đã cộng tiền ví rồi nhưng chưa ghi nhận giao dịch cổng thanh toán thì ghi bổ sung (backfill)
         if (await TryBackfillWalletTopUpGatewayTransactionAsync(idempotencyKey, payload, ct))
         {
             return;
         }
 
-        // Trích AccountId từ key: WLT_{AccountId}_{uuid} hoặc WLT{AccountId}{uuid}
+        // 3. Dự phòng khi Redis hết hạn (>24h): Trích xuất AccountId trực tiếp từ mã WLT (ví dụ: WLT_123_abc)
         int? resolvedAccountId = null;
         if (idempotencyKey.Contains('_'))
         {
@@ -315,7 +316,7 @@ public class SePayWebhookService : ISePayWebhookService
         }
         else if (idempotencyKey.StartsWith("WLT", StringComparison.OrdinalIgnoreCase) && idempotencyKey.Length > 11)
         {
-            // Định dạng không dấu gạch dưới: WLT (3 kí tự) + AccountId + UUID (8 kí tự của 4 bytes hex)
+            // Định dạng không gạch dưới: WLT + AccountId + UUID (8 ký tự hex)
             var accIdStr = idempotencyKey[3..^8];
             if (int.TryParse(accIdStr, out var accId))
             {
@@ -323,6 +324,7 @@ public class SePayWebhookService : ISePayWebhookService
             }
         }
 
+        // Nếu lấy được AccountId, gọi hàm fallback để cộng tiền trực tiếp vào ví
         if (resolvedAccountId.HasValue)
         {
             if (await TryHandleWalletTopUpFallbackAsync(resolvedAccountId.Value, idempotencyKey, payload, ct))
@@ -332,7 +334,6 @@ public class SePayWebhookService : ISePayWebhookService
         }
 
         _logger.LogWarning("WLT webhook fallback: unable to resolve AccountId from key '{Key}', amount {Amt}", idempotencyKey, amount);
-
     }
 
     private static bool IsPrefixed(string content, string prefix)
@@ -423,7 +424,7 @@ public class SePayWebhookService : ISePayWebhookService
     }
 
     /// <summary>
-    /// Xử lý giao dịch nạp tiền ví dựa trên thông tin yêu cầu nạp tiền còn lưu trong Redis cache (xảy ra trong vòng 24h).
+    /// Xử lý nạp ví từ Redis cache (luồng chính khi quét QR nạp tiền trong 24h).
     /// </summary>
     private async Task<bool> TryHandleWalletTopUpFromAttemptCacheAsync(
         string idempotencyKey,
@@ -432,10 +433,12 @@ public class SePayWebhookService : ISePayWebhookService
     {
         var amount = payload.TransferAmount;
         var cacheKey = BuildTopUpAttemptKey(idempotencyKey);
+        
+        // BƯỚC 1: Lấy thông tin yêu cầu nạp tiền từ Redis cache
         var rawAttempt = await _redisService.GetAsync(cacheKey);
         if (string.IsNullOrWhiteSpace(rawAttempt))
         {
-            return false;
+            return false; // Không thấy thông tin trong cache -> bỏ qua để sang luồng khác
         }
 
         WalletTopUpAttemptCache? topUpAttempt;
@@ -455,12 +458,14 @@ public class SePayWebhookService : ISePayWebhookService
             return true;
         }
 
+        // BƯỚC 2: Kiểm tra chống lặp (Idempotency) - Nếu đã PAID thì không cộng lại
         if (string.Equals(topUpAttempt.Status, "PAID", StringComparison.OrdinalIgnoreCase))
         {
             _logger.LogInformation("WLT webhook: attempt '{Key}' already marked as PAID", idempotencyKey);
             return false;
         }
 
+        // BƯỚC 3: Kiểm tra số tiền nhận được có khớp với số tiền tạo lệnh nạp không (cho phép lệch tối đa 1đ)
         var diff = Math.Abs(amount - topUpAttempt.Amount);
         if (diff > 1)
         {
@@ -476,6 +481,7 @@ public class SePayWebhookService : ISePayWebhookService
             return true;
         }
 
+        // BƯỚC 4: Tìm ví của người dùng theo AccountId
         var wallet = await _uow.Orders.GetWalletByAccountIdAsync(topUpAttempt.AccountId, ct);
         if (wallet == null || wallet.WalletId != topUpAttempt.WalletId)
         {
@@ -489,12 +495,15 @@ public class SePayWebhookService : ISePayWebhookService
         var now = _timeProvider.UtcNow;
         var rawCallback = JsonSerializer.Serialize(payload);
         var webhookTxnNo = ResolveWebhookTransactionNo(payload);
+
+        // BƯỚC 5: Khởi tạo Database Transaction để cộng tiền và lưu thông tin
         await _uow.BeginTransactionAsync(ct);
         try
         {
             var existingWalletTransaction = await _db.WalletTransactions
                 .FirstOrDefaultAsync(wt => wt.IdempotencyKey == idempotencyKey, ct);
 
+            // Tạo giao dịch cổng thanh toán (PaymentGatewayTransaction) và đơn bóng (Shadow Order) nếu chưa có
             var paymentGatewayTxn = await _uow.Orders.GetPaymentTransactionByRequestIdAsync(idempotencyKey, ct);
             if (paymentGatewayTxn == null)
             {
@@ -515,6 +524,8 @@ public class SePayWebhookService : ISePayWebhookService
             WalletTransaction? walletTransaction = existingWalletTransaction;
             var balanceAfter = wallet.Balance;
             var createdWalletTransaction = false;
+
+            // Nếu chưa có lịch sử ví -> Cộng tiền vào số dư ví và ghi nhận WalletTransaction (Credit)
             if (existingWalletTransaction == null)
             {
                 var balanceBefore = wallet.Balance;
@@ -542,6 +553,7 @@ public class SePayWebhookService : ISePayWebhookService
                 createdWalletTransaction = true;
             }
 
+            // Cập nhật trạng thái cổng thanh toán thành Paid
             paymentGatewayTxn.TransactionNo = paymentGatewayTxn.TransactionNo ?? webhookTxnNo;
             paymentGatewayTxn.ResponseCode = "00";
             paymentGatewayTxn.ResponseMessage = "Transaction Success";
@@ -552,11 +564,13 @@ public class SePayWebhookService : ISePayWebhookService
             await _uow.SaveChangesAsync(ct);
             await _uow.CommitTransactionAsync(ct);
 
+            // BƯỚC 6: Cập nhật trạng thái Redis cache thành PAID
             topUpAttempt.Status = "PAID";
             topUpAttempt.WalletTransactionId = walletTransaction?.WalletTransactionId;
             topUpAttempt.CompletedAt = now;
             await _redisService.SetAsync(cacheKey, JsonSerializer.Serialize(topUpAttempt), TimeSpan.FromHours(24));
 
+            // BƯỚC 7: Bắn sự kiện (Event) thông báo cho hệ thống / người dùng nạp tiền thành công
             if (createdWalletTransaction && walletTransaction != null)
             {
                 await _eventPublisher.PublishAsync(
@@ -581,6 +595,7 @@ public class SePayWebhookService : ISePayWebhookService
         }
         catch (DbUpdateException ex) when (IsUniqueViolation(ex))
         {
+            // Xử lý xung đột ghi lặp (Duplicate callback)
             await _uow.RollbackTransactionAsync(ct);
 
             var existingWalletTxn = await _db.WalletTransactions
@@ -608,13 +623,14 @@ public class SePayWebhookService : ISePayWebhookService
     }
 
     /// <summary>
-    /// Bổ sung (backfill) thông tin giao dịch cổng thanh toán nếu giao dịch ví đã được xử lý nhưng lịch sử cổng thanh toán chưa được ghi nhận.
+    /// Ghi bổ sung (backfill) giao dịch cổng thanh toán nếu ví đã được cộng tiền thành công trước đó nhưng chưa lưu record cổng thanh toán.
     /// </summary>
     private async Task<bool> TryBackfillWalletTopUpGatewayTransactionAsync(
         string idempotencyKey,
         SePayWebhookPayload payload,
         CancellationToken ct)
     {
+        // 1. Kiểm tra xem giao dịch ví đã tồn tại chưa
         var walletTransaction = await _db.WalletTransactions
             .FirstOrDefaultAsync(wt => wt.IdempotencyKey == idempotencyKey, ct);
         if (walletTransaction == null)
@@ -629,6 +645,7 @@ public class SePayWebhookService : ISePayWebhookService
         await _uow.BeginTransactionAsync(ct);
         try
         {
+            // 2. Tạo đơn bóng và record giao dịch cổng thanh toán nếu chưa có
             var gatewayTxn = await _uow.Orders.GetPaymentTransactionByRequestIdAsync(idempotencyKey, ct);
             if (gatewayTxn == null)
             {
@@ -658,6 +675,7 @@ public class SePayWebhookService : ISePayWebhookService
                 await _db.PaymentGatewayTransactions.AddAsync(gatewayTxn, ct);
             }
 
+            // 3. Cập nhật trạng thái cổng thanh toán thành Paid
             gatewayTxn.TransactionNo = gatewayTxn.TransactionNo ?? webhookTxnNo;
             gatewayTxn.ResponseCode = "00";
             gatewayTxn.ResponseMessage = "Transaction Success";
@@ -679,7 +697,7 @@ public class SePayWebhookService : ISePayWebhookService
     }
 
     /// <summary>
-    /// Tạo mới hoặc lấy đơn hàng bóng (Shadow Order - dùng làm trung gian liên kết) để quản lý lịch sử giao dịch nạp tiền ví trên cổng thanh toán.
+    /// Tạo hoặc lấy Đơn hàng bóng (Shadow Order) để liên kết lịch sử nạp ví với bảng cổng thanh toán.
     /// </summary>
     private async Task<Order> GetOrCreateWalletTopUpShadowOrderAsync(
         WalletTopUpAttemptCache topUpAttempt,
@@ -706,6 +724,7 @@ public class SePayWebhookService : ISePayWebhookService
             statusId = pendingStatusId;
         }
 
+        // Đơn hàng bóng có thông tin giả định và đánh dấu IsDeleted = true để ẩn khỏi danh sách đơn hàng mua sắm
         var shadowOrder = new Order
         {
             AccountId = topUpAttempt.AccountId,
@@ -739,6 +758,9 @@ public class SePayWebhookService : ISePayWebhookService
         return shadowOrder;
     }
 
+    /// <summary>
+    /// Tạo mã đơn hàng bóng chuẩn hóa từ mã nạp ví (Ví dụ: WLT123ABC).
+    /// </summary>
     private static string BuildTopUpShadowOrderCode(string idempotencyKey)
     {
         var normalized = new string((idempotencyKey ?? string.Empty)
@@ -847,7 +869,8 @@ public class SePayWebhookService : ISePayWebhookService
     }
 
     /// <summary>
-    /// Luồng dự phòng khi Redis cache đã hết hạn (quá 24h): Giải mã AccountId trực tiếp từ nội dung chuyển khoản để tự động cộng tiền và lưu thông tin nạp tiền ví vào cơ sở dữ liệu.
+    /// Luồng xử lý dự phòng nạp ví khi Redis cache đã hết hạn (>24h).
+    /// Tự lấy AccountId từ mã giao dịch để cộng tiền vào ví và lưu thông tin.
     /// </summary>
     private async Task<bool> TryHandleWalletTopUpFallbackAsync(
         int accountId,
@@ -860,7 +883,7 @@ public class SePayWebhookService : ISePayWebhookService
         var rawCallback = JsonSerializer.Serialize(payload);
         var webhookTxnNo = ResolveWebhookTransactionNo(payload);
 
-        // 1. Kiểm tra ví của tài khoản
+        // BƯỚC 1: Tìm ví của tài khoản
         var wallet = await _uow.Orders.GetWalletByAccountIdAsync(accountId, ct);
         if (wallet == null)
         {
@@ -871,14 +894,14 @@ public class SePayWebhookService : ISePayWebhookService
         await _uow.BeginTransactionAsync(ct);
         try
         {
-            // 2. Chống lặp (Idempotency) - Kiểm tra xem giao dịch ví đã tồn tại chưa
+            // BƯỚC 2: Kiểm tra chống lặp (Idempotency) - Nếu đã có giao dịch ví thì không tạo trùng
             var existingWalletTransaction = await _db.WalletTransactions
                 .FirstOrDefaultAsync(wt => wt.IdempotencyKey == idempotencyKey, ct);
 
             var paymentGatewayTxn = await _uow.Orders.GetPaymentTransactionByRequestIdAsync(idempotencyKey, ct);
             if (paymentGatewayTxn == null)
             {
-                // Vì không có cache trong Redis, ta dùng WalletTopUpAttemptCache tạm thời để tạo Shadow Order
+                // Dùng dữ liệu tạm để tạo Đơn bóng (Shadow Order) và Record cổng thanh toán
                 var tempAttempt = new WalletTopUpAttemptCache
                 {
                     AttemptCode = idempotencyKey,
@@ -908,6 +931,7 @@ public class SePayWebhookService : ISePayWebhookService
             var balanceAfter = wallet.Balance;
             var createdWalletTransaction = false;
 
+            // BƯỚC 3: Nếu chưa có giao dịch ví -> Cộng tiền ví và lưu WalletTransaction (Credit)
             if (existingWalletTransaction == null)
             {
                 var balanceBefore = wallet.Balance;
@@ -935,6 +959,7 @@ public class SePayWebhookService : ISePayWebhookService
                 createdWalletTransaction = true;
             }
 
+            // BƯỚC 4: Cập nhật trạng thái cổng thanh toán thành Paid
             paymentGatewayTxn.TransactionNo = paymentGatewayTxn.TransactionNo ?? webhookTxnNo;
             paymentGatewayTxn.ResponseCode = "00";
             paymentGatewayTxn.ResponseMessage = "Transaction Success";
@@ -945,7 +970,7 @@ public class SePayWebhookService : ISePayWebhookService
             await _uow.SaveChangesAsync(ct);
             await _uow.CommitTransactionAsync(ct);
 
-            // 3. Gửi thông báo / Publish event nếu giao dịch ví mới được tạo
+            // BƯỚC 5: Bắn sự kiện (Event) thông báo nạp ví thành công nếu là giao dịch mới
             if (createdWalletTransaction && walletTransaction != null)
             {
                 await _eventPublisher.PublishAsync(
